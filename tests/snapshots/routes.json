@@ -516,6 +516,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "auth_social_check_page",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "auth_social_check",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "auth_google",
     "path": "/auth/google"
   },
@@ -1076,6 +1093,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "social_search_page",
+    "path": "/social"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "rea_growth_md",
     "path": "/rea-growth.md"
   },
@@ -1483,14 +1509,6 @@
     ],
     "name": "auth_revoke_tokens",
     "path": "/auth/revoke-tokens"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
-    "name": "register_user",
-    "path": "/users"
   },
   {
     "kind": "APIRoute",
@@ -3315,6 +3333,24 @@
     ],
     "name": "rankings_board",
     "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
   },
   {
     "kind": "APIRoute",

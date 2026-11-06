@@ -1,0 +1,21 @@
+{
+  "data": {
+    "company_data": {
+      "company_name": "Example Inc",
+      "company_domain": "example.com",
+      "company_web_address": "https://example.com",
+      "company_description": "Example business",
+      "company_employees": 100,
+      "company_primary_address": {
+        "city": "Example City",
+        "country": "US"
+      }
+    },
+    "company_metrics": {},
+    "company_detected_technologies": [],
+    "meta": {}
+  },
+  "meta": {
+    "credits": 1
+  }
+}

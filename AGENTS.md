@@ -80,8 +80,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
-5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
+   revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
+   bonus, in proportion), never another payment's block and never below the unheld balance.
+   There is no adjustment entry; an ops correction is a grant.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";
@@ -118,8 +120,9 @@ agents then built against a constitution that was wrong.
 | `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits), `plugins` (a provider's pure functions a catalog row names, resolved by import) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
-- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
-  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+- Domains do not import each other, with four sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only), `catalog -> plugins` (the functions its
+  rows name). `identity` and `money` are leaves.
   import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
   `docs/context/architecture/import-boundaries.md` explains each contract.
 - `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role
@@ -169,7 +172,7 @@ agents then built against a constitution that was wrong.
   (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
-  the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
@@ -225,6 +228,17 @@ so parallel runs and side-by-side runs never share one.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.
+- **No new foreign keys.** Keep referential rules in domain and application code, where a reader
+  sees them, not in database triggers that fire on every write. A foreign key adds a share lock on
+  the parent row to every child insert, and a lookup of every referencing table to every parent
+  delete; on an unindexed referencing column that lookup is a scan of the whole child table, per
+  deleted row. Do not drop existing ones in passing, but a delete path over a table that is still
+  referenced must have every referencing column indexed.
+- **Count the rows a query scans before it runs on the primary.** Run `EXPLAIN` against the replica
+  and read the plan, not the size of the result: a query returning a few thousand rows can scan
+  a whole large table once per candidate row. Write `NOT EXISTS`, never `NOT IN (subquery)`, against
+  a large table; past `work_mem` the latter cannot be hashed and rescans the subquery per row. A
+  statement that runs long on the primary holds back vacuum for every table, the hottest included.
 
 ## Working agreement
 
@@ -264,6 +278,12 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 **Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
 changes weekly and every stale number is a lie.
+
+**A new public page: offer it a share image.** When you add a public page, ask the person driving
+the session whether it should get its own `og:image` from `scripts/og_images.py` (add the page to a
+group in `GROUPS`, then run the script for that one page). Tell them that if they do not like the
+current look, a new style is one more template in `LAYOUTS`. Without a card the page keeps the
+site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") has the details.
 
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and

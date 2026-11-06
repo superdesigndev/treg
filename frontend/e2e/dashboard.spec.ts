@@ -185,7 +185,7 @@ test("a tool drawer's primary button is the next step to an agent using the tool
   await page.getByRole('table').getByRole('row').filter({ hasText: 'Crustdata' }).first().click()
   await expect(primary()).toHaveText('Copy for your agent')        // treg's key serves it: hand it over
   await expect(drawer.getByRole('button', { name: 'Try it' })).toHaveClass(/ghost/)
-  await page.getByRole('table').getByRole('row').filter({ hasText: 'Ocean' }).first().click()
+  await page.getByRole('table').getByRole('row').filter({ has: page.getByText('Ocean.io', { exact: true }) }).filter({ hasText: 'Enrich a company' }).click()
   await expect(primary()).toHaveText(/^Add your .+ key$/)          // only your own key can call it
   await page.goto('/catalog/google-analytics')
   await page.locator('button.pl-job').first().click()
@@ -212,7 +212,7 @@ test('a provider key saved as a secret is a connection: listed on Connections, n
 test('Bring your own key lands on Connections, the provider it names in view', async ({ page }) => {
   await signIn(page, 'byok-jump')
   await page.goto('/catalog/companies/enrich')
-  await page.getByRole('table').getByRole('row').filter({ hasText: 'Ocean' }).first().click()
+  await page.getByRole('table').getByRole('row').filter({ has: page.getByText('Ocean.io', { exact: true }) }).filter({ hasText: 'Enrich a company' }).click()
   await page.getByRole('complementary', { name: 'Tool details' }).getByRole('button', { name: /^Add your .+ key$/ }).click()
   await expect(page).toHaveURL(/#connections$/)
   await expect(page.locator('.cn-prov.on')).toBeInViewport()

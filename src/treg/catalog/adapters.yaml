@@ -247,7 +247,6 @@ adapters:
           following: "coalesce(data.data.user.edge_follow.count, data.data.user.following_count)",
           posts_count: "coalesce(data.data.user.edge_owner_to_timeline_media.count, data.data.user.media_count)",
           is_verified: data.data.user.is_verified, is_private: data.data.user.is_private, biography: data.data.user.biography}
-    miss: "data.data.user == null"
   tikhub.x.instagram-v1-fetch-user-info-by-username-v2:
     accepts: [[username]]
     in:  {username: queryParams.username}
@@ -256,7 +255,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   tikhub.x.instagram-v1-fetch-user-info-by-username-v3:
     accepts: [[username]]
     in:  {username: queryParams.username}
@@ -265,7 +263,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   tikhub.x.instagram-v1-fetch-user-info-by-id:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
@@ -274,7 +271,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   tikhub.x.instagram-v1-fetch-user-info-by-id-v2:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
@@ -283,7 +279,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   tikhub.x.instagram-v3-get-user-profile:
     accepts: [[username]]
     in:  {username: queryParams.username}
@@ -292,7 +287,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   justoneapi.instagram.user.profile:
     accepts: [[username]]
     in:  {username: queryParams.username}
@@ -301,7 +295,6 @@ adapters:
           following: "coalesce(data.edge_follow.count, data.following_count)",
           posts_count: "coalesce(data.edge_owner_to_timeline_media.count, data.media_count)",
           is_verified: data.is_verified, is_private: data.is_private, biography: data.biography}
-    miss: "data.username == null"
   scrapecreators.instagram.user.profile:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -335,7 +328,6 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.keyword}
     out: {posts: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
-    miss: "data.data.items == []"
   scrapecreators.x.v1-instagram-search-hashtag:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
@@ -346,14 +338,12 @@ adapters:
     in:  {hashtag: queryParams.hashtag}
     out: {posts: data.data.hashtag.edge_hashtag_to_media.edges, count: data.data.hashtag.edge_hashtag_to_media.count,
           next_cursor: data.data.hashtag.edge_hashtag_to_media.page_info.end_cursor}
-    miss: "data.data.hashtag == null"
 
   # ---- x.user.posts -------------------------------------------------------------------------
   tikhub.x.user.posts:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.screen_name, user_id: queryParams.rest_id}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
   scrapecreators.x.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -363,7 +353,6 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
 
   # ---- tiktok.user.profile ------------------------------------------------------------------
   tikhub.tiktok.user.profile:
@@ -374,7 +363,6 @@ adapters:
           following: data.userInfo.stats.followingCount, likes: data.userInfo.stats.heartCount,
           videos_count: data.userInfo.stats.videoCount, is_verified: data.userInfo.user.verified,
           biography: data.userInfo.user.signature}
-    miss: "data.userInfo.user.uniqueId == null"
   justoneapi.tiktok.user.profile:
     accepts: [[username], [sec_uid]]
     in:  {username: queryParams.uniqueId, sec_uid: queryParams.secUid}
@@ -383,7 +371,6 @@ adapters:
           following: data.userInfo.stats.followingCount, likes: data.userInfo.stats.heartCount,
           videos_count: data.userInfo.stats.videoCount, is_verified: data.userInfo.user.verified,
           biography: data.userInfo.user.signature}
-    miss: "data.userInfo.user.uniqueId == null"
   scrapecreators.tiktok.user.profile:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.handle, user_id: queryParams.user_id}
@@ -397,7 +384,6 @@ adapters:
     out: {username: data.creator_info.unique_id, user_id: data.user_id, sec_uid: data.creator_info.sec_user_id,
           nickname: data.creator_info.nickname, followers: data.creator_info.follower_count,
           likes: data.creator_info.like_count}
-    miss: "data.creator_info.unique_id == null"
 
   # ---- people.phone.find --------------------------------------------------------------------
   enrow.people.phone.find:
@@ -761,7 +747,6 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {posts: data.items, next_cursor: data.next_max_id}
-    miss: "data.items == []"
   scrapecreators.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -771,7 +756,6 @@ adapters:
     accepts: [[username]]
     in:  {username: queryParams.username}
     out: {posts: data.data.items, next_cursor: data.data.next_page_token}
-    miss: "data.data.items == []"
 
   # ---- instagram.post.detail ----------------------------------------------------------------
   tikhub.x.instagram-v1-fetch-post-by-id:
@@ -780,28 +764,24 @@ adapters:
     out: {id: data.id, shortcode: data.shortcode, caption: "data.edge_media_to_caption.edges[0].node.text",
           likes: data.edge_media_preview_like.count, comments: data.edge_media_preview_comment.count,
           owner_username: data.owner.username}
-    miss: "data.id == null"
   tikhub.x.instagram-v1-fetch-post-by-url:
     accepts: [[url]]
     in:  {url: queryParams.post_url}
     out: {id: data.id, shortcode: data.shortcode, caption: "data.edge_media_to_caption.edges[0].node.text",
           likes: data.edge_media_preview_like.count, comments: data.edge_media_preview_comment.count,
           owner_username: data.owner.username}
-    miss: "data.id == null"
   tikhub.x.instagram-v1-fetch-post-by-url-v2:
     accepts: [[url]]
     in:  {url: queryParams.post_url}
     out: {id: data.id, shortcode: data.shortcode, caption: "data.edge_media_to_caption.edges[0].node.text",
           likes: data.edge_media_preview_like.count, comments: data.edge_media_preview_comment.count,
           owner_username: data.owner.username}
-    miss: "data.id == null"
   justoneapi.x.instagram-get-post-detail-v1:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code}
     out: {id: data.id, shortcode: data.shortcode, caption: "data.edge_media_to_caption.edges[0].node.text",
           likes: data.edge_media_preview_like.count, comments: data.edge_media_preview_comment.count,
           owner_username: data.owner.username}
-    miss: "data.id == null"
 
   # ---- x.user.profile -----------------------------------------------------------------------
   tikhub.x.user.profile:
@@ -809,13 +789,11 @@ adapters:
     in:  {username: queryParams.screen_name, user_id: queryParams.rest_id}
     out: {username: data.profile, user_id: data.rest_id, name: data.name, followers: data.sub_count,
           following: data.friends, posts_count: data.statuses_count, is_verified: data.blue_verified, description: data.desc}
-    miss: "data.profile == null"
   justoneapi.x.twitter-get-user-detail-v1:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
     out: {username: data.profile, user_id: data.rest_id, name: data.name, followers: data.sub_count,
           following: data.friends, posts_count: data.statuses_count, is_verified: data.blue_verified, description: data.desc}
-    miss: "data.profile == null"
   scrapecreators.x.user.profile:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -919,6 +897,7 @@ adapters:
     const: {body.pagination.page: 1}
     out: {people: data.leads, count: data.total}
     miss: "data.leads == []"
+    row: {name: "join(first_name, last_name)", title: title, company: organization_name, location: "place(city, state, country)", profile_url: linkedin_url, email: email}
   prospeo.people.search:
     accepts: [[q], [company_domain], [title, company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
@@ -933,6 +912,7 @@ adapters:
     # Prospeo fixes pages at 25, so there is no honest `limit` input to forward. Return its total.
     out: {people: results, count: pagination.total_count}
     miss: "results == []"
+    row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
     accepts: [[title]]
     in: {title: body.filters.job_title}
@@ -941,6 +921,7 @@ adapters:
     test_identity: {title: Founder}
     out: {people: data.profiles, count: data.total, next_cursor: data.next_page_token}
     miss: "data.profiles == []"
+    row: {name: full_name, title: job_title, company: job_company_name, company_domain: "host(job_company_website)", location: location_name, profile_url: "linkedin_url(linkedin_url)"}
   aiark.people.search:
     accepts: [[company_domain]]
     in: {company_domain: body.account.domain.any.include}
@@ -949,13 +930,19 @@ adapters:
     test_identity: {company_domain: example.com}
     out: {people: content, count: totalElements}
     miss: "content == []"
+    row: {name: profile.full_name, title: profile.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.country)", profile_url: link.linkedin}
   exa.people.search:
     accepts: [[q]]
     in:  {q: body.query}
-    in_expr: {body.query: "join(q, csv(keywords))", body.numResults: limit}
-    const: {body.category: people}
+    # The passages that match the brief come back with each row (not billed on top of the search):
+    # an agent checks the brief against them instead of fetching every profile. Capped at the row's
+    # `summary` length, enough to check a brief and short of a full page.
+    in_expr: {body.query: "join(q, csv(keywords))", body.numResults: limit,
+              body.contents.highlights.query: "join(q, csv(keywords))"}
+    const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
     out: {people: results, count: "len(results)"}
     miss: "results == []"
+    row: {name: "coalesce(entities[0].properties.name, title)", title: "entities[0].properties.workHistory[0].title", company: "entities[0].properties.workHistory[0].company.name", location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
@@ -963,6 +950,7 @@ adapters:
     const: {body.entity_type: people}
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
+    row: {name: name, profile_url: url, summary: description}
   icypeas.people.search:
     accepts: [[company_domain, title], [company_domain], [title]]
     in:  {company_domain: body.query.currentCompanyWebsite.include, title: body.query.currentJobTitle.include}
@@ -971,30 +959,35 @@ adapters:
               body.query.keyword.include: "list(keywords)"}
     out: {people: leads, count: total, next_cursor: pagination.token}
     miss: "leads == []"
+    row: {name: "join(firstname, lastname)", title: "coalesce(lastJobTitle, headline)", company: lastCompanyName, company_domain: "host(lastCompanyWebsite)", location: address, profile_url: profileUrl, summary: "coalesce(headline, description)"}
   companyenrich.people.search:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.domains, title: body.positionQuery}
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
     out: {people: items, count: totalItems}
     miss: "items == []"
+    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url}
   hunter.companies.emails:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
     out: {people: data.emails, count: meta.results}
     miss: "data.emails == []"
+    row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
     in:  {company_domain: body.company_domain}
     in_expr: {body.limit: limit}
     out: {people: data, count: total_count}
     miss: "data == []"
+    row: {name: full_name, title: title, company: company_name, company_domain: "host(website)", location: country_code, profile_url: profile_url, summary: headline}
   lusha.people.search:
     accepts: [[title]]
     in:  {title: body.filters.contacts.include.jobTitles}
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
     miss: "results == []"
+    row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
     in: {company_domain: body.companiesFilters.includeDomains}
@@ -1003,6 +996,7 @@ adapters:
     cost_units: "at_most(limit, 100)"
     out: {people: people, count: total, next_cursor: searchAfter}
     miss: "people == []"
+    row: {name: name, title: jobTitle, company_domain: domain, location: location, profile_url: linkedinUrl, summary: headline}
 
   apollo.people.enrich:
     accepts: [[email], [linkedin_url], [full_name, domain]]
@@ -1457,19 +1451,16 @@ adapters:
     in:  {sec_uid: queryParams.secUid}
     const: {queryParams.cursor: "0"}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.x.tiktok-app-v3-fetch-user-post-videos:
     accepts: [[sec_uid]]
     in:  {sec_uid: queryParams.sec_user_id}
     in_expr: {queryParams.count: limit}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.x.tiktok-app-v3-fetch-user-post-videos-v2:
     accepts: [[sec_uid]]
     in:  {sec_uid: queryParams.sec_user_id}
     in_expr: {queryParams.count: limit}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.tiktok.user.videos:
     # evidence only: its empty itemList on an active account becomes a measured miss; app-v3 already routes the same lookup
     route: false
@@ -1477,7 +1468,6 @@ adapters:
     in:  {sec_uid: queryParams.secUid}
     in_expr: {queryParams.count: limit}
     out: {videos: data.itemList, next_cursor: data.cursor, has_more: data.hasMore}
-    miss: "coalesce(data.itemList, []) == []"
   # tikhub.x.tiktok-app-v3-fetch-user-post-videos-v3: its example carries no aweme_list — v1/v2 cover the same lookup.
 
   # ---- linkedin.user.profile (batch 5) ---------------------------------------------------------
@@ -1504,7 +1494,6 @@ adapters:
     in:  {linkedin_handle: queryParams.username}
     out: {full_name: data.full_name, first_name: data.first_name, last_name: data.last_name, headline: data.headline,
           location: data.location.city, linkedin_url: "fmt('https://www.linkedin.com/in/{}', data.public_identifier)"}
-    miss: "data.full_name == null"
   scrapecreators.linkedin.user.profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.url}
@@ -1582,12 +1571,10 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {reels: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
-    miss: "data.data.items == []"
   tikhub.x.instagram-v2-search-reels:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {reels: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
-    miss: "data.data.items == []"
   scrapecreators.x.v2-instagram-reels-search:
     accepts: [[q]]
     in:  {q: queryParams.query}
@@ -1600,19 +1587,16 @@ adapters:
     in:  {video_id: queryParams.awemeId}
     const: {queryParams.cursor: "0"}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   tikhub.x.tiktok-app-v3-fetch-video-comments:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     in_expr: {queryParams.count: limit}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   tikhub.tiktok.video.comments:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     in_expr: {queryParams.count: limit}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   scrapecreators.tiktok.video.comments:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -1624,37 +1608,30 @@ adapters:
     accepts: [[video_id]]
     in:  {video_id: queryParams.postId}
     out: {video: data.itemInfo.itemStruct}
-    miss: "data.itemInfo.itemStruct == null"
   tikhub.tiktok.video.detail:
     accepts: [[video_id]]
     in:  {video_id: queryParams.itemId}
     out: {video: data.itemInfo.itemStruct}
-    miss: "data.itemInfo.itemStruct == null"
   tikhub.x.tiktok-web-fetch-post-detail-v2:
     accepts: [[video_id]]
     in:  {video_id: queryParams.itemId}
     out: {video: data.itemInfo.itemStruct}
-    miss: "data.itemInfo.itemStruct == null"
   tikhub.x.tiktok-app-v3-fetch-one-video:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.tiktok-app-v3-fetch-one-video-v2:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.tiktok-app-v3-fetch-one-video-v3:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.tiktok-app-v3-fetch-one-video-by-share-url:
     accepts: [[url]]
     in:  {url: queryParams.share_url}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   scrapecreators.tiktok.video.detail:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -1672,29 +1649,24 @@ adapters:
     in:  {channel_id: queryParams.channel_id}
     out: {name: data.title, channel_id: data.channel_id, description: data.description, subscribers: data.subscriber_count,
           videos_count: data.video_count, country: data.country}
-    miss: "data.title == null"
   tikhub.x.youtube-web-v2-get-channel-description:
     accepts: [[channel_id]]
     in:  {channel_id: queryParams.channel_id}
     out: {name: data.title, channel_id: data.channel_id, handle: data.handle, description: data.description,
           subscribers: data.subscriber_count, videos_count: data.video_count}
-    miss: "data.title == null"
   justoneapi.x.youtube-search-v1:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {videos: "coalesce(data.items, data.videos)", next_cursor: "coalesce(data.nextToken, data.continuation_token)"}
-    miss: "coalesce(data.items, data.videos, []) == []"
   tikhub.youtube.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     const: {queryParams.type: video}
     out: {videos: data.videos, next_cursor: data.continuation_token}
-    miss: "data.videos == []"
   tikhub.x.youtube-web-search-video:
     accepts: [[q]]
     in:  {q: queryParams.search_query}
     out: {videos: data.videos, next_cursor: data.continuation_token}
-    miss: "data.videos == []"
   serpapi.youtube.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.search_query}
@@ -1707,12 +1679,10 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {posts: data.searchResults.edges}
-    miss: "data.searchResults.edges == []"
   tikhub.x.threads-web-search-recent:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {posts: data.searchResults.edges}
-    miss: "data.searchResults.edges == []"
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   scrapecreators.x.v1-instagram-search-profiles:
@@ -1720,16 +1690,15 @@ adapters:
     in:  {q: queryParams.query}
     out: {users: profiles, next_cursor: cursor}
     miss: "profiles == []"
+    row: {id: id, username: username, full_name: full_name, url: url, follower_count: follower_count, following_count: following_count, media_count: media_count, biography: biography, category_name: category_name, external_url: external_url, is_verified: is_verified, is_private: is_private, is_business_account: is_business_account, is_professional_account: is_professional_account, matched_from: matched_from, google_title: google_title, google_description: google_description}
   tikhub.x.instagram-v2-search-users:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.data.items, count: data.data.count}
-    miss: "data.data.items == []"
   tikhub.x.instagram-v3-search-users:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {users: data.users, count: data.count}
-    miss: "data.users == []"
 
   dataforseo.x.serp-google-local-finder-live-advanced:
     accepts: [[q]]
@@ -1789,19 +1758,16 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.cursor: "0"}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.user_list == []"
   tikhub.x.tiktok-web-fetch-search-user:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.user_list == []"
 
   justoneapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     const: {queryParams.offset: "0"}
     out: {videos: data.aweme_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   scrapecreators.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.query}
@@ -1812,13 +1778,11 @@ adapters:
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.count: limit}
     out: {videos: data.search_item_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.search_item_list == []"
 
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code}
     out: {comments: data.comments, count: data.comment_count}
-    miss: "data.comments == []"
   scrapecreators.instagram.post.comments:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -1828,7 +1792,6 @@ adapters:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code_or_url}
     out: {comments: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
-    miss: "data.data.items == []"
 
   dataforseo.web.backlinks.summary:
     accepts: [[target]]
@@ -1858,26 +1821,22 @@ adapters:
     accepts: [[subreddit]]
     in:  {subreddit: queryParams.subreddit_name}
     out: {posts: data.subredditV3.elements.edges, next_cursor: data.subredditV3.elements.pageInfo.endCursor}
-    miss: "data.subredditV3.elements.edges == []"
 
   tikhub.x.youtube-web-v2-get-video-info:
     accepts: [[video_id]]
     in:  {video_id: queryParams.video_id}
     out: {video_id: data.video_id, title: data.title, channel: data.author, channel_id: data.channel_id, description: data.description}
-    miss: "data.video_id == null"
   tikhub.x.youtube-web-v2-get-video-info-v2:
     accepts: [[video_id], [url]]
     in:  {video_id: queryParams.video_id, url: queryParams.video_url}
     out: {video_id: data.video_id, title: data.title, channel: data.author, channel_id: data.channel_id, description: data.description,
           views: data.view_count, duration_seconds: data.length_seconds, published: data.publish_date}
-    miss: "data.video_id == null"
   justoneapi.youtube.video.detail:
     accepts: [[video_id]]
     in:  {video_id: queryParams.videoId}
     out: {video_id: data.videoDetails.videoId, title: data.videoDetails.title, channel: data.videoDetails.author,
           channel_id: data.videoDetails.channelId, description: data.videoDetails.shortDescription,
           views: data.videoDetails.viewCount, duration_seconds: data.videoDetails.lengthSeconds}
-    miss: "data.videoDetails == null"
   scrapecreators.youtube.video.detail:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -1893,7 +1852,6 @@ adapters:
     in:  {post_id: queryParams.postId}
     const: {queryParams.cursor: "0"}
     out: {comments: data.results, next_cursor: data.cursor}
-    miss: "data.results == []"
   scrapecreators.x.v1-facebook-post-comments:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -1911,7 +1869,6 @@ adapters:
     in:  {asin: queryParams.asin}
     in_expr: {queryParams.country: "upper(country)"}
     out: {product: data}
-    miss: "data.asin == null"
 
   fiber-ai.linkedin.company.profile:
     accepts: [[linkedin_handle]]
@@ -1931,19 +1888,16 @@ adapters:
     in:  {linkedin_url: queryParams.url}
     out: {name: data.name, description: data.about, followers: data.followers, employees: data.company_size,
           location: "data.locations[0]"}
-    miss: "data.name == null"
 
   justoneapi.x.twitter-get-post-comments-v1:
     accepts: [[tweet_id]]
     in:  {tweet_id: queryParams.tweetId}
     const: {queryParams.cursor: "0"}
     out: {comments: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
   tikhub.x.twitter-web-fetch-latest-post-comments:
     accepts: [[tweet_id]]
     in:  {tweet_id: queryParams.tweet_id}
     out: {comments: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
 
   dataforseo.x.serp-bing-organic-live-advanced:
     accepts: [[q]]
@@ -1980,30 +1934,25 @@ adapters:
     in:  {user_id: queryParams.user_id}
     in_expr: {queryParams.count: limit}
     out: {reels: data.items, next_cursor: data.paging_info.max_id, has_more: data.paging_info.more_available}
-    miss: "data.items == []"
   tikhub.x.instagram-v2-fetch-user-reels:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.username, user_id: queryParams.user_id}
     out: {reels: data.data.items, next_cursor: data.pagination_token}
-    miss: "data.data.items == []"
   tikhub.x.instagram-v3-get-user-reels:
     accepts: [[username]]
     in:  {username: queryParams.username}
     in_expr: {queryParams.page_size: limit}
     out: {reels: data.items, next_cursor: data.next_max_id}
-    miss: "data.items == []"
 
   justoneapi.x.youtube-get-channel-videos-v1:
     accepts: [[channel_id]]
     in:  {channel_id: queryParams.channelId}
     const: {queryParams.cursor: "0"}
     out: {videos: data.videos, next_cursor: data.continuation_token}
-    miss: "data.videos == []"
   tikhub.youtube.channel.videos:
     accepts: [[channel_id]]
     in:  {channel_id: queryParams.channel_id}
     out: {videos: data.videos, next_cursor: data.continuation_token}
-    miss: "data.videos == []"
 
   dataforseo.web.backlinks.list:
     accepts: [[target]]
@@ -2053,13 +2002,11 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.searchType: Top, queryParams.cursor: "0"}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
   tikhub.x.twitter-web-fetch-search-timeline:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     const: {queryParams.search_type: Top}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
-    miss: "data.timeline == []"
 
   scrapecreators.youtube.video.comments:
     accepts: [[url]]
@@ -2070,7 +2017,6 @@ adapters:
     accepts: [[video_id]]
     in:  {video_id: queryParams.video_id}
     out: {comments: data.comments, next_cursor: data.continuation_token}
-    miss: "data.comments == []"
 
   aviato.linkedin.company.posts:
     accepts: [[linkedin_id]]
@@ -2090,7 +2036,6 @@ adapters:
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.country: "upper(country)"}
     out: {products: data.products, count: data.total_products}
-    miss: "data.products == []"
   serpapi.x.amazon-search:
     accepts: [[q]]
     in:  {q: queryParams.k}
@@ -2103,7 +2048,6 @@ adapters:
     in:  {profile_id: queryParams.profileId}
     const: {queryParams.cursor: "0"}
     out: {posts: data.results, next_cursor: data.cursor}
-    miss: "data.results == []"
   scrapecreators.x.v1-facebook-profile-posts:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -2136,45 +2080,38 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.contentType: ALL, queryParams.videoType: ALL, queryParams.sortType: COMPREHENSIVE, queryParams.page: "1"}
     out: {videos: data.content_list, has_more: data.pagination.has_more}
-    miss: "data.content_list == []"
   tikhub.x.douyin-douplus-search-video:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.count: limit, body.cursor: "0"}
     out: {videos: data.data.itemList, next_cursor: data.data.cursor, has_more: data.data.hasMore}
-    miss: "data.data.itemList == []"
   tikhub.x.douyin-search-fetch-video-search-v1:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.cursor: "0"}
     const: {body.sort_type: "0", body.publish_time: "0", body.filter_duration: "0", body.content_type: "0"}
     out: {videos: data.data, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.data == []"
 
   tikhub.x.douyin-creator-fetch-user-search:
     accepts: [[q]]
     in:  {q: queryParams.user_name}
     out: {users: data.user_infos}
-    miss: "data.user_infos == []"
   tikhub.x.douyin-douplus-search-user:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.count: limit, body.cursor: "0"}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.user_list == []"
   tikhub.x.douyin-douplus-search-user-v2:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.count: limit, body.cursor: "0"}
     const: {body.scope: 1}
     out: {users: data.data.userList, next_cursor: data.data.cursor, has_more: data.data.hasMore}
-    miss: "data.data.userList == []"
   tikhub.x.douyin-search-fetch-user-search:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.cursor: "0"}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.user_list == []"
   # creators.search (influencersclub's fixture carries a follower floor the contract has no field for),
   # x.user.followers, linkedin.search.jobs, reddit.subreddit.info, tiktok.search.general: one verifiable
   # vendor each — no waterfall yet.
@@ -2186,49 +2123,41 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.page: "1"}
     out: {users: data.users}
-    miss: "data.users == []"
   tikhub.x.xiaohongshu-app-v2-search-users:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     const: {queryParams.page: 1, queryParams.source: explore_feed}
     out: {users: data.data.users}
-    miss: "data.data.users == []"
 
   justoneapi.x.xiaohongshu-get-user-v3:
     accepts: [[user_id]]
     in:  {user_id: queryParams.userId}
     out: {user: data}
-    miss: "data == null"
   tikhub.x.xiaohongshu-app-v2-get-user-info:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {user: data.data}
-    miss: "data.data == null"
   tikhub.x.xiaohongshu-web-v3-fetch-user-info:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {user: data.data}
-    miss: "data.data == null"
 
   justoneapi.x.tiktok-get-post-sub-comment-v1:
     accepts: [[video_id, comment_id]]
     in:  {video_id: queryParams.awemeId, comment_id: queryParams.commentId}
     const: {queryParams.cursor: "0"}
     out: {replies: data.comments, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   tikhub.x.tiktok-app-v3-fetch-video-comment-replies:
     accepts: [[video_id, comment_id]]
     in:  {video_id: queryParams.item_id, comment_id: queryParams.comment_id}
     in_expr: {queryParams.count: limit}
     out: {replies: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
 
   finnhub.quote:
     accepts: [[symbol]]
     in:  {symbol: queryParams.symbol}
     in_expr: {queryParams.symbol: "upper(symbol)"}
     out: {price: c, open: o, high: h, low: l, previous_close: pc, quote: "."}
-    miss: "c == null"
   twelvedata.quote:
     accepts: [[symbol]]
     in:  {symbol: queryParams.symbol}
@@ -2266,12 +2195,10 @@ adapters:
     accepts: [[post_id]]
     in:  {post_id: queryParams.postId}
     out: {post: "data.postsInfoByIds[0]"}
-    miss: "data.postsInfoByIds == null"
   tikhub.x.reddit-app-fetch-post-details:
     accepts: [[post_id]]
     in:  {post_id: queryParams.post_id}
     out: {post: "data.postsInfoByIds[0]"}
-    miss: "data.postsInfoByIds == []"
 
   scrapecreators.x.v1-linkedin-post:
     accepts: [[url]]
@@ -2282,18 +2209,15 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {post: data, title: data.title, text: data.post_text}
-    miss: "data.id == null"
 
   justoneapi.x.weibo-get-weibo-detail-v1:
     accepts: [[post_id]]
     in:  {post_id: queryParams.id}
     out: {post: data}
-    miss: "data == null"
   tikhub.x.weibo-app-fetch-status-detail:
     accepts: [[post_id]]
     in:  {post_id: queryParams.status_id}
     out: {post: data.detailInfo.status}
-    miss: "data.detailInfo == null"
   apify.weibo.post.detail:
     accepts: [[post_id]]
     in:  {post_id: body.post_ids}
@@ -2318,110 +2242,91 @@ adapters:
     accepts: [[video_id]]
     in:  {video_id: queryParams.videoId}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-app-v3-fetch-one-video:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-app-v3-fetch-one-video-v2:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-app-v3-fetch-one-video-v3:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-web-fetch-one-video:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-web-fetch-one-video-v2:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-app-v3-fetch-one-video-by-share-url:
     accepts: [[url]]
     in:  {url: queryParams.share_url}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
   tikhub.x.douyin-web-fetch-one-video-by-share-url:
     accepts: [[url]]
     in:  {url: queryParams.share_url}
     out: {video: data.aweme_detail}
-    miss: "data.aweme_detail == null"
 
   justoneapi.x.douyin-get-video-comment-v1:
     accepts: [[video_id]]
     in:  {video_id: queryParams.awemeId}
     const: {queryParams.page: "1"}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   tikhub.x.douyin-app-v3-fetch-video-comments:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     in_expr: {queryParams.count: limit}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
   tikhub.x.douyin-web-fetch-video-comments:
     accepts: [[video_id]]
     in:  {video_id: queryParams.aweme_id}
     in_expr: {queryParams.count: limit}
     out: {comments: data.comments, count: data.total, next_cursor: data.cursor, has_more: data.has_more}
-    miss: "data.comments == []"
 
   justoneapi.x.douyin-get-user-video-list-v1:
     accepts: [[sec_uid]]
     in:  {sec_uid: queryParams.secUid}
     const: {queryParams.maxCursor: "0", queryParams.sortType: LATEST}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.x.douyin-app-v3-fetch-user-post-videos:
     accepts: [[sec_uid]]
     in:  {sec_uid: queryParams.sec_user_id}
     in_expr: {queryParams.count: limit}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.x.douyin-web-fetch-user-post-videos:
     accepts: [[sec_uid]]
     in:  {sec_uid: queryParams.sec_user_id}
     in_expr: {queryParams.count: limit}
     out: {videos: data.aweme_list, next_cursor: data.max_cursor, has_more: data.has_more}
-    miss: "data.aweme_list == []"
   tikhub.x.douyin-douplus-fetch-user-posts:
     accepts: [[sec_uid]]
     in:  {sec_uid: body.sec_uid}
     in_expr: {body.count: limit, body.cursor: "0"}
     out: {videos: data.data.itemInfoList, next_cursor: data.data.cursor, has_more: data.data.hasMore}
-    miss: "data.data.itemInfoList == []"
 
   justoneapi.x.xiaohongshu-get-note-comment-v2:
     accepts: [[note_id]]
     in:  {note_id: queryParams.noteId}
     const: {queryParams.sort: latest}
     out: {comments: data.comments, count: data.comment_count}
-    miss: "data.comments == []"
   tikhub.x.xiaohongshu-app-v2-get-note-comments:
     accepts: [[note_id]]
     in:  {note_id: queryParams.note_id}
     const: {queryParams.index: 0, queryParams.pageArea: UNFOLDED}
     out: {comments: data.data.comments, count: data.data.comment_count, has_more: data.data.has_more}
-    miss: "data.data.comments == []"
 
   justoneapi.xiaohongshu.user.notes:
     accepts: [[user_id]]
     in:  {user_id: queryParams.userId}
     out: {notes: data.notes, has_more: data.has_more}
-    miss: "data.notes == []"
   tikhub.x.xiaohongshu-app-v2-get-user-posted-notes:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {notes: data.data.notes, has_more: data.data.has_more}
-    miss: "data.data.notes == []"
 
   aviato.linkedin.post.reactions:
     accepts: [[post_urn]]
@@ -2435,7 +2340,6 @@ adapters:
     in:  {post_id: queryParams.postId}
     const: {queryParams.page: "1", queryParams.type: all}
     out: {reactions: data.data, count: data.total}
-    miss: "data.data == []"
 
   aviato.linkedin.post.comments:
     accepts: [[post_urn]]
@@ -2449,7 +2353,6 @@ adapters:
     in:  {post_id: queryParams.postId}
     const: {queryParams.page: "1", queryParams.sortOrder: relevance, queryParams.postType: activity}
     out: {comments: data.data, count: data.total}
-    miss: "data.data == []"
 
   dataforseo.web.anchors.list:
     accepts: [[target]]
@@ -2544,25 +2447,21 @@ adapters:
     in:  {aid: queryParams.aid}
     const: {queryParams.cursor: "0"}
     out: {comments: data.data.replies}
-    miss: "data.data.replies == []"
   tikhub.x.bilibili-app-fetch-video-comments:
     accepts: [[aid, bvid]]
     in:  {aid: queryParams.av_id, bvid: queryParams.bv_id}
     out: {comments: data.data.replies}
-    miss: "data.data.replies == []"
 
   justoneapi.x.bilibili-search-video-v2:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     const: {queryParams.page: "1", queryParams.order: general}
     out: {videos: data.data.result, count: data.data.numResults}
-    miss: "data.data.result == []"
   tikhub.x.bilibili-app-fetch-search-by-type:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.page_size: limit}
     out: {videos: data.data.items}
-    miss: "data.data.items == []"
   # threads.user.posts, linkedin.user.posts (aviato alone; justoneapi wants an URN), youtube.trending.videos (no
   # identity), trustpilot.business.reviews (async task), youtube.channel.shorts, facebook.post.detail,
   # kuaishou.search.videos, amazon.bestsellers.list, instagram.music.posts, bilibili.video.detail (justoneapi's
@@ -2589,6 +2488,7 @@ adapters:
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"
+    row: {name: fullName, location: location, profile_url: "linkedin_url(URLs.linkedin)"}
   # No adapter for companyenrich.people.search.scroll: its first page is the same query against the
   # same index as companyenrich.people.search, so routing both billed one empty answer twice.
   crustdata.people.search:
@@ -2597,6 +2497,7 @@ adapters:
     in_expr: {body.filters: "obj('field', 'basic_profile.name', 'type', '=', 'value', full_name)", body.limit: limit}
     out: {people: profiles, count: total_count, next_cursor: next_cursor}
     miss: "profiles == []"
+    row: {name: basic_profile.name, title: basic_profile.current_title, company: "experience.employment_details.current[0].name", company_domain: "host(experience.employment_details.current[0].company_website)", location: basic_profile.location.full_location, profile_url: social_handles.professional_network_identifier.profile_url, summary: basic_profile.headline}
   fiber-ai.people.search:
     accepts: [[company_domain]]
     in:  {}
@@ -2611,18 +2512,21 @@ adapters:
     in:  {title: body.job_title, company_domain: body.company_domain}
     out: {people: "list(obj('name', name, 'profile_url', profile_url, 'first_name', first_name, 'last_name', last_name, 'company_name', company_name))", count: "len(list(name))"}
     miss: "name == null"
+    row: {name: name, company: company_name, profile_url: profile_url}
   leadsforge.people.search:
     accepts: [[company_domain]]
     in:  {company_domain: body.companyDomains.include}
     in_expr: {body.companyDomains.include: "list(company_domain)", body.limit: limit, body.keywords.include: "list(keywords)"}
     out: {people: leads, next_cursor: cursor}
     miss: "leads == []"
+    row: {name: "join(firstName, lastName)", title: jobTitle, company_domain: company.domain, location: "place(location.city, location.state, location.country)"}
   findymail.search.employees:
     accepts: [[company_domain, title]]
     in:  {company_domain: body.website, title: body.job_titles}
     in_expr: {body.job_titles: "list(title)", body.count: limit}
     out: {people: ".", count: "len(.)"}
     miss: ". == []"
+    row: {name: name, title: jobTitle, company: companyName, company_domain: "host(companyWebsite)", profile_url: linkedinUrl}
   leadmagic.people.search:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.company_domain, title: body.titles}
@@ -2634,7 +2538,7 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: body.domain}
     out: {people: contacts, count: "len(contacts)"}
-    miss: "contacts == []"
+    row: {name: name, company_domain: domain, email: email}
 
   # *.bulk endpoints are never routed (Jason, 2026-08-29): a routed call is one subject, one answer.
   fiber-ai.people.enrich:
@@ -2713,6 +2617,7 @@ adapters:
     cost_units: "choose(title, 20, 1)"
     out: {people: data, count: "len(data)"}
     miss: "coalesce(data, []) == []"
+    row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin, email: email}
   apollo.people.search:
     # Free search rows carry an obfuscated last name: evidence only, not a routed people.search child.
     route: false
@@ -2729,12 +2634,13 @@ adapters:
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
-      body.where.company.country: "upper(country)"
+      body.where.company.country: "country_code(country)"
       body.where.company.city: location
       body.limit: limit
     max: {limit: 100}
     out: {people: data, count: "len(data)"}
     miss: "coalesce(data, []) == []"
+    row: {name: name, title: title, company: company.name, company_domain: company.domain, location: insight.location, profile_url: "coalesce(linkedin, source_url)", email: email.value, email_status: email.status, summary: insight.summary}
   quickenrich.people.search:
     accepts: [[title, company_domain], [company_domain], [title]]
     in: {company_domain: body.company_url.include, title: body.title.include}
@@ -2746,6 +2652,7 @@ adapters:
       body.per_page: limit
     out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
+    row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin}
   quickenrich.companies.search:
     accepts: [[domain], [name], [industry]]
     in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
@@ -2872,6 +2779,7 @@ adapters:
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
+    row: {name: "join(firstName, lastName)", title: "currentPositions[0].title", company: "currentPositions[0].companyName", location: location.linkedinText, profile_url: linkedinUrl, summary: summary}
 
   # ---- AnyAPI (PR #398) --------------------------------------------------------------------------
   # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. A
@@ -3020,14 +2928,12 @@ adapters:
     in: {q: queryParams.q}
     in_expr: {queryParams.count: limit}
     out: {results: web.results, count: "len(coalesce(web.results, []))"}
-    miss: "coalesce(web.results, []) == []"
   bravesearch.web.search.news:
     accepts: [[q]]
     max: {limit: 50}
     in: {q: queryParams.q}
     in_expr: {queryParams.count: limit}
     out: {results: results, count: "len(coalesce(results, []))"}
-    miss: "coalesce(results, []) == []"
   search1api.web.news:
     accepts: [[q]]
     in: {q: body.query}
@@ -3233,7 +3139,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].text, '') == ''"
+    # final_url is where the page was finally read: a redirect to the home page is not the page
+    miss: "choose(lost_path(results[0].url, results[0].final_url), true, coalesce(results[0].text, '') == '')"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -3295,7 +3202,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    miss: "coalesce(output.data.markdown, '') == ''"
+    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
+    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3321,7 +3229,7 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "coalesce(text_len, markdown, 0) == 0"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
@@ -3491,6 +3399,7 @@ adapters:
     cost_units: "at_most(limit, 10)"
     out: {people: results, count: total_result_count}
     miss: "results == []"
+    row: {profile_url: linkedin_profile_url}
   enrichlayer.companies.search:
     accepts: [[name], [industry], [domain]]
     in: {name: queryParams.name, industry: queryParams.industry,
@@ -3554,6 +3463,14 @@ adapters:
     route: false
     accepts: [[q]]
     in: {q: body.query}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  exa.web.search.lite:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.type: lite}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   scrapegraphai.web.search.extract:
@@ -3763,6 +3680,7 @@ adapters:
               body.max_results: "at_most(limit, 50)"}
     out: {people: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
+    row: {name: full_name, title: "coalesce(experiences[0].job_title, headline)", company: "experiences[0].company_name", company_domain: "experiences[0].company_domain", location: "place(location.city, location.country_code)", profile_url: linkedin_url, summary: headline}
   blitzapi.companies.search:
     accepts: [[name]]
     in: {name: body.company.name.include}
@@ -3771,3 +3689,53 @@ adapters:
               body.max_results: "at_most(limit, 50)"}
     out: {companies: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
+
+  # Only vendor-verified work emails stop the routed waterfall.
+  leadocean.people.email.find.work:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: data.email, verified: "data.status == 'verified'"}
+    miss: "data.status != 'verified'"
+  leadocean.people.email.find.personal:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: "data[0].email"}
+    miss: "data == []"
+  leadocean.people.phone.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {phone: data.best.phone}
+    miss: "data.best.phone == null"
+  leadocean.people.enrich:
+    accepts: [[linkedin_url], [email]]
+    in: {linkedin_url: body.linkedin_url, email: body.email}
+    out: {full_name: data.profile_data.profile_full_name, first_name: data.profile_data.profile_first_name,
+          last_name: data.profile_data.profile_last_name, title: "data.contact_data.contact_current_experiences[0].job_title",
+          company: "data.contact_data.contact_current_experiences[0].company_name",
+          company_domain: "data.contact_data.contact_current_experiences[0].company_domain",
+          linkedin_url: data.profile_data.profile_url,
+          location: "join(data.profile_data.profile_address.city, data.profile_data.profile_address.country)"}
+    miss: "data.profile_data.profile_full_name == null"
+  leadocean.companies.enrich:
+    accepts: [[domain], [linkedin_url]]
+    in: {domain: body.domain, linkedin_url: body.linkedin_url}
+    out: {name: data.company_data.company_name, domain: data.company_data.company_domain,
+          website: data.company_data.company_web_address, description: data.company_data.company_description,
+          employees: data.company_data.company_employees,
+          location: "join(data.company_data.company_primary_address.city, data.company_data.company_primary_address.country)"}
+    miss: "data.company_data.company_name == null"
+  leadocean.people.search:
+    accepts: [[company_domain], [title], [q]]
+    # Each returned person uses a search record, so larger requests use another routed provider.
+    max: {limit: 10}
+    in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
+    in_expr: {queryParams.limit: limit}
+    out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"
+  leadocean.companies.search:
+    accepts: [[domain], [name], [industry], [q]]
+    in: {domain: queryParams.domain, name: queryParams.name, industry: queryParams.industry, q: queryParams.q}
+    in_expr: {queryParams.limit: "at_most(limit, 25)"}
+    out: {companies: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"

@@ -43,6 +43,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
 sys.path.insert(0, str(ROOT / "src"))
+from treg.domain.catalog import outcome, schema, store  # noqa: E402
 from treg.domain.catalog.store import EXAMPLE_MAX_BYTES as MAX_BYTES  # noqa: E402
 MAX_STR = 500
 MAX_LIST = 2
@@ -200,7 +201,11 @@ def main() -> int:
             except ValueError:
                 pass
             expect = ep.get("expect")
-            if ok and expect and doc is not None:
+            resolved = store.load().by_id.get(eid) or {}
+            if ok and doc is not None and schema.is_v2(resolved):
+                if (failed := outcome.expect_failure(resolved, doc)) is not None:
+                    ok, detail = False, f"{detail}, {failed}"
+            elif ok and expect and doc is not None:
                 got = dig(doc, expect["json_path"])
                 ok = got == expect.get("equals") or got in (expect.get("misses") or ())
                 detail += f", {expect['json_path']}={got!r}"

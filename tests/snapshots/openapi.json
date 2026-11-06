@@ -220,6 +220,17 @@
         "title": "AutoTopupIn",
         "type": "object"
       },
+      "Body_auth_social_check_auth_social_check_post": {
+        "properties": {
+          "captcha_token": {
+            "default": "",
+            "title": "Captcha Token",
+            "type": "string"
+          }
+        },
+        "title": "Body_auth_social_check_auth_social_check_post",
+        "type": "object"
+      },
       "BoolIn": {
         "properties": {
           "value": {
@@ -1800,30 +1811,6 @@
           "decision"
         ],
         "title": "UpdateDecisionIn",
-        "type": "object"
-      },
-      "UserIn": {
-        "properties": {
-          "email": {
-            "title": "Email",
-            "type": "string"
-          },
-          "webhook_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Webhook Url"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "title": "UserIn",
         "type": "object"
       },
       "ValidationError": {
@@ -4743,6 +4730,56 @@
           }
         },
         "summary": "Auth Revoke Tokens"
+      }
+    },
+    "/auth/social/check": {
+      "get": {
+        "description": "A provider proved an address no verified user holds yet: run the browser check, then post\nits token to finish signing in. Without a waiting login (Back after signing in) go on to /app.\nA check with no token is offered once more, then the sign-in finishes without credit; without\nscript the button finishes it at once.",
+        "operationId": "auth_social_check_page_auth_social_check_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Social Check Page"
+      },
+      "post": {
+        "operationId": "auth_social_check_auth_social_check_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_auth_social_check_auth_social_check_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Social Check"
       }
     },
     "/auth/sso/callback": {
@@ -15576,7 +15613,7 @@
     },
     "/usage/me": {
       "get": {
-        "description": "The caller's own usage today + cap for the active org — so a member sees 'used / cap' without\nadmin access. `cap` is -1 when unlimited.",
+        "description": "The caller's own usage today + cap for the active org — so a member sees 'used / cap' without\nadmin access. `cap` is -1 when unlimited. Counted as the members list counts it.",
         "operationId": "my_usage_usage_me_get",
         "parameters": [
           {
@@ -15635,46 +15672,6 @@
           }
         },
         "summary": "My Usage"
-      }
-    },
-    "/users": {
-      "post": {
-        "operationId": "register_user_users_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UserIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Register User Users Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Register User"
       }
     }
   }

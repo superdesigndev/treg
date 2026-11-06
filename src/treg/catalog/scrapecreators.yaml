@@ -96,12 +96,12 @@ endpoints:
     method: GET
     path: /v1/tiktok/search/keyword
     name: "Search TikTok videos by keyword"
-    summary: "Searches for TikTok videos by keyword or phrase — the general video search across all of TikTok."
+    summary: "Searches for TikTok videos by keyword or phrase — the general video search across all of TikTok. date_posted and sort_by are forwarded upstream but are not reliably enforced; treat create_time / digg_count as authoritative and post-filter when a window or order matters."
     input:
       queryParams:
         query: {type: string, required: true, note: "Keyword to search for", example: "ai"}
-        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Time frame", example: "all-time"}
-        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Sort by", example: "relevance"}
+        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Requested publish window forwarded upstream. Not reliably enforced — responses can include create_time outside the window (or match an unscoped call). When recency matters, filter create_time locally.", example: "all-time"}
+        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Requested order forwarded upstream. Not reliably enforced — most-liked / date-posted may leave digg_count or create_time unsorted. When order matters, sort locally.", example: "relevance"}
         region: {type: string, required: false, note: "Does NOT filter results to that region only — it places the proxy there (use for geo-restricted posts). 2-letter codes like US, GB, FR"}
         cursor: {type: number, required: false, note: "Pagination cursor from previous response cursor field", example: 10}
         trim: {type: boolean, required: false, note: "Set to true for a trimmed response"}
@@ -365,7 +365,7 @@ endpoints:
     test_request:
       queryParams: {platform: "x", handle: "adrian_horning_"}
     cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
-    call_note: "Uncharged 503 when every declared link-in-bio page fails and nothing else resolves — retry later rather than treating it as a miss."
+    note: "An uncharged 503 means every declared link-in-bio page failed and nothing else resolved: retry later rather than treat it as a miss."
     verified: '2026-08-27'
     added: '2026-08-26'
     example_response: examples/scrapecreators.creators.socials.connected.json

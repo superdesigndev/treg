@@ -1,0 +1,400 @@
+provider: corpoapi
+source:
+  docs: https://docs.corpoapi.com
+  openapi: https://api.corpoapi.com/openapi.json  # live spec; every path and parameter below was read from it
+  curated: '2026-11-03'
+limits: "Per key, fixed 1-second and 1-minute windows: free accounts 5/s and 100/min, paying accounts 50/s and 2,000/min. Over either returns 429 with Retry-After."
+pricing_url: https://corpoapi.com/pricing
+
+# Corpo API serves company data read from official business registers (86 jurisdictions on
+# 2026-11-03; GET /v1/coverage lists them and what each publishes). Every company is addressed by
+# `{jurisdiction}/{company_number}`: an ISO 3166-1 alpha-2 code (US states as `us-de`, `us-ny`) and
+# the register's own number, or any identifier the register publishes.
+#
+# Billing is flat and public: $0.05 per paid call; search, coverage, usage and health are free.
+# Nothing is billed for an error, a company not found, an ambiguous lookup, or a datapoint the
+# register does not publish. A repeat of the same endpoint for the same company on the same UTC day
+# is free. New accounts get 100 free paid calls once.
+#
+# LIVE-CHECKED 2026-11-03 with a vendor-owned account's key, read from the environment only. Every
+# test_request below returned 2xx, and GET /v1/usage?group_by=endpoint counted exactly one paid
+# call per priced route (charged against the 100-call signup allowance). The not-found outcomes
+# below were observed on the wire and moved no counter.
+#
+# Coverage differs by register, so a priced route can answer 409 `<datapoint>_not_available` for a
+# jurisdiction whose register does not publish it (officers in `se`, for example). Those answers
+# are free. `GET /v1/coverage/{jurisdiction}` tells an agent beforehand.
+#
+# Left out of this core file:
+#   GET /v1/usage                          the key check (probe_path); account data, not a job
+#   GET /v1/health                         service health, no auth
+#   GET /v1/coverage/{jurisdiction}        one row of /v1/coverage
+#   GET /v1/companies/{j}/{n}/links        links between registrations of one entity; published
+#                                          for few registers so far
+#   POST /v1/verify/batch                  up to 100 /v1/verify items in one call, $0.05 per company
+#                                          found; needs a per-item settle rule, a follow-up once
+#                                          the single verify is in
+
+endpoints:
+  - id: corpoapi.companies.registry.search
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.search.json
+    domain: companies
+    capability: companies.registry.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/search
+    name: "Search official business registers by name or number"
+    summary: "Search one or more registries by name or identifier"
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "a company name, or a registration number or identifier; at least 2 characters", example: "equinor"}
+        jurisdiction: {type: "array[string]", required: true, note: "one or more ISO 3166-1 alpha-2 codes, US states as us-xx; comma-separate or repeat. Every search is scoped; keep it to a few jurisdictions", example: "no"}
+        status: {type: string, required: false, note: "normalised statuses, e.g. active, dissolved; comma-separate"}
+        legal_form: {type: string, required: false, note: "register legal-form codes, e.g. AB-ORGFO"}
+        active_only: {type: boolean, required: false, note: "shortcut for status=active"}
+        limit: {type: integer, required: false, note: "page size 1-100", example: 2}
+        cursor: {type: string, required: false, note: "opaque cursor from pagination.next_cursor"}
+      note: "returns identification only: id, jurisdiction, company_number, legal name, status and how it matched. Fetch the register record for the full profile. A query over many large registers can hit the 15 s budget (504 registry_unavailable); narrow the jurisdictions"
+    test_request:
+      queryParams: {q: "equinor", jurisdiction: "no", limit: 2}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.registry.profile
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.profile.json
+    domain: companies
+    capability: companies.registry.profile
+    miss:
+      status: 404
+      means: "`company_not_found`: no company has this number in this register; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}
+    name: "Get a company's official register record"
+    summary: "Look up one company by jurisdiction and registration number"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, note: "ISO 3166-1 alpha-2, US states as us-xx", example: "no"}
+        company_number: {type: string, required: true, note: "the register's number or any identifier it publishes (e.g. a VAT number)", example: "923609016"}
+      queryParams:
+        include: {type: string, required: false, note: "blocks to include: identifiers, activity, other_names, legal_form, links, lei; default all"}
+      note: "legal name, status, registration and dissolution dates, registered address, legal form, identifiers, activity codes and which officer data the register offers"
+    test_request:
+      pathParams: {jurisdiction: "no", company_number: "923609016"}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.officers
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.officers.json
+    domain: companies
+    capability: companies.officers
+    miss:
+      status: 404
+      means: "`company_not_found`; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}/officers
+    name: "List a company's directors and officers"
+    summary: "Officers of one company"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, example: "no"}
+        company_number: {type: string, required: true, example: "923609016"}
+      queryParams:
+        current: {type: boolean, required: false, note: "only current officers", example: true}
+        limit: {type: integer, required: false, note: "page size 1-100", example: 5}
+        cursor: {type: string, required: false}
+      note: "name, role as the register states it, start and end dates, person or company. Only registers that publish an officer table return rows; others answer 409 officers_not_available, free"
+    test_request:
+      pathParams: {jurisdiction: "no", company_number: "923609016"}
+      queryParams: {current: true, limit: 5}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.owners
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.owners.json
+    domain: companies
+    capability: companies.owners
+    miss:
+      status: 404
+      means: "`company_not_found`; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}/shareholders
+    name: "List a company's shareholders and beneficial owners"
+    summary: "Shareholders and beneficial owners for one company"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, example: "gb"}
+        company_number: {type: string, required: true, example: "00519500"}
+      note: "direct holders and controllers typed as person or company, with the register's ownership band (never an invented exact percentage), plus declared and calculated UBOs. `datapoint_status` is ok, datapoint_not_applicable or datapoint_not_supported; the last two are free"
+    test_request:
+      pathParams: {jurisdiction: "gb", company_number: "00519500"}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.ownership.graph
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.ownership.graph.json
+    domain: companies
+    capability: companies.ownership.graph
+    miss:
+      status: 404
+      means: "`company_not_found`; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}/ownership
+    name: "Walk a company's ownership chain to its ultimate owners"
+    summary: "Walk the upstream ownership graph and calculate UBOs"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, example: "gb"}
+        company_number: {type: string, required: true, example: "00445790"}
+      queryParams:
+        max_depth: {type: integer, required: false, note: "hops upstream, 1-10", example: 2}
+        max_nodes: {type: integer, required: false, note: "distinct companies expanded, 1-500", example: 10}
+      note: "breadth-first over confirmed corporate shareholder edges; unconfirmed leads and bare names are leaves. One call, one price, whatever the depth"
+    test_request:
+      pathParams: {jurisdiction: "gb", company_number: "00445790"}
+      queryParams: {max_depth: 2, max_nodes: 10}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.filings
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.filings.json
+    domain: companies
+    capability: companies.filings
+    miss:
+      status: 404
+      means: "`company_not_found`; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}/documents
+    name: "List a company's register filings and documents"
+    summary: "Document catalogue for one company, newest first"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, example: "no"}
+        company_number: {type: string, required: true, example: "923609016"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size 1-100", example: 3}
+        cursor: {type: string, required: false}
+      note: "filings and financial-statement documents the register publishes, with type and date; a catalogue, no document bodies"
+    test_request:
+      pathParams: {jurisdiction: "no", company_number: "923609016"}
+      queryParams: {limit: 3}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.financials
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.financials.json
+    domain: companies
+    capability: companies.financials
+    miss:
+      status: 404
+      means: "`company_not_found`; free"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{jurisdiction}/{company_number}/financials
+    name: "Get a company's filed financial statements"
+    summary: "Document-first financial statements for one company"
+    input:
+      pathParams:
+        jurisdiction: {type: string, required: true, example: "no"}
+        company_number: {type: string, required: true, example: "923609016"}
+      queryParams:
+        limit: {type: integer, required: false, note: "statements per page, 1-50", example: 1}
+        cursor: {type: string, required: false}
+      note: "each statement comes with the document it was read from; a missing amount is null, never 0"
+    test_request:
+      pathParams: {jurisdiction: "no", company_number: "923609016"}
+      queryParams: {limit: 1}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 per paid call; errors, not-found and unpublished datapoints are free; the same endpoint for the same company again on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.verify
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.verify.json
+    domain: companies
+    capability: companies.verify
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/verify
+    name: "Verify a company against the official register (KYB)"
+    summary: "Resolve a company and compare the supplied claims with registry data"
+    input:
+      body:
+        jurisdiction: {type: string, required: true, example: "se"}
+        company_number: {type: string, required: false, note: "preferred; any identifier the register publishes", example: "5560295197"}
+        name: {type: string, required: false, note: "used when company_number is absent; must resolve to exactly one company"}
+        expected: {type: object, required: false, note: "claims to check, e.g. {legal_name: ...}", example: {legal_name: "Volvo Business Services Aktiebolag"}}
+        reference: {type: string, required: false, note: "your own id, echoed back"}
+      note: "`result` is verified, partial, mismatch, not_found or ambiguous, with a check per claim. A 200 with result not_found or ambiguous is free; only a company found is billed. An Idempotency-Key header returns the stored answer for 24 h and never bills twice"
+    test_request:
+      body: {jurisdiction: "se", company_number: "5560295197", expected: {legal_name: "Volvo Business Services Aktiebolag"}}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 only when a company is found (verified, partial or mismatch); not_found and ambiguous are free; a repeat verify of the same company on the same UTC day is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.vat.verify
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.vat.verify.json
+    domain: companies
+    capability: companies.vat.verify
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/vat/{vat_number}
+    name: "Check an EU VAT number (VIES)"
+    summary: "Validate a VAT number against the European Commission VIES service"
+    input:
+      pathParams:
+        vat_number: {type: string, required: true, note: "with the country prefix", example: "SE556029519701"}
+      note: "`valid`, the name and address VIES returns, and the matching register company when one is found. A 200 with valid false is free"
+    test_request:
+      pathParams: {vat_number: "SE556029519701"}
+    expect: {json_path: valid, equals: true, misses: [false]}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://corpoapi.com/pricing
+      checked: '2026-11-03'
+      confidence: documented
+      note: "$0.05 only when the VAT number is valid; an invalid number is free"
+    docs_url: https://docs.corpoapi.com
+
+  - id: corpoapi.companies.registry.coverage
+    added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.coverage.json
+    domain: companies
+    capability: companies.registry.coverage
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/coverage
+    name: "List the registers covered and what each publishes"
+    summary: "Every served location, with the status of each kind of company data"
+    input:
+      note: "keyed by jurisdiction code; companies, directors, ownership, documents, financials, lei and activity are each complete, partial or absent. Check it before a paid call to skip registers that publish nothing for the job"
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    docs_url: https://docs.corpoapi.com
+
+proposed_capabilities:
+  # The companies.* shelf today is firmographics for lead generation (enrich by domain, search by
+  # industry or size). None of these jobs, read from official business registers, is covered.
+  companies.registry.search: "Find a company in an official business register by name or registration number"
+  companies.registry.profile: "Get a company's official register record: legal name, number, status, address and legal form"
+  companies.officers: "List a company's directors and officers from the official register"
+  companies.owners: "List a company's shareholders and beneficial owners (UBOs)"
+  companies.ownership.graph: "Walk a company's ownership chain upstream to its ultimate owners"
+  companies.filings: "List a company's filings and documents at the official register"
+  companies.financials: "Get the financial statements a company filed at its register"
+  companies.verify: "Check a company's name, number and status against the official register (KYB)"
+  companies.vat.verify: "Check that an EU VAT number is valid, and whose it is"
+  companies.registry.coverage: "List which countries' registers a source covers, and what each publishes"

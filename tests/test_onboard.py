@@ -10,7 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
@@ -38,7 +38,7 @@ async def c(monkeypatch):
 
 
 async def _register(c: AsyncClient, email: str) -> str:
-    return (await c.post("/users", json={"email": email})).json()["token"]
+    return (await verified_signup(c, json={"email": email})).json()["token"]
 
 
 async def test_onboard_seeds_a_populated_team(c):

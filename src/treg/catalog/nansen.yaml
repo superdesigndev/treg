@@ -78,7 +78,7 @@ endpoints:
     confidence: verified
     note: 'Token/entity discovery mode; address labels and domain resolution are separate
       API operations. '
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/search
 - id: nansen.tgm.token-information
   capability: crypto.coin.profile
@@ -159,7 +159,7 @@ endpoints:
     note: Spot/on-chain mode; Hyperliquid perp statistics are outside this route.
       Published standard tariff. Self-test account reported zero cost and usage for
       all calls; standard-account billing remains unobserved. Errors are not charged.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/token-information
 - id: nansen.tgm.holders
   capability: crypto.token.holders
@@ -286,7 +286,7 @@ endpoints:
       credits and requires a paid plan; connector on-chain calls use that premium
       tier. Hyperliquid positions are a separate operation. Standard-account paid
       pricing remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/holders
 - id: nansen.tgm.token-ohlcv
   capability: crypto.price.ohlc
@@ -394,7 +394,7 @@ endpoints:
     note: Direct HTTP candles; does not perform the connector token-name enrichment
       call. Published standard tariff. Self-test account reported zero cost and usage
       for all calls; standard-account billing remains unobserved. Errors are not charged.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/price-ohlcv
 - id: nansen.tgm.indicators
   capability: crypto.token.indicators
@@ -433,7 +433,7 @@ endpoints:
     checked: '2026-11-03'
     confidence: documented
     note: Spot quantitative indicators. Standard-account paid pricing remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/nansen-indicators
 - id: nansen.token-screener
   capability: crypto.tokens.screen
@@ -529,7 +529,7 @@ endpoints:
     confidence: documented
     note: Spot token screener; Hyperliquid perps use the separate perp-screener route.
       Standard-account paid pricing remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/token-screener
 - id: nansen.tgm.flow-intelligence
   capability: crypto.token.flows
@@ -608,7 +608,7 @@ endpoints:
     note: Spot flow intelligence; direct HTTP call without connector token-name enrichment
       or Hyperliquid position intelligence. Standard-account paid pricing remains
       unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/flow-intelligence
 - id: nansen.tgm.who-bought-sold
   capability: crypto.token.buyers_sellers
@@ -690,7 +690,7 @@ endpoints:
     confidence: documented
     note: Use buy_or_sell to select buyers or sellers. Standard-account paid pricing
       remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/token-god-mode/who-bought-sold
 - id: nansen.smart-money.holdings
   capability: crypto.smart_money.holdings
@@ -757,7 +757,7 @@ endpoints:
     note: Aggregated holdings; not a per-wallet breakdown. Published standard tariff.
       Self-test account reported zero cost and usage for all calls; standard-account
       billing remains unobserved. Errors are not charged.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/smart-money/holdings
 - id: nansen.profiler.address.current-balance
   capability: crypto.wallet.balances
@@ -852,7 +852,7 @@ endpoints:
       and Hyperliquid operations, which are not combined by this HTTP route. Published
       standard tariff. Self-test account reported zero cost and usage for all calls;
       standard-account billing remains unobserved. Errors are not charged.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/profiler/address-current-balances
 - id: nansen.profiler.address.counterparties
   capability: crypto.wallet.counterparties
@@ -950,7 +950,7 @@ endpoints:
     confidence: documented
     note: Single-wallet counterparties; batch lookup remains outside the core. Standard-account
       paid pricing remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/profiler/address-counterparties
 - id: nansen.profiler.address.related-wallets
   capability: crypto.wallet.related
@@ -1029,7 +1029,7 @@ endpoints:
     note: Single-chain relationship lookup; does not perform the connector all-chain
       fan-out or separate first-funder calls. Standard-account paid pricing remains
       unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/profiler/address-related-wallets
 - id: nansen.profiler.address.pnl-summary
   capability: crypto.wallet.pnl
@@ -1095,5 +1095,5 @@ endpoints:
     confidence: documented
     note: Single-chain spot PnL summary; Hyperliquid PnL is a separate API operation.
       Standard-account paid pricing remains unobserved.
-  added: '2026-11-03'
+  added: '2026-11-06'
   docs_url: https://docs.nansen.ai/api/profiler/address-pnl-and-trade-performance

@@ -20,8 +20,9 @@ from ... import sandbox as demo_sandbox
 from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import money_admission, org_endpoint_quota
@@ -36,6 +37,7 @@ from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter as provider_limiter
 from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
+from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
@@ -1348,7 +1350,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Secret reads above opened the dependency session. Release its pool slot before the
             # application opens the short transaction that owns the reservation.
             await db.commit()
-            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref)
+            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)
@@ -1482,6 +1484,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 cache_diagnostics["cache_price"] = (
                     "free" if not mk.metered else "repeat" if served_repeat else "full")
                 request.context.cached = served_hit
+                request.context.reached_provider = True
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
@@ -1535,6 +1538,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 else:
                     await admit_outbound()
                 upstream_started = _now_ms()
+                reached = relay_module.ON_SEND.set(_reached_provider(request.context))
                 try:
                     response = await relay(
                         upstream_request,
@@ -1547,6 +1551,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         **relay_options,
                     )
                 finally:
+                    relay_module.ON_SEND.reset(reached)
                     rate_observe.record(rate_seen, response.status if response is not None else None)
                 upstream_ms = _now_ms() - upstream_started
             streaming_free_result = (mk is not None and mk.streamable_free_result
@@ -1999,6 +2004,12 @@ def _response_retention_forbidden(endpoint_id: str | None) -> bool:
     return bool(entry and entry.get("response_retention") == "forbidden")
 
 
+def _reached_provider(context: CallContext):
+    def mark() -> None:
+        context.reached_provider = True
+    return mark
+
+
 def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
                   refused_by: str | None = None, charged: int | None,
                   response: UpstreamResponse | None = None) -> None:
@@ -2021,7 +2032,7 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         status_code=status, refused_by=refused_by, hit=summary.get("hit"),
         verdict=summary.get("verdict"), cost_charged_micro=charged,
         served_by=summary.get("served_by"), tried_count=summary.get("tried_count"),
-        check_verdict=summary.get("check_verdict"),
+        check_verdict=summary.get("check_verdict"), route_rule=summary.get("route_rule"),
         retained_extra=int(summary.get("size") or 0) + answer_size)
 
 
@@ -2073,8 +2084,12 @@ def _submission_rejected(mk, body: bytes) -> str:
         document = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return "submission_not_json"
-    rule = (catalog_store.load().by_id.get(mk.endpoint_id) or {}).get("expect")
-    if rule:
+    endpoint = catalog_store.load().by_id.get(mk.endpoint_id) or {}
+    rule = endpoint.get("expect")
+    if schema.is_v2(endpoint):
+        if catalog_outcome.expect_failure(endpoint, document) is not None:
+            return "submission_expect_failed"
+    elif rule:
         try:
             if _dig(document, rule["json_path"]) != rule.get("equals"):
                 return "submission_expect_failed"

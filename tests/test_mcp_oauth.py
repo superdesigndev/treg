@@ -488,7 +488,7 @@ async def test_you_cannot_approve_for_a_team_you_are_not_in(clients):
     grant a client access to any team by editing one form field."""
     client_id = await _register(clients)
     cookie, _ = await _signed_in(clients, "outsider@superdesign.dev")
-    other = await clients.post("/users", json={"email": "stranger@superdesign.dev"})
+    other = await verified_signup(clients, json={"email": "stranger@superdesign.dev"})
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = other.json()["token"]
     foreign_org = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -1077,7 +1077,7 @@ async def test_only_the_grants_own_user_can_move_it(clients):
     grant = (await clients.get("/oauth/grants",
                                headers=await _as("owner@superdesign.dev"))).json()[0]["grant"]
 
-    stranger = (await clients.post("/users", json={"email": "stranger@superdesign.dev"})).json()
+    stranger = (await verified_signup(clients, json={"email": "stranger@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": stranger["token"]})).json()[0]
     r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]},
                            headers={"X-Treg-Token": stranger["token"]})
@@ -1230,7 +1230,7 @@ async def test_a_team_you_cannot_use_is_indistinguishable_from_one_that_does_not
     me = await _as("prober@superdesign.dev")
     grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
 
-    outsider = (await clients.post("/users", json={"email": "elsewhere@superdesign.dev"})).json()
+    outsider = (await verified_signup(clients, json={"email": "elsewhere@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
 
     real_but_not_mine = await clients.post(f"/oauth/grants/{grant}/team",

@@ -33,6 +33,7 @@ from .bootstrap_http import (
 )
 from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
+from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
 from .infra.db import ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
@@ -133,6 +134,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),
     ('/auth/google/callback', ('GET',), 'auth_google_callback'),
+    ('/auth/social/check', ('GET',), 'auth_social_check_page'),
+    ('/auth/social/check', ('POST',), 'auth_social_check'),
     ('/auth/cli/start', ('POST',), 'auth_cli_start'),
     ('/auth/cli/poll', ('GET',), 'auth_cli_poll'),
     ('/auth/cli/orgs', ('GET',), 'auth_cli_orgs'),
@@ -203,6 +206,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
+    ('/social', ('GET',), 'social_search_page'),
     ('/showcase', ('GET',), 'showcase_page'),
     ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
     ('/showcase/votes/me', ('GET',), 'showcase_my_votes'),
@@ -225,6 +229,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/showcase/teams/{org_id}', ('GET',), 'staff_team'),
     ('/rankings', ('GET',), 'rankings_page'),
     ('/rankings/data/{board}', ('GET',), 'rankings_board'),
+    ('/compare', ('GET',), 'compare_hub'),
+    ('/compare/{slug}', ('GET',), 'compare_page'),
     ('/admin/images/{kind}', ('POST',), 'staff_upload'),
     ('/admin/images/staging/{key:path}', ('GET',), 'staff_staged_image'),
     ('/images/{kind}', ('POST',), 'upload_image'),
@@ -265,7 +271,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tutorial', ('GET',), 'tutorial_page'),
     ('/auth/cli-token', ('GET',), 'auth_cli_token'),
     ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
-    ('/users', ('POST',), 'register_user'),
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
@@ -751,6 +756,7 @@ def _lifespan(role: AppRole):
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
+            stall_watch = start_loop_stall_watch()
             # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
             # and a zero daily cap disables it without touching serving. Same discipline as the ads
             # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
@@ -840,6 +846,7 @@ def _lifespan(role: AppRole):
                     if traffic_reporting:
                         org_traffic.stop_reporting()
                     try:
+                        await stop_loop_stall_watch(stall_watch)
                         await stop_money_trace(trace_runner)
                     finally:
                         analytics.remove_fault_handler(fault_handler)

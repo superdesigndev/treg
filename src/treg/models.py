@@ -194,6 +194,51 @@ class OrgFlowControlVersion(SQLModel, table=True):
     published_at: NaiveUTC | None = Field(default=None)
 
 
+class RouteRuleVersion(SQLModel, table=True):
+    """Saved route rule sets (docs/context/architecture/route-rules.md). The private admin is the
+    only writer; workers read the published snapshot from Redis, never this table."""
+
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_routeruleversion_version"),
+        CheckConstraint("review_status IN ('draft', 'approved', 'rejected')",
+                        name="ck_routeruleversion_review_status"),
+        CheckConstraint("publish_status IN ('unpublished', 'pending', 'published', 'failed')",
+                        name="ck_routeruleversion_publish_status"),
+        CheckConstraint("length(trim(created_by)) > 0 AND length(trim(reason)) > 0",
+                        name="ck_routeruleversion_created"),
+        CheckConstraint(
+            "review_status = 'draft' OR (reviewed_by IS NOT NULL AND length(trim(reviewed_by)) > 0"
+            " AND reviewed_at IS NOT NULL)",
+            name="ck_routeruleversion_reviewed"),
+        CheckConstraint("publish_status = 'unpublished' OR review_status = 'approved'",
+                        name="ck_routeruleversion_publish_approved"),
+        CheckConstraint(
+            "publish_status != 'published' OR "
+            "(published_by IS NOT NULL AND length(trim(published_by)) > 0 AND published_at IS NOT NULL)",
+            name="ck_routeruleversion_published"),
+        Index("ix_routeruleversion_publish_status", "publish_status", "version"),
+    )
+    version: int = Field(sa_column=Column(Integer, primary_key=True, autoincrement=False))
+    config: dict = Field(sa_column=Column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"),
+        nullable=False,
+    ))
+    reason: str
+    created_by: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    review_status: str = Field(default="draft", sa_column=Column(
+        String, nullable=False, server_default="draft",
+    ))
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: NaiveUTC | None = Field(default=None)
+    review_note: str | None = Field(default=None)
+    publish_status: str = Field(default="unpublished", sa_column=Column(
+        String, nullable=False, server_default="unpublished",
+    ))
+    published_by: str | None = Field(default=None)
+    published_at: NaiveUTC | None = Field(default=None)
+
+
 class User(SQLModel, table=True):
     """A global identity (one email/login). Identity ONLY — the token and role live on
     Membership, so one person in two orgs has two memberships (two tokens), one User.
@@ -201,8 +246,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
@@ -985,12 +1030,15 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'settle'")),
                       Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
                             postgresql_where=text("kind = 'topup'"),
-                            sqlite_where=text("kind = 'topup'")))
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)
@@ -1976,7 +2024,8 @@ class ArchiveSnapshot(SQLModel, table=True):
     media_type: str = Field(default="")
     content_hash: str                              # sha256 of the RAW body (dedup identity)
     body: bytes | None = Field(default=None)       # verbatim bytes, or NULL when body_of is set
-    body_of: int | None = Field(default=None, foreign_key="archivesnapshot.id")
+    # An archivesnapshot.id in the same key, deliberately not a foreign key (alembic 0094).
+    body_of: int | None = Field(default=None)
     size_bytes: int = Field(default=0)             # of the raw body, even when deduplicated
     fetched_at: NaiveUTC = Field(default_factory=_now, index=True)
     # Who triggered the fetch: "caller" (a real request) | "refresh" (worker) | "sample" (learner).

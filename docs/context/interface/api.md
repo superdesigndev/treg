@@ -92,7 +92,7 @@ explained in [seo](seo.md).
 `require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
 `X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
 and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
-`POST /users`, `POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
+`POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
 session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
 org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 
@@ -175,9 +175,10 @@ membership.
   at the top of `grant_local_run`. It takes the slot with one conditional UPDATE
   (`take_daily_slot`): the WHERE is the check and the SET is the count, so the cap is exact under
   concurrency and refused events are not counted. `-1` skips it; a database error fails open (a
-  courtesy limit, not a money gate). `used_today` reads the journal, and `set_member_cap` copies
-  that count onto the counter when a member goes from unlimited to capped. Never put the journal
-  count back in the gate: it scans the member's whole day.
+  courtesy limit, not a money gate). `used_today` (the members list and `/usage/me`) reads the
+  usage rollup and the rows after its cursor; `set_member_cap` copies the journal count
+  (`count_today`) onto the counter when a member goes from unlimited to capped. Never put the
+  journal count in the gate or on a page: it scans the member's whole day.
 - Dashboard reports (`/usage`, `/usage/by-tag`, `/agents/observed`) run on the gated report
   session and answer `429 {"report_busy": ...}` with `Retry-After: 2`, never `treg_saturated`
   ([deploy](../ops/deploy.md#dashboard-reports)).
@@ -354,7 +355,7 @@ cookie-authenticated mutation.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
-- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read by both signup doors;
+- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
   `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
   advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
 - Feedback, media hosting, pictures and the showcase are owned by their fragments:
@@ -383,10 +384,10 @@ query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as par
 code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
 attacker-supplied and reaches a query.
 
-Redemption happens at first team creation in both org-creating doors, right after the signup
-credit grant and with the same swallow-and-log posture: a referral must never be why someone cannot
-make a team. A failed grant rolls the session back, expiring every tracked object, so both doors
-read their response fields before granting and redemption refreshes `user`/`org` first.
+Redemption happens at team creation, right after the signup credit grant and with the same
+swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant
+rolls the session back, expiring every tracked object, so team creation reads its response fields
+before granting and redemption refreshes `user`/`org` first.
 
 ## Billing
 

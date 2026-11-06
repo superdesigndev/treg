@@ -1,0 +1,43 @@
+{
+  "filters": {
+    "emotions": [
+      "amazed",
+      "angry",
+      "… 11 more item(s) truncated"
+    ],
+    "genders": [
+      "female",
+      "male",
+      "… 1 more item(s) truncated"
+    ],
+    "locations": [
+      "Bathroom",
+      "Beach",
+      "… 14 more item(s) truncated"
+    ],
+    "age_ranges": [
+      "18-24",
+      "25-34",
+      "… 1 more item(s) truncated"
+    ],
+    "hair_colors": [
+      "Auburn",
+      "Bald",
+      "… 5 more item(s) truncated"
+    ],
+    "outfits": [
+      "Athletic",
+      "Business Casual",
+      "… 7 more item(s) truncated"
+    ],
+    "media_types": [
+      "image",
+      "video"
+    ],
+    "difficulty_levels": [
+      1,
+      2,
+      "… 3 more item(s) truncated"
+    ]
+  }
+}
