@@ -296,12 +296,16 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
 
 def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple[dict, str | None, dict]:
     """A priced row's v2 cost keys, today's `cost.type`, and the bill that type implies. A row
-    priced by its `observed_cost` is rewritten from the price the catalog serves for it today."""
+    priced by its `observed_cost` is rewritten from the price the catalog serves for it today,
+    without the note that says it was observed."""
     endpoint_id, cost = out.endpoint_id, _effective_cost(row)
     if not isinstance(cost, dict):
         raise Refused("the row has no cost to rewrite")
     if row.get("observed_cost") is not None and isinstance(row.get("cost"), dict):
         out.warnings.append("observed_cost beside a cost is dropped: no code reads it")
+    elif row.get("observed_cost") is not None:
+        # how the price was measured is its provenance, not a caveat for the caller
+        cost = {k: v for k, v in cost.items() if k != "note"}
     if check_branches and (branch := _branches(provider, endpoint_id)):
         raise Refused(f"{branch}; its batch moves that rule into data or a plugin")
     if found := [k for k in PROVIDER_KEYS if k in cost]:

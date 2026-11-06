@@ -149,17 +149,14 @@ def cost_of(ep: dict) -> float:
         return 0.0
 
 
-OBSERVED_NOTE = "price observed at live verification (provider-reported charge)"
-OBSERVED_FREE_NOTE = "no charge observed at verification"
-
-
 def observed_price(ep: dict, charged: float, day: str) -> None:
-    """Price a row no rate card prices at what the provider reported charging for this call."""
-    price = ep.get("price")
-    if price is not None and price.get("note") not in (OBSERVED_NOTE, OBSERVED_FREE_NOTE):
+    """Price a row no rate card prices at what the provider reported charging for this call. A row
+    priced this way carries an observed provenance and no note; one with a note was priced by hand."""
+    price, provenance = ep.get("price"), ep.get("provenance") or {}
+    if price is not None and (provenance.get("source") != "observed" or "note" in price):
         return
     ep["price"] = {"value": format(Decimal(repr(charged)), "f") if charged else "0", "currency": "USD",
-                   "per": 1, "unit": "call", "note": OBSERVED_NOTE if charged else OBSERVED_FREE_NOTE}
+                   "per": 1, "unit": "call"}
     ep["provenance"] = {"source": "observed", "checked": day, "confidence": "verified"}
 
 

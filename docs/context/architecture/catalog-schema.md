@@ -113,7 +113,8 @@ declare `async` (beside a header `async` block alone the row is refused), and a 
 translation of the Python branch it deletes, is inherited whole, as a `settle` default is by every
 row without a settle form of its own. A row priced by its `observed_cost` is rewritten at the price
 the catalog serves for it today (`_effective_cost`: the figure as a per-call USD price, `provenance:
-{source: observed, confidence: verified}` checked on its `verified` day); an `observed_cost` beside
+{source: observed, confidence: verified}` checked on its `verified` day, and no note: how a price was
+measured is evidence, not a caveat); an `observed_cost` beside
 a `cost` is dropped, since nothing reads it. A fallback equal to its row's
 `value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
 `price.note`. An unpriced row opts out of the price and provenance defaults (`price: null` when

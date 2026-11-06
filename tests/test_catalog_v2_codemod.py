@@ -202,8 +202,7 @@ def test_a_row_priced_by_its_observed_cost_is_written_at_the_price_served_today(
                                 "verified": "2026-07-28", "expect": {"json_path": "tasks.0.status_code",
                                                                      "equals": 20000}},
                                provider="demo", check_branches=False, defaults=BRANCH)
-    assert observed.keys == {"price": {"value": "0.0102", "currency": "USD", "per": 1, "unit": "call",
-                                       "note": "price observed at live verification (provider-reported charge)"},
+    assert observed.keys == {"price": {"value": "0.0102", "currency": "USD", "per": 1, "unit": "call"},
                              "provenance": OBSERVED}
     assert observed.replaced == ("observed_cost", "tier", "expect")
     free = codemod.rewrite({"id": "demo.y", "observed_cost": 0, "verified": "2026-07-28"}, provider="demo",

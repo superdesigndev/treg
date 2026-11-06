@@ -69,12 +69,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-ai-keyword-data-keywords-search-volume-live.json
-  price:
-    value: '0.0102'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0102', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.keywords.volume
 - id: dataforseo.x.ai-optimization-llm-mentions-historical-live
@@ -147,12 +142,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-historical-live.json
-  price:
-    value: '0.101'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.historical
 - id: dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live
@@ -267,12 +257,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live.json
-  price:
-    value: '0.104'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.104', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.multi_target
 - id: dataforseo.x.ai-optimization-llm-mentions-search-mentions-live
@@ -373,12 +358,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-search-mentions-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.search
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-live
@@ -461,12 +441,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-target-metrics-live.json
-  price:
-    value: '0.101'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live
@@ -557,12 +532,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live.json
-  price:
-    value: '0.101'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
 - id: dataforseo.x.ai-optimization-llm-mentions-timeseries-delta-live
@@ -645,12 +615,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-timeseries-delta-live.json
-  price:
-    value: '0.105'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.105', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.timeseries_delta
 - id: dataforseo.x.ai-optimization-llm-mentions-timeseries-new-lost-live
@@ -733,12 +698,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-timeseries-new-lost-live.json
-  price:
-    value: '0.105'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.105', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.timeseries_new_lost
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-live
@@ -851,12 +811,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brand_categories
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-lite-live
@@ -969,12 +924,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-lite-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brand_categories
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-live
@@ -1087,12 +1037,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brands
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-lite-live
@@ -1205,12 +1150,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-lite-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brands
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-live
@@ -1329,12 +1269,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_domains
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-lite-live
@@ -1453,12 +1388,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-lite-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_domains
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live
@@ -1577,12 +1507,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live
@@ -1701,12 +1626,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live.json
-  price:
-    value: '0.103'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
 - id: dataforseo.x.dataforseo-labs-amazon-bulk-search-volume-live
@@ -1762,12 +1682,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-bulk-search-volume-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 0.51
 - id: dataforseo.x.dataforseo-labs-amazon-product-competitors-live
@@ -1833,12 +1748,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-competitors-live.json
-  price:
-    value: '0.01968'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01968', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-amazon-product-keyword-intersections-live
   platform: amazon
@@ -1913,12 +1823,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-keyword-intersections-live.json
-  price:
-    value: '0.012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 1.22
 - id: dataforseo.x.dataforseo-labs-amazon-product-rank-overview-live
@@ -1972,12 +1877,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-rank-overview-live.json
-  price:
-    value: '0.01224'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 0.42
 - id: dataforseo.x.dataforseo-labs-amazon-ranked-keywords-live
@@ -2047,12 +1947,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-ranked-keywords-live.json
-  price:
-    value: '0.01548'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01548', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-amazon-related-keywords-live
   platform: amazon
@@ -2125,12 +2020,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-related-keywords-live.json
-  price:
-    value: '0.0126'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0126', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.merchant-amazon-asin-live-advanced
   capability: amazon.product.variants
@@ -2187,12 +2077,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-asin-live-advanced.json
-  price:
-    value: '0.005'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.005', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 22.57
 - id: dataforseo.x.merchant-amazon-locations-country
@@ -2297,12 +2182,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-products-live-advanced.json
-  price:
-    value: '0.0033'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0033', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 23.64
 - id: dataforseo.x.merchant-amazon-sellers-live-advanced
@@ -2360,12 +2240,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-sellers-live-advanced.json
-  price:
-    value: '0.0033'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0033', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 105.51
 - id: dataforseo.x.app-data-apple-app-info-task-get-advanced
@@ -2456,12 +2331,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-info-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -2608,12 +2478,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-list-task-post.json
-  price:
-    value: '0.0024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -2840,12 +2705,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-reviews-task-post.json
-  price:
-    value: '0.006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -2986,12 +2846,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-searches-task-post.json
-  price:
-    value: '0.0024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -3103,12 +2958,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-app-competitors-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-app-intersection-live
   platform: app-store
@@ -3179,12 +3029,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-app-intersection-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-bulk-app-metrics-live
   platform: app-store
@@ -3237,12 +3082,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-bulk-app-metrics-live.json
-  price:
-    value: '0.01224'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-keywords-for-app-live
   platform: app-store
@@ -3309,12 +3149,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-keywords-for-app-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-baidu-locations-country
   added: '2026-07-28'
@@ -3458,12 +3293,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-baidu-organic-task-post.json
-  price:
-    value: '0.0012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: baidu.serp.organic
@@ -3624,12 +3454,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-audience-estimation-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.audience.estimate
 - id: dataforseo.x.keywords-data-bing-keyword-performance-live
@@ -3697,12 +3522,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keyword-performance-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.performance
 - id: dataforseo.x.keywords-data-bing-keywords-for-keywords-live
@@ -3786,12 +3606,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keywords-for-keywords-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.ideas
 - id: dataforseo.x.keywords-data-bing-keywords-for-site-live
@@ -3869,12 +3684,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keywords-for-site-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.for_site
 - id: dataforseo.x.keywords-data-bing-search-volume-live
@@ -3954,12 +3764,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-search-volume-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.volume
 - id: dataforseo.x.keywords-data-bing-search-volume-history-live
@@ -4031,12 +3836,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-search-volume-history-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.volume_history
 - id: dataforseo.x.serp-bing-locations-country
@@ -4162,12 +3962,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-bing-organic-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -4266,12 +4061,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-bing-organic-live-regular.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -4371,12 +4161,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-responses-live.json
-  price:
-    value: '0.0292488'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0292488', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.answer
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced
@@ -4429,12 +4214,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.scrape
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-locations-country
@@ -4632,12 +4412,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-responses-live.json
-  price:
-    value: '0.036256'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.036256', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.answer
 - id: dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced
@@ -4690,12 +4465,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.scrape
 - id: dataforseo.x.business-data-google-extended-reviews-task-get
@@ -4797,12 +4567,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-extended-reviews-task-post.json
-  price:
-    value: '0.0015'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -4935,12 +4700,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-hotel-info-live-advanced.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-hotel-searches-live
   platform: google
@@ -5069,12 +4829,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-hotel-searches-live.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-locations-country
   added: '2026-07-28'
@@ -5143,12 +4898,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-my-business-info-live.json
-  price:
-    value: '0.0054'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0054', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-my-business-updates-task-get
   added: '2026-10-15'
@@ -5242,12 +4992,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-my-business-updates-task-post.json
-  price:
-    value: '0.00225'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00225', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -5349,12 +5094,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-questions-and-answers-live.json
-  price:
-    value: '0.0054'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0054', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-reviews-task-get
   added: '2026-10-15'
@@ -5464,12 +5204,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-reviews-task-post.json
-  price:
-    value: '0.00375'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00375', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -5581,12 +5316,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-app-competitors-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-app-intersection-live
   platform: google
@@ -5657,12 +5387,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-app-intersection-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-available-history
   added: '2026-07-28'
@@ -5731,12 +5456,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-app-metrics-live.json
-  price:
-    value: '0.01224'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-bulk-keyword-difficulty-live
   platform: google
@@ -5791,12 +5511,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-keyword-difficulty-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-bulk-traffic-estimation-live
   platform: google
@@ -5865,12 +5580,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-traffic-estimation-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-categories-for-domain-live
   platform: google
@@ -5963,12 +5673,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-categories-for-domain-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-categories-for-keywords-live
   platform: google
@@ -6013,12 +5718,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-categories-for-keywords-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-competitors-domain-live
   platform: google
@@ -6121,12 +5821,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-competitors-domain-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-intersection-live
   platform: google
@@ -6217,12 +5912,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-intersection-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-metrics-by-categories-live
   platform: google
@@ -6329,12 +6019,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-metrics-by-categories-live.json
-  price:
-    value: '0.1236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.1236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-rank-overview-live
   platform: google
@@ -6395,12 +6080,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-rank-overview-live.json
-  price:
-    value: '0.01212'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-bulk-traffic-estimation-live
   platform: google
@@ -6481,12 +6161,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-bulk-traffic-estimation-live.json
-  price:
-    value: '0.1236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.1236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-keyword-data-live
   platform: google
@@ -6537,12 +6212,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-keyword-data-live.json
-  price:
-    value: '0.01212'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-rank-overview-live
   platform: google
@@ -6682,12 +6352,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-serps-live.json
-  price:
-    value: '0.00012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-ideas-live
   platform: google
@@ -6780,12 +6445,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-ideas-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-overview-live
   platform: google
@@ -6848,12 +6508,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-overview-live.json
-  price:
-    value: '0.02412'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02412', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-suggestions-live
   platform: google
@@ -6948,12 +6603,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-suggestions-live.json
-  price:
-    value: '0.01212'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-app-live
   platform: google
@@ -7020,12 +6670,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-app-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-categories-live
   platform: google
@@ -7118,12 +6763,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-categories-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-site-live
   platform: google
@@ -7218,12 +6858,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-site-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-page-intersection-live
   platform: google
@@ -7324,12 +6959,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-page-intersection-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-relevant-pages-live
   platform: google
@@ -7429,12 +7059,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-relevant-pages-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-search-intent-live
   platform: google
@@ -7481,12 +7106,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-search-intent-live.json
-  price:
-    value: '0.01248'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01248', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-serp-competitors-live
   platform: google
@@ -7567,12 +7187,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-serp-competitors-live.json
-  price:
-    value: '0.0126'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0126', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-subdomains-live
   platform: google
@@ -7669,12 +7284,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-subdomains-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-top-searches-live
   platform: google
@@ -7751,12 +7361,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-top-searches-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-ad-traffic-by-keywords-live
   platform: google
@@ -7839,12 +7444,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-ad-traffic-by-keywords-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-keywords-for-keywords-live
   platform: google
@@ -7919,12 +7519,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-keywords-for-keywords-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-keywords-for-site-live
   platform: google
@@ -7999,12 +7594,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-keywords-for-site-live.json
-  price:
-    value: '0.09'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-locations-country
   added: '2026-07-28'
@@ -8105,12 +7695,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-trends-explore-live.json
-  price:
-    value: '0.011'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.011', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-trends-locations-country
   added: '2026-07-28'
@@ -8248,12 +7833,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-product-info-task-post.json
-  price:
-    value: '0.001'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -8426,12 +8006,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-products-task-post.json
-  price:
-    value: '0.001'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -8615,12 +8190,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-sellers-task-post.json
-  price:
-    value: '0.001'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -8713,12 +8283,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-ai-summary.json
-  price:
-    value: '0.01'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-ads-advertisers-task-get-advanced
   added: '2026-10-15'
@@ -8801,12 +8366,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-advertisers-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -8964,12 +8524,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-search-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -9091,12 +8646,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ai-mode-live-advanced.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-autocomplete-live-advanced
   platform: google
@@ -9154,12 +8704,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-autocomplete-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-dataset-info-live-advanced
   platform: google
@@ -9203,12 +8748,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-dataset-info-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-dataset-search-live-advanced
   platform: google
@@ -9294,12 +8834,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-dataset-search-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-events-live-advanced
   status: broken
@@ -9373,12 +8908,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-events-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-explore-live-advanced
   platform: google
@@ -9432,12 +8962,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-explore-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-markets-live-advanced
   platform: google
@@ -9491,12 +9016,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-markets-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-quote-live-advanced
   platform: google
@@ -9556,12 +9076,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-quote-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-ticker-search-live-advanced
   platform: google
@@ -9615,12 +9130,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-ticker-search-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-images-live-advanced
   platform: google
@@ -9696,12 +9206,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-images-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-jobs-task-get-advanced
   added: '2026-10-15'
@@ -9802,12 +9307,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-jobs-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -9929,12 +9429,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-local-finder-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -10043,12 +9538,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-maps-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -10142,12 +9632,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-news-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -10296,12 +9781,7 @@ endpoints:
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-organic-live-advanced.json
   note: "When an organic item's domain is google.com, its url is a google.com/goto wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination host; any other breadcrumb means the answer does not hold it."
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -10427,12 +9907,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-search-by-image-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -10525,12 +10000,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-screenshot.json
-  price:
-    value: '0.004'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.app-data-google-app-info-task-get-advanced
   added: '2026-10-15'
@@ -10620,12 +10090,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-info-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -10774,12 +10239,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-list-task-post.json
-  price:
-    value: '0.0012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -10901,12 +10361,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-listings-search-live.json
-  price:
-    value: '0.11'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.11', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.app-data-google-app-reviews-task-get-advanced
   added: '2026-10-15'
@@ -11010,12 +10465,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-reviews-task-post.json
-  price:
-    value: '0.00075'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -11156,12 +10606,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-searches-task-post.json
-  price:
-    value: '0.0012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -11340,12 +10785,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-naver-organic-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: naver.serp.organic
@@ -11469,12 +10909,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-perplexity-llm-responses-live.json
-  price:
-    value: '0.005861'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.005861', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.tasks.0.result.0.items.0.sections.0.text, op: absent}}
@@ -11627,12 +11062,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-seznam-organic-task-post.json
-  price:
-    value: '0.0006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: seznam.serp.organic
@@ -11814,12 +11244,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-reviews-task-post.json
-  price:
-    value: '0.00075'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: tripadvisor.business.reviews
@@ -11947,12 +11372,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-search-task-post.json
-  price:
-    value: '0.00075'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: tripadvisor.search.businesses
@@ -12074,12 +11494,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-reviews-task-post.json
-  price:
-    value: '0.0015'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: trustpilot.business.reviews
@@ -12197,12 +11612,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-search-task-post.json
-  price:
-    value: '0.0015'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: trustpilot.search.businesses
@@ -12296,12 +11706,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-backlinks-live.json
-  price:
-    value: '0.02436'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-new-lost-backlinks-live
   platform: web
@@ -12459,12 +11864,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-pages-summary-live.json
-  price:
-    value: '0.024072'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024072', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-referring-domains-live
   platform: web
@@ -12513,12 +11913,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-referring-domains-live.json
-  price:
-    value: '0.02436'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-spam-score-live
   platform: web
@@ -12567,12 +11962,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-spam-score-live.json
-  price:
-    value: '0.02436'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-intersection-live
   platform: web
@@ -12670,12 +12060,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-intersection-live.json
-  price:
-    value: '0.02418'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-pages-live
   platform: web
@@ -12762,12 +12147,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-pages-live.json
-  price:
-    value: '0.02418'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-pages-summary-live
   platform: web
@@ -12846,12 +12226,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-pages-summary-live.json
-  price:
-    value: '0.024144'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-history-live
   platform: web
@@ -12895,12 +12270,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-history-live.json
-  price:
-    value: '0.024324'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024324', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-index
   added: '2026-07-28'
@@ -13022,12 +12392,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-page-intersection-live.json
-  price:
-    value: '0.02418'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-referring-networks-live
   platform: web
@@ -13130,12 +12495,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-referring-networks-live.json
-  price:
-    value: '0.02418'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-timeseries-new-lost-summary-live
   platform: web
@@ -13186,12 +12546,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-timeseries-new-lost-summary-live.json
-  price:
-    value: '0.024108'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024108', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-timeseries-summary-live
   platform: web
@@ -13246,12 +12601,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-timeseries-summary-live.json
-  price:
-    value: '0.024108'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024108', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-business-listings-categories-aggregation-live
   platform: web
@@ -13331,12 +12681,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-business-listings-categories-aggregation-live.json
-  price:
-    value: '0.01308'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01308', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-business-listings-search-live
   platform: web
@@ -13424,12 +12769,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-business-listings-search-live.json
-  price:
-    value: '0.01308'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01308', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-social-media-pinterest-live
   platform: pinterest
@@ -13466,12 +12806,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-social-media-pinterest-live.json
-  price:
-    value: '0.00012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.00012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-category-trends-live
   platform: web
@@ -13538,12 +12873,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-category-trends-live.json
-  price:
-    value: '0.024144'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-phrase-trends-live
   platform: web
@@ -13614,12 +12944,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-phrase-trends-live.json
-  price:
-    value: '0.024144'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-rating-distribution-live
   platform: web
@@ -13684,12 +13009,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-rating-distribution-live.json
-  price:
-    value: '0.024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-search-live
   platform: web
@@ -13786,12 +13106,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-search-live.json
-  price:
-    value: '0.024036'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-sentiment-analysis-live
   platform: web
@@ -13850,12 +13165,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-sentiment-analysis-live.json
-  price:
-    value: '0.024036'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-summary-live
   platform: web
@@ -13928,12 +13238,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-summary-live.json
-  price:
-    value: '0.024036'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-aggregation-technologies-live
   platform: web
@@ -14036,12 +13341,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-aggregation-technologies-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domain-technologies-live
   platform: web
@@ -14066,12 +13366,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domain-technologies-live.json
-  price:
-    value: '0.012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domains-by-html-terms-live
   platform: web
@@ -14134,12 +13429,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domains-by-html-terms-live.json
-  price:
-    value: '0.024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domains-by-technology-live
   platform: web
@@ -14330,12 +13620,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-technologies-summary-live.json
-  price:
-    value: '0.0132'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-technology-stats-live
   platform: web
@@ -14376,12 +13661,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-technology-stats-live.json
-  price:
-    value: '0.0144'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0144', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-whois-overview-live
   platform: web
@@ -14435,12 +13715,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-whois-overview-live.json
-  price:
-    value: '0.1224'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.1224', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-bulk-search-volume-live
   platform: web
@@ -14487,12 +13762,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-bulk-search-volume-live.json
-  price:
-    value: '0.01236'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-dataforseo-search-volume-live
   platform: web
@@ -14553,12 +13823,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-dataforseo-search-volume-live.json
-  price:
-    value: '0.18'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.18', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-global-search-volume-live
   platform: web
@@ -14595,12 +13860,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-global-search-volume-live.json
-  price:
-    value: '0.18'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.18', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-demography-live
   platform: web
@@ -14665,12 +13925,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-demography-live.json
-  price:
-    value: '0.0024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-explore-live
   capability: google.keywords.trends
@@ -14730,12 +13985,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-explore-live.json
-  price:
-    value: '0.0012'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -14821,12 +14071,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-merged-data-live.json
-  price:
-    value: '0.006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-subregion-interests-live
   platform: web
@@ -14891,12 +14136,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-subregion-interests-live.json
-  price:
-    value: '0.0024'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.on-page-content-parsing
   platform: web
@@ -14931,7 +14171,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-content-parsing.json
-  price: {value: '0', currency: USD, per: 1, unit: call, note: no charge observed at verification}
+  price: {value: '0', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   resource_ownership:
     requires:
@@ -15987,12 +15227,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-task-post.json
-  price:
-    value: '0.018'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.018', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
@@ -16201,12 +15436,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-yahoo-organic-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -16309,12 +15539,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-yahoo-organic-live-regular.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
@@ -16401,12 +15626,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-organic-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-comments-live-advanced
   platform: youtube
@@ -16467,12 +15687,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-comments-live-advanced.json
-  price:
-    value: '0.002'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-info-live-advanced
   platform: youtube
@@ -16529,12 +15744,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-info-live-advanced.json
-  price:
-    value: '0.006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-subtitles-live-advanced
   platform: youtube
@@ -16599,10 +15809,5 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-subtitles-live-advanced.json
-  price:
-    value: '0.006'
-    currency: USD
-    per: 1
-    unit: call
-    note: price observed at live verification (provider-reported charge)
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
