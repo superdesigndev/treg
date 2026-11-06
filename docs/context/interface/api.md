@@ -341,6 +341,10 @@ stricter CSP wins. An oversized all-digit id is a 404, not a 500; malformed URLs
 `auth_logout` rejects a cross-site `Origin`; `_same_origin` is the shared CSRF check for every
 cookie-authenticated mutation.
 
+**Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
+included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
+([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
+
 ## Public pages and agent files
 
 - `/llms.txt`, `/skill.md`, `/quickstart.md`, `/tutorial.md`, `/vendor-listing` and
