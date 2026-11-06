@@ -34,6 +34,18 @@ sources:
   - src/treg/web/install.ps1
   - tests/cli_go/cli_go_harness.py
   - tests/cli_go/cli_go_live.py
+  - cli/internal/commands/skills.go
+  - cli/internal/commands/mcp.go
+  - cli/internal/commands/upload.go
+  - cli/internal/agents/agents.go
+  - cli/internal/agents/mcp.go
+  - cli/internal/providers/providers.go
+  - cli/internal/providers/catalog.json
+  - cli/internal/skillscan/skillscan.go
+  - cli/internal/skillscan/cliprofile.go
+  - cli/internal/pyjson/pyjson.go
+  - cli/internal/prompt/prompt.go
+  - tests/cli_go/agent_sandbox.py
 related:
   - interface/cli.md
   - interface/api.md
@@ -70,6 +82,37 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   upstream registered as its own tool) and compares exit status, stdout (JSON parsed), stderr,
   config writes and the request each sent. It runs with `TREG_GO_BIN` (or `TREG_GO_BUILD=1`); the
   `cli-go` CI job runs it, and Go's vet and unit tests on Linux, macOS and Windows.
+
+## Commands that write outside treg
+
+`skill bootstrap|ls|install`, `mcp install|grants|use-team`, `scan`, `upload` and the hidden
+`import` write into coding agents' directories and configs, so their parity covers files too:
+`tests/cli_go/agent_sandbox.py` runs both CLIs in a fresh HOME with fake agent installs and a PATH
+whose `claude` records its arguments, and compares every file left in HOME, modes included.
+
+- **Same bytes.** `internal/pyjson` reads JSON keeping member order (a repeated key keeps its first
+  place and last value) and writes it as Python's `json.dumps` does (`ensure_ascii`, float `repr`),
+  and files are read with Python's universal newlines, so an agent's MCP config, `skills.json` or a
+  skill's `treg.json` is the same whichever CLI wrote it.
+- **Where agents live.** `internal/agents` holds both tables: each agent's skill directories
+  (honouring `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`) and the MCP writers. Every path
+  is under the home directory, which is `%USERPROFILE%` on Windows.
+- **MCP.** The server written is `<registry>/mcp/`, the registry this CLI talks to (`TREG_URL`
+  included, where the Python CLI wrote the configured base URL), never the binary's path. Files
+  holding a token are replaced atomically and are `0600` from the first byte. Codex's table is cut
+  and appended as text, as the Python CLI does, and must parse before it lands.
+- **`skill install <name>`** also installs one of the registry's public skills (its well-known
+  index, what `skill bootstrap --skills` installs) when the team has no skill of that name; the
+  Python CLI refused it as "no skill named ... in this org", which was most `skill install`
+  failures, agents asking for `lead-signals` and the like.
+- **Provider catalog.** `internal/providers/catalog.json` is the Python CLI's `providers.CATALOG`
+  at its `CATALOG_VERSION`, the floor when the registry's `/providers.json` is older or
+  unreachable; a test keeps the two equal and prints the regeneration command. The cache is keyed
+  by the registry actually used.
+- **Prompts.** The checkbox and the credential prompts run only on a terminal, as in the Python
+  CLI. Where the Python CLI read stdin regardless (`upload clis --add` without `--env` or
+  `--base-url`, the `--llm` confirmations), the binary does not read an idle pipe: `--add` refuses
+  and names the flags, and each LLM suggestion is declined as on end of input.
 
 ## Releases and channels
 

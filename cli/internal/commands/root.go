@@ -46,6 +46,7 @@ func Root(env *Env) *cobra.Command {
 		skillCmd(env),
 		mcpCmd(env),
 	)
+	root.AddCommand(uploadCmds(env)...)
 	return root
 }
 
