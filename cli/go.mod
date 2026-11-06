@@ -3,6 +3,7 @@ module github.com/superdesigndev/treg/cli
 go 1.27
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/cli/browser v1.3.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261105095718-a1058eb15227

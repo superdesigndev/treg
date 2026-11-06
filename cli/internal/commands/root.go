@@ -44,6 +44,7 @@ func Root(env *Env) *cobra.Command {
 		updateCmd(env),
 		backgroundUpdateCmd(env),
 		skillCmd(env),
+		mcpCmd(env),
 	)
 	return root
 }
