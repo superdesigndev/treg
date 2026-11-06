@@ -6,7 +6,9 @@ sources:
   - src/treg/routers/tasks.py
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0098_call_task.py
+  - cli/internal/commands/await.go
   - tests/test_tasks.py
+  - tests/cli_go/test_await_parity.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -21,8 +23,8 @@ related:
 An async catalog call answers with a provider task, not a result ([catalog](catalog.md), "Async
 descriptors"). `/tasks/{call_id}` lets a client follow that task by the call id it already holds
 (`X-Treg-Call-Id`) while the registry does the reading: the descriptor is interpreted only by
-`domain.asynctasks`, server-side, so a client in another language never ports it. The frozen
-Python CLI still reads `X-Treg-Async` and polls `/call/`.
+`domain.asynctasks`, server-side, so a client in another language never ports it. The Go CLI's
+`call --await` is built on it; the frozen Python CLI still reads `X-Treg-Async` and polls `/call/`.
 
 ## The record
 
@@ -83,6 +85,23 @@ Error kinds: `submission_not_json`, `submission_rejected` (no task id, or a poll
 allow-list), `result_not_retrievable` (a fetch-mode success without the value to fetch by),
 `poll_failed`, `poll_not_json`, `poll_too_large`, `expired`. `Retry-After` (whole seconds) is set
 on `pending` and on a `retryable` poll failure (a 5xx); answers are `Cache-Control: no-store`.
+
+## The Go CLI
+
+`call --await` submits through `/call/` as before. Without `X-Treg-Async` it prints the plain
+answer; on a 4xx/5xx it prints it the way the Python CLI's `_show` does. Otherwise it POSTs the
+answer once, prints the task and resume lines, then GETs every `retry_after`, with the Python CLI's
+loop: the timeout is the smaller of `--timeout` and `max_wait`, checked before each sleep; five
+consecutive 5xx or network failures back off and then stop. Stdout is only the terminal answer.
+Exit codes: 0 success, 1 a submission or result treg cannot read, 2 a provider terminal failure, 3
+timeout, interruption (Ctrl-C prints the resume line) or a recoverable polling failure. A registry
+without the endpoint exits 1 saying so.
+
+Where it differs from the Python CLI: a routed pending answer is followed to its end (the Python
+CLI cannot read the routed descriptor and exits 1); `max_age` is counted from the call, as the
+registry counts it, so the last poll the Python CLI made past the window is not made; a network
+error's wording is Go's; and the CLI never reads `X-Treg-Async` itself, so a malformed header is
+not its error.
 
 `/call/` returns exactly what it returned before (AGENTS.md, non-negotiable 4): the record is read
 from the answer, never written into it.

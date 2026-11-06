@@ -88,7 +88,8 @@ class Team:
 
 
 class LiveRegistry:
-    def __init__(self, tmp: Path, extra_env: dict[str, str] | None = None) -> None:
+    def __init__(self, tmp: Path, extra_env: dict[str, str] | None = None,
+                 catalog_patch: dict | None = None) -> None:
         self.port = _free_port()
         self.url = f"http://localhost:{self.port}"
         key = subprocess.run([sys.executable, "-m", "treg", "keygen"], cwd=ROOT, capture_output=True,
@@ -104,8 +105,12 @@ class LiveRegistry:
             "TREG_PROXY_SSRF_CHECK": "false",
             "TREG_ADMIN_TOKEN": ADMIN_TOKEN,
         } | (extra_env or {})
+        command = [sys.executable, "-m", "treg"]
+        if catalog_patch is not None:
+            env["TREG_TEST_CATALOG_PATCH"] = json.dumps(catalog_patch)
+            command = [sys.executable, str(Path(__file__).with_name("cli_go_boot.py"))]
         self.log = (tmp / "registry.log").open("wb")
-        self.proc = subprocess.Popen([sys.executable, "-m", "treg"], cwd=ROOT, env=env,
+        self.proc = subprocess.Popen(command, cwd=ROOT, env=env,
                                      stdout=self.log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:

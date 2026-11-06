@@ -126,15 +126,15 @@ func (e *Env) call(target, path string, f callFlags) error {
 			method = "POST"
 		}
 	}
-	if f.await {
-		return output.Fail("treg: --await is not available in this build yet")
-	}
 	c := e.Client()
 	resp, err := e.do(c, api.Request{Method: method, Path: "/call/" + rest, Query: params, Body: body, Header: header})
 	if err != nil {
 		return err
 	}
 	e.Note("status_class", fmt.Sprintf("%dxx", resp.Status/100))
+	if f.await && resp.Header.Get("X-Treg-Async") != "" {
+		return e.awaitTask(c, resp, f.timeout)
+	}
 	return e.Out.ShowCall(resp)
 }
 

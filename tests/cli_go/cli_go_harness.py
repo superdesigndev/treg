@@ -42,17 +42,21 @@ class Run:
         return self.out.decode("utf-8", "replace")
 
 
-def run(argv: list[str], *, home: Path, env: dict[str, str] | None = None, stdin: bytes | None = None,
-        timeout: float = 60) -> Run:
+def cli_env(home: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment a CLI run gets: this machine's, without any treg or agent variable."""
     base = {k: v for k, v in os.environ.items() if not k.startswith("TREG_") and k not in (
         "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CODEX_THREAD_ID", "CODEX_SESSION_ID",
         "CODEX_SANDBOX", "CODEX_CI", "CURSOR_AGENT", "CURSOR_TRACE_ID", "GEMINI_CLI", "NO_COLOR",
         "DO_NOT_TRACK")}
     base |= {"HOME": str(home), "TREG_CONFIG": str(home / ".treg" / "config.json"),
              "TREG_TELEMETRY": "0", "PYTHONIOENCODING": "utf-8"}
-    base |= env or {}
-    proc = subprocess.run(argv, input=stdin, capture_output=True, env=base, timeout=timeout,
-                          cwd=home)
+    return base | (env or {})
+
+
+def run(argv: list[str], *, home: Path, env: dict[str, str] | None = None, stdin: bytes | None = None,
+        timeout: float = 60) -> Run:
+    proc = subprocess.run(argv, input=stdin, capture_output=True, env=cli_env(home, env),
+                          timeout=timeout, cwd=home)
     return Run(proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace"))
 
 

@@ -17,6 +17,7 @@ Regenerate via `scripts/build-map.py`.
 | `.github/workflows/ci.yml` | architecture/import-boundaries.md |
 | `alembic.ini` | architecture/data-model.md |
 | `assets/brand/og-card.html` | interface/seo.md |
+| `cli/internal/commands/await.go` | architecture/tasks.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
 | `docs/hub-recipes/data-csv/run.js` | architecture/hub.md |
 | `docs/hub-recipes/data-sheets/run.js` | architecture/hub.md |
@@ -586,6 +587,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/web-arena/arena.js` | interface/web-arena.md |
 | `src/treg/worker.py` | architecture/composition.md, architecture/hub.md, architecture/multi-tenancy.md, interface/web-arena.md, ops/capacity.md, ops/deploy.md |
 | `tests/callmatrix/test_hub_run.py` | architecture/hub.md |
+| `tests/cli_go/test_await_parity.py` | architecture/tasks.md |
 | `tests/fake_object_store.py` | architecture/archive.md |
 | `tests/fixtures/find_bench.yaml` | architecture/find.md |
 | `tests/fixtures/org-flow-control/generate.ts` | architecture/org-flow-control.md |
@@ -760,7 +762,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
-| `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `test_tasks.py` |
+| `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `await.go`, `test_tasks.py`, `test_await_parity.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
 | `interface/cli.md` | `cli.py`, `cli_view.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
