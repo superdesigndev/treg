@@ -17,10 +17,14 @@ import copy
 
 import pytest
 
+from toon_format import decode
+
+from treg import cli
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain.catalog import store
 
+from test_cli import _CatalogResp, _stub_catalog_client
 from test_marketplace_call import _balance, platform_on  # noqa: F401
 from test_routing import _example, _relay_by_provider
 
@@ -180,9 +184,16 @@ async def test_the_contract_names_what_a_complete_answer_carries(clients, profil
     assert d["_treg"]["tried"][0]["outcome"] == "weak" and "headline" in d["_treg"]["tried"][0]["detail"]
 
 
-async def test_catalog_advertises_complete_when_the_contract_names_fields(clients, profile_on):
+async def test_catalog_get_shows_both_answer_bars_over_the_api_and_the_cli(clients, profile_on, monkeypatch, capsys):
     r = await clients.get("/catalog/endpoints/treg.linkedin.user.profile")
     assert r.status_code == 200, r.text
     routing = r.json()["routing"]
-    assert routing["headers"]["X-Treg-Route-Complete"]
+    assert "routing.contract.complete" in routing["headers"]["X-Treg-Route-Complete"]
     assert routing["contract"]["complete"] == ["full_name", "headline", "location"]
+
+    _stub_catalog_client(monkeypatch, {"/catalog/endpoints/treg.linkedin.user.profile": _CatalogResp(r.json())})
+    cli.cmd_catalog(cli.build_parser().parse_args(["catalog", "get", "treg.linkedin.user.profile"]),
+                    {"base_url": "http://x"})
+    out = decode(capsys.readouterr().out)
+    assert out["stops_at"] == "the first answer unless full_name == null"
+    assert out["complete"].startswith("full_name, headline, location (X-Treg-Route-Complete: 1")
