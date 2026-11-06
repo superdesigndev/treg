@@ -16,6 +16,11 @@ sources:
   - cli/internal/update/detach_windows.go
   - cli/internal/api/client.go
   - cli/internal/api/url.go
+  - cli/internal/api/proxy.go
+  - cli/internal/api/proxy_parse.go
+  - cli/internal/api/proxy_darwin.go
+  - cli/internal/api/proxy_windows.go
+  - cli/internal/api/proxy_other.go
   - cli/internal/app/app.go
   - cli/internal/config/config.go
   - cli/internal/session/session.go
@@ -78,7 +83,9 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   existing `%XX` kept, everything outside httpx's `PATH_SAFE` percent-encoded; the query is
   urlencode over ordered pairs. Headers are the Python CLI's; `User-Agent` is
   `treg/<version> (<os>/<arch>)` (no server code reads the CLI's UA). `TREG_URL` applies to every
-  request, the login, MCP and telemetry ones included.
+  request, the login, MCP and telemetry ones included. The proxy is httpx's: the `*_proxy`
+  environment variables when any is set, else the macOS or Windows system proxy with its
+  exceptions (`api/proxy.go`); a loopback host is never proxied.
 - **Output.** stdout carries the answer and treg's lines go to stderr, as in [cli](cli.md). A JSON
   body is re-indented by two spaces like the Python CLI's, but strings and numbers keep the
   upstream's spelling (the Python CLI escapes non-ASCII as `\uXXXX` and normalizes numbers): the
