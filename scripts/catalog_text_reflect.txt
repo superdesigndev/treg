@@ -26,4 +26,4 @@ so that  # maintainer reasoning: a YAML comment or the PR body
 per_call so  # maintainer reasoning: a YAML comment or the PR body
 per_success so  # maintainer reasoning: a YAML comment or the PR body
 re:\b(?:19|20)\d\d-(?:0[1-9]|1[0-2])-\d\d\b  # a date: evidence goes in the PR body
-re:\b\d[\d,]*\s+(?:samples|calls|requests|probes|runs)\b  # a sample size: evidence goes in the PR body
+re:\b\d[\d,]*\s+(?:samples|calls|requests|probes|runs)\b  # a sample size (N samples, calls, requests, probes or runs): evidence goes in the PR body

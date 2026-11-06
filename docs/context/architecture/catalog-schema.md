@@ -150,9 +150,8 @@ A row has two prose fields, and each caveat has one home.
 What the validator says about them is warnings for the author to weigh, never errors:
 
 - **Length is the token limits, and only them:** `SUMMARY_TOKENS` (50) and `NOTE_TOKENS` (75) in
-  `scripts/catalog_validate.py`, about 200 and 300 English characters. No tokenizer is a
-  dependency, so a token is a run of letters and digits or one CJK character; punctuation is not
-  counted.
+  `scripts/catalog_validate.py`. No tokenizer is a dependency, so a token is a run of letters and
+  digits or one CJK character; punctuation is not counted.
 - **The reflection word list** (`scripts/catalog_text_reflect.txt`): every entry found in a row's
   summary, note, parameter notes or charge notes warns with the entry and its reason. An entry is
   a word or phrase matched case-insensitive on word boundaries, or a `re:` regular expression;
@@ -173,8 +172,8 @@ The writing rules no check can judge:
 - **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
   probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
   X, Y").
-- **Summary.** Lead with verb + object + key outputs; the first ~100 characters stand alone (CLI
-  search shows 100). Positive only: a limit or trap goes to a note, because a negation in a searched
+- **Summary.** Lead with verb + object + key outputs; lead with the essentials: CLI search shows
+  only the start of a summary. Positive only: a limit or trap goes to a note, because a negation in a searched
   field matches the query it denies. No parameter or output-column lists.
 - **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
   specific home. No price derivation.
