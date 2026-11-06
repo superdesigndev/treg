@@ -1,15 +1,10 @@
 """`X-Treg-Route-Complete` on `treg.linkedin.user.profile`.
 
-Opt-in. An adapter that maps under half the contract's output fields is asked last; an answer that
-carries under half of them is weak (keep going, the fullest wins if nothing better turns up); and an
+Opt-in. An adapter that cannot map every field the contract lists as `complete` is asked last; an
+answer missing one is weak (keep going, the fullest wins if nothing better turns up); and an
 answer whose profile identifier differs from the one asked counts only once another provider
 reports the same identifier (a renamed profile), never on its own (a match on someone else).
-Measured 2026-10-29 on 278 live LinkedIn URLs: net correct fields 79.7 today, 95.6 with the header.
-
-`anyapi.linkedin.user.profile` maps headline and linkedin_url when the thin provider returns them,
-so a name-only stub is still a hit without the header (identity lookups stay possible) while a
-caller who opts into Complete keeps looking past a stub that lacks a complete field.
-"""
+Measured 2026-10-29 on 278 live LinkedIn URLs: net correct fields 79.7 today, 95.6 with the header."""
 
 from __future__ import annotations
 
@@ -65,15 +60,11 @@ def _anyapi_full(url: str) -> dict:
     return doc
 
 
-def _anyapi_thin(*, headline: str | None = None, public_id: str | None = None,
-                 location: str | None = "Seattle, Washington, United States") -> dict:
+def _anyapi_thin(*, headline: str | None = None, public_id: str | None = None) -> dict:
     """Thin anyapi body; headline/publicIdentifier omitted from the captured example but returned live."""
     doc = copy.deepcopy(_example("anyapi.linkedin.user.profile"))
     data = doc["output"]["data"]
-    if location is not None:
-        data["location"] = location
-    else:
-        data["location"] = None
+    data["location"] = "Seattle, Washington, United States"
     if headline is not None:
         data["headline"] = headline
     if public_id is not None:
@@ -81,7 +72,7 @@ def _anyapi_thin(*, headline: str | None = None, public_id: str | None = None,
     return doc
 
 
-THIN = _anyapi_thin()  # name + location + followers + about; no headline → incomplete under Complete
+THIN = _anyapi_thin()
 THIN_FULL = _anyapi_thin(headline="Chair, Gates Foundation", public_id="williamhgates")
 NOT_FOUND = (404, {"error": "LinkedIn profile not found", "code": "PROFILE_NOT_FOUND"})
 
@@ -95,7 +86,6 @@ async def test_without_the_header_the_cheapest_thin_answer_ends_the_route(client
 
 
 async def test_without_the_header_a_mapped_headline_still_ends_the_route(clients, profile_on, monkeypatch):
-    """Adapter maps headline when the thin provider returns it; identity-only callers keep a single hit."""
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"anyapi": [(200, THIN_FULL)]}, seen))
     r = await clients.post(PROFILE, json={"linkedin_url": ASKED})
@@ -117,7 +107,6 @@ async def test_with_the_header_a_complete_thin_answer_ends_the_route(clients, pr
 
 
 async def test_an_adapter_that_cannot_answer_fully_is_asked_last(clients, profile_with_scrape, monkeypatch):
-    """scrapecreators maps no headline; with Complete it sits after every adapter that can."""
     ad = store.load().adapters
     assert "headline" not in ad["scrapecreators.linkedin.user.profile"].out_map
     seen = []
