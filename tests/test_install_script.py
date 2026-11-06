@@ -92,7 +92,7 @@ async def test_install_reports_start_and_success_under_the_cli_installation_id(
     script = (await clients.get("/install.sh")).text
     code, events = _run(script, tmp_path, _bin(tmp_path, uv_exit=0))
     assert code == 0
-    assert [e["properties"]["step"] for e in events] == ["started", "installed"]
+    assert [e["properties"]["install_step"] for e in events] == ["started", "installed"]
     installation = _analytics_id(tmp_path)
     uuid.UUID(installation)
     assert {e["distinct_id"] for e in events} == {installation}
@@ -101,7 +101,7 @@ async def test_install_reports_start_and_success_under_the_cli_installation_id(
     started, installed = (e["properties"] for e in events)
     assert started["prior_version"] == "" and started["method"] == ""
     assert installed["method"] == "uv" and installed["version"] == "9.9.9" and installed["on_path"] is True
-    assert installed["$process_person_profile"] is False and installed["token"] is False
+    assert installed["$process_person_profile"] is False and installed["with_token"] is False
 
 
 async def test_a_reinstall_keeps_the_id_and_reports_the_prior_version(
@@ -120,7 +120,7 @@ async def test_a_failed_install_reports_why(clients: AsyncClient, posthog_on, tm
     script = (await clients.get("/install.sh")).text
     code, events = _run(script, tmp_path, _bin(tmp_path, uv_exit=1))
     assert code == 1
-    assert [(e["properties"]["step"], e["properties"]["reason"]) for e in events] == [
+    assert [(e["properties"]["install_step"], e["properties"]["reason"]) for e in events] == [
         ("started", ""), ("failed", "install_command")]
 
 
@@ -128,7 +128,7 @@ async def test_no_installer_reports_why(clients: AsyncClient, posthog_on, tmp_pa
     script = (await clients.get("/install.sh")).text
     code, events = _run(script, tmp_path, _bin(tmp_path, uv_exit=None))
     assert code == 1
-    assert events[-1]["properties"]["step"] == "failed"
+    assert events[-1]["properties"]["install_step"] == "failed"
     assert events[-1]["properties"]["reason"] == "no_installer"
 
 

@@ -83,9 +83,9 @@ install_id() {
 }
 report() {  # report <step> [reason]
   [ -n "$PH_KEY" ] && [ -n "$INSTALL_ID" ] && command -v curl >/dev/null 2>&1 || return 0
-  props="\"step\":\"$1\",\"reason\":\"${2:-}\",\"method\":\"$METHOD\",\"prior_version\":\"$PRIOR_VERSION\""
+  props="\"install_step\":\"$1\",\"reason\":\"${2:-}\",\"method\":\"$METHOD\",\"prior_version\":\"$PRIOR_VERSION\""
   props="$props,\"version\":\"$VERSION\",\"on_path\":$ON_PATH,\"os\":\"$OS\",\"arch\":\"$ARCH\""
-  props="$props,\"ad_link\":$AD,\"token\":$TOK,\"\$process_person_profile\":false,\"\$geoip_disable\":true"
+  props="$props,\"ad_link\":$AD,\"with_token\":$TOK,\"\$process_person_profile\":false,\"\$geoip_disable\":true"
   curl -fsS --connect-timeout 2 --max-time 3 -H 'Content-Type: application/json' \
     -d "{\"api_key\":\"$PH_KEY\",\"event\":\"cli_install_step\",\"distinct_id\":\"$INSTALL_ID\",\"properties\":{$props}}" \
     "$PH_HOST/i/v0/e/" >/dev/null 2>&1 || true
