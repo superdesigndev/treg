@@ -290,14 +290,17 @@ def test_a_routed_child_answer_that_costs_nothing_is_released_for_its_parent():
     assert (decision.billable, decision.reason) == (False, "free_answer")
 
 
-def test_an_async_terminal_answer_settles_by_the_order_with_the_submission_report():
+def test_an_async_terminal_answer_settles_at_the_charge_reported_on_its_submission():
     ep = row(settle=REPORTED, miss={"when": {"path": "response.items", "op": "empty"}})
     hold, _, _, terms = cost.price(ep, Rates(), settlement.request_evidence([], b""))
     basis = cost.persisted({**cost.basis(Rates(), ep, hold, terminal=True), "submission_charge_micro": 7}, terms)
     assert cost.settle_terminal(json.loads(json.dumps(basis)), "success", {"items": [1]}) == 7
-    assert cost.settle_terminal(basis, "success", {"items": [1], "used": 1}) == 20000
-    assert cost.settle_terminal(basis, "billed_failure", {}) == 7
-    assert cost.settle_terminal({**basis, "submission_charge_micro": None}, "billed_failure", {}) == hold
+    assert cost.settle_terminal(basis, "success", {"items": [1], "used": 0}) == 7
+    assert cost.settle_terminal(basis, "billed_failure", {"used": 0}) == 7
+    unreported = {**basis, "submission_charge_micro": None}
+    assert cost.settle_terminal(unreported, "success", {"items": [1], "used": 1}) == hold
+    assert cost.settle_terminal(unreported, "success", {"items": [], "used": 1}) == 0
+    assert cost.settle_terminal(unreported, "billed_failure", {"used": 1}) == hold
     legacy = {"when": "terminal", "amount": {"kind": "observed"}, "fallback_micro": 9, "reserve_micro": 9}
     assert cost.settle_terminal(legacy, "success", {}) == 9
 
