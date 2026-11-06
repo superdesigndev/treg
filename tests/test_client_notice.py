@@ -22,6 +22,8 @@ from treg.config import get_settings
     ("0.31.0.dev1", "0.32.0", "", None),
     ("", "0.31.0", "0.25.0", None),
     ("0.30.0", "not-a-version", "", None),
+    ("0.\u00b2", "0.31.0", "", None),
+    pytest.param("1" * 5000, "0.31.0", "", None, id="oversized"),
 ])
 def test_notice_wording(version, latest, minimum, expected):
     assert client_notice.notice(version, latest=latest, minimum=minimum) == expected
@@ -48,6 +50,12 @@ async def test_no_notice_for_a_current_cli_a_browser_or_an_unset_release(clients
     monkeypatch.setattr(get_settings(), "cli_min_version", "", raising=False)
     assert client_notice.NOTICE_HEADER not in (await clients.get(
         "/meta", headers={"X-Treg-Client-Version": "0.1.0"})).headers
+
+
+async def test_a_malformed_version_gets_no_notice_and_no_error(clients: AsyncClient, released):
+    for raw in (b"0.\xb2", b"1" * 5000):
+        r = await clients.get("/meta", headers={"X-Treg-Client-Version": raw})
+        assert r.status_code == 200 and client_notice.NOTICE_HEADER not in r.headers
 
 
 def _answer(text: str) -> httpx.Response:

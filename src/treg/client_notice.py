@@ -2,13 +2,17 @@
 CLI sends (`X-Treg-Client-Version`) and the operator's `cli_latest_version` / `cli_min_version`;
 the CLI only prints the header, so a client never needs its own release logic."""
 
+import re
+
 NOTICE_HEADER = "X-Treg-Client-Notice"
+_RELEASE = re.compile(r"[0-9]{1,9}(?:\.[0-9]{1,9}){0,2}")
 
 
 def _parse(version: str) -> tuple[int, ...] | None:
-    parts = (version or "").strip().split(".")
-    if not 1 <= len(parts) <= 3 or not all(p.isdigit() for p in parts):
+    version = (version or "").strip()
+    if not _RELEASE.fullmatch(version):
         return None
+    parts = version.split(".")
     return tuple(int(p) for p in parts) + (0,) * (3 - len(parts))
 
 
