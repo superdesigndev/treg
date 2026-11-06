@@ -185,6 +185,7 @@ class Adapter:
     _row_of: str = ""
     _row_needs: tuple[str, ...] = ()
     _row_urls: tuple[str, ...] = ()           # row fields of type `url`: never cut, set at load
+    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `max` chars, set at load
     _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
 
     def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
@@ -243,7 +244,8 @@ class Adapter:
 
     def rows(self, items: list) -> list[Any]:
         """Each provider row in the contract's row shape: empty values dropped, text cut to
-        ROW_TEXT_MAX. A `url` field is kept whole: a cut link points at another resource. A row
+        ROW_TEXT_MAX, or the field's own `max`. A `url` field is kept whole: a cut link points at
+        another resource. A row
         the map cannot read (none of the contract's `row_needs`: the provider
         changed its shape) stays the provider's own row rather than vanish from a paid answer, and
         so does an item that is not an object."""
@@ -256,7 +258,8 @@ class Adapter:
             for key, expr in self.row_map.items():
                 v = P.evaluate(expr, item)
                 if isinstance(v, str):
-                    v = (v.strip() if key in self._row_urls else " ".join(v.split())[:ROW_TEXT_MAX]) or None
+                    v = (v.strip() if key in self._row_urls
+                         else " ".join(v.split())[:self._row_max.get(key, ROW_TEXT_MAX)]) or None
                 if v not in (None, [], {}):
                     row[key] = v
             out.append(row if any(row.get(k) for k in self._row_needs) else item)
@@ -471,8 +474,13 @@ def _parse_row(cap: str, raw, output: dict) -> dict:
     needs = tuple(str(k) for k in raw.get("needs") or ())
     if not needs or any(k not in fields for k in needs):
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
-    return {"row_of": str(of), "row_fields": {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()},
-            "row_needs": needs}
+    row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
+    for k, spec in row_fields.items():
+        if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)
+                              or spec["max"] < 1 or spec.get("type") != "str"):
+            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row.
+            raise ValueError(f"contract {cap}: row field {k} `max` is a positive whole number on a str field")
+    return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs}
 
 
 def _parse_complete(cap: str, raw, output: dict) -> tuple[str, ...]:
@@ -770,6 +778,7 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
                             "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
                             "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("type") == "url"),
+                            "_row_max": {k: spec["max"] for k, spec in contract.row_fields.items() if "max" in spec},
                             "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)

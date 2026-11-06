@@ -997,7 +997,8 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource.
+  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
