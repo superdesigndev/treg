@@ -128,6 +128,22 @@ def require_rows(ep: dict, request_data: dict) -> None:
             "message": f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}"})
 
 
+def require_rates(ep: dict, cat) -> None:
+    """On treg's key, a row whose price, reported charge or usage meter is in a credit or meter
+    fx.yaml has no rate for refuses the call before anything is held."""
+    price_ = ep.get("price") or {}
+    settle = ep.get("settle") or {}
+    needed = [(price_.get("currency", "USD"), price_.get("unit"))] \
+        if price_.get("value") is not None or price_.get("table") is not None or price_.get("rates") else []
+    needed += [_meter(settle[form]["unit"]) for form in ("reported", "usage") if form in settle]
+    for currency, unit in needed:
+        if _rate(cat, ep["provider"], currency, unit) is None:
+            name = f"{ep['provider']} {unit if currency == 'unit' else currency}"
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"], "rate": name,
+                "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
+
+
 def _entities(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
