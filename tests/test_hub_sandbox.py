@@ -139,6 +139,14 @@ async def test_call_options_must_be_an_object(backend):
     assert e.value.kind == "refused" and "must be an object" in e.value.message
 
 
+
+async def test_a_log_line_over_8_mib_is_truncated_not_a_failure(backend):
+    out, log = await _run('export default async function run(ctx) {'
+                          ' ctx.log("z".repeat(9 << 20)); for (let i = 0; i < 5000; i++) ctx.log("n" + i);'
+                          ' return { ok: 1 }; }')
+    assert out == {"ok": 1}
+    assert len(log) == 50 and len(log[0]) == 2000
+
 async def test_the_call_cap_is_enforced_by_the_parent(backend):
     calls = 0
 

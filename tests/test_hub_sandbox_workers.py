@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -327,3 +328,9 @@ async def test_an_unreachable_loader_is_a_protocol_failure_an_operator_can_see(m
             await run_script(NOOP, {}, wall_s=5, execute=None, log=[])
     assert e.value.kind == "protocol" and "unreachable" in e.value.message
     assert any("hub sandbox unreachable" in r.getMessage() for r in caplog.records)
+
+
+
+def test_the_loader_caps_logs_with_the_parents_numbers():
+    text = (Path(__file__).resolve().parents[1] / "workers" / "hub-sandbox" / "src" / "index.js").read_text()
+    assert f"MAX_LOG_LINES = {sandbox.MAX_LOG_LINES}, MAX_LOG_CHARS = {sandbox.MAX_LOG_CHARS};" in text
