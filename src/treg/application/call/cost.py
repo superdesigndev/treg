@@ -271,11 +271,11 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
         return None
     try:
         figure = Decimal(str(raw).strip()) * Decimal(str(rule.get("scale", 1)))
+        if not figure.is_finite() or figure < 0:
+            return None
+        return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return None
-    if not figure.is_finite() or figure < 0:
-        return None
-    return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,

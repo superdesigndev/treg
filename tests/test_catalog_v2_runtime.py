@@ -204,6 +204,8 @@ REPORTED = {"reported": {"path": "response.used", "unit": "credit"}}
     (200, {"used": 0}, True, 0),
     (200, {"used": -1}, True, 20000),                                   # unreadable: the hold
     (200, {}, True, 20000),
+    (200, {"used": float("inf")}, True, 20000),
+    (200, {"used": 1e30}, True, 20000),                                 # too large to price: the hold
     (400, {"used": 2}, True, 40000),                                    # a 4xx that reports a charge
     (400, {"used": 0}, False, None),
     (429, {"used": 2}, False, None),                                    # not the caller's fault
