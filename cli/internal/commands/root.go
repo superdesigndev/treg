@@ -32,6 +32,7 @@ func Root(env *Env) *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("treg {{.Version}}\n")
+	root.SetHelpFunc(frontPage(root))
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
 		versionCmd(env),
