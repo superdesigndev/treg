@@ -27,8 +27,8 @@ func Root(env *Env) *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			return env.useOrgOnce(cmd)
 		},
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
+		RunE: func(*cobra.Command, []string) error {
+			return env.home()
 		},
 	}
 	root.SetVersionTemplate("treg {{.Version}}\n")
@@ -43,6 +43,9 @@ func Root(env *Env) *cobra.Command {
 		callCmd(env),
 		updateCmd(env),
 		backgroundUpdateCmd(env),
+		catalogCmd(env),
+		balanceCmd(env),
+		feedbackCmd(env),
 	)
 	return root
 }

@@ -76,6 +76,11 @@ func (p *Printer) Show(r *api.Response) error {
 		p.hintLine(r)
 		return nil
 	}
+	return p.refused(r)
+}
+
+// refused is what follows a refusal's body: the stderr lines that explain it, and status 1.
+func (p *Printer) refused(r *api.Response) error {
 	p.failureDiagnostics(r)
 	body := jsonObject(r.Body)
 	if r.Status == 402 && isBalanceRefusal(r, body) {

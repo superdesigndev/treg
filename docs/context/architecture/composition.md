@@ -109,4 +109,6 @@ spellings must reach the V2 transport and OAuth audience.
 Each `create_app` call must produce an independent app whose dependency overrides belong to it.
 `_include_routes` shallow-clones every `APIRoute`, points its override provider at the new app and
 rebuilds its handler. FastAPI's `include_router()` is avoided because its `_IncludedRouter` wrapper
-would change route inspection and the surface snapshot.
+would change route inspection and the surface snapshot. A route with a server-rendered view gets
+its ASGI app wrapped there too (`routers.view.wrap`, [api](../interface/api.md) "Views"); the route
+object, and so the snapshot, is unchanged.
