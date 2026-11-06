@@ -2600,16 +2600,25 @@ CRUSTDATA = OAuthProvider(
 THEIRSTACK = OAuthProvider(
     service="theirstack", display_name="TheirStack", auth_kind="key",
     token_label="API key", token_placeholder="your TheirStack API key",
-    setup_url="https://app.theirstack.com/",
+    setup_url="https://app.theirstack.com/settings/api-key",
     setup_action_label="Get your TheirStack API key",
-    setup_steps=("Sign in to TheirStack and open your workspace settings.",
-                 "Create or copy an API key and paste it here."),
-    setup_note="Jobs and company data spend API credits. The balance check is free.",
+    setup_steps=("Sign in to TheirStack and open Settings → API key.",
+                 "Copy your API key and paste it here."),
+    setup_note=(
+        "Data calls spend API credits: 1 per job returned, 3 per company returned or looked up. "
+        "The credit-balance check and the keyword, industry and location catalogs are free. "
+        "The free plan, for teams that have never paid for credits, includes 200 API credits a "
+        "month (separate from the 50 company credits the app spends) and serves up to 25 results "
+        "a page and 5 pages a search; paid plans serve up to 500 a page."
+    ),
     auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
     category="Enrichment",
-    summary="Search jobs and companies, inspect technologies and buying intent, and browse filter catalogs.",
+    summary=(
+        "Job postings, technographics and hiring-based buying intent for companies worldwide — "
+        "search jobs, find companies by the tech they use, or read one company's stack."
+    ),
     base_url="https://api.theirstack.com",
-    docs_url="https://theirstack.com/en/docs/what-is-theirstack",
+    docs_url="https://theirstack.com/en/docs/api-reference",
     probe_path="/v0/billing/credit-balance",
 )
 

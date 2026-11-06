@@ -686,6 +686,15 @@ _OPENMART_LOOKUP_ENDPOINTS = frozenset({
 })
 _OPENMART_PLATFORM_MAX_RECORDS = 25
 
+# TheirStack bills searches per record returned, answers 25 a page by default and serves at most
+# 500 on a paid plan.
+_THEIRSTACK_SEARCH_ENDPOINTS = frozenset({
+    "theirstack.jobs.search", "theirstack.companies.jobs",
+    "theirstack.companies.search", "theirstack.technologies.users",
+})
+_THEIRSTACK_PAGE_DEFAULT = 25
+_THEIRSTACK_PAGE_MAX = 500
+
 _TAVILY_ENDPOINTS = frozenset({
     "tavily.web.search",
     "tavily.web.extract",
@@ -935,6 +944,11 @@ def _marketplace_pricing(
                 and str(raw).strip().isdigit() else 20
             asked = max(1, min(asked, 50))
             return _usd_to_micro(rate * asked), unit
+    if provider == "theirstack" and endpoint_id in _THEIRSTACK_SEARCH_ENDPOINTS and cost.get("usd"):
+        raw = _json_object(body).get("limit", _THEIRSTACK_PAGE_DEFAULT)
+        asked = raw if type(raw) is int and raw > 0 else _THEIRSTACK_PAGE_DEFAULT
+        credit = _usd_to_micro(catalog_store.load().credit_rates["theirstack"])
+        return _usd_to_micro(float(cost["usd"])) * min(asked, _THEIRSTACK_PAGE_MAX), credit
     estimate = _platform_estimate_micro(cost, query, body)
     credit_rate = (catalog_store.load().credit_rates.get(provider)
                    if cost.get("currency") == "credit" else None)
@@ -1691,16 +1705,16 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
 
     if ep.get("provider") == "theirstack":
         endpoint_id = ep["id"]
-        if endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
+        if endpoint_id in _THEIRSTACK_SEARCH_ENDPOINTS:
             document = _request_body_document(ep, body, headers)
             limit = document.get("limit")
-            if type(limit) is not int or not 1 <= limit <= _PLATFORM_PAGE_MAX \
+            if type(limit) is not int or not 1 <= limit <= _THEIRSTACK_PAGE_MAX \
                     or document.get("blur_company_data") is True:
                 raise ResolutionFailed(
                     "catalog_parameter_invalid", status_code=400, detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
                         "parameter": "body.limit",
-                        "message": "TheirStack shared-key search requires an explicit limit from 1 to 100 and ordinary, unblurred results.",
+                        "message": "TheirStack shared-key search requires an explicit limit from 1 to 500 and ordinary, unblurred results.",
                     },
                 )
         elif endpoint_id in {"theirstack.companies.technologies", "theirstack.companies.buying_intents"}:

@@ -1,0 +1,164 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 0,
+    "truncated_companies": 0,
+    "total_companies": null
+  },
+  "data": [
+    {
+      "id": 862694804,
+      "job_title": "Monetization Services Specialist - Pricing Activation",
+      "url": "https://www.linkedin.com/jobs/view/4474574560/",
+      "date_posted": "2026-10-02",
+      "has_blurred_data": false,
+      "company": "Stripe",
+      "final_url": null,
+      "source_url": "https://www.linkedin.com/jobs/view/4474574560/",
+      "location": "Seattle, WA",
+      "short_location": "Seattle, WA",
+      "long_location": "Seattle, WA",
+      "state_code": "WA",
+      "latitude": 47.60620880126953,
+      "longitude": -122.33206939697266,
+      "postal_code": null,
+      "remote": false,
+      "hybrid": false,
+      "salary_string": null,
+      "min_annual_salary": null,
+      "min_annual_salary_usd": null,
+      "max_annual_salary": null,
+      "max_annual_salary_usd": null,
+      "avg_annual_salary_usd": null,
+      "salary_currency": null,
+      "salary_period": null,
+      "min_salary": null,
+      "max_salary": null,
+      "countries": [],
+      "country": "United States",
+      "country_codes": [
+        "US"
+      ],
+      "country_code": "US",
+      "cities": [],
+      "continents": [],
+      "seniority": "senior",
+      "discovered_at": "2026-10-02T02:32:13.675000Z",
+      "closed_at": null,
+      "company_domain": "stripe.com",
+      "hiring_team": [],
+      "reposted": false,
+      "date_reposted": null,
+      "employment_statuses": [
+        "full_time"
+      ],
+      "easy_apply": null,
+      "technology_slugs": [
+        "g-suite",
+        "salesforce"
+      ],
+      "keyword_slugs": [
+        "pricing",
+        "invoicing",
+        "… 27 more item(s) truncated"
+      ],
+      "description": "Who we are\n  \n  \n**About Stripe**\nStripe is a financial infrastructure platform for businesses. Millions of companies - from the world’s largest enterprises to the most ambitious startups - use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Our mission is to increase the GDP of the internet, and we have a staggering amount of work ahead. That means you have an unprecedented opportunity to put the global economy within everyone's reach while doing the mo… [6886 chars total]",
+      "company_object": {
+        "id": "tLn+z/XHwl0Hd4Ak+0URcg==",
+        "name": "Stripe",
+        "domain": "stripe.com",
+        "industry": "Technology, Information and Internet",
+        "country": "United States",
+        "country_code": "US",
+        "employee_count": 16622,
+        "logo": "https://media.theirstack.com/company/logo/domain/stripe.com.png",
+        "num_jobs": 16026,
+        "num_technologies": 645,
+        "num_keywords": 0,
+        "num_buying_intent_topics": -645,
+        "possible_domains": [
+          "stripe.com"
+        ],
+        "url": "https://stripe.com",
+        "industry_id": 6,
+        "linkedin_url": "https://www.linkedin.com/company/stripe/",
+        "num_jobs_last_30_days": 777,
+        "num_jobs_found": null,
+        "yc_batch": "S09",
+        "apollo_id": "5d0a0fbff6512580bf33a120",
+        "linkedin_id": "2135371",
+        "url_source": null,
+        "is_recruiting_agency": false,
+        "founded_year": 2010,
+        "annual_revenue_usd": 7400000000.0,
+        "annual_revenue_usd_readable": "7.4B",
+        "total_funding_usd": 8735150000,
+        "last_funding_round_date": "2024-04-12",
+        "last_funding_round_amount_readable": "$350M",
+        "employee_count_range": "10,000+",
+        "long_description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Headquartered in San Francisco and Dublin, the company aims to increase the GDP of the internet.",
+        "seo_description": "Stripe is a suite of APIs powering online payment processing and commerce solutions for internet businesses of all sizes. Accept payments and scale faster.",
+        "city": "South San Francisco",
+        "postal_code": "94080",
+        "company_keywords": [
+          "payments",
+          "developer tools",
+          "… 7 more item(s) truncated"
+        ],
+        "company_tags": [
+          "payments",
+          "developer tools",
+          "… 7 more item(s) truncated"
+        ],
+        "alexa_ranking": 242,
+        "publicly_traded_symbol": null,
+        "publicly_traded_exchange": null,
+        "investors": [
+          "Ireland’s National Treasury Management Agency",
+          "Allen & Company",
+          "… 40 more item(s) truncated"
+        ],
+        "funding_stage": "secondary_market",
+        "has_blurred_data": false,
+        "keyword_slugs": [],
+        "technology_slugs": [
+          "anaplan",
+          "brandwatch",
+          "… 643 more item(s) truncated"
+        ],
+        "technology_names": [
+          "anaplan",
+          "brandwatch",
+          "… 643 more item(s) truncated"
+        ]
+      },
+      "locations": [
+        {
+          "id": 5809844,
+          "name": "Seattle",
+          "type": "city",
+          "feature_code": "PPLA2",
+          "country_code": "US",
+          "admin1_name": "Washington",
+          "admin1_code": "WA",
+          "admin2_name": "King County",
+          "admin2_code": "033",
+          "continent": "NA",
+          "latitude": 47.60621,
+          "longitude": -122.33207,
+          "city": "Seattle",
+          "address": null,
+          "postal_code": null,
+          "state": "Washington",
+          "state_code": "WA",
+          "display_name": "Seattle, Washington, United States",
+          "country_name": "United States"
+        }
+      ],
+      "normalized_title": "",
+      "manager_roles": [],
+      "matching_phrases": [],
+      "matching_words": []
+    }
+  ]
+}

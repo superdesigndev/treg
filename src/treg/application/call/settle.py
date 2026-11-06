@@ -532,13 +532,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     except (ValueError, UnicodeDecodeError):
         return 0 if provider == "contactout" else None
     if provider == "theirstack" and mk.endpoint_id in {
-        "theirstack.jobs.search", "theirstack.companies.search",
+        "theirstack.jobs.search", "theirstack.companies.jobs",
+        "theirstack.companies.search", "theirstack.technologies.users",
         "theirstack.companies.technologies", "theirstack.companies.buying_intents",
     }:
         rows = doc.get("data") if isinstance(doc, dict) else None
         if not isinstance(rows, list):
             return None
-        if mk.endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
+        if mk.cost_type == "per_result":
             return _rows_billed_micro(mk, ep, len(rows))
         return mk.estimate_micro if rows else 0
     if (provider == "valyu" and mk.endpoint_id.endswith(".search")
