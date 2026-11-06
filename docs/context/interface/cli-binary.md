@@ -77,6 +77,12 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   upstream's spelling (the Python CLI escapes non-ASCII as `\uXXXX` and normalizes numbers): the
   parsed values are equal, the bytes are not. treg's own lines use a plain dash where the Python
   CLI wrote an em dash.
+- **Views.** Bare `treg`, `catalog`, `balance` and `feedback get` send `X-Treg-View: 1` and print
+  the registry's `text`; `--json` prints its `data` ([api](api.md), "Views"). A registry without
+  views gets its JSON printed and one stderr line saying so. The client prints only what the
+  registry cannot know: the `treg:` line (version and path) and a `registry:` line off treg.to.
+- **`call --await`** follows the registry's task (`/tasks/{call_id}`, [tasks](../architecture/tasks.md))
+  and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
   and body) and a live one (`python -m treg` on a fresh sqlite database, a signed-up team, an echo
   upstream registered as its own tool) and compares exit status, stdout (JSON parsed), stderr,
