@@ -2061,9 +2061,14 @@ def test_a_people_search_adapter_lists_its_wider_variants_first():
     assert leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))[0] == {
         "domain": "example.com", "title": "CFO", "q": "speaks Japanese", "limit": "10"}
     # its person sits under profile_data, which a merge must read to tell a repeat from a new row
-    assert leadocean.rows([{"profile_data": {"profile_full_name": "Jane Doe",
-                                             "profile_url": "https://www.linkedin.com/in/jane"}}]) == [
-        {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane"}]
+    assert leadocean.rows([{"profile_data": {"profile_full_name": "Jane Doe", "profile_headline": "CFO at Example",
+                                             "profile_url": "https://www.linkedin.com/in/jane",
+                                             "profile_address": {"city": "Austin", "country": "US"}},
+                            "contact_data": {"contact_current_experiences": [
+                                {"company_name": "Example Inc", "company_domain": "example.com", "job_title": "CFO"}]}}]) == [
+        {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane", "title": "CFO",
+         "company": "Example Inc", "company_domain": "example.com", "location": "Austin, US",
+         "summary": "CFO at Example"}]
 
 
 def adapter_accepts_of(adapter, identity):
@@ -2101,6 +2106,10 @@ async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
     get_settings.cache_clear()
     assert r.status_code == 422, r.text
     assert "send every key" in r.json()["detail"]["message"] and seen == []
+    # A caller who excluded the providers that could is told to check that list
+    r2 = await clients.post("/call/treg.people.search", json={"q": "executives", "company_domain": "example.com"},
+                            headers={"X-Treg-Route-Exclude": "exa,parallel,leadocean,prospeo"})
+    assert r2.status_code == 422 and "x-treg-route-exclude" in r2.json()["detail"]["message"].lower(), r2.text
 
 
 async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(

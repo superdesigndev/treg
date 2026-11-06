@@ -3737,8 +3737,14 @@ adapters:
     in_expr: {queryParams.limit: limit}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
-    # The person sits under profile_data: without these a merge cannot tell a repeat from a new row.
-    row: {name: profile_data.profile_full_name, profile_url: profile_data.profile_url}
+    # The person sits under profile_data, the current job under contact_data: without name and url a
+    # merge cannot tell a repeat from a new row, and without the rest it keeps only those two.
+    row: {name: profile_data.profile_full_name, profile_url: profile_data.profile_url,
+          title: "coalesce(contact_data.contact_current_experiences[0].job_title, profile_data.profile_headline)",
+          company: "contact_data.contact_current_experiences[0].company_name",
+          company_domain: "contact_data.contact_current_experiences[0].company_domain",
+          location: "place(profile_data.profile_address.city, profile_data.profile_address.country)",
+          summary: profile_data.profile_headline}
   leadocean.companies.search:
     accepts: [[domain], [name], [industry], [q]]
     in: {domain: queryParams.domain, name: queryParams.name, industry: queryParams.industry, q: queryParams.q}

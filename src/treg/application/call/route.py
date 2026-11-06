@@ -829,7 +829,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
             "dropped": plan.dropped,
             "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
-                        f"no provider for {ep['id']} can send every key you sent together; send fewer keys"
+                        f"no provider for {ep['id']} can send every key you sent together"
+                        + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
+                           if options.exclude else "; send fewer keys")
                         if scope_drop and not strict_drop else
                         f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
