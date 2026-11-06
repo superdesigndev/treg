@@ -5270,12 +5270,20 @@ def cmd_org_deny_rm(args, cfg) -> None:
 
 
 def cmd_org_join(args, cfg) -> None:
-    with _client(cfg, auth=False) as c:
-        r = c.post("/invites/accept", json={"code": args.code, "email": args.email})
+    """Join a team with an invite code, signed in as the invited email (`treg login` first)."""
+    if not (os.environ.get("TREG_TOKEN") or cfg.get("token")):
+        sys.exit("sign in first: run `treg login` with the email the invite was sent to, then retry")
+    body = {"code": args.code}
+    if args.email:
+        body["email"] = args.email
+    with _client(cfg) as c:
+        r = c.post("/invites/accept", json=body)
     if r.status_code == 200:
         d = r.json()
-        cfg.update(token=d["token"], active_org=d["org"], email=args.email, identity=True)
+        cfg.update(token=d["token"], active_org=d["org"], identity=True)
         _save_config(cfg)
+    elif r.status_code == 403 and "different email" in r.text:
+        sys.exit("this invite is for a different email — run `treg login` with that address, then retry")
     _show(r)
 
 
@@ -7098,8 +7106,8 @@ def build_parser() -> argparse.ArgumentParser:
     odr = mk(og, "deny-rm", "Remove a deny rule.", "treg org deny-rm 3")
     odr.add_argument("rule_id", type=int, help="the rule id (from `org deny-ls`)")
     odr.set_defaults(fn=cmd_org_deny_rm)
-    oj = mk(og, "join", "Join a team using an invite code.", "treg org join <code> --email you@company.com")
-    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", required=True, help="your email (creates you if new)"); oj.set_defaults(fn=cmd_org_join)
+    oj = mk(og, "join", "Join a team using an invite code (sign in as the invited email first).", "treg org join <code>")
+    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", default="", help="optional: the invited email, checked against the account you are signed in as"); oj.set_defaults(fn=cmd_org_join)
     mk(og, "leave", "Remove yourself from the active team.", "treg org leave").set_defaults(fn=cmd_org_leave)
     od = mk(og, "delete", "Delete a team you own (confirms by name).", "treg org delete superdesign")
     od.add_argument("slug", help="the org slug to delete"); od.set_defaults(fn=cmd_org_delete)

@@ -30,7 +30,7 @@ from stripe.params.checkout._session_create_params import (
 )
 from sqlmodel import select
 
-from conftest import make_upstream, verified_signup
+from conftest import make_upstream, verified_signup, accept_with_code
 
 from treg import adsconv
 from treg.application import billing
@@ -73,7 +73,7 @@ async def _member(c: AsyncClient, org_id: int, admin_token: str, email: str, rol
     r = await c.post(f"/orgs/{org_id}/invites", json={"email": email, "role": role}, headers=_h(admin_token))
     assert r.status_code == 200, r.text
     code = r.json()["code"]
-    r = await c.post("/invites/accept", json={"code": code, "email": email})
+    r = await accept_with_code(c, json={"code": code, "email": email})
     assert r.status_code == 200, r.text
     return r.json()["token"]
 

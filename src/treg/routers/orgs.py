@@ -107,7 +107,7 @@ _LANDING_RE = re.compile(r"^/app/(skills|tools)/[A-Za-z0-9][A-Za-z0-9._%-]*$")
 
 class AcceptIn(BaseModel):
     code: str
-    email: str
+    email: str = ""
 
 
 def _require_admin_of(org_id: int, caller: Caller) -> None:
@@ -542,35 +542,35 @@ async def create_invite(
 
 @app.post("/invites/accept")
 async def accept_invite(
-    body: AcceptIn, request: Request, response: Response, db: AsyncSession = Depends(get_session),
+    body: AcceptIn, request: Request, response: Response, user: User = Depends(require_identity),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
+    """Join a team with an invite code, signed in as the invited email.
+
+    The code is also returned to the admin who created the invite, so it only names the invite; it
+    never proves who the caller is. The caller's identity (OTP / GitHub / Google / SSO) proves the
+    email, exactly as on `POST /invites/{id}/accept`."""
     require_managed_cli(request, team_change=True)
-    # Open endpoint, protected by the unguessable one-time code. Registers the user if new,
-    # joins them to the org, and mints their own org-scoped token (the admin never sees it).
     invite = (
         await db.execute(select(Invite).where(Invite.code_hash == crypto.hash_token(body.code)))
     ).scalar_one_or_none()
-    email = _norm_email(body.email)
-    if invite is None or invite.status != "pending":
-        raise HTTPException(status_code=404, detail="invalid or already-used invite code")
-    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
-        raise HTTPException(status_code=410, detail="invite code expired")
-    if invite.email != email:
+    if body.email and _norm_email(body.email) != user.email:
         raise HTTPException(status_code=403, detail="this invite is for a different email")
+    return await _join_invited_team(db, response, invite, user)
+
+
+async def _join_invited_team(
+    db: AsyncSession, response: Response, invite: Invite | None, user: User,
+) -> dict:
+    if invite is None or invite.status != "pending":
+        raise HTTPException(status_code=404, detail="invalid or already-used invite")
+    if invite.email != user.email:
+        raise HTTPException(status_code=403, detail="this invite is for a different email")
+    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
+        raise HTTPException(status_code=410, detail="invite expired")
     org = await db.get(Org, invite.org_id)
     if org is not None and org.suspended:  # don't let anyone join a platform-locked org
         raise HTTPException(status_code=403, detail="org suspended")
-    if signup_use_cases.blocked_email(email, "invite_code"):  # creates a User directly: guards itself
-        raise HTTPException(status_code=403, detail="this address cannot be used to sign in")
-    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    if user is not None and user.suspended:  # a banned user must not accrue new memberships
-        raise HTTPException(status_code=403, detail="account suspended")
-    if user is None:
-        # Brand-new user → create the user only. Accepting the invite below IS their first team
-        # (no auto personal org — consistent with the login doors).
-        user = User(email=email)
-        db.add(user)
-        await db.flush()
     existing = (
         await db.execute(
             select(Membership).where(Membership.user_id == user.id, Membership.org_id == invite.org_id)
@@ -579,9 +579,9 @@ async def accept_invite(
     if existing is not None:
         raise HTTPException(status_code=409, detail="already a member of this org")
     membership = Membership(
-        user_id=user.id, org_id=invite.org_id, role=invite.role,
-        token_hash="", tool_access=invite.tool_access,
-        project_access=invite.project_access, local_run_enabled=invite.local_run_enabled,
+        user_id=user.id, org_id=invite.org_id, role=invite.role, token_hash="",
+        tool_access=invite.tool_access, project_access=invite.project_access,
+        local_run_enabled=invite.local_run_enabled,
     )
     db.add(membership)
     await db.flush()
@@ -662,48 +662,9 @@ async def accept_my_invite(
     invite_id: int, request: Request, response: Response, user: User = Depends(require_identity),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Accept an invite addressed to my already-proven email — no code needed (the identity token
-    proves the email). The code path (`POST /invites/accept`) stays for out-of-band joins."""
+    """Accept an invite addressed to my already-proven email by its id (the dashboard's list)."""
     require_managed_cli(request, team_change=True)
-    invite = await db.get(Invite, invite_id)
-    if invite is None or invite.status != "pending":
-        raise HTTPException(status_code=404, detail="invalid or already-used invite")
-    if invite.email != user.email:
-        raise HTTPException(status_code=403, detail="this invite is for a different email")
-    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
-        raise HTTPException(status_code=410, detail="invite expired")
-    org = await db.get(Org, invite.org_id)
-    if org is not None and org.suspended:  # don't let anyone join a platform-locked org
-        raise HTTPException(status_code=403, detail="org suspended")
-    existing = (
-        await db.execute(
-            select(Membership).where(Membership.user_id == user.id, Membership.org_id == invite.org_id)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="already a member of this org")
-    membership = Membership(
-        user_id=user.id, org_id=invite.org_id, role=invite.role, token_hash="",
-        tool_access=invite.tool_access, project_access=invite.project_access,
-        local_run_enabled=invite.local_run_enabled,
-    )
-    db.add(membership)
-    await db.flush()
-    default = await managed_keys.ensure_default_key(db, membership, user)
-    token = identity_session.make_identity(
-        user.id, user.token_version, org=org.slug,
-        key_generation=default.default_generation if default else None,
-        scope=identity_session.TEAM_SCOPE,
-    )
-    invite.status = "accepted"
-    try:
-        await db.commit()  # a concurrent double-accept trips uq_membership_user_org — 409, not 500
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="already a member of this org") from exc
-    org = await db.get(Org, invite.org_id)
-    response.headers["Cache-Control"] = "no-store"
-    return {"org": org.slug, "org_id": org.id, "name": org.name, "role": invite.role, "token": token}
+    return await _join_invited_team(db, response, await db.get(Invite, invite_id), user)
 
 
 @app.get("/orgs/{org_id}/invites")

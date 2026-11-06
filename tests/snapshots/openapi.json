@@ -8,13 +8,13 @@
             "type": "string"
           },
           "email": {
+            "default": "",
             "title": "Email",
             "type": "string"
           }
         },
         "required": [
-          "code",
-          "email"
+          "code"
         ],
         "title": "AcceptIn",
         "type": "object"
@@ -8704,7 +8704,40 @@
     },
     "/invites/accept": {
       "post": {
+        "description": "Join a team with an invite code, signed in as the invited email.\n\nThe code is also returned to the admin who created the invite, so it only names the invite; it\nnever proves who the caller is. The caller's identity (OTP / GitHub / Google / SSO) proves the\nemail, exactly as on `POST /invites/{id}/accept`.",
         "operationId": "accept_invite_invites_accept_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8810,7 +8843,7 @@
     },
     "/invites/{invite_id}/accept": {
       "post": {
-        "description": "Accept an invite addressed to my already-proven email — no code needed (the identity token\nproves the email). The code path (`POST /invites/accept`) stays for out-of-band joins.",
+        "description": "Accept an invite addressed to my already-proven email by its id (the dashboard's list).",
         "operationId": "accept_my_invite_invites__invite_id__accept_post",
         "parameters": [
           {

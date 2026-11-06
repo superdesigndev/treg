@@ -17,7 +17,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream, verified_signup
+from conftest import make_upstream, verified_signup, accept_with_code
 
 from treg.domain import money as ledger
 from treg.api import app
@@ -819,8 +819,7 @@ async def test_balance_shows_the_wallet_to_members_and_the_history_to_admins(c: 
     r = await c.post(f"/orgs/{org_id}/invites", json={"email": "m@superdesign.dev", "role": "member"},
                      headers=_h(owner))
     code = r.json()["code"]
-    member = (await c.post("/invites/accept",
-                           json={"code": code, "email": "m@superdesign.dev"})).json()["token"]
+    member = (await accept_with_code(c, json={"code": code, "email": "m@superdesign.dev"})).json()["token"]
 
     seen = await c.get(f"/orgs/{org_id}/balance", headers=_h(member))
     assert seen.status_code == 200
