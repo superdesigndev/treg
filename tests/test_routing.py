@@ -230,6 +230,24 @@ def test_a_row_field_may_keep_more_text_than_the_default_cut():
         C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "url", "max": 10}}}}}})
 
 
+def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention_domain_match():
+    """A routed endpoint's identity keys read "identity" plus the contract's note, so an agent knows
+    what a free-text `q` is for; the `domain_match` sentence belongs to email finds only."""
+    from treg.domain.catalog.routing import contracts as C
+
+    cat = catalog_store.load()
+    body = cat.by_id["treg.people.search"]["input"]["body"]
+    assert body["q"]["note"].startswith("identity; describe the people in words")
+    assert body["company_domain"]["note"].startswith("identity; the employer's website domain")
+    assert "domain_match" not in cat.by_id["treg.people.search"]["input"]["note"]
+    assert "domain_match" in cat.by_id["treg.people.email.find"]["input"]["note"]
+    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": {"q": " words "}}}})["y"].identity_notes == {"q": "words"}
+    for bad in ({"nope": "x"}, {"q": ""}, {"q": 3}, {}, ["q"]):
+        with pytest.raises(ValueError, match="identity_notes"):
+            C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
+
+
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     """people.search builds `q` from the caller's title and location, but only for a provider that
     accepts none of the caller's own fields: exa joins a {title} request, a provider that takes

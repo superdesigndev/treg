@@ -133,6 +133,9 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+    # Identity key -> what to put in it, shown to the caller beside the key (`q`: describe the
+    # person in words). Without one a key reads only "identity", and an agent guesses its shape.
+    identity_notes: dict[str, str] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity keys `given`."""
@@ -322,7 +325,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when", "fill_limit_when"})
+    "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -396,6 +399,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
             stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
+            identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
             **_parse_row(cap, c.get("row"), c.get("output") or {}),
             **_parse_verdict(cap, c.get("verdict")))
     return out
@@ -418,6 +422,15 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
+
+
+def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not raw
+            or any(k not in types or not isinstance(v, str) or not v.strip() for k, v in raw.items())):
+        raise ValueError(f"contract {cap}: identity_notes maps identity keys to a non-empty note, got {raw!r}")
+    return {k: v.strip() for k, v in raw.items()}
 
 
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:

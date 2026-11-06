@@ -989,6 +989,8 @@ returned and never documented as stable. An output field may say where it lands 
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
   both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
   search asks for everyone who fits, while a company lookup stays one provider's answer.
+- `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
+  people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`,
