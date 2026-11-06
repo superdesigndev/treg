@@ -306,6 +306,13 @@ when nobody decides, the first answer comes back as it was. Your own `X-Treg-Rou
 kept. With `X-Treg-Route-Waterfall: 0`, or on a routed tool without deciding verdict words, the
 header is refused (422, unbilled).
 
+`X-Treg-Route-Complete: 1` keeps looking past a thin hit: one missing a field the contract lists as
+`complete`, or under half the output when it lists none. `treg catalog get <routed id>` shows both
+bars: `stops_at` is the answer a call ends on without the header, `complete` the fields it waits for
+with it. The fullest answer so far is kept if nothing fuller turns up; adapters that cannot map a
+complete answer are asked last. It only runs with the waterfall on (`X-Treg-Route-Waterfall: 0`
+makes the header a no-op).
+
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
 cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is

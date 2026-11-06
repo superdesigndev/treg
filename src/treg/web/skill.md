@@ -127,6 +127,10 @@ How a routed call works:
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current.
+- A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
+  `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
+  keeps going until an answer fills every `complete` field (`routing.contract.complete` in
+  `catalog_get`); the fullest so far wins if none does.
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.
