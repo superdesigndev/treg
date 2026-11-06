@@ -46,7 +46,10 @@ func Root(env *Env) *cobra.Command {
 		catalogCmd(env),
 		balanceCmd(env),
 		feedbackCmd(env),
+		skillCmd(env),
+		mcpCmd(env),
 	)
+	root.AddCommand(uploadCmds(env)...)
 	return root
 }
 
