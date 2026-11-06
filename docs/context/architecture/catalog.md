@@ -150,7 +150,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_user_profile
     name: "TikTok user profile by username - followers, bio, stats"   # ours, <= 60 chars
-    summary: "Public TikTok profile by username"   # the provider's text, verbatim
+    summary: "Public TikTok profile by username"   # what the tool does (catalog-schema.md)
     input:
       queryArrayEncoding: json      # optional: json | comma | repeated (default)
       queryParams:
@@ -166,11 +166,10 @@ endpoints:
     note: "..."                      # optional: a caller-facing caveat about the whole tool or its answer
 ```
 
-Every `note` is caller-facing. A caveat goes to its most specific home: a parameter's `input.*.note`,
-then the charge's `cost.note`, then the row's `note`. Only the endpoint's own detail
+Every `note` is caller-facing. What a summary and a note may say, and which note a caveat goes in,
+is [catalog-schema](catalog-schema.md#summary-and-note). Only the endpoint's own detail
 (`GET /catalog/endpoints/{id}`, `treg catalog get`, `/mcp/` `catalog_get`, the dashboard drawer) shows
-the row's `note`; lists, search and sibling rows leave it out. Maintainer context goes in a YAML
-comment, evidence in the PR body.
+the row's `note`; lists, search and sibling rows leave it out.
 
 The strict models ([catalog-schema](catalog-schema.md)), shared by the loader and the validator,
 refuse any `input` key and any parameter-spec key outside their vocabulary, because a misspelt
@@ -236,7 +235,8 @@ re-attaches by id, so re-ingesting must not reset it to `data`.
 
 ### Naming - `name` is the search surface we own
 
-`summary` is the provider's text, verbatim; `name` is ours and searched at the same weight. The
+`summary` says what the tool does ([catalog-schema](catalog-schema.md#summary-and-note)); `name` is
+the short title, searched at the same weight. The
 formula: **job + the input the caller must hold + top output facets**, at most 60 characters, and it
 must read as a natural title.
 
@@ -949,6 +949,13 @@ returned and never documented as stable. An output field may say where it lands 
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
   unconfirmed.
+- `complete` (opt-in via `X-Treg-Route-Complete`) lists the output fields a full answer carries. An
+  answer missing any is weak (the waterfall keeps looking; the fullest so far wins if nothing fuller
+  turns up, at most `MAX_WEAK_FALLBACKS` extra providers); an adapter that cannot map them all is
+  asked after every adapter that can. When the list is empty, under half the contract's output is
+  the thin bar. An answer whose subject identity differs from the one asked waits for another
+  provider to report the same identifier. Off unless the caller sends the header; catalog_get names
+  the fields and the header when the contract sets `complete`.
 - `verdict` declares the per-call word stored on `CallRecord.verdict`: `from` field, closed `words`,
   `map`. It is read only from an answer that fills the required output, and is independent of
   `miss`. `verdict.decisive` (opt-in via `X-Treg-Route-Decisive`) keeps a non-deciding answer as
@@ -987,8 +994,13 @@ returned and never documented as stable. An output field may say where it lands 
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
-  both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
-  search asks for everyone who fits, while a company lookup stays one provider's answer.
+  both were sent (`min_results = limit`, merge on). A key counts as sent by the same test as
+  identity matching (a blank string is not sent). `people.search` lists `{q}` and
+  `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
+  stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
+  because scoping drops any that answer it by company alone (below).
+- `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
+  people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`,
@@ -997,7 +1009,8 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource.
+  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
@@ -1128,8 +1141,21 @@ an invalid extra never disables the primary.
   builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
   can answer a `{title}` request while every other provider's request is unchanged. The stand-in
   never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
-  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard
-  (`company_domain`: a text match cannot scope by company).
+  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard.
+  exa and parallel fold `company_domain` into the query text (`join(q, company_domain, …)`), and
+  `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
+  that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
+  builds from the title, still skips them. The stand-in key itself always counts as sent, and a
+  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key, typed
+  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
+  (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
+  dropped; icypeas answers `{q, title}` through `{title}` and stays.
+- **Scoping reads the request this call sends**: `to_upstream` sends a mapped (`in`) field only
+  when it is in the matched variant, so `unscoped` counts it only then (`in_expr` always runs, so
+  its keys always count). An adapter whose upstream takes filters together declares the combined
+  variants first (`[full_name, title, company_domain]` before `[company_domain]`), or a request
+  with all of them goes out with the first one alone.
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

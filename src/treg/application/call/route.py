@@ -819,13 +819,21 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
-        # caller's own choice and answers 422 (nothing was charged either way)
-        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith("needs ") for d in plan.dropped)
+        # caller's own choice, and a provider that cannot send a key the caller gave never will,
+        # so both answer 422 (nothing was charged either way)
+        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
+                            for d in plan.dropped)
         strict_drop = [d for d in plan.dropped if d.get("strict")]
+        scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
         raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422, detail={
             "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
             "dropped": plan.dropped,
-            "message": (f"no provider can serve {ep['id']} for this identity right now" if not strict_drop or capacity_drop else
+            "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
+                        f"no provider for {ep['id']} can send every key you sent together"
+                        + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
+                           if options.exclude else "; send fewer keys")
+                        if scope_drop and not strict_drop else
+                        f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
                         f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})

@@ -63,7 +63,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
     "application/catalog_search.py": {API},  # the hub read and the per-caller judge cap, each closed before the judge
 
-    "application/referrals.py": {API}, "application/signup.py": {API},
+    # Referral page journeys use API; authenticated affiliate administration stays in ADMIN.
+    "application/referrals.py": {API, ADMIN}, "application/signup.py": {API},
     "application/onboard/__init__.py": {API},
     # The first-run lookup: a short write per finished step, never across a GitHub, LLM or call wait.
     "application/onboard/first_run.py": {API},

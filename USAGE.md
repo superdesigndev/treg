@@ -83,7 +83,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 | `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |
 | `treg org invite` | `EMAIL`, `--role member\|admin` | (admin+) create a one-time invite **code** to share |
 | `treg org members` | â€” | (admin+) list members + roles |
-| `treg org join` | `CODE`, `--email EMAIL` | redeem a code: registers you if new, joins, saves the org token |
+| `treg org join` | `CODE`, `--email EMAIL` (optional) | redeem a code while signed in as the invited email: joins, saves the org token |
 
 ```bash
 # owner side
@@ -92,7 +92,8 @@ treg org invite bob@company.com --role member  # prints e.g. inv_7Kd9x2LmQpR4 â€
 
 # Bob's side (no email is sent; he gets the code over Slack/DM)
 treg config --base-url https://treg.to
-treg org join inv_7Kd9x2LmQpR4 --email bob@company.com   # joins + mints HIS own token
+treg login --email bob@company.com        # proves Bob owns the invited email
+treg org join inv_7Kd9x2LmQpR4            # joins + mints HIS own token
 treg tool ls            # sees only Team A's tools
 treg org use team-a     # switch orgs anytime; one token per org, never mixed
 ```
@@ -305,6 +306,13 @@ carries `_treg.decision: {decided, decided_by, ordered_by}` and `X-Treg-Route-De
 when nobody decides, the first answer comes back as it was. Your own `X-Treg-Route-Prefer` order is
 kept. With `X-Treg-Route-Waterfall: 0`, or on a routed tool without deciding verdict words, the
 header is refused (422, unbilled).
+
+`X-Treg-Route-Complete: 1` keeps looking past a thin hit: one missing a field the contract lists as
+`complete`, or under half the output when it lists none. `treg catalog get <routed id>` shows both
+bars: `stops_at` is the answer a call ends on without the header, `complete` the fields it waits for
+with it. The fullest answer so far is kept if nothing fuller turns up; adapters that cannot map a
+complete answer are asked last. It only runs with the waterfall on (`X-Treg-Route-Waterfall: 0`
+makes the header a no-op).
 
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
@@ -626,3 +634,7 @@ slow or offline delivery may be dropped.
 Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
 no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
 PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.
+
+The `install.sh` installer reports the same way: each run sends whether it started, installed or
+failed (with a fixed reason), the installer it used (uv, pipx or pip3), the CLI version before and
+after, OS and architecture, under the same installation ID. The same two variables turn it off.

@@ -92,7 +92,8 @@ explained in [seo](seo.md).
 `require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
 `X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
 and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
-`POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
+`GET /oauth/callback` (protected by `state`). `POST /invites/accept` requires the invitee's own
+identity: the code names the invite and the signed-in email must match it. Identity and
 session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
 org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 
@@ -120,8 +121,8 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
-  account); limits are unchanged. The invite code is join-only; the separate `email_token`
-  authenticates once and never appears in a JSON response.
+  account); limits are unchanged. The invite code is join-only and needs the invitee signed
+  in; the separate `email_token` authenticates once and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
   before any login or team mutation.
 
@@ -340,6 +341,10 @@ stricter CSP wins. An oversized all-digit id is a 404, not a 500; malformed URLs
 `auth_logout` rejects a cross-site `Origin`; `_same_origin` is the shared CSRF check for every
 cookie-authenticated mutation.
 
+**Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
+included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
+([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
+
 ## Public pages and agent files
 
 - `/llms.txt`, `/skill.md`, `/quickstart.md`, `/tutorial.md`, `/vendor-listing` and
@@ -374,6 +379,21 @@ Approval at `/oauth/authorize` is a POST, never a GET.
 **`require_identity`, not `require_member`.** A referral belongs to a person
 (`User.referral_code`); the reward lands in the oldest org they own, so nothing here is scoped by
 `X-Treg-Org`.
+
+`GET /referrals` reports `cap.affiliate`, the configured `cap.standard_limit`, and an effective
+`cap.limit` of `null` for an affiliate. Credit amounts, funding threshold and hold stay unchanged.
+
+The existing `require_superadmin` gate protects `GET /admin/referrals/users?email=...` (exact email,
+normalized with trim/lowercase), `GET /admin/referrals/users/{user_id}`, and
+`PUT /admin/referrals/users/{user_id}/affiliate`. Reads have no payout or code-minting side effects and
+return identity, current flag/version, cap usage and at most the latest twenty operation events.
+The PUT requires a strict boolean `affiliate`, `expected_version`, nonblank bounded `reason` and
+UUID `operation_id`; unknown fields, including caller-supplied actor, are rejected. Stale versions
+or an operation id reused for another payload/principal return 409. A matching retry returns current
+state and the original `event` with `replayed: true`, without applying again. A new no-op operation
+is audited and advances the version. Authentication determines the event principal: a signed-in
+superadmin's email or `env-admin` for the shared credential. The shared credential cannot prove
+which individual approved an operation; the reason is context, not authenticated identity.
 
 **`GET /referrals` returns the referred person's full email**, so it is scoped in the query itself
 (`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test. `privacy.html`

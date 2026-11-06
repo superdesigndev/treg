@@ -51,7 +51,8 @@ the observed override of a rejected submission) and composes the existing pure f
 One output record per input, grouped as `reserve`, `settle`, `outcome`, `adapter`, `routing`,
 `stats` and `async` (`engine.py`), each from the production function that decides it.
 Every call is replayed as a call on treg's own key (`tier: platform`), with the settings of the
-process running it and a v2 row's frozen cost terms as the call site carries them. A step that
+process running it and a v2 row's frozen cost terms as the call site carries them; a v2 row with
+no rate for its credit or meter is refused there as treg's key refuses it. A step that
 cannot apply is `null`; a step that raises reports only the
 exception's type and typed kind, never its message, which may quote the body. An accepted async
 submission is `settle.deferred` with no outcome, adapter or routing: it settles, is judged and is

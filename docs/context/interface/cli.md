@@ -9,6 +9,8 @@ sources:
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
+  - src/treg/web/install.sh
+  - src/treg/client_notice.py
   - src/treg/cli_session.py
   - src/treg/convert.py
   - src/treg/agents.py
@@ -119,6 +121,11 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   `X-Treg-Key-Protocol: 1`; the legacy hint is the released CLI's `python-httpx/` User-Agent plus
   `ngrok-skip-browser-warning: 1` without that marker. It is a compatibility check, not an
   authorization boundary: omitting or forging it never relaxes token restrictions.
+- **Version notice.** When the operator sets `cli_latest_version` or `cli_min_version`,
+  `bootstrap_http._ClientNoticeMiddleware` answers any request carrying `X-Treg-Client-Version`
+  with `X-Treg-Client-Notice`, worded by `client_notice.notice` ("available", or "no longer
+  supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
+  (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
   `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
 
 ## Calls
@@ -206,3 +213,12 @@ send nothing unless `TREG_CLI_POSTHOG_KEY` is set. `TREG_TELEMETRY=0|false|off` 
 disables analytics, id creation, the process walk and both session headers. Capture runs in a daemon
 thread with a short timeout and wait budget; telemetry failures are silent and never change output or
 exit status.
+
+`install.sh` reports `cli_install_step` under the same rules. Its `install_step` is `started`,
+then `installed` (with `on_path`) or `failed` with a fixed `reason` (`install_command`,
+`python_version`, `no_installer`); the event carries the installer used, the prior and new CLI
+versions, OS, architecture and whether a short link (`ad_link`) or token (`with_token`) was passed,
+never the token. PostHog types a property name once per project, and `step` is numeric there, so
+new names must not reuse one with another type. The route templates the server's `posthog_key`, so
+a registry without one sends nothing. The installer writes `analytics-id` when it is missing, so
+the first command joins the install that produced it.

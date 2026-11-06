@@ -369,3 +369,25 @@ def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter
         loaded = SimpleNamespace(by_id={"demo.x": ep}, adapters={"demo.x": adapter} if adapter else {})
         monkeypatch.setattr(store, "load", lambda loaded=loaded: loaded)
         assert results.has_result_rules("demo.x") is opted
+
+
+@pytest.mark.parametrize("keys,rate", [
+    ({"price": {"value": "1", "currency": "credit"}}, None),
+    ({"price": {"value": "1", "currency": "credit"}}, "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"reported": {"path": "response.cost", "unit": "credit"}}},
+     "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"usage": {"unit": "token", "path": "response.n"}}},
+     "demo token"),
+])
+def test_treg_s_key_refuses_a_row_whose_credit_or_meter_rate_is_unknown(keys, rate):
+    from treg.application.call.types import ResolutionFailed
+    ep = row(**keys)
+    rates = Rates(credit_rates={"demo": None if rate else 0.02})
+    if rate is None:
+        cost.require_rates(ep, rates)
+        return
+    with pytest.raises(ResolutionFailed) as refused:
+        cost.require_rates(ep, rates)
+    assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
+        ("catalog_price_invalid", "treg", 503)
+    assert refused.value.detail["endpoint_id"] == "demo.x" and refused.value.detail["rate"] == rate

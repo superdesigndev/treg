@@ -58,7 +58,7 @@ export default function data(){
       refTab:'friend',  // 'friend' | 'partner' — the fork at the top of the Referrals view
       ref:{loading:false,loaded:false,eligible:false,code:'',link:'',credit_org:null,referrals:[],
            terms:{referrer_micro:0,referred_micro:0,min_topup_micro:0,hold_days:0},
-           totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0}},
+           totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0,standard_limit:0,affiliate:false}},
       refCopied:false,
       confirmDel:'', confirmLeave:false, confirmRemove:null,
       showJoin:false, joinCode:'', joinBusy:false, joinErr:'',
