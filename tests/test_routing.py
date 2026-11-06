@@ -2737,6 +2737,74 @@ def test_identity_type_check_treats_blank_as_absent_and_echoes_safely():
     bad["value"].encode("utf-8")
 
 
+def test_linkedin_profile_is_shell_detects_empty_shells():
+    """A LinkedIn profile with found=true but no substantive data (experience, education,
+    about/headline) is an 'empty shell' — a miss, not a hit."""
+    from treg.domain.catalog.routing import paths as P
+
+    # Empty shell: only name, no substantive content
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates"})
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates", "followers": 1000})
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates", "location": "Seattle"})
+    # Empty arrays don't count as content
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates", "experience": [], "education": []})
+    # Empty/whitespace strings don't count
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates", "about": "", "headline": "   "})
+
+    # Full profile: has experience, education, about, headline
+    assert not P.linkedin_profile_is_shell({
+        "name": "Bill Gates",
+        "experience": [{"company": "Microsoft", "title": "Founder"}],
+        "education": [{"school": "Harvard"}],
+        "about": "Chair of Gates Foundation",
+        "headline": "Co-founder of Microsoft",
+    })
+
+    # Sparse but legitimate: has at least one substantive field
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "experience": [{"company": "Microsoft"}]})
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "education": [{"school": "Harvard"}]})
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "about": "Philanthropist"})
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "headline": "Founder"})
+
+    # Fiber-ai uses 'experiences' (plural) and 'summary' (instead of 'about')
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "experiences": [{"company": "Microsoft"}]})
+    assert not P.linkedin_profile_is_shell({"name": "Bill Gates", "summary": "Philanthropist"})
+    assert P.linkedin_profile_is_shell({"name": "Bill Gates", "experiences": [], "summary": ""})
+
+    # Non-dict returns False (not a shell, but also not valid)
+    assert not P.linkedin_profile_is_shell(None)
+    assert not P.linkedin_profile_is_shell([])
+
+
+def test_anyapi_linkedin_profile_adapter_treats_empty_shell_as_miss():
+    """Verify the anyapi.linkedin.user.profile adapter's miss predicate correctly
+    identifies empty shell profiles (found=true but no substantive data)."""
+    cat = catalog_store.load()
+    adapter = cat.adapters["anyapi.linkedin.user.profile"]
+
+    # Not found is still a miss
+    assert adapter.is_miss({"output": {"found": False}})
+    assert adapter.is_miss({"output": {"found": False, "data": {}}})
+
+    # Empty shell: found=true but no substantive data
+    assert adapter.is_miss({"output": {"found": True, "data": {"name": "John Doe"}}})
+    assert adapter.is_miss({"output": {"found": True, "data": {"name": "John Doe", "followers": 100}}})
+    assert adapter.is_miss({"output": {"found": True, "data": {"name": "John Doe", "experience": [], "education": []}}})
+    assert adapter.is_miss({"output": {"found": True, "data": {"name": "John Doe", "about": "", "headline": "  "}}})
+
+    # Full profile with substantive data is a hit (not a miss)
+    assert not adapter.is_miss({"output": {"found": True, "data": {
+        "name": "Bill Gates",
+        "about": "Chair of Gates Foundation",
+        "experience": [{"company": "Microsoft"}],
+    }}})
+    # Sparse but legitimate: has at least one substantive field
+    assert not adapter.is_miss({"output": {"found": True, "data": {"name": "Bill Gates", "experience": [{"company": "Microsoft"}]}}})
+    assert not adapter.is_miss({"output": {"found": True, "data": {"name": "Bill Gates", "education": [{"school": "Harvard"}]}}})
+    assert not adapter.is_miss({"output": {"found": True, "data": {"name": "Bill Gates", "about": "Philanthropist"}}})
+    assert not adapter.is_miss({"output": {"found": True, "data": {"name": "Bill Gates", "headline": "Founder"}}})
+
+
 def test_arena_and_router_read_the_miss_block_the_same_way():
     from treg.domain import arena
     cat = catalog_store.load()
