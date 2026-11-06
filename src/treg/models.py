@@ -1131,6 +1131,22 @@ class AsyncResourceRecord(SQLModel, table=True):
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
 
 
+class CallTask(SQLModel, table=True):
+    """The provider task an async call's answer names, on every credential tier, read when treg
+    relayed that answer. `/tasks/{call_id}` follows it for the team that made the call."""
+
+    call_id: str = Field(primary_key=True)  # the X-Treg-Call-Id the caller holds
+    org_id: int = Field(index=True)
+    endpoint_id: str
+    descriptor: dict = Field(default_factory=dict, sa_column=Column("descriptor", JSON, nullable=False))
+    task_id: str | None = Field(default=None)  # NULL: the answer named no task
+    poll_url: str | None = Field(default=None)
+    # Of the bytes relayed; NULL for a routed pending answer, whose body is treg's own envelope.
+    submission_sha256: str | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    created_at: NaiveUTC = Field(default_factory=_now, index=True)
+
+
 class ProviderResource(SQLModel, table=True):
     """A durable object created with treg's shared provider credential for one organization.
 

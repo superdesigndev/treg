@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ from ..infra.db import session_maker
 from ..infra import money_admission
 from ..infra.money_session import money_session
 from ..infra.upstream.relay import relay
-from ..models import AsyncResourceRecord, AsyncTaskRecord, Hold, Org, Tool
+from ..models import AsyncResourceRecord, AsyncTaskRecord, CallTask, Hold, Org, Tool
 from ..timeutil import utcnow_naive
 from . import call_events as call_event_app
 from .call import cost as call_cost, keyslots
@@ -93,6 +94,28 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
         await db.commit()
     mk.call_id = None
     return int(hold.amount_micro)
+
+
+async def remember_call_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict, *,
+                             submission: bytes | None = None, task_id: str | None = None,
+                             poll_url: str | None = None, tags: dict | None = None) -> None:
+    """Write the `CallTask` for an async answer treg relayed. From the `submission` bytes the task
+    is read with the descriptor (none when the answer names none); a routed pending answer passes
+    the task its child started instead."""
+    digest = None
+    if submission is not None:
+        digest = hashlib.sha256(submission).hexdigest()
+        try:
+            found = asynctasks.extract_submission(descriptor or {}, json.loads(submission))
+            task_id, poll_url = found.task_id, found.poll_url
+        except (ValueError, asynctasks.ExtractionError):
+            task_id = poll_url = None
+    async with session_maker() as db:
+        db.add(CallTask(call_id=call_id, org_id=org_id, endpoint_id=endpoint_id,
+                        descriptor=_json_value(descriptor or {}), task_id=task_id,
+                        poll_url=poll_url, submission_sha256=digest,
+                        tags=dict(tags) if tags else None, created_at=utcnow_naive()))
+        await db.commit()
 
 
 def _result_id(descriptor: dict, document: object) -> str | None:

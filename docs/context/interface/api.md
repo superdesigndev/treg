@@ -254,7 +254,7 @@ the provider.
 | `X-Treg-Call-Id` | On every relayed response and every refusal treg raises before the relay, including the saturation 503 (`_stamp_call_exit`); the audit row's join key. An unexpected fault is Starlette's bare 500 with no id, but the row and `tool_called` are still recorded. |
 | `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)) and for owned free polls. Absent on own-key and own-tool calls. |
 | `X-Treg-Error: 1` | treg's own refusal on `/call/`, `/catalog/call/`, `/table/`, so a caller can tell treg's 404 from the vendor's. Status and body untouched. |
-| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; provider bytes are not read. |
+| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
 | `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
@@ -305,8 +305,8 @@ are advisory; the balance is the hard limit. `usage/by-tag` reconciles:
 `attributed_micro + unattributed_micro == total_micro`.
 
 A token minted with `--pin customer=cust_A` beats the header (mismatch is 403), and call history,
-archived results, call references, runs and shared-provider async ownership require every pinned
-tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
+archived results, call references, runs, async tasks and shared-provider async ownership require
+every pinned tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
 [multi-tenancy](../architecture/multi-tenancy.md).
 
 ### Call inspection
@@ -316,6 +316,16 @@ invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` de
 with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
 `async_task_app.views_for`. `GET /calls/{id}/result` is described in
 [archive](../architecture/archive.md).
+
+### Async tasks
+
+`POST /tasks/{call_id}` (body: the async call's answer as received) and `GET /tasks/{call_id}`
+follow the provider task an async call started, for the team and pin that made it: the first
+reads the submission without a provider call, the second makes one ordinary poll on the call
+road. Both answer one stable JSON shape (`state` pending, succeeded, failed or error, the
+terminal response, result or fetch command, resume line) with `Retry-After` from the
+descriptor's interval. Unknown and other teams' ids are 404 `task_not_found` with
+`X-Treg-Error: 1`. Mechanism and fields: [tasks](../architecture/tasks.md).
 
 ## Request transport
 

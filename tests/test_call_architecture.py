@@ -12,7 +12,7 @@ import pytest
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
-from treg.application.call import authorize, overflow, reserve, service, settle
+from treg.application.call import authorize, overflow, reserve, route, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
@@ -95,6 +95,13 @@ _DATAPLANE_DERIVED_WRITES = {
     "async_resource_ownership": (
         (service._execute_call, "async_task_app.remember_platform_resources"),
     ),
+    # `/tasks/{call_id}` follows the task an async answer names for the team that made the call, on
+    # every tier: a team's own key has no hold and no AsyncTaskRecord, and a routed caller holds
+    # the parent's id. One row per root async answer, written after the answer is read whole.
+    "call_task_record": (
+        (service._remember_task, "async_task_app.remember_call_task"),
+        (route._remember_pending_task, "async_task_app.remember_call_task"),
+    ),
     # Shared-key resource lifecycle state is part of the call's security boundary: create must
     # establish ownership before returning the upstream id, and update/delete change local state
     # only after the provider succeeds. All three mutations share the post-relay transaction.
@@ -143,6 +150,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "overflow_budget_reservation",
     "async_result_ownership",
     "async_resource_ownership",
+    "call_task_record",
     "provider_resource_ownership",
     "member_daily_cap_slot",
     "provider_concurrency_lease",
@@ -186,10 +194,12 @@ _DERIVED_WRITE_FILES = {
         "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
+        "async_task_app.remember_call_task",
         "provider_resources.register",
         "provider_resources.rename",
         "provider_resources.tombstone",
     },
+    _SRC / "application" / "call" / "route.py": {"async_task_app.remember_call_task"},
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
     _SRC / "domain" / "governance" / "publicdemo.py": {
         "ratestore.sweep", "ratestore.rate_check",
@@ -242,6 +252,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "async_task_app.observe_owned_poll"),
     ("application/call/service.py", "_execute_call",
      "async_task_app.remember_platform_resources"),
+    ("application/call/service.py", "_remember_task", "async_task_app.remember_call_task"),
+    ("application/call/route.py", "_remember_pending_task", "async_task_app.remember_call_task"),
     ("application/call/service.py", "_apply_managed_resource_result",
      "provider_resources.register"),
     ("application/call/service.py", "_apply_managed_resource_result",

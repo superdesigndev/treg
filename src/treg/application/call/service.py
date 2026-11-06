@@ -49,6 +49,7 @@ from .evidence import (
     _ERROR_MASKING_FAILED,
     _ERROR_RESPONSE_MAX,
     _caller_request_snippet,
+    _decompress_for_scan,
     _error_response_evidence,
     _redact_snippet,
     _ERROR_SCAN_MAX,
@@ -122,6 +123,10 @@ class _ApplicationRequest:
         )
         self.db = session_maker()
         self.lease: asyncio.Task | None = None
+
+
+# An async answer is a task ticket; one this large is not, and is relayed without a record.
+_TASK_ANSWER_MAX = 2 * 1024 * 1024
 
 
 def _served_response(served: dict, body: bytes) -> UpstreamResponse:
@@ -1370,6 +1375,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                        _ERROR_RESPONSE_MAX)))
             raise
     body = b""
+    task_answer: bytes | None = None
+    task_answer_read = False
     response: UpstreamResponse | None = None
     sent = False   # the request left for the provider: a cancel from here on may follow its effect
     started = _now_ms()
@@ -1647,6 +1654,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # snapshot's origin — the archive decides who else it may serve.
                 response, whole = await _read_whole_if_small(
                     response, get_settings().archive_max_body_bytes)
+                task_answer, task_answer_read = whole, True
                 if (whole is not None and not _echoes_own_credential(tool, secrets, whole)
                         and not _unfinished_submission(mk, whole)):
                     body = whole
@@ -1677,6 +1685,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     response = _with_body(response, body)
                 else:
                     response, body = await _peek_stream_head(response, _ERROR_BODY_SLICE)
+            if (not task_answer_read and _names_task(mk, call_ref) and not mk.metered
+                    and not mk.free_owned_poll and 200 <= response.status < 300):
+                response, task_answer = await _read_whole_if_small(response, _TASK_ANSWER_MAX)
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
@@ -1940,6 +1951,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
             request.state.idem_claim = None      # dealt with; nothing left to release
+        if (_names_task(mk, call_ref) and 200 <= response.status < 300 and spooled_bytes is None
+                and not streaming_free_result and not served_via):
+            try:
+                await _remember_task(mk, caller.org_id, meta.tags, call_ref, body)
+            except asyncio.CancelledError:
+                await _finish_cancelled_call(request, mk, call_ref, response)
+                raise
         # Tell the caller what the call actually cost (llms.txt and skill.md tell an agent to report
         # it). Set only on a METERED call: a team's own key is never charged, and a `0` there would
         # read as "free" rather than "not applicable".
@@ -1991,6 +2009,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise
         request.state.idem_claim = None
+    if task_answer is not None and _names_task(mk, call_ref) and 200 <= response.status < 300:
+        identity = _decompress_for_scan(task_answer, _response_header(response, "content-encoding") or "")
+        if identity is not None:
+            try:
+                await _remember_task(mk, caller.org_id, meta.tags, call_ref, identity)
+            except asyncio.CancelledError:
+                await _finish_cancelled_call(request, mk, call_ref, response)
+                raise
     _set_response_header(response, "X-Treg-Call-Id", call_ref)
     if free_poll:
         _set_response_header(response, "X-Treg-Cost-Micro", "0")
@@ -2048,6 +2074,21 @@ def _submits(mk) -> bool:
     """A row whose answer may be a job or task id rather than an answer: it creates something the
     caller owns (`resource_ownership.produces`: a job, a snapshot, a crawl) or it is async."""
     return bool((mk.resource_ownership or {}).get("produces") or mk.async_descriptor)
+
+
+def _names_task(mk, call_ref: str) -> bool:
+    """An answer `/tasks/` may follow: an async row's, on a root call. A routed child's task is
+    named under its parent's id, by the parent (route.py)."""
+    return mk is not None and bool(mk.async_descriptor) and ":" not in call_ref
+
+
+async def _remember_task(mk, org_id: int, tags: dict | None, call_ref: str, answer: bytes) -> None:
+    try:
+        await async_task_app.remember_call_task(
+            call_ref, org_id, mk.endpoint_id, mk.async_descriptor, submission=answer, tags=tags)
+    except Exception:
+        logging.getLogger("treg.asynctasks").warning(
+            "could not record the task of call %s on %s", call_ref, mk.endpoint_id, exc_info=True)
 
 
 def _unfinished_submission(mk, body: bytes) -> bool:

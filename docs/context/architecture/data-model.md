@@ -162,6 +162,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
   double charge. The audit writer locks the task row before inserting the submission `CallRecord`,
   so a poll finishing first still gives that row its `hit`/`verdict`; when the audit row wins, the
   finalizer queues a background correction. Both key on the original `call_ref`.
+- **`CallTask`** names the provider task of every root async answer, on any tier, by the call id the
+  caller holds (a routed pending answer by its parent's). It is no money record; `/tasks/` reads
+  it by primary key ([tasks](tasks.md)).
 - **`EndpointStatDirty`**: marker writes never commit on their own; audit marks the day in the
   same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
 - **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
@@ -302,8 +305,8 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
 ## Caller tags (`X-Treg-Meta`)
 
 `TagSpend` is written only by `domain/money` inside the money transaction; `TagBudget` rows are
-auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord` and
-`AsyncResourceRecord` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
+auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord`,
+`AsyncResourceRecord` and `CallTask` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
 snapshots are invisible to pinned readers. The reserve entry's `LedgerEntry.meta.tags` freezes
 attribution, allowing scoped ledger-only reads after audit loss. Design: [money](money.md).
 

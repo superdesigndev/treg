@@ -200,6 +200,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0095_ledgerentry_grant_index.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0096_route_rule_version.py` | architecture/data-model.md, architecture/route-rules.md |
 | `src/treg/alembic/versions/0097_referral_affiliate.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0098_call_task.py` | architecture/tasks.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -207,7 +208,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/arena.py` | architecture/org-endpoint-quota.md, interface/enrich-arena.md |
 | `src/treg/application/arena_insights.py` | interface/enrich-arena.md |
 | `src/treg/application/arena_verification_insights.py` | interface/enrich-arena.md |
-| `src/treg/application/asynctasks.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md |
+| `src/treg/application/asynctasks.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/tasks.md |
 | `src/treg/application/auth.py` | architecture/data-model.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/onboarding.md |
 | `src/treg/application/billing.py` | architecture/money.md |
 | `src/treg/application/call/__init__.py` | architecture/import-boundaries.md |
@@ -272,6 +273,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/showcase.py` | architecture/showcase.md |
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, architecture/policy-extensions.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
+| `src/treg/application/tasks.py` | architecture/tasks.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -480,6 +482,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/showcase.py` | architecture/showcase.md |
 | `src/treg/routers/signup_cookies.py` | interface/api.md |
 | `src/treg/routers/table.py` | architecture/org-traffic.md, architecture/table.md |
+| `src/treg/routers/tasks.py` | architecture/tasks.md |
 | `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/runner.py` | interface/api.md |
@@ -712,6 +715,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_table_oauth.py` | architecture/table.md |
 | `tests/test_tag_billing.py` | architecture/proxy-model.md |
 | `tests/test_tag_billing_adversarial.py` | architecture/proxy-model.md |
+| `tests/test_tasks.py` | architecture/tasks.md |
 | `tests/test_team_limit.py` | architecture/multi-tenancy.md |
 | `tests/test_tinyfish.py` | architecture/money.md |
 | `tests/test_token_revocation.py` | architecture/multi-tenancy.md |
@@ -756,6 +760,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
+| `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `test_tasks.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
 | `interface/cli.md` | `cli.py`, `cli_view.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |

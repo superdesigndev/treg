@@ -437,6 +437,8 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
     ("/table/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "table_tool"),
+    ("/tasks/{call_id}", ("POST",), "task_submission"),
+    ("/tasks/{call_id}", ("GET",), "task_look"),
     # MCP is calling traffic, so its mount and its RFC 9728 resource metadata belong to the
     # dataplane. Token issuance (consent, /oauth/*) stays on control; the dataplane only validates.
     ('/.well-known/oauth-protected-resource/mcp', ('GET',), 'oauth_protected_resource'),
