@@ -45,6 +45,9 @@ def _drive(cli, argv, home, steps, timeout=30.0):
     seen = b""
     deadline = time.monotonic() + timeout
     pending = list(steps)
+    # A pty master can stay readable with nothing to read once the child is gone, so reads never
+    # block and an exited child with nothing left to read ends the loop.
+    os.set_blocking(master, False)
     try:
         # The slave stays open here until the child exits, so the master never reads a premature EOF.
         while time.monotonic() < deadline:
@@ -54,12 +57,14 @@ def _drive(cli, argv, home, steps, timeout=30.0):
                 continue
             exited = proc.poll() is not None
             ready, _, _ = select.select([master], [], [], 0.1)
+            chunk = b""
             if ready:
                 try:
-                    seen += os.read(master, 65536)
+                    chunk = os.read(master, 65536)
                 except OSError:
                     pass
-            elif exited:
+                seen += chunk
+            if exited and not chunk:
                 break
     finally:
         if proc.poll() is None:
