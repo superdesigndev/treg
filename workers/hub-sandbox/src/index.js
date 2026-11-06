@@ -55,6 +55,9 @@ function csv(text) {
   });
 }
 
+// The parent's log caps (sandbox.py MAX_LOG_LINES, MAX_LOG_CHARS), applied before a line is held.
+const MAX_LOG_LINES = 50, MAX_LOG_CHARS = 2000;
+
 function makeCtx(bridge, inputs, data) {
   const logs = [];
   // QuickJS delivers charge and call before charge()/call() return to the script. A worker
@@ -78,7 +81,7 @@ function makeCtx(bridge, inputs, data) {
       }));
     },
     csv: csv,
-    log(text) { logs.push(String(text)); },
+    log(text) { if (logs.length < MAX_LOG_LINES) logs.push(String(text).slice(0, MAX_LOG_CHARS)); },
     charge(usd, label) {
       return track(bridge.op({ op: "charge", usd: Number(usd), label: String(label === undefined ? "" : label) }).then((reply) => {
         if (!reply || reply.op === "refused") throw new Error((reply && reply.error) || "refused");
