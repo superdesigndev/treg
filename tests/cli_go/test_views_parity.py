@@ -4,6 +4,7 @@ that builds them itself: bare `treg`, `catalog`, `catalog search|get|request`, `
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -114,9 +115,21 @@ CATALOG = [
 @pytest.mark.parametrize("json_flag", [False, True], ids=["text", "json"])
 @pytest.mark.parametrize("argv", CATALOG, ids=" ".join)
 def test_catalog(tmp_path, live, team, go_bin, argv, json_flag, signed_in):
+    if argv[1:2] == ["get"] and len(argv) > 2:
+        _warm_observations(live, argv[2])
     py, go = _pair(tmp_path, live.url, go_bin, (["--json"] if json_flag else []) + argv,
                    config=_signed_in(team) if signed_in else {})
     _same(py, go) if not json_flag else _same_json(py, go)
+
+
+def _warm_observations(live, endpoint_id: str) -> None:
+    """`observed_pending` says the observation cache had not read an endpoint yet and fills in on
+    its own; read it until it has, so both CLIs see the same answer."""
+    for _ in range(50):
+        r = live.http.get(f"/catalog/endpoints/{endpoint_id}")
+        if r.status_code != 200 or not r.json().get("observed_pending"):
+            return
+        time.sleep(0.1)
 
 
 def _same_json(py, go):
