@@ -184,12 +184,15 @@ def _tavily_result_count(endpoint_id: str, doc: object) -> int | None:
 
 
 def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
-    """People returned by CompanyEnrich's search, floored at one: a person is 2 credits, and an
-    empty page still costs the 2-credit minimum (catalog note, verified live). The reserve is the
-    requested `pageSize`, so without counting an empty `{"items": []}` settled a whole page."""
+    """Rows returned by a CompanyEnrich search, floored at one. The provider bills each person or
+    company returned at the row's credits (2 a person, 1 a company, 5 a lookalike) and an empty
+    page at one row (catalog notes, verified live). The reserve is the requested `pageSize`, so
+    without counting an empty `{"items": []}` settled a whole page."""
     if endpoint_id not in (
         "companyenrich.people.search",
         "companyenrich.people.search.scroll",
+        "companyenrich.companies.search",
+        "companyenrich.companies.similar",
     ):
         return None
     if not isinstance(doc, dict):
@@ -197,7 +200,7 @@ def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
     items = doc.get("items")
     if not isinstance(items, list):
         return None
-    # 2 credits per person, minimum 1 unit charged (the 2-credit minimum on empty)
+    # An empty page still bills one row's credits.
     return max(len(items), 1)
 
 
