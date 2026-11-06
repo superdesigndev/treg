@@ -172,9 +172,9 @@ The writing rules no check can judge:
 - **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
   probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
   X, Y").
-- **Summary.** Lead with verb + object + key outputs; lead with the essentials: CLI search shows
-  only the start of a summary. Positive only: a limit or trap goes to a note, because a negation in a searched
-  field matches the query it denies. No parameter or output-column lists.
+- **Summary.** Verb + object + key outputs; lead with the essentials: CLI search shows only the
+  start of a summary. Positive only: a limit or trap goes to a note, because a negation in a
+  searched field matches the query it denies. No parameter or output-column lists.
 - **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
   specific home. No price derivation.
 - **Both.** State the present fact; never argue with an earlier version. Do not contradict another
