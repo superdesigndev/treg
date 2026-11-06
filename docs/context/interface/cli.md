@@ -9,6 +9,7 @@ sources:
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
+  - src/treg/web/install.sh
   - src/treg/cli_session.py
   - src/treg/convert.py
   - src/treg/agents.py
@@ -206,3 +207,10 @@ send nothing unless `TREG_CLI_POSTHOG_KEY` is set. `TREG_TELEMETRY=0|false|off` 
 disables analytics, id creation, the process walk and both session headers. Capture runs in a daemon
 thread with a short timeout and wait budget; telemetry failures are silent and never change output or
 exit status.
+
+`install.sh` reports `cli_install_step` under the same rules: `started`, then `installed` (with
+`on_path`) or `failed` with a fixed `reason` (`install_command`, `python_version`, `no_installer`),
+carrying the installer used, the prior and new CLI versions, OS, architecture and whether a short
+link or token was passed, never the token. The route templates the server's `posthog_key`, so a
+registry without one sends nothing. The installer writes `analytics-id` when it is missing, so the
+first command joins the install that produced it.

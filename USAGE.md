@@ -634,3 +634,7 @@ slow or offline delivery may be dropped.
 Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
 no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
 PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.
+
+The `install.sh` installer reports the same way: each run sends whether it started, installed or
+failed (with a fixed reason), the installer it used (uv, pipx or pip3), the CLI version before and
+after, OS and architecture, under the same installation ID. The same two variables turn it off.
