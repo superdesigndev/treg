@@ -995,10 +995,10 @@ returned and never documented as stable. An output field may say where it lands 
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
   both were sent (`min_results = limit`, merge on). A key counts as sent by the same test as
-  identity matching (a blank string is not sent). `people.search` lists only `{q}`: a free-text
-  search asks for everyone who fits, while a company lookup stays one provider's answer. Not
-  `{q, company_domain}` either: crawl4ai, next after the semantic searches, answers it through its
-  `{company_domain}` variant without `q`, and merged rows would add the company's other people.
+  identity matching (a blank string is not sent). `people.search` lists `{q}` and
+  `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
+  stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
+  because scoping drops any that answer it by company alone (below).
 - `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
   people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
@@ -1145,7 +1145,11 @@ an invalid extra never disables the primary.
   exa and parallel fold `company_domain` into the query text (`join(q, company_domain, …)`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
   that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
-  builds from the title, still skips them. The stand-in key itself always counts as sent.
+  builds from the title, still skips them. The stand-in key itself always counts as sent, and a
+  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key: a
+  caller's `q` counts as sent only when the adapter's matched variant carries `q` or a key the
+  stand-in is built from (`title`). crawl4ai answers `{company_domain, q}` through `{company_domain}`
+  and is dropped; icypeas answers `{q, title}` through `{title}` and stays.
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

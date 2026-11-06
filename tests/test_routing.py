@@ -294,8 +294,17 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
         assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
         scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
         assert unscoped(ad, contract, scoped) == ("company_domain",), "a domain on a built q is a guess"
-    # crawl4ai answers this shape without q, so filling to the limit would add the company's others
-    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) is None
+    # A provider that answers this shape by company alone drops what q asked; one with the title
+    # in its variant still answers {q, title}
+    for eid in ("crawl4ai.people.search", "icypeas.people.search"):
+        assert unscoped(cat.adapters[eid], contract, asked) == ("q",)
+    titled_q, _ = canonical_identity(contract, {"q": "backend engineer", "title": "Backend Engineer"})
+    assert not unscoped(cat.adapters["icypeas.people.search"], contract, titled_q)
+    # A text join skips a list, so a domain sent as one is not carried
+    listed, _ = canonical_identity(contract, {"q": "executives", "company_domain": ["openai.com"]})
+    assert unscoped(cat.adapters["exa.people.search"], contract, listed) == ("company_domain",)
+    # Only providers that send both remain, so the shape fills to the caller's limit like a bare q
+    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) == 20
     assert contract.fill_target({"q": "   ", "limit": 5}) is None, "a blank q is not sent"
     assert contract.fill_target({"q": "executives", "limit": 5}) == 5
     # An adapter that sends its stand-in only through an expression still sends the keys inside it
@@ -2008,8 +2017,25 @@ async def test_a_q_search_fills_to_the_limit_the_caller_sent(clients: AsyncClien
     assert [p for p, *_ in seen] == ["exa"] and "merged_from" not in r2.json()["_treg"]
 
 
+async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
+        clients: AsyncClient, people_search_on, monkeypatch):
+    """{company_domain, q}: exa and parallel send both; crawl4ai and icypeas would answer by company
+    alone, so when both semantic searches miss the answer is a miss, not the company's interns."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(200, {"results": []})], "parallel": [(200, {"entities": []})],
+         "*": [(200, {"data": [{"name": "Intern"}]})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"q": "executives", "company_domain": "example.com", "limit": 3})
+    assert r.status_code == 200, r.text
+    assert sorted(p for p, *_ in seen) == ["exa", "parallel"] and not (r.json()["output"] or {}).get("people")
+    assert seen[0][3].get("query", seen[0][3].get("objective")) == "executives example.com"
+
+
 @pytest.mark.parametrize("body, target", [
     ({"q": "head of tax", "limit": 15}, 15),
+    ({"q": "head of tax", "company_domain": "stripe.com", "limit": 15}, 15),
+    ({"q": "   ", "company_domain": "stripe.com", "limit": 15}, None),   # a blank q was not sent
     ({"q": "head of tax", "limit": 15, "country": "US", "keywords": ["vat"]}, 15),   # filters are not identity
     ({"q": "head of tax"}, None),                                  # the contract default is no one's ask
     ({"q": "head of tax", "limit": 1}, None),                      # one row is reached by any hit

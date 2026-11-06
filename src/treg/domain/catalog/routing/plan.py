@@ -69,15 +69,29 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     standing = {k for k in stand_in if identity.get(k) in (None, "")}
     # A key folded into a stand-in's text (`join(q, company_domain)`) scopes only a `q` the caller
     # wrote: on a `q` treg built from a title, a domain in the text is a guess, not a scope. The
-    # stand-in key itself is still sent.
+    # stand-in key itself is still sent. Text joins skip a non-string, so a list is not carried.
     used = set(adapter.in_map)
     for expr in (adapter.in_expr or {}).values():
         names = set(re.findall(r"[A-Za-z_]\w*", expr))
-        used |= (names & standing) or names
+        if not names & set(stand_in):
+            used |= names
+        elif names & standing:
+            used |= names & standing
+        else:
+            used |= {n for n in names if identity.get(n) is None or isinstance(identity[n], str)}
     # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
     for k, expr in stand_in.items():
         if k in used and k in standing:
             used |= set(re.findall(r"[A-Za-z_]\w*", expr))
+    # A free-text key the caller wrote rides only in the variant the adapter matched. A variant
+    # with a key the stand-in is built from (`title`) still asks the same thing in fields, but one
+    # that answers {company_domain, q} by {company_domain} alone drops what q asked for.
+    variant = set(adapter_accepts(adapter, identity) or ()) if stand_in.keys() - standing else set()
+    for k in stand_in.keys() - standing:
+        if variant & ({k} | set(re.findall(r"[A-Za-z_]\w*", stand_in[k]))):
+            used.add(k)
+        else:
+            used.discard(k)
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
