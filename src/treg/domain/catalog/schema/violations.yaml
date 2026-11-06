@@ -9,7 +9,6 @@ endpoint_keys:
   authorization_methods: {provider: instagram}
   authorization_paths: {provider: instagram}
   caller_email: {provider: crawl4ai}
-  observed_cost: {provider: dataforseo}
   observed_from: {provider: crawl4ai}
   platform_auth: {provider: financialdatasets}
   required_resource: {provider: instagram}

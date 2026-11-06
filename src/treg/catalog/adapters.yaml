@@ -808,7 +808,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.limit: limit}
     body_array: true
     out: {keywords: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count"}
-    miss: "tasks[0].result[0].items == []"
   seranking.google.keywords.ideas:
     accepts: [[keyword]]
     in:  {keyword: queryParams.keyword}
@@ -830,7 +829,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.depth: limit}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-google-organic-live-advanced:
     accepts: [[q]]
     in:  {q: body.keyword}
@@ -838,7 +836,6 @@ adapters:
               body.load_async_ai_overview: "choose(ai_overview, true, null)"}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.google.serp.organic:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1426,7 +1423,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {places: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-maps:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1509,7 +1505,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {rows: "tasks[0].result"}
-    miss: "tasks[0].result == []"
   seranking.google.keywords.volume:
     accepts: [[keywords]]
     in:  {keywords: body.keywords}
@@ -1522,7 +1517,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)"}
     body_array: true
     out: {series: "tasks[0].result[0].items"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-trends:
     accepts: [[keywords]]
     in:  {}
@@ -1537,7 +1531,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.depth: limit}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   litescrape.google.serp.news:
     accepts: [[q]]
     in: {q: queryParams.q}
@@ -1706,7 +1699,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-local:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1798,7 +1790,6 @@ adapters:
     in:  {target: body.target}
     body_array: true
     out: {summary: "tasks[0].result[0]", backlinks: "tasks[0].result[0].backlinks", referring_domains: "tasks[0].result[0].referring_domains"}
-    miss: "tasks[0].result[0] == null"
   seranking.web.backlinks.summary:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -1905,14 +1896,12 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-bing-organic-live-regular:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.bing-search:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1961,7 +1950,6 @@ adapters:
     const: {body.mode: one_per_domain}
     body_array: true
     out: {backlinks: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count", next_cursor: "tasks[0].result[0].search_after_token"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.backlinks.list:
     accepts: [[target]]
     in:  {target: body.target}
@@ -1984,7 +1972,6 @@ adapters:
     const: {body.rank_scale: one_hundred}
     body_array: true
     out: {metrics: "tasks[0].result[0].items[0]"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.url.metrics:
     accepts: [[target]]
     in:  {target: body.targets}
@@ -2360,7 +2347,6 @@ adapters:
     in_expr: {body.limit: limit}
     body_array: true
     out: {anchors: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.anchors.list:
     accepts: [[target]]
     in:  {target: body.target}
@@ -2410,14 +2396,12 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-yahoo-organic-live-regular:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.yahoo-search:
     accepts: [[q]]
     in:  {q: queryParams.p}
@@ -2994,7 +2978,6 @@ adapters:
     body_array: true
     out: {answer: "tasks[0].result[0].items[0].sections[0].text",
           sources: "tasks[0].result[0].items[0].sections[0].annotations", source_kind: "'model_api'"}
-    miss: "tasks[0].result[0].items[0].sections[0].text == null"
   perplexity.web.search.fast:
     accepts: [[q]]
     in: {q: body.query}
