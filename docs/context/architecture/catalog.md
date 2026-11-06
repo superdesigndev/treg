@@ -1146,10 +1146,16 @@ an invalid extra never disables the primary.
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
   that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
   builds from the title, still skips them. The stand-in key itself always counts as sent, and a
-  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key: a
-  caller's `q` counts as sent only when the adapter's matched variant carries `q` or a key the
-  stand-in is built from (`title`). crawl4ai answers `{company_domain, q}` through `{company_domain}`
-  and is dropped; icypeas answers `{q, title}` through `{title}` and stays.
+  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key, typed
+  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
+  (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
+  dropped; icypeas answers `{q, title}` through `{title}` and stays.
+- **Scoping reads the request this call sends**: `to_upstream` sends a mapped (`in`) field only
+  when it is in the matched variant, so `unscoped` counts it only then (`in_expr` always runs, so
+  its keys always count). An adapter whose upstream takes filters together declares the combined
+  variants first (`[full_name, title, company_domain]` before `[company_domain]`), or a request
+  with all of them goes out with the first one alone.
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.
