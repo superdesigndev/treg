@@ -280,6 +280,26 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    # What this routed call's async children settled through their task (not via the parent's
+    # `deferred_settles`): money a later failure of an enclosing routed call cannot release.
+    settled_outside_micro: int = 0
+    # Set by `run_routed` on every exit, for an enclosing routed call's budget: what this routed
+    # call moved (on success what it charges, on failure only what it could not release).
+    routed_spent_micro: int = 0
+    # Holds of async children whose result is in but whose task has not settled yet (the usage
+    # figure is still to come): the worker settles each later, from zero to the hold.
+    unsettled_micro: int = 0
+    # A routed call nested in another (the find's check) writes its own audit row here instead of
+    # at once; the enclosing call writes it once it knows whether the money stands (`child_audits`
+    # is the list this call owns for its own nested children).
+    deferred_audits: list | None = None
+    child_audits: list | None = None
+    # Every hold id a routed call (and the routed calls nested in it) may have opened: the exact
+    # ids its closing ledger read looks up (with each one's `:overflow`), never a prefix scan.
+    money_refs: list | None = None
+    # Set when a routed call's money closed but the request was cancelled before it returned: the
+    # answer and its charge, so the caller's idempotency key keeps that result (no second charge).
+    routed_result: tuple | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.

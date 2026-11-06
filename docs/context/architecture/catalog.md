@@ -933,7 +933,7 @@ returned and never documented as stable. An output field may say where it lands 
   contact is not a confirmed one); a search contract has no `verified` output, so its advice
   attaches to every hit. treg never chains a verify call by default.
 - `check` (opt-in via `X-Treg-Route-Verify`): after a hit `_run_check` runs the check endpoint as an
-  ordinary linked child `:v` through `execute_call`, with its own hold and charge, the cost ceiling
+  ordinary linked child `:v` (then `:v2`, `:v3`) through `execute_call`, with its own hold and charge, the cost ceiling
   the find left, and `prefer` applying to that call only (below the team's own key). A check that
   does not fit, is refused or fails never fails the find (`checked: false` with a `reason`, cost 0;
   `no_hit` when the find missed). A direct (non-routed) check leaves its hold in the find's
@@ -943,8 +943,45 @@ returned and never documented as stable. An output field may say where it lands 
   other than `valid` on a `verified: true` hit attaches `disagree_advice`; `output.verified` itself
   is never altered. A check's `when` and `skip_reason` skip a hit before any call (a phone not in
   international form is `not_international`, because HLR reads national digits as a country code),
-  and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
-  422 before planning.
+  and its `skip_advice` replaces the find's advice. A completed `invalid` verdict drops the hit: a
+  plain hit is checked inside the waterfall, becomes a `miss` in `tried` and the next candidate is
+  asked; a winner chosen after the loop (weak, unconfirmed, undecided, off-domain, upgraded) is
+  checked there and, if invalid, the call answers a 200 miss with null output, `verification.withheld`
+  and every check in `_treg.checks` (when more than one ran; a 202 after checks lists them too).
+  A value found invalid is remembered (trimmed, case-folded) for the rest of the call: another
+  provider returning it is a miss without a second check. Each find and check still settles, and a
+  routed check (and an upgrade `:u`) hands its holds to the find's `pending`, so a find that fails
+  or is cancelled after it charges it nothing. An async check whose task settled on its own cannot
+  be released, and neither can an overflow aggregator's charge (it settles at once, outside
+  `pending`): any child or check charge with no hold of its own in `pending` counts (matched by
+  hold id, so `ref:overflow` is the child's; `CallContext.settled_outside_micro`). An async
+  kickoff that left no open hold (overflow bills on submission) is reported charged on its 202,
+  never as a reservation. What the caller is told is read back, not inferred: once the top-level
+  routed call closed its holds, `_finish_records` reads the ledger in ONE statement (one snapshot)
+  over the exact hold ids the call and its nested calls opened (`CallContext.money_refs`, each with
+  its `:overflow`): settle entries and holds still open. It restates `_treg.charged_micro` (and
+  `held_micro`, a 202's `reserved_micro`) from it, returns that figure (the cost header, the call
+  event, the idempotent record), and writes every deferred record (its own audit row, its nested
+  calls' rows and events) at what the ledger settled under each one's ref. A read that fails after
+  retries keeps the amounts the call computed, never zero. Closing and reading is one step a
+  cancellation cannot split; a request cancelled after it keeps its result under the idempotency
+  key (`routed_result`), so a retry replays it. It also runs on failure and cancellation. After that, a later provider error, refusal
+  (balance, caller fault) or not-found ends in the null miss that charges what was paid, never a
+  zero-charge failure, for any routed call. A cancelled request still pays a settled or still
+  running async task, like any async call. `run_routed` leaves `routed_spent_micro` (what it moved;
+  on failure only what it could not release) on its context; the find spends that and a pending
+  check's hold from the ceiling. An async child whose result came before its task settled (Enrow
+  before `credits_used`) is held, not charged: `_treg.unsettled` names it with its hold, the
+  worker settles it later from zero to the hold, and the call counts as committed. A nested routed
+  call (the check `:v`, the upgrade `:u`) hands its audit row and call event to the top-level call
+  through `deferred_audits`; they are written from the ledger as above. A pending check's 202
+  hands back every unsettled hold (`unsettled`, with `call_id`) with its own, and all of them are
+  spent from the ceiling.
+  A pending check's hold counts against `X-Treg-Route-Max-Cost` for every later call. When an
+  upgrade's value is invalid, the answer it replaced is checked and returned, and
+  `_treg.upgrade` says `reason: invalid`. With `X-Treg-Route-Confirm`, the off-domain fallback is
+  the first off-domain value a second provider also returned.
+  The header on a contract without `check` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
@@ -1119,8 +1156,10 @@ an invalid extra never disables the primary.
   publishing them must keep the hit floor and use corrected terminal evidence.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
-  matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered.
+  matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it.
+  On a contract that names that advice, an off-domain hit is billed but `weak`: the waterfall goes on
+  and an on-domain hit wins, a weak one (Min-Results, Complete) included; the first off-domain one
+  returns, flagged, only when none turns up, confirmed when a second provider returned the same.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a

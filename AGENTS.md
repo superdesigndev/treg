@@ -66,7 +66,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
-   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   hold and charge, and reports it in `_treg.verification`; a hit the check calls invalid is dropped
+   and the waterfall goes on, so an answer treg knows is bad is never returned (all invalid = a null
+   miss). On the email find, a hit at another domain than the one sent is weak: an on-domain answer
+   from a later provider wins, and the off-domain one returns flagged only as a last resort. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps

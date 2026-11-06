@@ -60,9 +60,10 @@ class Contract:
     # nobody vouched for. A suggestion only unless the caller asks for the check (`check`, below).
     advice_unverified: str = ""
     # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
-    # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
-    # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
-    # employer when the caller also sent a domain.
+    # the domain the caller asked for (`_treg.domain_match: false`). Naming it also makes such a hit
+    # weak: the waterfall looks for an on-domain answer first and returns this one only as a last
+    # resort. Empty = flag only, no advice, answer unchanged. A LinkedIn-only child often returns a
+    # former employer when the caller also sent a domain.
     advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no

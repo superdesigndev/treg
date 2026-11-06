@@ -1024,22 +1024,94 @@ async def test_an_unverified_hit_carries_verify_advice(clients: AsyncClient, enr
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900, "the find, nothing chained"
 
 
-async def test_off_domain_hit_sets_domain_match_false(clients: AsyncClient, enrichment_on, monkeypatch):
-    """When the caller sent a domain and the child returns an address at another host (a LinkedIn-
-    only finder returning a former employer), the hit is still billed and the address is unchanged,
-    but `_treg.domain_match` / `X-Treg-Domain-Match` disclose the mismatch and advice names it."""
+async def test_an_off_domain_hit_is_returned_flagged_only_when_nothing_on_domain_turns_up(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """When the caller sent a domain and a child returns an address at another host (a LinkedIn-
+    only finder returning a former employer), the hit is billed but weak: the waterfall asks the
+    rest. With every other provider missing, that address comes back unchanged, `weak`, and
+    `_treg.domain_match` / `X-Treg-Domain-Match` and the advice say why it should not be trusted."""
+    seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tomba": [(200, {"data": {"email": "alan@othercorp.example", "score": 90,
-                                    "verification": {"status": "valid"}}})]}, []))
+                                    "verification": {"status": "valid"}}})],
+         "*": [(404, {})] * 8}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Alan Marquez", "domain": "pruittstructures.com"})
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["output"]["email"] == "alan@othercorp.example", "the child's answer is not rewritten"
-    assert d["_treg"]["outcome"] == "hit" and d["_treg"]["domain_match"] is False
+    assert d["_treg"]["served_by"] == "tomba.people.email.find"
+    assert d["_treg"]["outcome"] == "weak" and d["_treg"]["domain_match"] is False
+    assert len(seen) > 1, "the waterfall went on past the off-domain hit"
+    assert d["_treg"]["tried"][0]["outcome"] == "weak"
+    assert d["_treg"]["tried"][0]["detail"] == "email at another domain than the one sent"
     assert r.headers["X-Treg-Domain-Match"] == "false"
     assert "domain_match" in d["_treg"]["advice"] and "different domain" in d["_treg"]["advice"]
-    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900
+    total = int(r.headers["X-Treg-Cost-Micro"])
+    assert total == d["_treg"]["charged_micro"] == sum(t["charged_micro"] for t in d["_treg"]["tried"])
+    assert before - await _balance(clients) == total and total >= 8_900, "each attempt at its own price"
+
+
+async def test_an_on_domain_hit_from_a_later_provider_beats_an_off_domain_one(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """A sister-domain answer (acme-tools.com asked, a .de address returned): an off-domain first hit is
+    weak, and a later provider's address at the asked domain is the answer. Both finds are billed."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "ada@acme-tools.de", "score": 90,
+                                    "verification": {"status": "valid"}}})],
+         "hunter": [(200, {"data": {"email": "ada@acme-tools.com", "score": 92,
+                                     "verification": {"status": "valid"}}})],
+         "*": [(404, {})] * 8}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert [p for p, *_ in seen][:2] == ["tomba", "hunter"]
+    assert d["output"]["email"] == "ada@acme-tools.com"
+    assert d["_treg"]["served_by"] == "hunter.people.email.find" and d["_treg"]["outcome"] == "hit"
+    assert d["_treg"]["domain_match"] is True and r.headers["X-Treg-Domain-Match"] == "true"
+    assert "different domain" not in d["_treg"].get("advice", "")
+    assert [(t["provider"], t["outcome"]) for t in d["_treg"]["tried"]] == [("tomba", "weak"), ("hunter", "hit")]
+    total = int(r.headers["X-Treg-Cost-Micro"])
+    assert all(t["charged_micro"] > 0 for t in d["_treg"]["tried"])
+    assert total == sum(t["charged_micro"] for t in d["_treg"]["tried"]) == before - await _balance(clients)
+
+
+async def test_two_providers_agreeing_on_one_off_domain_address_confirm_it(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    same = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [same], "hunter": [same], "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter", "X-Treg-Route-Confirm": "true"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "ada@acme-tools.de" and d["_treg"]["domain_match"] is False
+    assert d["_treg"]["confirmation"] == {"field": "email", "confirmed": True, "confirmed_by": "hunter"}
+
+
+@pytest.mark.parametrize("headers", [{"X-Treg-Route-Min-Results": "2"}, {"X-Treg-Route-Complete": "true"}])
+async def test_a_weak_on_domain_hit_beats_an_earlier_off_domain_one(
+    clients: AsyncClient, enrichment_on, monkeypatch, headers,
+):
+    """An on-domain answer wins even when it is weak too (Min-Results or Complete): the off-domain
+    one is the last resort, never just the first weak answer."""
+    off = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    on = (200, {"data": {"email": "ada@acme-tools.com", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [off], "hunter": [on], "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter", **headers})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "ada@acme-tools.com" and d["_treg"]["served_by"] == "hunter.people.email.find"
+    assert d["_treg"]["domain_match"] is True
+    assert "different domain" not in d["_treg"].get("advice", "")
 
 
 async def test_matching_domain_hit_sets_domain_match_true(clients: AsyncClient, enrichment_on, monkeypatch):
@@ -2574,7 +2646,7 @@ async def test_adapter_from_upstream_throws_after_child_200_waterfall_continues(
     monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
         '*': [(200, {'data': None})] * 10,  # Other providers return miss-like response
         'tomba': list(tomba_answers),
-        'hunter': [(200, {'data': {'email': 'found@example.test', 'score': 80, 'verification': {'status': 'valid'}}})],
+        'hunter': [(200, {'data': {'email': 'found@example.com', 'score': 80, 'verification': {'status': 'valid'}}})],
     }, seen))
 
     r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'})
@@ -2628,7 +2700,7 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
 
 @pytest.mark.parametrize(("error_code", "tomba_answers", "status", "outcome"), [
     # a semantic miss, not a caller fault: the waterfall continues and the parent does not 502
-    ("NO_MATCH", [(200, {'data': {'email': 'found@example.test', 'score': 99, 'verification': {'status': 'valid'}}})],
+    ("NO_MATCH", [(200, {'data': {'email': 'found@example.com', 'score': 99, 'verification': {'status': 'valid'}}})],
      200, "miss"),
     # the same 400 with another body is a rejected request: an error, never a clean miss
     ("INVALID_DATAPOINTS", [(200, {'data': None})], 502, "error"),
@@ -3154,3 +3226,21 @@ async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_
                            headers={"X-Treg-Route-Prefer": header} if header else {})
     assert r.status_code == 200, r.text
     assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"
+
+
+async def test_confirm_picks_the_off_domain_address_two_providers_agree_on(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """Only off-domain answers A, B, B: with X-Treg-Route-Confirm the agreed B comes back confirmed."""
+    a = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    b = (200, {"data": {"email": "ada@acme-tools.fr", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [a], "hunter": [b], "leadmagic": [(200, {"email": "ada@acme-tools.fr", "status": "valid"})],
+         "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter,leadmagic", "X-Treg-Route-Confirm": "true"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["confirmation"] == {"field": "email", "confirmed": True, "confirmed_by": "leadmagic"}
+    assert d["output"]["email"] == "ada@acme-tools.fr" and d["_treg"]["served_by"] == "hunter.people.email.find"
+    assert d["_treg"]["domain_match"] is False

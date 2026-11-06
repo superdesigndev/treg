@@ -708,7 +708,8 @@ async def catalog_endpoint(
                                                      "the fullest answer wins if none does"}
                            if contract and contract.complete else {}),
                         **({"X-Treg-Route-Verify": f"true = check a hit with {contract.check.endpoint} in the same call, at its own price, "
-                                                   "inside X-Treg-Route-Max-Cost; the answer is _treg.verification "
+                                                   "inside X-Treg-Route-Max-Cost; a hit it calls invalid is dropped and the next provider asked "
+                                                   "(all invalid = null output); the answer is _treg.verification "
                                                    "{verdict, checked, served_by, cost_micro}; when the check is still "
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
