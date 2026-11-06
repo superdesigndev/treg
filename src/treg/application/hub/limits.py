@@ -41,28 +41,33 @@ class HubBusy(Exception):
                 "retry_after_s": RETRY_AFTER_S, "message": self.message}
 
 
-class _Local:
-    def __init__(self, key: tuple[Scope, str]) -> None:
-        self.key = key
+class _Place:
+    """One admitted run, counted in this process whichever store admitted it, so a fallback after
+    a store outage still sees the runs the shared store let in."""
+
+    def __init__(self, key: tuple[Scope, str], lease: provider_concurrency.Lease | None) -> None:
+        self.key, self.lease = key, lease
+        _active[key] += 1
 
     def release(self) -> None:
+        if self.lease is not None:
+            self.lease.release()
         _active[self.key] -= 1
         if _active[self.key] <= 0:
             _active.pop(self.key, None)
 
 
-async def _take(scope: Scope, ident: str, cap: int):
+async def _take(scope: Scope, ident: str, cap: int) -> _Place:
+    key = (scope, ident)
     if provider_concurrency.enabled():
         held = await provider_concurrency.try_acquire(ident, cap, namespace=f"hub-{scope}")
         if held == provider_concurrency.BUSY:
             raise HubBusy(scope, cap)
         if held is not None:
-            return held
-    key = (scope, ident)
+            return _Place(key, held)
     if _active.get(key, 0) >= cap:
         raise HubBusy(scope, cap)
-    _active[key] += 1
-    return _Local(key)
+    return _Place(key, None)
 
 
 @asynccontextmanager
@@ -81,5 +86,5 @@ async def slot(org_id: int, tool_id: str) -> AsyncIterator[None]:
 
 
 def active(org_id: int) -> int:
-    """This process's own count for a team: the fallback counter, for tests and diagnostics."""
+    """This process's own count of a team's runs, shared admissions included."""
     return _active.get(("team", str(org_id)), 0)

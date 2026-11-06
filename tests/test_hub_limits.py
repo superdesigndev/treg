@@ -86,3 +86,31 @@ async def test_a_busy_store_refuses_without_counting_locally(monkeypatch):
         async with limits.slot(5, "t.tool"):
             pass
     assert refused.value.scope == "team"
+
+
+async def test_runs_the_shared_store_admitted_still_count_when_it_stops_answering(monkeypatch):
+    released: list[str] = []
+
+    class Lease:
+        def __init__(self, account):
+            self.account = account
+
+        def release(self):
+            released.append(self.account)
+
+    answering = True
+
+    async def shared(account, cap, *, namespace="provider-concurrency"):
+        return Lease(account) if answering else None
+
+    monkeypatch.setattr(provider_concurrency, "enabled", lambda: True)
+    monkeypatch.setattr(provider_concurrency, "try_acquire", shared)
+    async with AsyncExitStack() as held:
+        for n in range(limits.MAX_RUNS_PER_TEAM):
+            await held.enter_async_context(limits.slot(6, f"t.tool{n}"))
+        assert limits.active(6) == limits.MAX_RUNS_PER_TEAM
+        answering = False
+        with pytest.raises(limits.HubBusy):
+            async with limits.slot(6, "t.more"):
+                pass
+    assert released.count("6") == limits.MAX_RUNS_PER_TEAM
