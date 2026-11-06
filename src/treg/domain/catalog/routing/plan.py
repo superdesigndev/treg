@@ -70,7 +70,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     # A key folded into a stand-in's text (`join(q, company_domain)`) scopes only a `q` the caller
     # wrote: on a `q` treg built from a title, a domain in the text is a guess, not a scope. The
     # stand-in key itself is still sent. Text joins skip a non-string, so a list is not carried.
-    used = set(adapter.in_map)
+    # Only what this call's upstream request carries: a mapped field outside the matched variant is
+    # never sent (`to_upstream`), so an adapter that answers {company_domain, title} through its
+    # {company_domain} variant does not scope by title.
+    variant = set(adapter_accepts(adapter, identity) or ())
+    used = {k for k in adapter.in_map if k in variant or k in (adapter._filter_keys or ())}
     for expr in (adapter.in_expr or {}).values():
         names = set(re.findall(r"[A-Za-z_]\w*", expr))
         if not names & set(stand_in):
@@ -83,12 +87,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     for k, expr in stand_in.items():
         if k in used and k in standing:
             used |= set(re.findall(r"[A-Za-z_]\w*", expr))
-    # A free-text key the caller wrote rides only in the variant the adapter matched. A variant
-    # with a key the stand-in is built from (`title`) still asks the same thing in fields, but one
-    # that answers {company_domain, q} by {company_domain} alone drops what q asked for.
-    variant = set(adapter_accepts(adapter, identity) or ()) if stand_in.keys() - standing else set()
+    # A free-text key the caller wrote rides only in the variant the adapter matched, or in a key
+    # the contract says carries it (`carried_by`: q in title). One that answers {company_domain, q}
+    # by {company_domain} alone, or {full_name, q} by the name, drops what q asked for.
     for k in stand_in.keys() - standing:
-        if variant & ({k} | set(re.findall(r"[A-Za-z_]\w*", stand_in[k]))):
+        if variant & ({k} | set(contract.carried_by.get(k, ()))):
             used.add(k)
         else:
             used.discard(k)

@@ -340,7 +340,7 @@ contracts:
   people.search:
     summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
     identity:
-      - {q: str}
+      - {q: text}
       - {company_domain: str}
       - {title: str, company_domain: str}
       - {title: str}
@@ -357,9 +357,10 @@ contracts:
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     # A child that cannot send one of these answers a different question. A `q` counts only when the
-    # child's matched variant carries it or a key `stand_in` builds it from (title): crawl4ai
-    # answers {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
+    # child's matched variant carries it or `title` (carried_by): crawl4ai answers
+    # {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
     scoping: [company_domain, title, full_name, q]
+    carried_by: {q: [title]}
     # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
     # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
     # those adapters append them to q themselves. No domain: they fold a domain into a q the

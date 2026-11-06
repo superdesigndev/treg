@@ -300,6 +300,19 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
         assert unscoped(cat.adapters[eid], contract, asked) == ("q",)
     titled_q, _ = canonical_identity(contract, {"q": "backend engineer", "title": "Backend Engineer"})
     assert not unscoped(cat.adapters["icypeas.people.search"], contract, titled_q)
+    # Only what this call's upstream request carries: enrichlayer sends the name and the domain of
+    # {q, company_domain, full_name} but not q, and a name is not what q asked for
+    named, _ = canonical_identity(contract, {"q": "speaks fluent Japanese", "company_domain": "example.com",
+                                             "full_name": "Alice Cooper"})
+    assert unscoped(cat.adapters["enrichlayer.people.search"], contract, named) == ("q",)
+    # and an adapter's mapped field outside the variant it matched is not sent: prospeo answers
+    # {full_name, company_domain} by the company alone
+    person, _ = canonical_identity(contract, {"full_name": "Alice Cooper", "company_domain": "example.com"})
+    assert unscoped(cat.adapters["prospeo.people.search"], contract, person) == ("full_name",)
+    assert not unscoped(cat.adapters["crawl4ai.people.search"], contract, person)
+    assert cat.adapters["crawl4ai.people.search"].to_upstream(person, adapter_accepts(
+        cat.adapters["crawl4ai.people.search"], person))[1]["where"] == {
+        "company": {"domain": "example.com"}, "person": {"name": "Alice Cooper"}}
     # A text join skips a list, so a domain sent as one is not carried
     listed, _ = canonical_identity(contract, {"q": "executives", "company_domain": ["openai.com"]})
     assert unscoped(cat.adapters["exa.people.search"], contract, listed) == ("company_domain",)
@@ -2030,6 +2043,25 @@ async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
     assert r.status_code == 200, r.text
     assert sorted(p for p, *_ in seen) == ["exa", "parallel"] and not (r.json()["output"] or {}).get("people")
     assert seen[0][3].get("query", seen[0][3].get("objective")) == "executives example.com"
+
+
+async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
+        clients: AsyncClient, people_search_on, monkeypatch):
+    """`q` is `text`: a list would be skipped by the providers' text joins, which would then search
+    the domain alone and bill for it."""
+    from treg.domain.catalog.routing import contracts as C
+
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"q": ["executives"], "company_domain": "example.com", "limit": 3})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
+    doc = {"identity": [{"q": "str", "title": "str"}], "output": {"a": "str"}, "scoping": ["q"]}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "carried_by": {"q": ["title"]}}}})["y"].carried_by == {
+        "q": ("title",)}
+    for bad in ({"title": ["q"]}, {"q": []}, {"q": ["nope"]}, {"q": ["q"]}, ["q"]):
+        with pytest.raises(ValueError, match="carried_by"):
+            C.parse_contracts({"contracts": {"y": {**doc, "carried_by": bad}}})
 
 
 @pytest.mark.parametrize("body, target", [

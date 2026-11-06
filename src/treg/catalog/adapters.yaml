@@ -2632,7 +2632,9 @@ adapters:
     out: {people: people, count: total_entries}
     miss: "coalesce(people, []) == []"
   crawl4ai.people.search:
-    accepts: [[title, company_domain], [company_domain], [title], [full_name], [q]]
+    # `where` combines person and company filters; `q` replaces `where`, so it stays alone.
+    accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title],
+              [title, company_domain], [company_domain], [title], [full_name], [q]]
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
@@ -3386,7 +3388,9 @@ adapters:
 
   # Search returns profile URLs; full profile enrichment remains a direct provider option.
   enrichlayer.people.search:
-    accepts: [[full_name], [company_domain], [title, company_domain], [title]]
+    # name, role and company are independent query filters: send every one the caller gave.
+    accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title], [full_name],
+              [title, company_domain], [company_domain], [title]]
     in: {title: queryParams.current_role_title, company_domain: queryParams.current_company_domain_name,
          country: queryParams.country}
     in_expr: {queryParams.first_name: "split_first(full_name)", queryParams.last_name: "split_last(full_name)",
@@ -3723,7 +3727,8 @@ adapters:
           location: "join(data.company_data.company_primary_address.city, data.company_data.company_primary_address.country)"}
     miss: "data.company_data.company_name == null"
   leadocean.people.search:
-    accepts: [[company_domain], [title], [q]]
+    # domain, title and q are independent filters upstream: send every one the caller gave.
+    accepts: [[company_domain, title], [company_domain, q], [company_domain], [title], [q]]
     # Each returned person uses a search record, so larger requests use another routed provider.
     max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
