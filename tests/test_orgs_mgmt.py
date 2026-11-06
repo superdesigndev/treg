@@ -137,6 +137,27 @@ async def test_an_invite_code_never_signs_in_the_invitee(c):
     assert victim_members.status_code in (403, 404)
 
 
+async def test_a_team_pinned_key_cannot_act_for_the_account(c):
+    """An Additional key belongs to one team: it cannot join another team or mint another team's
+    Default key for its owner."""
+    home = (await c.post("/orgs", headers=_h(await _register(c, "owner@x.dev")),
+                         json={"name": "Home"})).json()
+    second = (await c.post("/orgs", headers=_h(home["token"]), json={"name": "Second"})).json()
+    additional = (await c.post(f"/orgs/{home['org_id']}/api-keys", headers=_h(home["token"]),
+                               json={"name": "ci"})).json()["secret"]
+    other = (await c.post("/orgs", headers=_h(await _register(c, "other@x.dev")),
+                          json={"name": "Other"})).json()
+    code = (await c.post(f"/orgs/{other['org_id']}/invites", headers=_h(other["token"]),
+                         json={"email": "owner@x.dev", "role": "admin"})).json()["code"]
+    invite_id = (await c.get("/invites/mine", headers=_h(home["token"]))).json()[0]["id"]
+
+    assert (await c.post("/invites/accept", headers=_h(additional), json={"code": code})).status_code == 403
+    assert (await c.post(f"/invites/{invite_id}/accept", headers=_h(additional))).status_code == 403
+    minted = await c.get("/auth/cli-token", headers={**_h(additional), "X-Treg-Org": second["org"]})
+    assert minted.status_code == 403 and "token" not in minted.json()
+    assert (await c.post(f"/invites/{invite_id}/accept", headers=_h(home["token"]))).status_code == 200
+
+
 async def test_an_invite_code_never_creates_an_account(c):
     from sqlmodel import select
     from treg.models import User

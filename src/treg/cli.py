@@ -1609,9 +1609,7 @@ def cmd_accept(args, cfg) -> None:
             sys.exit(f"no pending invite for '{args.org}' — run `treg invites`")
         r = c.post(f"/invites/{inv['id']}/accept")
         if r.status_code == 200:
-            data = r.json()
-            cfg.update(token=data["token"], active_org=data["org"], identity=True)
-            _save_config(cfg)
+            _save_joined_team(cfg, r.json())
         _show(r)
 
 
@@ -5279,12 +5277,20 @@ def cmd_org_join(args, cfg) -> None:
     with _client(cfg) as c:
         r = c.post("/invites/accept", json=body)
     if r.status_code == 200:
-        d = r.json()
-        cfg.update(token=d["token"], active_org=d["org"], identity=True)
-        _save_config(cfg)
+        _save_joined_team(cfg, r.json())
     elif r.status_code == 403 and "different email" in r.text:
-        sys.exit("this invite is for a different email — run `treg login` with that address, then retry")
+        print("(this invite is for a different email — run `treg login` with that address, then retry)",
+              file=sys.stderr)
     _show(r)
+
+
+def _save_joined_team(cfg: dict, joined: dict) -> None:
+    """Keep the new team token, unless this run's identity came from `TREG_TOKEN`: that token is
+    per-process and must never overwrite the login saved in the config file."""
+    if os.environ.get("TREG_TOKEN"):
+        return
+    cfg.update(token=joined["token"], active_org=joined["org"], identity=True)
+    _save_config(cfg)
 
 
 def _clear_active_if_targeted(cfg: dict) -> None:

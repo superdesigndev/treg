@@ -8704,7 +8704,7 @@
     },
     "/invites/accept": {
       "post": {
-        "description": "Join a team with an invite code, signed in as the invited email.\n\nThe code is also returned to the admin who created the invite, so it only names the invite; it\nnever proves who the caller is. The caller's identity (OTP / GitHub / Google / SSO) proves the\nemail, exactly as on `POST /invites/{id}/accept`.",
+        "description": "Join a team with an invite code, signed in as the invited email.\n\nThe code is also returned to the admin who created the invite, so it only names the invite; it\nnever proves who the caller is. The caller's own sign-in (email code, GitHub or Google) proves\nthe email, exactly as on `POST /invites/{id}/accept`. A key pinned to one team cannot accept.",
         "operationId": "accept_invite_invites_accept_post",
         "parameters": [
           {

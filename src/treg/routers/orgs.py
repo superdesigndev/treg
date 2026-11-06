@@ -47,6 +47,7 @@ from ..domain.identity.access import (
     _norm_email,
     _role_at_least,
     require_identity,
+    require_person,
     require_member,
 )
 from ..domain.identity import api_keys as managed_keys
@@ -542,14 +543,14 @@ async def create_invite(
 
 @app.post("/invites/accept")
 async def accept_invite(
-    body: AcceptIn, request: Request, response: Response, user: User = Depends(require_identity),
+    body: AcceptIn, request: Request, response: Response, user: User = Depends(require_person),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Join a team with an invite code, signed in as the invited email.
 
     The code is also returned to the admin who created the invite, so it only names the invite; it
-    never proves who the caller is. The caller's identity (OTP / GitHub / Google / SSO) proves the
-    email, exactly as on `POST /invites/{id}/accept`."""
+    never proves who the caller is. The caller's own sign-in (email code, GitHub or Google) proves
+    the email, exactly as on `POST /invites/{id}/accept`. A key pinned to one team cannot accept."""
     require_managed_cli(request, team_change=True)
     invite = (
         await db.execute(select(Invite).where(Invite.code_hash == crypto.hash_token(body.code)))
@@ -659,7 +660,7 @@ invite_management_router = app
 
 @app.post("/invites/{invite_id}/accept")
 async def accept_my_invite(
-    invite_id: int, request: Request, response: Response, user: User = Depends(require_identity),
+    invite_id: int, request: Request, response: Response, user: User = Depends(require_person),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Accept an invite addressed to my already-proven email by its id (the dashboard's list)."""
