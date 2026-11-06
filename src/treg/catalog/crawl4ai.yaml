@@ -1840,7 +1840,7 @@ endpoints:
         page:
           type: integer
           required: false
-          note: 'default 1. Only page 1 works: Glassdoor shows no other page without an account, so page ≥ 2 is refused with a free 400.'
+          note: default 1
           example: 1
     cost:
       type: per_success
