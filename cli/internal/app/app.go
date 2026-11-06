@@ -63,7 +63,8 @@ func popOrg(argv []string) (string, []string, error) {
 			if i+1 >= len(argv) {
 				return "", nil, errors.New("--org requires a value (an org slug)")
 			}
-			return argv[i+1], append(argv[:i], argv[i+2:]...), nil
+			slug := argv[i+1]
+			return slug, append(argv[:i], argv[i+2:]...), nil
 		}
 		if v, ok := strings.CutPrefix(a, "--org="); ok {
 			return v, append(argv[:i], argv[i+1:]...), nil

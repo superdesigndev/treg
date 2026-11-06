@@ -1,8 +1,8 @@
 """Run the Python CLI and the Go CLI side by side against one registry and compare what each
 printed, its exit status and the request it sent.
 
-The Go binary comes from TREG_GO_BIN, else it is built from `cli/` when `go` is on PATH; without
-either, the parity tests skip.
+The Go binary comes from TREG_GO_BIN, or is built from `cli/` with TREG_GO_BUILD=1; without either,
+the parity tests skip (CI runs them in the cli-go job).
 """
 from __future__ import annotations
 
@@ -21,10 +21,11 @@ PYTHON_CLI = [sys.executable, "-c", "from treg.cli import main; main()"]
 
 
 def build_go(tmp: Path) -> Path | None:
+    """The Go binary under test: TREG_GO_BIN, or one built from `cli/` when TREG_GO_BUILD=1."""
     if given := os.environ.get("TREG_GO_BIN"):
         return Path(given)
     go = shutil.which("go")
-    if not go:
+    if os.environ.get("TREG_GO_BUILD") != "1" or not go:
         return None
     out = tmp / ("treg-go.exe" if os.name == "nt" else "treg-go")
     subprocess.run([go, "build", "-o", str(out), "./cmd/treg"], cwd=ROOT / "cli", check=True)
