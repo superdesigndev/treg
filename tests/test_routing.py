@@ -2888,6 +2888,56 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 
+def test_a_per_result_child_is_ranked_free_on_a_miss_unless_its_cost_bills_one():
+    """A per-result price bills the rows a provider returns, so an empty answer is free and the
+    expected cost per hit is the hit price, as for per-success. `bills_miss` (a minimum charge on
+    an empty page) and per-call prices keep paying for misses; a `call_fee` alone bills its fee."""
+    from treg.domain.catalog.routing import contracts as C, plan as RP
+
+    def cand(cost, price=1_000):
+        return RP.Candidate(endpoint={"id": "x.find", "provider": "x", "cost": cost},
+                            adapter=C.Adapter("x.find", (("q",),), {"q": "body.q"}, {}, "rows == []"),
+                            variant=("q",), tier="platform", price_micro=price, hit_rate=0.25,
+                            ok_rate=None, p50_ms=None, last_ok_days=None)
+
+    assert cand({"type": "per_result"}).expected_cost_per_hit == 1_000
+    assert cand({"type": "per_success"}).expected_cost_per_hit == 1_000
+    assert cand({"type": "per_result", "bills_miss": True}).expected_cost_per_hit == 4_000
+    assert cand({"type": "per_call"}).expected_cost_per_hit == 4_000
+    assert cand({"type": "per_result", "call_fee": 0.0002}).expected_cost_per_hit == 1_600
+    # A per-success partial miss charge is settled from the provider's report and ranked free.
+    assert cand({"type": "per_success", "bills_miss": True}).expected_cost_per_hit == 1_000
+    assert RP.bills_miss({"type": "per_success", "bills_miss": True})
+    assert not RP.bills_miss({"type": "per_result"})
+
+
+@pytest.fixture
+def findymail_and_prospeo_on(monkeypatch, platform_on):
+    for p in ("FINDYMAIL", "PROSPEO"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "findymail,prospeo")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_a_company_scoped_people_search_tries_findymail_before_prospeo(clients, findymail_and_prospeo_on):
+    """findymail.search.employees bills per contact found and nothing when none: unmeasured, its
+    expected cost per hit is its hit price, not twice that, so it goes ahead of prospeo's dearer
+    per-success page for a one-person {company_domain, title} search."""
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"company_domain": "stripe.com", "title": "CTO", "limit": 1}, caller, options)
+    by = {c.endpoint["provider"]: c for c in plan.candidates}
+    assert [c.endpoint["provider"] for c in plan.candidates][:2] == ["findymail", "prospeo"]
+    findymail = by["findymail"]
+    assert findymail.endpoint["id"] == "findymail.search.employees" and findymail.hit_rate is None
+    # Price decides once both use the title and the domain: it must not double findymail's price.
+    assert findymail.expected_cost_per_hit == findymail.price_micro
+    assert findymail.expected_cost_per_hit < by["prospeo"].expected_cost_per_hit
+
+
 def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     """A per-success child is free on a miss unless cost.bills_miss is true; the routed row counts
     those children in miss_billed_by and never claims misses are free while one of them bills."""

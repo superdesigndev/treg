@@ -1050,12 +1050,15 @@ an invalid extra never disables the primary.
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
-  `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
+  `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
   request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
-  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
-  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child
+  bills no miss, so its cost per hit is its price either way, unless its cost bills one
+  (`plan.bills_miss`: `cost.bills_miss`, such as a minimum charge on an empty page, or an Apify
+  `call_fee`, which a miss pays alone); the routed row's `miss_billed_by` uses the same rule. An
+  unmeasured per-call child leads only below half a
   measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter

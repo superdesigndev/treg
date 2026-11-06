@@ -319,6 +319,7 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -437,6 +438,7 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -709,6 +711,7 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'

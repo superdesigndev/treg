@@ -19,7 +19,6 @@ endpoint_keys:
   team_label: {provider: crawl4ai}
   token_type: {provider: instagram}
 cost_keys:
-  bills_miss: {provider: lusha}
   call_fee: {provider: apify}
   call_fee_per: {provider: apify}
   contactout: {provider: contactout}

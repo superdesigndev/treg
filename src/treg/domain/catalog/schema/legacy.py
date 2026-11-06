@@ -112,6 +112,7 @@ class Cost(Model):
     modifiers: dict[str, Modifier] | None = None
     quantity: Quantity | None = None
     ceiling_param: CeilingParam | None = field(kind="P")
+    bills_miss: bool | None = None
     source: str | None = field(kind="C")
     source_url: str | None = field(kind="C")
     checked: str | None = field(kind="C")
@@ -125,7 +126,6 @@ class Cost(Model):
     octen_rates: dict[str, Number] | None = None
     tavily_rates: dict[str, Number] | None = None
     rate_card: dict[str, str] | None = field(kind="C")
-    bills_miss: bool | None = None
 
 
 class Expect(Model):

@@ -101,6 +101,34 @@ def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapte
     return int(round(usd * 1_000_000))
 
 
+def bills_miss(cost: dict | None) -> bool:
+    """Whether a child charges for an answer treg counts as a miss. A per-success or per-result
+    price charges for what the provider finds, so an empty answer is free unless `cost.bills_miss`
+    says the provider still charges for some misses (a minimum charge on an empty page, the search
+    half of a lookup) or a `call_fee` charges every run. Every other priced type bills each call."""
+    cost = cost or {}
+    if cost.get("type") in ("free", None):
+        return False
+    if cost.get("type") not in ("per_success", "per_result"):
+        return True
+    return cost.get("bills_miss") is True or bool(cost.get("call_fee"))
+
+
+def miss_charge_micro(cost: dict | None, price_micro: int) -> int:
+    """What ranking assumes one miss costs. A `call_fee` alone bills just the run's fee. A
+    per-success `bills_miss` charge is a fraction of the price that the provider reports and treg
+    settles, so ranking keeps it free rather than charging the whole price for it. Any other miss
+    that bills is charged at the full price."""
+    cost = cost or {}
+    if not bills_miss(cost):
+        return 0
+    if cost.get("bills_miss") is not True and cost.get("type") in ("per_success", "per_result"):
+        return int(round(float(cost["call_fee"]) * 1_000_000))
+    if cost.get("type") == "per_success":
+        return 0
+    return price_micro
+
+
 @dataclass
 class Candidate:
     endpoint: dict
@@ -118,8 +146,9 @@ class Candidate:
 
     @property
     def expected_cost_per_hit(self) -> float:
-        """price × P(billed) / P(hit). Own keys and anonymous routes are free. Without a published
-        hit rate, P(hit) is the prior times the ok rate (1.0 while that is unmeasured too)."""
+        """(P(hit) × price + P(miss) × miss charge) / P(hit). Own keys and anonymous routes are
+        free. Without a published hit rate, P(hit) is the prior times the ok rate (1.0 while that is
+        unmeasured too). A miss is free unless the child's cost bills it (`bills_miss`)."""
         if self.price_micro is None:
             return float("inf")
         if self.tier != "platform":
@@ -127,9 +156,8 @@ class Candidate:
         p_hit = self.hit_rate if self.hit_rate is not None else \
             UNMEASURED_HIT_PRIOR * (self.ok_rate if self.ok_rate is not None else 1.0)
         p_hit = max(p_hit, 0.01)
-        cost_type = (self.endpoint.get("cost") or {}).get("type")
-        p_billed = p_hit if cost_type == "per_success" else 1.0
-        return self.price_micro * p_billed / p_hit
+        miss = miss_charge_micro(self.endpoint.get("cost"), self.price_micro)
+        return self.price_micro + miss * (1.0 - p_hit) / p_hit
 
     @property
     def confidence(self) -> str:
