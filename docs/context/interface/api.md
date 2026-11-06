@@ -351,6 +351,9 @@ included, for a request whose `X-Treg-Client-Version` is behind the operator's C
   `/install.sh` are templated with `{BASE}` from the serving host, so a self-hosted registry
   advertises itself. `/.well-known/skills/index.json` reads its `description` from the skill's
   frontmatter at request time, never a second copy ([skill](skill.md)).
+- `/install.sh?channel=beta` and `/install.ps1` install the binary CLI; `/cli/latest` names its
+  release per channel and platform and `/cli/events` relays its anonymous usage events
+  ([cli-binary](cli-binary.md)).
 - `/privacy` is the URL given to OAuth providers at app verification; never rename it.
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from

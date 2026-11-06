@@ -19,6 +19,7 @@ sources:
 related:
   - interface/api.md
   - interface/skill.md
+  - interface/cli-binary.md
 ---
 
 # The `treg` CLI
@@ -26,7 +27,8 @@ related:
 A thin client over the API in `src/treg/cli.py` (stdlib `argparse` plus `httpx`): every command is
 HTTP calls with no business logic of its own. `USAGE.md` and `treg <cmd> -h` are the command
 reference; every command carries a description, per-argument help and an Examples epilog, so help
-is self-teaching. This fragment holds only what the code and help cannot say.
+is self-teaching. This fragment holds only what the code and help cannot say. The Go rewrite in
+`cli/` keeps these contracts; what is its own is in [cli-binary](cli-binary.md).
 
 ## Front page and routing
 

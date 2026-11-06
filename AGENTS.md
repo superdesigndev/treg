@@ -210,6 +210,8 @@ uv run python -m treg                          # the server
 uv run lint-imports                            # the import-linter contracts (CI runs this too)
 uv run ruff check                              # lint, config in pyproject.toml (CI runs this too)
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
+(cd cli && go vet ./... && go test ./...)      # the binary CLI (Go)
+TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
 xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
@@ -218,6 +220,9 @@ so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
+  a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
+  proved by `tests/cli_go`. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
