@@ -278,6 +278,25 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
                                                "miss": "a == null", "stand_in": {"nope": "q"}}}})
 
 
+def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
+    """exa and parallel write the company into the text of a `q` the caller sent, so a
+    {company_domain, q} request ("executives" at openai.com) reaches them; a {company_domain, title}
+    request, whose `q` treg would build from the title, still skips them."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    from treg.domain.catalog.routing.plan import unscoped
+
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    asked, _ = canonical_identity(contract, {"q": "executives", "company_domain": "openai.com"})
+    for eid, field in (("exa.people.search", "query"), ("parallel.people.search", "objective")):
+        ad = cat.adapters[eid]
+        assert adapter_accepts(ad, asked) == ("q",) and not unscoped(ad, contract, asked)
+        assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
+        scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
+        assert unscoped(ad, contract, scoped) == ("company_domain",), "a domain on a built q is a guess"
+    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) == 20
+
+
 @pytest.fixture
 def people_search_on(monkeypatch, platform_on):
     for p in ("CRAWL4AI", "EXA", "PARALLEL", "ICYPEAS"):
@@ -299,6 +318,7 @@ async def _first_providers(ep_id: str, identity: dict, header: str | None = None
 @pytest.mark.parametrize("identity, header, first", [
     ({"q": "head of tax in phoenix"}, None, ["parallel", "exa"]),   # sent q: the first matching rule
     ({"title": "Head of Tax"}, None, ["icypeas"]),                  # a stand-in q is not one the caller sent
+    ({"q": "executives", "company_domain": "openai.com"}, None, ["parallel", "exa"]),   # the company rides in q
     ({"q": "head of tax in phoenix"}, "exa", ["exa"]),              # the caller's header replaces the rules
 ])
 async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
