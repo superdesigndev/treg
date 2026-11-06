@@ -2045,6 +2045,64 @@ async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
     assert seen[0][3].get("query", seen[0][3].get("objective")) == "executives example.com"
 
 
+def test_a_people_search_adapter_lists_its_wider_variants_first():
+    """The first variant fully present is the one sent and the one ranked: a narrower one ahead of a
+    wider one drops the caller's extra key (leadocean answered {company_domain, title} by the
+    domain alone) or hides it from ranking (prospeo sent the title through in_expr, unranked)."""
+    cat = catalog_store.load()
+    for eid, ad in cat.adapters.items():
+        if (cat.by_id.get(eid) or {}).get("capability") != "people.search":
+            continue
+        for i, narrow in enumerate(ad.accepts):
+            assert not any(set(narrow) < set(wide) for wide in ad.accepts[i + 1:]), (eid, narrow)
+    leadocean = cat.adapters["leadocean.people.search"]
+    contract = cat.contracts["people.search"]
+    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "title": "CFO", "q": "speaks Japanese"})
+    assert leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))[0] == {
+        "domain": "example.com", "title": "CFO", "q": "speaks Japanese", "limit": "10"}
+    # its person sits under profile_data, which a merge must read to tell a repeat from a new row
+    assert leadocean.rows([{"profile_data": {"profile_full_name": "Jane Doe",
+                                             "profile_url": "https://www.linkedin.com/in/jane"}}]) == [
+        {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane"}]
+
+
+def adapter_accepts_of(adapter, identity):
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    return adapter_accepts(adapter, identity)
+
+
+async def test_a_title_sent_through_an_expression_still_ranks_on_price(clients, platform_on, monkeypatch):
+    """prospeo and enrichlayer both send {company_domain, title}; with prospeo's narrower
+    {company_domain} variant listed first its title went unranked and the dearer one led."""
+    for p in ("PROSPEO", "ENRICHLAYER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "prospeo,enrichlayer")
+    get_settings.cache_clear()
+    got = await _first_providers("treg.people.search", {"company_domain": "example.com", "title": "CFO", "limit": 3}, n=2)
+    get_settings.cache_clear()
+    assert got == ["prospeo", "enrichlayer"]
+
+
+async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """{q, company_domain, full_name}: every provider is dropped because it cannot send all three,
+    and a retry never changes that, so it is the caller's 422, not a capacity 503."""
+    cat = catalog_store.load()
+    provs = sorted({cat.by_id[e]["provider"] for e in cat.adapters
+                    if cat.by_id.get(e, {}).get("capability") == "people.search"})
+    for p in provs:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper().replace('-', '_')}", "PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(provs))
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search", json={
+        "q": "speaks fluent Japanese", "company_domain": "example.com", "full_name": "Alice Cooper"})
+    get_settings.cache_clear()
+    assert r.status_code == 422, r.text
+    assert "send every key" in r.json()["detail"]["message"] and seen == []
+
+
 async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
         clients: AsyncClient, people_search_on, monkeypatch):
     """`q` is `text`: a list would be skipped by the providers' text joins, which would then search
