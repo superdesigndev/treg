@@ -40,6 +40,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Showcase leaderboard and pictures - applications, review, votes, avatars](architecture/showcase.md) | shipped | __init__.py, showcase.py, showcase.py, __init__.py, … |
 | [Super-admin - cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer - one call, answered as rows and columns (`/table/`)](architecture/table.md) | shipped | __init__.py, table.py, table.py, call.py, … |
+| [Async tasks - `/tasks/{call_id}` follows the task an async call started](architecture/tasks.md) | building | tasks.py, tasks.py, asynctasks.py, 0098_call_task.py, … |
 | [Workbench table storage](architecture/workbench-storage.md) | foundational | models.py, 0077_workbench_table_metadata.py, teams.py, test_workbench_table_schema.py, … |
 
 ## Interfaces (API · CLI · skill)

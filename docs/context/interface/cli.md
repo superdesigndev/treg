@@ -154,7 +154,8 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   result prints a retrieval command instead of downloading, and running it writes non-text bytes
   untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
   success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1
-  malformed usage or metadata.
+  malformed usage or metadata. The Go CLI keeps this output and these codes but follows the
+  registry's `/tasks/{call_id}` instead of reading the descriptor ([tasks](../architecture/tasks.md)).
 - **Pasted-key connect.** `connections connect --provider` reads `GET /oauth/providers`; a `key` or
   `token` provider reads the key with `getpass` or, with `--key-stdin`, all of stdin, keeping it off
   the command line. Without a terminal and without `--key-stdin` it exits with that instruction

@@ -46,7 +46,7 @@ intentional.
 
 `app.state.role_manifest` lists each role's routes, background tasks and startup checks;
 `tests/test_app_roles.py` pins them. `dataplane` serves the calling surfaces (`/call/`,
-`/catalog/call/`, [`/table/`](table.md)) and MCP; `control` serves everything else, including OAuth
+`/catalog/call/`, [`/table/`](table.md), [`/tasks/`](tasks.md)) and MCP; `control` serves everything else, including OAuth
 issuance; `all` serves both. Every `api.router` route belongs to exactly one of
 `_CONTROL_ROUTE_KEYS` or `_DATAPLANE_ROUTE_KEYS`, and app creation fails on an unclassified, stale,
 duplicate or doubly owned key, so a new route cannot silently widen the dataplane.

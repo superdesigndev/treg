@@ -80,6 +80,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
+   A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
+   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   through the same road and reads the answer with the descriptor; it never changes what `/call/`
+   returns (docs/context/architecture/tasks.md).
 5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
    revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
    bonus, in proportion), never another payment's block and never below the unheld balance.
@@ -159,8 +163,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, Redis org/endpoint
-  quota admission counters, and the shared provider rate window's members). Extend the
+  archive-question marks, durable provider-resource ownership, the task an async answer names,
+  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
