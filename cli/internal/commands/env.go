@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
@@ -68,6 +69,10 @@ func (e *Env) unreachable(err error) error {
 	var dns *net.DNSError
 	if errors.As(err, &dns) {
 		return output.Fail("treg: could not reach %s (%s)", e.Registry(), dns.Err)
+	}
+	var u *url.Error
+	if errors.As(err, &u) {
+		err = u.Err
 	}
 	return output.Fail("treg: could not reach %s: %v", e.Registry(), err)
 }
