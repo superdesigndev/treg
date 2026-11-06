@@ -18,7 +18,7 @@ from urllib.parse import urlsplit, parse_qsl
 
 import httpx
 
-from cli_go_harness import ROOT
+from .cli_go_harness import ROOT
 
 ADMIN_TOKEN = "admin-" + secrets.token_hex(8)
 

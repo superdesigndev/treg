@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from cli_go_harness import PYTHON_CLI, normalize, run, same_stdout, write_config
+from .cli_go_harness import PYTHON_CLI, normalize, run, same_stdout, write_config
 
 
 def _pair(tmp_path, live, go_bin, argv, *, config=None, env=None, stdin=None):

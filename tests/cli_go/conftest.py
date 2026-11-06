@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cli_go_harness import FakeRegistry, build_go
+from .cli_go_harness import FakeRegistry, build_go
 
 
 @pytest.fixture(scope="session")
@@ -22,7 +22,7 @@ def fake():
 
 @pytest.fixture(scope="session")
 def live(tmp_path_factory):
-    from cli_go_live import LiveRegistry
+    from .cli_go_live import LiveRegistry
     registry = LiveRegistry(tmp_path_factory.mktemp("live"))
     yield registry
     registry.close()
@@ -30,7 +30,7 @@ def live(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def echo():
-    from cli_go_live import EchoUpstream
+    from .cli_go_live import EchoUpstream
     upstream = EchoUpstream()
     yield upstream
     upstream.close()
