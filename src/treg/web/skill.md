@@ -95,7 +95,7 @@ money and more calls.
 |---|---|---|
 | the people at a company, each with a checked email | `treg-hub.lead-pipeline` `{company_domain, title?, limit?, include_phone?}` | people.search, then email.find and email.verify per person |
 | one person's email, found and checked | `treg-hub.verified-email` `{linkedin_url}` or `{full_name, domain}` | email.find, then email.verify |
-| whether AI engines mention a brand | `treg-hub.ai-visibility` `{prompt, brand, brand_domain?, competitors?}` | ChatGPT, Gemini, Copilot and AI Mode one by one |
+| whether AI engines mention a brand | `treg-hub.ai-visibility` `{prompt, brand, brand_domain?, competitors?}` | ChatGPT, Gemini and AI Mode one by one |
 | company details you can trust | `treg-hub.company-consensus` `{domain}` | two or three companies.enrich providers, compared |
 | how strong a site is in Google | `treg-hub.domain-authority` `{domain}` | backlinks summary, ranked keywords, linking domains |
 | a Search Console property's health (the team's own account) | `treg-hub.search-console-health` `{site}` | performance, sitemaps, URL inspection |

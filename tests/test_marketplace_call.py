@@ -1836,7 +1836,7 @@ async def test_tavily_platform_gates_search_usage_and_site_work_limits(
 
 
 def test_cloro_state_targeting_rider_is_reserved():
-    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the four
+    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the
     engines that support it). The reserve must carry it; before the modifiers path was opened to
     providers other than Aviato it silently did not (found reviewing #349)."""
     cat = A.catalog_store.load()
@@ -1847,8 +1847,8 @@ def test_cloro_state_targeting_rider_is_reserved():
         return call_resolution._marketplace_pricing("cloro", endpoint_id, cv, {}, json.dumps(body).encode())
 
     plain = {"prompt": "what is a stock split", "country": "US"}
-    assert price("cloro.ai-search.perplexity.answer", plain) == (2_400, 0)            # 6 credits × $0.0004
-    assert price("cloro.ai-search.perplexity.answer", {**plain, "state": "CA"}) == (3_200, 0)  # 8
+    assert price("cloro.ai-search.gemini.scrape", plain) == (2_400, 0)                # 6 credits × $0.0004
+    assert price("cloro.ai-search.gemini.scrape", {**plain, "state": "CA"}) == (3_200, 0)      # 8
     assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (4_400, 0)     # 11
     # AI Mode has no state rider and no modifiers block: the plain estimate, untouched
     assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 0)

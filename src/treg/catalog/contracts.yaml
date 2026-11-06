@@ -1344,9 +1344,6 @@ contracts:
       source_kind: {type: str, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite largely different sources for the same question"}
     miss: "answer == null"
     idempotent: true
-    # DataForSEO answers far more often and much faster than Cloro (see their observed stats). Cloro reads the
-    # website itself; a caller who needs that sends X-Treg-Route-Prefer: cloro or calls it directly.
-    prefer: [dataforseo]
 
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
