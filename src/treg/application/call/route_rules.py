@@ -153,7 +153,7 @@ async def warm() -> None:
     _reader.next_refresh = _clock() + get_settings().route_rules_refresh_s
     try:
         await _reader._refresh()
-    except Exception:  # noqa: BLE001 - startup must not fail on rules; calls keep the YAML order
+    except Exception:  # startup must not fail on rules; calls keep the YAML order
         log.warning("route rules warm-up failed", exc_info=True)
 
 
