@@ -150,7 +150,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_user_profile
     name: "TikTok user profile by username - followers, bio, stats"   # ours, <= 60 chars
-    summary: "Public TikTok profile by username"   # the provider's text, verbatim
+    summary: "Public TikTok profile by username"   # what the tool does (catalog-schema.md)
     input:
       queryArrayEncoding: json      # optional: json | comma | repeated (default)
       queryParams:
@@ -166,11 +166,10 @@ endpoints:
     note: "..."                      # optional: a caller-facing caveat about the whole tool or its answer
 ```
 
-Every `note` is caller-facing. A caveat goes to its most specific home: a parameter's `input.*.note`,
-then the charge's `cost.note`, then the row's `note`. Only the endpoint's own detail
+Every `note` is caller-facing. What a summary and a note may say, and which note a caveat goes in,
+is [catalog-schema](catalog-schema.md#summary-and-note). Only the endpoint's own detail
 (`GET /catalog/endpoints/{id}`, `treg catalog get`, `/mcp/` `catalog_get`, the dashboard drawer) shows
-the row's `note`; lists, search and sibling rows leave it out. Maintainer context goes in a YAML
-comment, evidence in the PR body.
+the row's `note`; lists, search and sibling rows leave it out.
 
 The strict models ([catalog-schema](catalog-schema.md)), shared by the loader and the validator,
 refuse any `input` key and any parameter-spec key outside their vocabulary, because a misspelt
@@ -236,7 +235,8 @@ re-attaches by id, so re-ingesting must not reset it to `data`.
 
 ### Naming - `name` is the search surface we own
 
-`summary` is the provider's text, verbatim; `name` is ours and searched at the same weight. The
+`summary` says what the tool does ([catalog-schema](catalog-schema.md#summary-and-note)); `name` is
+the short title, searched at the same weight. The
 formula: **job + the input the caller must hold + top output facets**, at most 60 characters, and it
 must read as a natural title.
 

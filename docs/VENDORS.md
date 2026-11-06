@@ -132,7 +132,7 @@ endpoints:
     method: GET
     path: /backlinks/summary
     name: "Backlink summary"
-    summary: "Aggregate backlink profile of a domain or URL"   # vendor's wording, verbatim
+    summary: "Aggregate backlink profile of a domain or URL"   # what the tool does (catalog-schema.md)
     input:
       queryParams:
         target: {type: string, required: true, note: "domain or full URL", example: "moz.com"}
