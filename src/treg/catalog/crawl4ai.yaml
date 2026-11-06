@@ -2305,8 +2305,9 @@ endpoints:
     method: POST
     path: /recipes/indeed-jobs
     name: Indeed job search results
-    summary: 'Job cards from Indeed''s search results: job key, title, company, location, a remote flag, the salary
-      text, job type, posting age, publish date, the job page URL and the first 300 characters of the description.
+    summary: 'Job cards from Indeed''s US search results (www.indeed.com): job key, title, company, location, a remote
+      flag, the salary text, job type, posting age, publish date, the job page URL and the first 300 characters of the
+      description.
       `query` is the search text; `location` a city, state or ''Remote'' (empty = anywhere); `start` the result offset
       (Indeed pages by 10, up to 990); `limit` the most rows (up to 50). One page per run; the page needs a cookie
       or a browser, so a run takes 5 to 20 seconds. Columns: jobkey, title, company, location, remote, salary, job_type,
