@@ -743,6 +743,10 @@ def _lifespan(role: AppRole):
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
                 logging.getLogger("treg").warning("kv configured but unreachable at startup")
+            # Published route rules (docs/context/architecture/route-rules.md) are read once before
+            # serving, so a new worker's first calls do not fall back to the YAML order.
+            from .application.call import route_rules as route_rules_app
+            await route_rules_app.warm()
 
             limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
             app.state.http = httpx.AsyncClient(
