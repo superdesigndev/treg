@@ -209,6 +209,8 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm), None)
     if domain is None and "@" in norm.get("email", ""):
         domain = norm["email"].rsplit("@", 1)[1]
+    # `acme.fr.` is acme.fr written with the DNS root.
+    domain = domain.rstrip(".") if domain else domain
     if domain and "." in domain:
         meta["domain_class"] = domain_class(domain)
         meta["tld"] = domain.rsplit(".", 1)[1]
