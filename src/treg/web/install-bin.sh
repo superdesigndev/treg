@@ -174,8 +174,10 @@ if [ -n "$TOKEN" ]; then
 fi
 report installed
 
+# How a path reads to a person: ~/... under the home directory.
+shown() { case "$1" in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
 say ""
-say "Installed treg $VERSION to $BIN"
+say "Installed treg $VERSION to $(shown "$BIN")"
 if [ "$ON_PATH" = true ]; then
   [ -n "$TOKEN" ] || say "Next: treg login"
 else
@@ -185,17 +187,21 @@ else
     */fish) rc="" ;;
     *) rc="$HOME/.profile" ;;
   esac
+  case "$DIR" in
+    "$HOME"/*) entry="\$HOME/${DIR#"$HOME"/}" ;;
+    *) entry="$DIR" ;;
+  esac
   found=$(command -v treg 2>/dev/null || true)
   if [ -n "$found" ]; then
-    say "Another treg comes first on your PATH: $found"
-    say "Remove it, or put $DIR first on PATH:"
+    say "Another treg comes first on your PATH: $(shown "$found")"
+    say "Remove it, or put $(shown "$DIR") first on PATH:"
   else
-    say "$DIR is not on your PATH. Add it:"
+    say "$(shown "$DIR") is not on your PATH. Add it:"
   fi
   if [ -z "$rc" ]; then
-    say "  fish_add_path $DIR"
+    say "  fish_add_path $(shown "$DIR")"
   else
-    say "  echo 'export PATH=\"$DIR:\$PATH\"' >> $rc && . $rc"
+    say "  echo 'export PATH=\"$entry:\$PATH\"' >> $(shown "$rc") && . $(shown "$rc")"
   fi
   say "Then: treg login"
 fi
