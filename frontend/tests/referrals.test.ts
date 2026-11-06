@@ -36,25 +36,25 @@ test('ordinary referrers only see the limit warning when their allowance is used
   expect(await page({ paid: 20, limit: 20, affiliate: false })).toContain('hit the 20-referral limit')
 })
 
-test('affiliates beyond the ordinary cap see their exemption and historical capped referrals', async () => {
+test('affiliates beyond the ordinary cap see no limit warning and retain historical capped referrals', async () => {
   const html = await page({ paid: 25, limit: null, affiliate: true })
   expect(html).not.toContain('hit the')
-  expect(html).toContain('Affiliate access active')
-  expect(html).toContain('no lifetime referral limit')
+  expect(html).not.toContain('Affiliate access active')
   expect(html).toContain('Over your limit')
 })
 
-test('affiliate copy describes credit rewards and does not promise cash payouts', async () => {
+test('affiliates retain the original partner terms and application link with a readable standard cap', async () => {
   const html = await page({ paid: 25, limit: null, affiliate: true }, 'partner')
-  expect(html).toContain('in credit')
-  expect(html).toContain('Affiliate access active')
-  expect(html).not.toContain('cash')
-  expect(html).not.toContain('Apply to be an affiliate partner')
+  expect(html).toContain('Revenue share, paid in cash. By invitation.')
+  expect(html).toContain('cash monthly. Not credit, and no 20-referral cap.')
+  expect(html).toContain('Apply to be an affiliate partner')
+  expect(html).toContain('https://forms.gle/5N3DyVPrNJkrGuxF6')
 })
 
-test('ordinary users can still apply for the affiliate exemption', async () => {
+test('ordinary users retain the original partner application', async () => {
   const html = await page({ paid: 20, limit: 20, affiliate: false }, 'partner')
   expect(html).toContain('Apply to be an affiliate partner')
-  expect(html).toContain('Approval required')
+  expect(html).toContain('Revenue share, paid in cash. By invitation.')
+  expect(html).toContain('cash monthly. Not credit, and no 20-referral cap.')
   expect(html).not.toContain('Affiliate access active')
 })

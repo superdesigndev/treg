@@ -5,8 +5,14 @@ export default { setup: useDashboard }
 
 <template>
 
+          <!-- Two programs, one page, forked at the header: the credit referral program every user
+               gets, and the invite-only cash tier behind it. A fork rather than a card under the
+               referral column, because a card there read as step four of the referral program. The
+               cash tier is hand-approved on purpose — hand-approval IS the anti-gaming design
+               (money.md §Referrals) — so it is a form, not a self-serve toggle, and it shows to
+               everyone, team or not, so a partner without a team yet can still apply. -->
           <h1>{{refTab==='partner' ? 'Affiliate partner' : 'Refer a friend'}}</h1>
-          <p class="sub" v-if="refTab==='partner'">Referral credit without a lifetime referral limit. Approval required.</p>
+          <p class="sub" v-if="refTab==='partner'">Revenue share, paid in cash. By invitation.</p>
           <p class="sub" v-else :style="ref.loaded ? null : {visibility:'hidden'}">They get {{money(ref.terms.referred_micro)}} when they add
             {{money(ref.terms.min_topup_micro)}}. You get {{money(ref.terms.referrer_micro)}},
             {{ref.terms.hold_days}} days later.</p>
@@ -20,21 +26,13 @@ export default { setup: useDashboard }
               <p class="sub" style="margin:6px 0 0">People who send real volume: an audience, a newsletter,
                 a community, or a team that builds on treg for clients.</p>
               <div class="lbl" style="margin-top:16px">What you earn</div>
-              <p class="sub" style="margin:6px 0 0">The same referral rewards in credit, with no lifetime
-                referral limit while your affiliate access is active. The usual payment requirements
-                and reward waiting period still apply.</p>
-              <template v-if="ref.cap.affiliate">
-                <div class="lbl" style="margin-top:16px">Affiliate access active</div>
-                <p class="sub" style="margin:6px 0 0">Keep sharing your referral link. Previously capped
-                  referrals stay capped.</p>
-              </template>
-              <template v-else>
-                <div class="lbl" style="margin-top:16px">How to get in</div>
-                <p class="sub" style="margin:6px 0 14px">Tell us about your audience and how you'd send
-                  people to treg. We'll review your application.</p>
-                <a class="btn primary sm" href="https://forms.gle/5N3DyVPrNJkrGuxF6" target="_blank"
-                   rel="noopener" @click="track('affiliate_apply_clicked')" style="text-decoration:none">Apply to be an affiliate partner</a>
-              </template>
+              <p class="sub" style="margin:6px 0 0">A share of what your referrals top up, paid to you in
+                cash monthly. Not credit, and no {{ref.cap.standard_limit ?? ref.cap.limit}}-referral cap.</p>
+              <div class="lbl" style="margin-top:16px">How to get in</div>
+              <p class="sub" style="margin:6px 0 14px">Invite only. Tell us about your audience and how
+                you'd send people to treg, and we'll get back to you.</p>
+              <a class="btn primary sm" href="https://forms.gle/5N3DyVPrNJkrGuxF6" target="_blank"
+                 rel="noopener" @click="track('affiliate_apply_clicked')" style="text-decoration:none">Apply to be an affiliate partner</a>
             </div>
             <p class="sub" style="margin:12px 0 0">Just want to tell a friend? The
               <a href="#" @click.prevent="refTab='friend'">refer-a-friend</a> program pays
@@ -87,16 +85,13 @@ export default { setup: useDashboard }
                 {{money(ref.totals.pending_micro)}} on the way — rewards land
                 {{ref.terms.hold_days}} days after your friend adds funds.</p>
 
-              <div v-if="ref.cap.affiliate" class="card" style="margin-top:14px">
-                <div class="lbl">Affiliate access active</div>
-                <p class="sub" style="margin:6px 0 0">Your qualifying referrals earn credit with no lifetime
-                  referral limit. Previously capped referrals stay capped.</p>
-              </div>
-              <div v-else-if="ref.cap.limit != null && ref.cap.paid >= ref.cap.limit" class="card"
+              <!-- The cap refusal IS the commercial conversation, same posture as a daily-cap
+                   refusal: it names the limit and points at a human rather than silently paying 0. -->
+              <div v-if="ref.cap.limit != null && ref.cap.paid >= ref.cap.limit" class="card"
                    style="margin-top:14px;border-color:var(--accent)">
                 <div class="lbl">You've hit the {{ref.cap.limit}}-referral limit</div>
-                <p class="sub" style="margin:6px 0 0">Apply through the Affiliate partner tab above
-                  to have the limit removed for future qualifying referrals.</p>
+                <p class="sub" style="margin:6px 0 0">That's as far as the self-serve program goes.
+                  If you're sending real volume, switch to the Affiliate partner tab above — we pay affiliate partners in cash.</p>
               </div>
 
               <div class="grp" style="margin:20px 0 8px">Your referrals</div>

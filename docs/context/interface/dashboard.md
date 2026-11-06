@@ -172,9 +172,9 @@ Admins also see the team's "No API key" total (`NO_KEY` in `state/constants.js`)
   `tour/tour.js` drives the dashboard tour.
 - The top bar's sides never shrink below their content, so the nav scrolls rather than overlaps.
 - **Referral** links are never gated behind paying, and opening `GET /referrals` runs the payout
-  sweep ([money](../architecture/money.md)). Approved affiliates see an uncapped credit notice;
-  only finite `cap.limit` values can show the reached-limit warning. The affiliate application
-  describes the same credit rewards with an approved cap exemption, not a separate cash payout.
+  sweep ([money](../architecture/money.md)). Only finite `cap.limit` values can show the reached-limit
+  warning. The partner page uses `cap.standard_limit` (falling back to `cap.limit` for older APIs)
+  for its cap number, preserving the existing partner terms and application link.
 - The Team Showcase tab (`#orgs/showcase`, owners and admins) manages /showcase entries; a 409 keeps
   the draft and offers a reload. Avatars upload as raw bodies to `POST /images/{kind}`; with
   `/auth/me` `uploads: false` the controls are hidden. See [showcase](../architecture/showcase.md).
