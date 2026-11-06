@@ -38,10 +38,6 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
-    # Enrow first where its coverage of French and German company domains leads the other finders.
-    prefer_by_domain_suffix:
-      fr: [enrow]
-      de: [enrow]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
@@ -342,17 +338,22 @@ contracts:
     prefer: [crawl4ai]
 
   people.search:
-    summary: "Find people by a free-text description, or by company domain / title / country — provider-native rows in `people`"
+    summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
     identity:
       - {q: str}
       - {company_domain: str}
       - {title: str, company_domain: str}
       - {title: str}
       - {full_name: str}
+    identity_notes:
+      q: "describe the people in words, as a profile would: role, seniority, industry, place, audience ('B2B sales coaches on Instagram with a mostly US audience'). A semantic search over profiles answers it, so creators and influencers too, not only employees"
+      company_domain: "the employer's website domain ('stripe.com'): everyone treg's providers list there"
+      title: "a job title ('Head of Tax'); with company_domain, that role at that company"
+      full_name: "one person's name, to find their profile"
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
-      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list, ask for as many as you want back (15-25): with a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
@@ -376,10 +377,12 @@ contracts:
         company: {type: str, note: "current employer's name"}
         company_domain: {type: str}
         location: {type: str}
-        profile_url: {type: str, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
         email: {type: str, note: "found by the provider, not confirmed deliverable"}
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
-        summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
+        # Longer than other row text: it is the evidence an agent checks a brief against, and a
+        # candidate it cannot check is a candidate it drops.
+        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
@@ -657,14 +660,40 @@ contracts:
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   instagram.search.users:
-    summary: "Search Instagram accounts by keyword — provider-native profile rows in `users`"
+    summary: "Search Instagram accounts by keyword — profile rows in `users`; ScrapeCreators rows omit picture and link metadata, `raw` holds the provider's full answer"
     identity:
       - {q: str}
+    identity_notes:
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better"
     filters: {}
     output:
       users: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
+    # The provider's own field names, minus what no reader of a search result uses: a provider's
+    # picture URLs and link metadata cost more tokens than everything else in its row. `raw` keeps
+    # the full row. Same names as before, so a caller reading `follower_count` reads it still.
+    row:
+      of: users
+      needs: [username, url]
+      fields:
+        id: {type: str}
+        username: {type: str}
+        full_name: {type: str}
+        url: {type: url, note: "the account's Instagram page"}
+        follower_count: {type: int}
+        following_count: {type: int}
+        media_count: {type: int}
+        biography: {type: str, note: "the account's own bio, cut to 300 characters"}
+        category_name: {type: str}
+        external_url: {type: url}
+        is_verified: {type: bool}
+        is_private: {type: bool}
+        is_business_account: {type: bool}
+        is_professional_account: {type: bool}
+        matched_from: {type: str, note: "how the provider found the account (`profile`, a web search)"}
+        google_title: {type: str}
+        google_description: {type: str}
     miss: "users == []"
     idempotent: true
 
@@ -711,6 +740,8 @@ contracts:
     summary: "Search TikTok accounts by keyword — provider-native user rows in `users`"
     identity:
       - {q: str}
+    identity_notes:
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better"
     filters: {}
     output:
       users: {type: list, required: true}
@@ -1309,9 +1340,6 @@ contracts:
       source_kind: {type: str, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite largely different sources for the same question"}
     miss: "answer == null"
     idempotent: true
-    # DataForSEO answers far more often and much faster than Cloro (see their observed stats). Cloro reads the
-    # website itself; a caller who needs that sends X-Treg-Route-Prefer: cloro or calls it directly.
-    prefer: [dataforseo]
 
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"

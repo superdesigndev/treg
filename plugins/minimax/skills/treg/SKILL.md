@@ -1,7 +1,7 @@
 ---
 name: treg
 description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 127 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
-version: 0.29.0
+version: 0.30.0
 ---
 # treg: the tool catalog for your agent
 
@@ -109,6 +109,10 @@ How a routed call works:
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current.
+- A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
+  `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
+  keeps going until an answer fills every `complete` field (`routing.contract.complete` in
+  `catalog_get`); the fullest so far wins if none does.
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.

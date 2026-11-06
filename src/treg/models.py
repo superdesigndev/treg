@@ -194,6 +194,51 @@ class OrgFlowControlVersion(SQLModel, table=True):
     published_at: NaiveUTC | None = Field(default=None)
 
 
+class RouteRuleVersion(SQLModel, table=True):
+    """Saved route rule sets (docs/context/architecture/route-rules.md). The private admin is the
+    only writer; workers read the published snapshot from Redis, never this table."""
+
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_routeruleversion_version"),
+        CheckConstraint("review_status IN ('draft', 'approved', 'rejected')",
+                        name="ck_routeruleversion_review_status"),
+        CheckConstraint("publish_status IN ('unpublished', 'pending', 'published', 'failed')",
+                        name="ck_routeruleversion_publish_status"),
+        CheckConstraint("length(trim(created_by)) > 0 AND length(trim(reason)) > 0",
+                        name="ck_routeruleversion_created"),
+        CheckConstraint(
+            "review_status = 'draft' OR (reviewed_by IS NOT NULL AND length(trim(reviewed_by)) > 0"
+            " AND reviewed_at IS NOT NULL)",
+            name="ck_routeruleversion_reviewed"),
+        CheckConstraint("publish_status = 'unpublished' OR review_status = 'approved'",
+                        name="ck_routeruleversion_publish_approved"),
+        CheckConstraint(
+            "publish_status != 'published' OR "
+            "(published_by IS NOT NULL AND length(trim(published_by)) > 0 AND published_at IS NOT NULL)",
+            name="ck_routeruleversion_published"),
+        Index("ix_routeruleversion_publish_status", "publish_status", "version"),
+    )
+    version: int = Field(sa_column=Column(Integer, primary_key=True, autoincrement=False))
+    config: dict = Field(sa_column=Column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"),
+        nullable=False,
+    ))
+    reason: str
+    created_by: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    review_status: str = Field(default="draft", sa_column=Column(
+        String, nullable=False, server_default="draft",
+    ))
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: NaiveUTC | None = Field(default=None)
+    review_note: str | None = Field(default=None)
+    publish_status: str = Field(default="unpublished", sa_column=Column(
+        String, nullable=False, server_default="unpublished",
+    ))
+    published_by: str | None = Field(default=None)
+    published_at: NaiveUTC | None = Field(default=None)
+
+
 class User(SQLModel, table=True):
     """A global identity (one email/login). Identity ONLY — the token and role live on
     Membership, so one person in two orgs has two memberships (two tokens), one User.
@@ -221,6 +266,12 @@ class User(SQLModel, table=True):
     # same human unlimited codes to farm with. NULL until they open the Referrals page; minted lazily
     # so we never generate codes for the majority who never look. See domain/referrals.py.
     referral_code: str | None = Field(default=None, index=True, unique=True)
+    referral_affiliate: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    referral_affiliate_version: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
     created_at: NaiveUTC = Field(default_factory=_now)
     # This person's picture: a media key (`img/user_avatar/<sha256>.webp`) in the public media bucket, or
     # NULL for initials. Set by the person themselves through `application.images`. Appended last.
@@ -1193,6 +1244,27 @@ class TagBudget(SQLModel, table=True):
     note: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ReferralAffiliateEvent(SQLModel, table=True):
+    """Durable affiliate operations, retained independently of account deletion."""
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "user_created_at", "version", name="uq_referralaffiliateevent_user_version"),
+        CheckConstraint("version > 0", name="ck_referralaffiliateevent_version"),
+        CheckConstraint("length(trim(reason)) > 0 AND length(trim(principal)) > 0",
+                        name="ck_referralaffiliateevent_reason_principal"),
+    )
+
+    operation_id: str = Field(primary_key=True)
+    user_id: int = Field(index=True)
+    user_created_at: NaiveUTC
+    version: int
+    previous_affiliate: bool
+    affiliate: bool
+    reason: str
+    principal: str
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class Referral(SQLModel, table=True):

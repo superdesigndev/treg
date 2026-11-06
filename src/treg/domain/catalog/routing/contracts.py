@@ -133,6 +133,9 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+    # Identity key -> what to put in it, shown to the caller beside the key (`q`: describe the
+    # person in words). Without one a key reads only "identity", and an agent guesses its shape.
+    identity_notes: dict[str, str] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity keys `given`."""
@@ -184,6 +187,8 @@ class Adapter:
     row_map: dict[str, str] = field(default_factory=dict)
     _row_of: str = ""
     _row_needs: tuple[str, ...] = ()
+    _row_urls: tuple[str, ...] = ()           # row fields of type `url`: never cut, set at load
+    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `max` chars, set at load
     _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
 
     def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
@@ -242,7 +247,9 @@ class Adapter:
 
     def rows(self, items: list) -> list[Any]:
         """Each provider row in the contract's row shape: empty values dropped, text cut to
-        ROW_TEXT_MAX. A row the map cannot read (none of the contract's `row_needs`: the provider
+        ROW_TEXT_MAX, or the field's own `max`. A `url` field is kept whole: a cut link points at
+        another resource. A row
+        the map cannot read (none of the contract's `row_needs`: the provider
         changed its shape) stays the provider's own row rather than vanish from a paid answer, and
         so does an item that is not an object."""
         out = []
@@ -254,7 +261,8 @@ class Adapter:
             for key, expr in self.row_map.items():
                 v = P.evaluate(expr, item)
                 if isinstance(v, str):
-                    v = " ".join(v.split())[:ROW_TEXT_MAX] or None
+                    v = (v.strip() if key in self._row_urls
+                         else " ".join(v.split())[:self._row_max.get(key, ROW_TEXT_MAX)]) or None
                 if v not in (None, [], {}):
                     row[key] = v
             out.append(row if any(row.get(k) for k in self._row_needs) else item)
@@ -317,7 +325,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when", "fill_limit_when"})
+    "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -391,6 +399,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
             stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
+            identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
             **_parse_row(cap, c.get("row"), c.get("output") or {}),
             **_parse_verdict(cap, c.get("verdict")))
     return out
@@ -413,6 +422,15 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
+
+
+def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not raw
+            or any(k not in types or not isinstance(v, str) or not v.strip() for k, v in raw.items())):
+        raise ValueError(f"contract {cap}: identity_notes maps identity keys to a non-empty note, got {raw!r}")
+    return {k: v.strip() for k, v in raw.items()}
 
 
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:
@@ -469,8 +487,13 @@ def _parse_row(cap: str, raw, output: dict) -> dict:
     needs = tuple(str(k) for k in raw.get("needs") or ())
     if not needs or any(k not in fields for k in needs):
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
-    return {"row_of": str(of), "row_fields": {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()},
-            "row_needs": needs}
+    row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
+    for k, spec in row_fields.items():
+        if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)
+                              or spec["max"] < 1 or spec.get("type") != "str"):
+            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row.
+            raise ValueError(f"contract {cap}: row field {k} `max` is a positive whole number on a str field")
+    return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs}
 
 
 def _parse_complete(cap: str, raw, output: dict) -> tuple[str, ...]:
@@ -767,6 +790,8 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
         if contract is not None:
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
                             "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
+                            "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("type") == "url"),
+                            "_row_max": {k: spec["max"] for k, spec in contract.row_fields.items() if "max" in spec},
                             "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)

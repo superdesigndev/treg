@@ -245,6 +245,14 @@ def test_the_outcome_and_bill_decide_an_unreported_answer():
     assert call(plain, status=204, answer=b"")[1].actual_micro == 0
 
 
+def test_a_free_outcome_without_settle_evidence_observes_a_zero_charge():
+    ep = row(miss={"when": {"path": "response.items", "op": "empty"}},
+             expect={"path": "response.code", "op": "equals", "value": 0})
+    for answer in ({"code": 0, "items": []}, {"code": 1, "items": [1]}):
+        assert (call(ep, answer=answer)[1].observed_micro, call(ep, answer=answer)[1].actual_micro) == (0, 0)
+    assert call(ep, answer={"code": 0, "items": [1]})[1].observed_micro is None
+
+
 def test_a_count_settle_counts_non_null_items_capped_at_the_hold():
     ep = row(reserve={"rows": {"param": "body.n", "default": {"value": 3, "source": "docs"}, "max": 10}},
              settle={"count": {"path": "response.items"}})
@@ -361,3 +369,25 @@ def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter
         loaded = SimpleNamespace(by_id={"demo.x": ep}, adapters={"demo.x": adapter} if adapter else {})
         monkeypatch.setattr(store, "load", lambda loaded=loaded: loaded)
         assert results.has_result_rules("demo.x") is opted
+
+
+@pytest.mark.parametrize("keys,rate", [
+    ({"price": {"value": "1", "currency": "credit"}}, None),
+    ({"price": {"value": "1", "currency": "credit"}}, "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"reported": {"path": "response.cost", "unit": "credit"}}},
+     "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"usage": {"unit": "token", "path": "response.n"}}},
+     "demo token"),
+])
+def test_treg_s_key_refuses_a_row_whose_credit_or_meter_rate_is_unknown(keys, rate):
+    from treg.application.call.types import ResolutionFailed
+    ep = row(**keys)
+    rates = Rates(credit_rates={"demo": None if rate else 0.02})
+    if rate is None:
+        cost.require_rates(ep, rates)
+        return
+    with pytest.raises(ResolutionFailed) as refused:
+        cost.require_rates(ep, rates)
+    assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
+        ("catalog_price_invalid", "treg", 503)
+    assert refused.value.detail["endpoint_id"] == "demo.x" and refused.value.detail["rate"] == rate

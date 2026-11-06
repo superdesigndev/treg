@@ -128,6 +128,22 @@ def require_rows(ep: dict, request_data: dict) -> None:
             "message": f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}"})
 
 
+def require_rates(ep: dict, cat) -> None:
+    """On treg's key, a row whose price, reported charge or usage meter is in a credit or meter
+    fx.yaml has no rate for refuses the call before anything is held."""
+    price_ = ep.get("price") or {}
+    settle = ep.get("settle") or {}
+    needed = [(price_.get("currency", "USD"), price_.get("unit"))] \
+        if price_.get("value") is not None or price_.get("table") is not None or price_.get("rates") else []
+    needed += [_meter(settle[form]["unit"]) for form in ("reported", "usage") if form in settle]
+    for currency, unit in needed:
+        if _rate(cat, ep["provider"], currency, unit) is None:
+            name = f"{ep['provider']} {unit if currency == 'unit' else currency}"
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"], "rate": name,
+                "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
+
+
 def _entities(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
@@ -338,7 +354,8 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
            submitted: int | None = None) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
-    what the answer itself said it cost."""
+    what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
+    today's spelling records it."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -355,7 +372,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
     rule = {"error": bill.get("error", "free"), "miss": bill.get("miss", "free")}.get(judged.state, "charged")
     if rule == "free":
-        return evidence, 0
+        return (0 if evidence is None else evidence), 0
     if rule != "charged":
         return evidence, min(amount(terms, rule), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)

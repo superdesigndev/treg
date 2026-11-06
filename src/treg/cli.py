@@ -4067,12 +4067,8 @@ def _is_transient_network_error(exc: Exception) -> bool:
     return any(s in exc_str for s in ("ssl", "connection", "timeout", "refused", "reset"))
 
 
-def cmd_mcp_install(args, cfg) -> None:
-    """Register the treg MCP server into every supported agent on this machine, header-authed with
-    the logged-in token (which bakes in the team, so no org to pass). The MCP sibling of
-    `treg skill bootstrap` — install.sh calls it after login, and it is runnable by hand. Needs a
-    token: run `treg login` first (or `treg login --token <key>`)."""
-    from . import mcp_install
+def _verified_mcp_token(cfg) -> str:
+    """The token `treg mcp install` will write, checked against `/auth/me` first."""
     token = os.environ.get("TREG_TOKEN") or cfg.get("token")
     if not token:
         sys.exit("no token — run `treg login` first (or `treg login --token <key>`), then retry")
@@ -4114,12 +4110,30 @@ def cmd_mcp_install(args, cfg) -> None:
                  "dashboard), then retry.")
     if who.status_code >= 400:
         sys.exit(f"Token check failed ({who.status_code}): {who.text[:120]} — nothing was written.")
+    return token
+
+
+def cmd_mcp_install(args, cfg) -> None:
+    """Register the treg MCP server into every supported agent on this machine.
+
+    Default: header-authed with the logged-in token (which bakes in the team, so no org to pass).
+    The MCP sibling of `treg skill bootstrap` - install.sh calls it after login, and it is runnable
+    by hand. Needs a token: run `treg login` first (or `treg login --token <key>`).
+
+    `--oauth`: repair path when a saved MCP bearer is dead. Rewrites every managed agent to the URL
+    only (no Authorization header) so the client can authorize itself. Needs no valid token - the
+    point is that the stored one is already dead.
+    """
+    from . import mcp_install
+    import textwrap
+    oauth = bool(getattr(args, "oauth", False))
+    token = "" if oauth else _verified_mcp_token(cfg)
     base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
     name = getattr(args, "name", None) or "treg"
-    out = mcp_install.install_mcp(base_url=base_url, token=token, server_name=name)
-    import textwrap
+    out = mcp_install.install_mcp(base_url=base_url, token=token, server_name=name, oauth=oauth)
     ok = 0
-    _section(f"① Registered {name}  ({out['mcp_url']})")
+    title = f"Rewrote {name} for OAuth" if oauth else f"Registered {name}"
+    _section(f"① {title}  ({out['mcp_url']})")
     for display, status, detail in out["results"]:
         if status == "ok":
             ok += 1
@@ -4129,7 +4143,7 @@ def cmd_mcp_install(args, cfg) -> None:
         else:
             print(f"  ✗ {display}  {_M}{detail}{_R}")
     if not out["results"]:
-        _dim("  no MCP-capable agent found on this machine; nothing to register")
+        _dim(f"  no MCP-capable agent found on this machine; nothing to {'rewrite' if oauth else 'register'}")
     if out["manual"]:
         # One agent per block: its name, then how to add the server by hand, wrapped to the
         # terminal instead of one long line per agent.
@@ -4139,6 +4153,12 @@ def cmd_mcp_install(args, cfg) -> None:
             for line in textwrap.wrap(how, width=76):
                 _dim(f"      {line}")
     _section("③ Next")
+    if oauth:
+        _kv("agents", f"{ok} rewritten without Authorization; restart each agent, then authorize treg")
+        _arrow("Claude Code: /mcp, pick treg, Authenticate")
+        _arrow(f"Codex: codex mcp login {name}")
+        _arrow("Cursor / opencode: follow the client's sign-in prompt for treg")
+        return
     _kv("agents", f"{ok} registered; restart an agent to pick the server up")
     _arrow(f"in the agent, say \"use the {name} MCP\": call, catalog_search, catalog_get, my_tools, balance"
            " (and hub_create, hub_update, hub_mine where the hub is on)")
@@ -6190,7 +6210,8 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         _fail_response(r)
     body = r.json()
     e, prov = body["endpoint"], body.get("provider") or {}
-    head = {"id": e["id"], "name": e.get("name") or None, "summary": e.get("summary") or None}
+    head = {"id": e["id"], "name": e.get("name") or None, "summary": e.get("summary") or None,
+            "note": e.get("note") or None}
     if e.get("kind") == "hub":
         _emit(head | _hub_view(e))
         return
@@ -6217,6 +6238,7 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         # on a routed id, with a ceiling: how every route option is passed, shown on the call itself
         "call": _with_route_cap(template, (body.get("routing") or {}).get("max_cost_usd")) if routed_id else template,
         "requires": _requires(body.get("routing")),
+        **_answer_bar(body.get("routing")),
         **_params_view(e.get("input") or {}),
         **_price_table_view(cost),
         "async": _async_view(e.get("async")),
@@ -6253,8 +6275,9 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
 # and the call; a routed call's options; what to send; the response; the other ways to do the job;
 # where it comes from.
 _GET_GROUPS = [
-    ("id", "name", "summary", "job", "upstream"),
-    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires"),
+    ("id", "name", "summary", "note", "job", "upstream"),
+    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires",
+     "stops_at", "complete"),
     ("route_headers",),
     ("params_note", "params_shared", "params", "param_examples"),
     ("price_table", "async"),
@@ -6322,6 +6345,14 @@ def _requires(routing: dict | None) -> str | None:
     sets = ((routing or {}).get("contract") or {}).get("identity") or []
     names = [" + ".join(s) for s in sets if s]
     return None if not names else names[0] if len(names) == 1 else "one of " + " | ".join(names)
+
+
+def _answer_bar(routing: dict | None) -> dict:
+    """Which answer ends a routed call by default, and which one `X-Treg-Route-Complete` waits for."""
+    contract = (routing or {}).get("contract") or {}
+    return {"stops_at": f"the first answer unless {contract['miss']}" if contract.get("miss") else None,
+            "complete": ", ".join(contract["complete"]) + " (X-Treg-Route-Complete: 1 waits for all of them)"
+            if contract.get("complete") else None}
 
 
 def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
@@ -7329,9 +7360,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     mc = mk(sub, "mcp", "Register the treg MCP server into the coding agents on this machine.",
             "treg mcp install").add_subparsers(dest="sub", required=True, metavar="<subcommand>")
-    mci = mk(mc, "install", "Add treg as a header-authed MCP server in every supported detected agent.",
+    mci = mk(mc, "install", "Add treg as a header-authed MCP server in every supported detected agent "
+             "(or rewrite to OAuth with --oauth).",
              "treg mcp install")
     mci.add_argument("--name", default="treg", help="the MCP server name to register (default: treg)")
+    mci.add_argument("--oauth", action="store_true",
+                     help="rewrite every managed agent to URL-only (no Authorization) so the client "
+                          "can authorize itself; needs no login - use when the saved MCP key is dead")
     mci.set_defaults(fn=cmd_mcp_install)
     mk(mc, "grants", "List the MCP connections you've authorised and which team each one spends from.",
        "treg mcp grants").set_defaults(fn=cmd_mcp_grants)

@@ -84,33 +84,43 @@ def request_path(path: str) -> str:
 
 
 _LITERAL = re.compile(r"""^(?:'([^']*)'|"([^"]*)"|(-?\d+)|(-?\d+\.\d+)|(true|false))$""")
-_COALESCE = re.compile(r"^coalesce\(\s*([^,()]+?)\s*,\s*\[\]\s*\)$")
 _PATH = re.compile(r"^(?:\.|(?:\[\d+\])?[A-Za-z_][\w-]*(?:\[\d+\])?(?:\.[A-Za-z_][\w-]*(?:\[\d+\])?)*|\[\d+\])$")
 
 
-def predicate(expr: str, warnings: list[str]) -> dict:
+def predicate(expr: str, warnings: list[str]) -> dict | list:
     """An adapter expression's v2 predicate, by the section 4.4 table."""
-    left, op, right = (part.strip() for part in re.split(r"\s*(==|!=)\s*", str(expr).strip(), maxsplit=1)) \
+    left, op, right = (part.strip() for part in re.split(r"(==|!=)", str(expr).strip(), maxsplit=1)) \
         if re.search(r"==|!=", str(expr)) else (str(expr), "", "")
     if op != "==":
         raise Refused(f"`{expr}` has no zero-diff predicate (the predicate has no negation or call)")
-    if (found := _COALESCE.match(left)) and right == "[]":
-        path = response_path(found.group(1))
-        return {"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]}
+    if left.startswith("coalesce(") and left.endswith(")") and right == "[]":
+        *names, last = (name.strip() for name in left[len("coalesce("):-1].split(","))
+        if last != "[]" or not names or not all(_PATH.match(name) for name in names):
+            raise Refused(f"`{expr}` has no zero-diff predicate")
+        warnings.append(f"`{expr}` becomes absent-or-empty, which also reads {{}} as a miss")
+        return _coalesced([response_path(name) for name in names])
     if not _PATH.match(left):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     path = response_path(left)
     if right == "null":
         return {"path": path, "op": "absent"}
     if right == "[]":
-        warnings.append(f"`{expr}` becomes `empty`, which also reads null, '' and {{}} as a miss")
-        return {"path": path, "op": "empty"}
+        # present: today a null is not `[]`, so it stays a hit
+        warnings.append(f"`{expr}` becomes present and `empty`, which also reads '' and {{}} as a miss")
+        return [{"path": path, "op": "present"}, {"path": path, "op": "empty"}]
     if not (literal := _LITERAL.match(right)):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     single, double, whole, fraction, flag = literal.groups()
     value = (single if single is not None else double if double is not None
              else int(whole) if whole is not None else float(fraction) if fraction is not None else flag == "true")
     return {"path": path, "op": "equals", "value": value}
+
+
+def _coalesced(paths: list[str]) -> dict | list:
+    """`coalesce(p1, ..., pn, []) == []`: today's coalesce skips null, '' and [], so it holds when
+    every path is missing or one of those."""
+    rules = [{"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]} for path in paths]
+    return rules[0] if len(rules) == 1 else rules
 
 
 def _branches(provider: str, endpoint_id: str) -> str | None:
@@ -152,6 +162,11 @@ def _price(cost: dict, warnings: list[str]) -> dict:
         out["fallback"] = {"value": money(cost["fallback"]["value"]), "note": cost["fallback"]["note"]}
     elif cost.get("value") is not None:
         out["value"] = money(cost["value"])
+        if cost.get("fallback") is not None:
+            # v2 has a fallback only beside a table; beside a value it is the same scalar.
+            if money(cost["fallback"]["value"]) != out["value"]:
+                raise Refused("cost.fallback beside a different cost.value has no v2 spelling")
+            warnings.append("cost.fallback equals cost.value and is dropped; its note joins price.note")
     elif cost.get("type") == "free":
         out["value"] = "0"
     else:
@@ -164,12 +179,14 @@ def _price(cost: dict, warnings: list[str]) -> dict:
                 and int(cost.get("per") or 1) > 1:
             # today's row hold rounds up to whole `per` blocks
             out["round"] = "up"
+    if cost.get("table") is None and (fallback_note := (cost.get("fallback") or {}).get("note")):
+        out["note"] = f"{out['note']} {fallback_note}" if out.get("note") else fallback_note
     if "table_min" in cost:
         warnings.append("cost.table_min is dropped; the loader derives it")
     return out
 
 
-def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
+def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, header_async: dict | None = None,
             adapter: dict | None = None, check_branches: bool = True, defaults: dict | None = None) -> Rewrite:
     """The v2 keys for one row in today's spelling. Raises Refused when there is no rewrite that
     keeps today's behavior."""
@@ -216,15 +233,19 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         out.adapter_miss = True
     if rules:
         keys["miss"] = {"when": rules[0] if len(rules) == 1 else {"any": rules}}
-    if adapter_miss:
+    if adapter_miss and kind == "per_success" and expect is not None:
+        # Today a failed `expect` is free while billing charges a 2xx error envelope unless the
+        # adapter reads it as a miss. One `bill.error` cannot say both, so the envelope stays out of
+        # the error rule: billing and routing read it as today, by the miss rule.
+        out.warnings.append("the error envelope is not an error rule (a failed expect is free, an "
+                            "envelope is charged unless it misses); stats and archive admission "
+                            "stop calling a truthy `error` or `errors` an error")
+    elif adapter_miss:
         # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
         # charges it unless the adapter reads it as a miss.
         keys["error"] = {"when": ENVELOPE}
         out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
         if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
-            if expect is not None:
-                raise Refused("today a failed `expect` is free and a 2xx error envelope is charged; "
-                              "v2 bills both as the one error outcome")
             bill["error"] = "charged"
         elif kind == "per_success":
             out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
@@ -245,15 +266,26 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
+            if key == "expect" and expect is None:
+                # today the row inherits its header's expect, which the batch moves into defaults
+                continue
             keys[key] = None
         elif keys[key] == defaults[key]:
             del keys[key]
+    if row.get("async") is False and "async" in (defaults or {}):
+        # today's opt-out of the header's async block; v2 opts out of the default with null
+        keys["async"] = None
+    elif row.get("async") is False and header_async is not None:
+        raise Refused("its async: false opts out of the header's async block; the batch moves that block "
+                      "into defaults")
     label = cost_type(keys.get("price"), keys.get("reserve"), keys.get("settle"), bill)
     if label != kind:
         out.warnings.append(f"the views will label it {label}; today they say {kind}")
-    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note")
+    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note",
+             "async")
     return _checked(row, out, {k: keys[k] for k in order if k in keys},
-                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()))
+                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()),
+                                      *(("async",) if row.get("async") is False else ()))
                           if k in row), defaults)
 
 
@@ -516,7 +548,7 @@ def main(argv: list[str]) -> int:
                 continue
             try:
                 change = rewrite(row, provider=provider, header_expect=doc.get("expect"),
-                                 adapter=adapters.get(row["id"]), defaults=defaults.get(provider))
+                                 header_async=doc.get("async"), adapter=adapters.get(row["id"]), defaults=defaults.get(provider))
             except Refused as exc:
                 refused.append((row["id"], str(exc)))
                 continue

@@ -94,23 +94,34 @@ reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter on
 
 The codemod rewrites rows in today's spelling by the section 4.4 table and writes today's
 behavior, not a wished one: a per_result or per_call row bills misses and errors, a result-aware
-row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
-(the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
-rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
-guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
-which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
-every rewritten row it prints parses whole. A provider whose header declares `defaults:` is
-rewritten against them: a key equal to its default is left out, one the row lacks is written as
-`null`, and a `bill` default, the batch's translation of the Python branch it deletes, is inherited
-whole. An unpriced row only opts out of the price defaults, and its outcome keys move to v2 as a
-priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one of
-its rows is still in today's spelling, and with them once its rows are v2. An inert `miss.status` on
-a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files in place and
-keeps every comment outside the replaced keys. The fixture replay is the proof that a rewrite
-changes nothing.
+row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Two
+adapter spellings are read as today's evaluator reads them: `x == []` is `x` present and empty (a
+null list stays a hit), and `coalesce(a, b, []) == []`, whose coalesce skips null, `''` and `[]`,
+is one absent-or-empty rule per path. A per_success row with an `expect` keeps its error envelope
+out of the `error` rule: today its failed `expect` is free while an envelope is charged unless it
+misses, which one `bill.error` cannot say, so billing and routing read the envelope by the miss rule
+and stats and archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
+an answer shape differently, and lists the rows it cannot rewrite with the reason (a provider
+decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
+`value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
+prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
+equal to its default is left out, one the row lacks is written as `null`, an `expect` the row does
+not declare is inherited (the batch moves the header's `expect` there), `async: false` becomes
+`async: null` beside an `async` default and goes without one when neither the header nor the defaults
+declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
+translation of the Python branch it deletes, is inherited whole. A fallback equal to its row's
+`value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
+`price.note`. An unpriced row only opts out of the price defaults, and its outcome keys move to v2
+as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
+of its rows is still in today's spelling, and with them once its rows are v2. An inert
+`miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files
+in place and keeps every comment outside the replaced keys. The fixture replay is the proof that a
+rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
-and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
+and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
+declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
+USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
 declared input fields; an equality-only table also meets today's table checks (required or
 defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum). A
@@ -124,6 +135,50 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 `credential`, `base_url`, `hosts` or `null`, and never repeats a header key of today's spelling
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
+
+## Summary and note
+
+A row has two prose fields, and each caveat has one home.
+
+- **`summary`** says what the tool does, in positive terms. It is searched and shown in lists.
+- **`note`** holds caveats about the whole tool or its answer that have no more specific home. Only
+  the endpoint's own detail shows it; it is not searched.
+- **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
+  `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
+  comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+
+What the validator says about them is warnings for the author to weigh, never errors:
+
+- **Length is the token limits, and only them:** `SUMMARY_TOKENS` (50) and `NOTE_TOKENS` (75) in
+  `scripts/catalog_validate.py`. No tokenizer is a dependency, so a token is a run of letters and
+  digits or one CJK character; punctuation is not counted.
+- **The reflection word list** (`scripts/catalog_text_reflect.txt`): every entry found in a row's
+  summary, note, parameter notes or charge notes warns with the entry and its reason. An entry is
+  a word or phrase matched case-insensitive on word boundaries, or a `re:` regular expression;
+  hedges, words that argue with an earlier text, evidence, dates, sample sizes and
+  maintainer reasoning are seeded. A new word worth a second look is one more line there.
+
+A plain run warns on every row. `--base REF`, which `catalog-added.yml` runs on every pull request,
+warns only on the rows added or changed against REF, so an author sees the rows they touched. The
+one error is the spelling: a row written in today's `cost` on the base and in v2 `price` on the
+head, or back, fails unless the pull request carries the `catalog-migration` label.
+
+The writing rules no check can judge:
+
+- **Most callers need it.** A sentence earns its place when most callers of the tool's main use meet
+  it and it changes how they call or read the answer. A failure only some callers hit belongs in
+  the error they get at that moment, and nothing is written when that error already explains it.
+  Correcting a false statement always qualifies.
+- **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
+  probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
+  X, Y").
+- **Summary.** Verb + object + key outputs; lead with the essentials: CLI search shows only the
+  start of a summary. Positive only: a limit or trap goes to a note, because a negation in a
+  searched field matches the query it denies. No parameter or output-column lists.
+- **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
+  specific home. No price derivation.
+- **Both.** State the present fact; never argue with an earlier version. Do not contradict another
+  field. Say each thing once.
 
 ## The shrink-only violation list
 

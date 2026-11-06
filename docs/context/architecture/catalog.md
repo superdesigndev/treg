@@ -150,7 +150,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_user_profile
     name: "TikTok user profile by username - followers, bio, stats"   # ours, <= 60 chars
-    summary: "Public TikTok profile by username"   # the provider's text, verbatim
+    summary: "Public TikTok profile by username"   # what the tool does (catalog-schema.md)
     input:
       queryArrayEncoding: json      # optional: json | comma | repeated (default)
       queryParams:
@@ -163,7 +163,13 @@ endpoints:
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main
     example_response: examples/tikhub.tiktok.user.profile.json
+    note: "..."                      # optional: a caller-facing caveat about the whole tool or its answer
 ```
+
+Every `note` is caller-facing. What a summary and a note may say, and which note a caveat goes in,
+is [catalog-schema](catalog-schema.md#summary-and-note). Only the endpoint's own detail
+(`GET /catalog/endpoints/{id}`, `treg catalog get`, `/mcp/` `catalog_get`, the dashboard drawer) shows
+the row's `note`; lists, search and sibling rows leave it out.
 
 The strict models ([catalog-schema](catalog-schema.md)), shared by the loader and the validator,
 refuse any `input` key and any parameter-spec key outside their vocabulary, because a misspelt
@@ -185,7 +191,8 @@ conflict on. It is not `verified` and not `source.curated`.
   date.
 - `carry_verification` carries `added` by id from every catalog file BEFORE its method/path check,
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
-  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, and from a
+  matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
+  row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
   provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
@@ -228,7 +235,8 @@ re-attaches by id, so re-ingesting must not reset it to `data`.
 
 ### Naming - `name` is the search surface we own
 
-`summary` is the provider's text, verbatim; `name` is ours and searched at the same weight. The
+`summary` says what the tool does ([catalog-schema](catalog-schema.md#summary-and-note)); `name` is
+the short title, searched at the same weight. The
 formula: **job + the input the caller must hold + top output facets**, at most 60 characters, and it
 must read as a natural title.
 
@@ -309,8 +317,10 @@ allowances) priced by `unit_rates_usd[provider][unit]`, one row per meter.
 
 Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`source`/`checked`: the
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
-deliberate (no published per-credit price): those endpoints keep `cost.usd = null` and display
-natively, because a guessed dollar figure is worse than an honest credit count. Both blocks must stay
+deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
+those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
+worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
+included; a missing entry fails validation. Both blocks must stay
 ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
@@ -834,7 +844,8 @@ bill when treg's own account is out.
 - **An empty answer is a failure where the job demands content.** A contract marked
   `empty_is_failure` counts a 2xx whose `CallRecord.hit` is False as bad (`store.empty_is_failure`),
   including a 2xx naming its own error in the body (`provider_error`). Every tool of those
-  capabilities callable on treg's key needs a verified adapter `miss`; tools outside routing carry a
+  capabilities callable on treg's key needs a verified adapter and a miss (the adapter's, or a v2
+  row's own rule); tools outside routing carry a
   judge-only adapter (`route: false`). A test enforces it.
 - **`miss` semantics ride on the endpoint.** A `miss: {status, means, when?}` block declares an error
   status meaning "asked and answered: no result". Router, arena and hit verdict read it through
@@ -938,6 +949,13 @@ returned and never documented as stable. An output field may say where it lands 
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
   unconfirmed.
+- `complete` (opt-in via `X-Treg-Route-Complete`) lists the output fields a full answer carries. An
+  answer missing any is weak (the waterfall keeps looking; the fullest so far wins if nothing fuller
+  turns up, at most `MAX_WEAK_FALLBACKS` extra providers); an adapter that cannot map them all is
+  asked after every adapter that can. When the list is empty, under half the contract's output is
+  the thin bar. An answer whose subject identity differs from the one asked waits for another
+  provider to report the same identifier. Off unless the caller sends the header; catalog_get names
+  the fields and the header when the contract sets `complete`.
 - `verdict` declares the per-call word stored on `CallRecord.verdict`: `from` field, closed `words`,
   `map`. It is read only from an answer that fills the required output, and is independent of
   `miss`. `verdict.decisive` (opt-in via `X-Treg-Route-Decisive`) keeps a non-deciding answer as
@@ -966,6 +984,9 @@ returned and never documented as stable. An output field may say where it lands 
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
   domain, so a French company on `.com` is not matched.
+- A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
+  the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
+  deploy and, like them, only reorders.
 - `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
@@ -975,13 +996,18 @@ returned and never documented as stable. An output field may say where it lands 
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
   both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
   search asks for everyone who fits, while a company lookup stays one provider's answer.
+- `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
+  people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
-- `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
+- `row` gives a list output one row shape whatever provider answered (`people.search`,
+  `instagram.search.users`): `of` names
   the list field, `fields` the keys a row may carry, `needs` the keys of which a row must fill one.
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
-  Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads.
+  Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
+  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
@@ -1025,8 +1051,13 @@ an invalid extra never disables the primary.
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate, else `ok_rate`, else 1.0
-  (`unmeasured`). Among one tier, a candidate that uses more of the keys the caller SENT outranks a
+  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
+  the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
+  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
+  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
+  Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
   report agree; `limit` and contract defaults never count). An exhausted platform provider with an
@@ -1160,7 +1191,7 @@ human-reviewed for PII before commit.
 ## Operator-supplied pricing evidence
 
 `catalog_ingest.py` requires `TREG_CATALOG_EVIDENCE_DIR` for AnyAPI and JustOneAPI imports:
-`anyapi_measured_charges.json` (`skus`, `as_of`, `window_days`) and `justoneapi_prices.json`
+`anyapi_measured_charges.json` (`skus`) and `justoneapi_prices.json`
 (`prices`). Missing files fail before any catalog output is written, rather than silently replacing
 measured prices with estimates. Published catalog prices are public; private ledger exports and
 account evidence are not, and hosted operators keep the inputs in their private repository.

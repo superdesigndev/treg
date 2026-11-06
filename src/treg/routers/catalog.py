@@ -625,7 +625,7 @@ async def catalog_endpoint(
         # Out of search while paused, but a held id is told why instead of "unknown endpoint".
         raise HTTPException(status_code=503, detail=oauth_providers.paused_detail(
             ep["provider"], endpoint_id))
-    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat, detail=True)
             | catalog_store.endpoint_context(ep, cat))
     if ep.get("team_label") or ep.get("caller_email"):
         personal = await _your_values(request, db, ep)
@@ -685,7 +685,8 @@ async def catalog_endpoint(
                              # `analytics` is treg's own event mapping, not part of the answer.
                              k: {a: b for a, b in (v or {}).items() if a != "analytics"}
                              for k, v in contract.output.items()},
-                         "miss": contract.miss, "derive": contract.derive} if contract else None,
+                         "miss": contract.miss, "derive": contract.derive,
+                         **({"complete": list(contract.complete)} if contract.complete else {})} if contract else None,
             # A child the router would not call on treg's key (`route.py` drops it the same way)
             # stays in the plan for its `accepts`, ranked after the rest and saying why.
             "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
@@ -702,6 +703,10 @@ async def catalog_endpoint(
                         "X-Treg-Route-Prefer": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
                         "X-Treg-Route-Exclude": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
                         "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
+                        **({"X-Treg-Route-Complete": "1 = keep going until an answer fills every field in "
+                                                     "routing.contract.complete, asking pricier providers if needed; "
+                                                     "the fullest answer wins if none does"}
+                           if contract and contract.complete else {}),
                         **({"X-Treg-Route-Verify": f"true = check a hit with {contract.check.endpoint} in the same call, at its own price, "
                                                    "inside X-Treg-Route-Max-Cost; the answer is _treg.verification "
                                                    "{verdict, checked, served_by, cost_micro}; when the check is still "

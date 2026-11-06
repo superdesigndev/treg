@@ -1836,7 +1836,7 @@ async def test_tavily_platform_gates_search_usage_and_site_work_limits(
 
 
 def test_cloro_state_targeting_rider_is_reserved():
-    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the four
+    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the
     engines that support it). The reserve must carry it; before the modifiers path was opened to
     providers other than Aviato it silently did not (found reviewing #349)."""
     cat = A.catalog_store.load()
@@ -1847,8 +1847,8 @@ def test_cloro_state_targeting_rider_is_reserved():
         return call_resolution._marketplace_pricing("cloro", endpoint_id, cv, {}, json.dumps(body).encode())
 
     plain = {"prompt": "what is a stock split", "country": "US"}
-    assert price("cloro.ai-search.perplexity.answer", plain) == (2_400, 0)            # 6 credits × $0.0004
-    assert price("cloro.ai-search.perplexity.answer", {**plain, "state": "CA"}) == (3_200, 0)  # 8
+    assert price("cloro.ai-search.gemini.scrape", plain) == (2_400, 0)                # 6 credits × $0.0004
+    assert price("cloro.ai-search.gemini.scrape", {**plain, "state": "CA"}) == (3_200, 0)      # 8
     assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (4_400, 0)     # 11
     # AI Mode has no state rider and no modifiers block: the plain estimate, untouched
     assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 0)
@@ -3937,3 +3937,37 @@ async def test_a_balance_refusal_asks_for_an_auto_top_up(clients: AsyncClient, p
     await asyncio.sleep(0)
     assert asked == [org_id]
     assert "5 times per hour" in r.json()["detail"]["message"]
+
+
+async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves_it(
+    clients: AsyncClient, monkeypatch,
+):
+    """fx.yaml holds no coingecko credit rate, so a hold would be 0. Should eligibility ever let
+    the row through, treg's key refuses it before any hold; the team's own key is not priced."""
+    ep_id = "coingecko.simple.price"
+    monkeypatch.setenv("TREG_PLATFORM_KEY_COINGECKO", "PLATFORM-CG-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "coingecko")
+    get_settings.cache_clear()
+    eligible = catalog_store.Catalog.platform_eligible
+    monkeypatch.setattr(catalog_store.Catalog, "platform_eligible",
+                        lambda self, ep: ep["id"] == ep_id or eligible(self, ep))
+    relayed = []
+
+    async def relay(request, upstream_url, tool, secrets, client, **_):
+        relayed.append(secrets)
+        return await _fake_relay(200, b'{"bitcoin": {"usd": 1}}')(request, upstream_url, tool, secrets, client)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    try:
+        path = f"/call/{ep_id}?ids=bitcoin&vs_currencies=usd"
+        refused = await clients.get(path)
+        assert refused.status_code == 503, refused.text
+        assert refused.json()["detail"]["error"] == "catalog_price_invalid"
+        assert refused.json()["detail"]["rate"] == "coingecko credit"
+        assert relayed == [] and await _balance(clients) == 1_000_000
+        await clients.post("/secrets", json={"name": "coingecko", "value": "OWN-CG"})
+        served = await clients.get(path)
+        assert served.status_code == 200, served.text
+        assert len(relayed) == 1 and await _balance(clients) == 1_000_000
+    finally:
+        get_settings.cache_clear()
