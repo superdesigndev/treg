@@ -3603,8 +3603,11 @@ def _install_script(ad_link: str = "") -> PlainTextResponse:
     f = _WEB_DIR / "install.sh"
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
-    base = get_settings().public_url.rstrip("/")
-    text = f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+            .replace("{POSTHOG_KEY}", settings.posthog_key)
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/")))
     return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
 
 

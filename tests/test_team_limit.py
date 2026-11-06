@@ -1,6 +1,6 @@
 """Owned-team limits through the same HTTP routes used by the dashboard and CLI."""
 import asyncio
-from conftest import verified_signup
+from conftest import verified_signup, accept_with_code
 
 
 async def test_eleventh_owned_team_is_refused(clients):
@@ -49,7 +49,7 @@ async def test_joining_does_not_count_but_promotion_does(clients):
     other_headers = {'X-Treg-Token': other['token']}
     inv = await clients.post(f"/orgs/{other['org_id']}/invites", headers=other_headers,
                              json={'email': 'tim@superdesign.dev', 'role': 'member'})
-    accepted = await clients.post('/invites/accept', json={
+    accepted = await accept_with_code(clients, json={
         'code': inv.json()['code'], 'email': 'tim@superdesign.dev'})
     assert accepted.status_code == 200, accepted.text
     for i in range(9):
@@ -105,7 +105,7 @@ async def test_promotion_and_creation_compete_for_same_slot(clients):
     headers = {'X-Treg-Token': other['token']}
     inv = await clients.post(f"/orgs/{other['org_id']}/invites", headers=headers,
                              json={'email': 'tim@superdesign.dev'})
-    assert (await clients.post('/invites/accept', json={
+    assert (await accept_with_code(clients, json={
         'code': inv.json()['code'], 'email': 'tim@superdesign.dev'})).status_code == 200
     for i in range(8):
         assert (await clients.post('/orgs', json={'name': f'before-race-{i}'})).status_code == 200

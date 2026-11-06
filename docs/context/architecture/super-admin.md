@@ -51,6 +51,10 @@ Routes live in `routers.admin` (plus `GET /admin/feedback` and `/admin/reviews`,
 - **Org credit** (`POST /admin/orgs/{org_id}/credit`, HTTP twin of `scripts/manual_grant.py`) grants
   through `money.grant()` with `kind="promotional"` so it burns before purchased balance; `ref` is the
   idempotency key (duplicate for the same org is 409).
+- **Referral affiliates** use exact-user reads and a versioned, operation-idempotent flag update
+  under `/admin/referrals/users`. The flag and authenticated-principal event commit together;
+  shared-token events identify `env-admin`, not an individual approver. See the
+  [API contract](../interface/api.md) and [reward rules](money.md).
 
 ## CLI
 

@@ -265,7 +265,7 @@ rolls everything back. Meta records `source=signup` and the `user_id`. The per-o
 `grant(once=True)` check is not a concurrency arbiter.
 
 `User.email_verified_at` is set only by successful OTP, verified social login or an inbox-only
-invitation link; legacy `/users` and admin-visible invite codes prove nothing. An unverified account
+invitation link; legacy `/users` and accounts the invite-code door created before it required sign-in prove nothing. An unverified account
 may create teams with zero credit. The sign-in that first verifies it
 (`find_or_create_user(..., proven=)`, then `signup.grant_signup_promo_on_proof` after that commit)
 offers the claim to the oldest eligible team it owns, or its first eligible team, without a second
@@ -729,7 +729,9 @@ row.
   its default; with no default treg's key refuses a request without it), `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
-  or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503). `round:
+  or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
+  does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
+  fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
@@ -883,13 +885,27 @@ implemented, so the per-referrer cap does not bound platform-wide exposure.
 
 - A referral is redeemed at first team creation and qualifies when cumulative purchased credit
   reaches `referral_min_topup_micro`. `qualify` checks referrer availability, the card fingerprint
-  against earlier qualified/paid referrals, and the referrer's lifetime cap. Evaluate eligibility
+  against earlier qualified/paid referrals, and the referrer's lifetime cap. A default-false
+  `User.referral_affiliate` exempts only that last gate; revocation restores the configured cap,
+  counting all qualified/paid referrals including those earned while exempt. Historical `capped`
+  rows remain terminal and neither enabling nor revoking triggers grants or a sweep. Evaluate eligibility
   against scarce payment instruments, not freely created accounts. The Stripe fingerprint is optional
   and lives only on `Referral`; refusals stay recorded (`capped`, `rejected`).
+- `lock_referrer` serializes qualification and affiliate operations with a no-op user update on
+  PostgreSQL and SQLite. Qualification reloads the pending row after locking. PostgreSQL additionally
+  takes a transaction advisory lock derived from the card fingerprint so different referrers cannot
+  concurrently reuse one card; SQLite's write lock supplies that serialization.
+- Affiliate changes and `ReferralAffiliateEvent` are committed together by `application.referrals`.
+  Every accepted operation, including a no-op, advances the version. A UUID identifies a retry:
+  the same authenticated principal and exact operation return the original event plus current
+  state, so a delayed enable retry cannot undo a later revocation. History is keyed by user id and
+  creation timestamp because SQLite can reuse a deleted account's id. Events survive deletion.
 - The referee is credited on qualification; the referrer waits `referral_hold_days`. Uniqueness on
   `referred_org_id` and `qualifying_payment_intent` prevents duplicate qualification. Grants use
   `once=False` (`once=True` is a SELECT check, not a concurrency guard).
-- `_pay` commits the paid claim before granting, then commits grants and block-id stamps together. A
+- `_grant_referee`, `_pay` and `reject_for_payment` lock and refresh the referral before acting,
+  preventing stale instant-grant and dispute decisions from racing a sweep. `_pay` commits the
+  paid claim before granting, then commits grants and block-id stamps together. A
   crash between them leaves a paid row with missing block ids (visible in `/admin/referrals`):
   no double payout, but it needs reconciliation.
 - `charge.dispute.created` and `charge.refunded` cancel rewards still in the hold window; granted

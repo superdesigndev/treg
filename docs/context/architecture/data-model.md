@@ -60,6 +60,8 @@ sources:
   - src/treg/alembic/versions/0073_org_flow_control_version.py
   - tests/test_org_flow_control_schema.py
   - src/treg/alembic/versions/0096_route_rule_version.py
+  - src/treg/alembic/versions/0097_referral_affiliate.py
+  - tests/test_referral_affiliate_schema.py
   - src/treg/alembic/versions/0075_ad_click_stash.py
   - src/treg/alembic/versions/0079_enterprise_sso.py
   - src/treg/alembic/versions/0082_oauth_sso_provenance.py
@@ -134,7 +136,7 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |
-| `Referral` | `domain/referrals.py`; its money goes through `ledger.grant` |
+| `Referral`, `ReferralAffiliateEvent` | `domain/referrals.py`; its money goes through `ledger.grant` |
 
 Rollups and analytics tables are optional read models: they never determine a money transaction.
 
@@ -322,6 +324,12 @@ and `qualifying_payment_intent` (one payment funds one qualification). Every ter
 kept, never deleted. `User.referral_code` is on the user, not the org, because anyone may create
 unlimited orgs. `Referral.card_fingerprint` is Stripe's opaque per-card id, not card data, and
 lives only here so `Org` keeps its no-card-data posture.
+
+`User.referral_affiliate` defaults false in both model and database; its version starts at zero.
+`ReferralAffiliateEvent` is durable operation history, committed with the flag, independent of
+best-effort call audit. It stores the authenticated principal, reason, old/new flag, operation UUID
+and version. User id plus user creation time identifies the account incarnation; no foreign key
+allows history to survive deletion without being attributed to a later SQLite account reusing its id.
 
 ## Async DB (`src/treg/infra/db.py`)
 

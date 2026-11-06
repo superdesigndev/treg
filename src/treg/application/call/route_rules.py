@@ -145,6 +145,18 @@ class Reader:
 _reader = Reader()
 
 
+async def warm() -> None:
+    """One bounded read before a worker serves, so its first calls are planned with the published
+    set rather than the YAML order. A failed read is logged and left to the next refresh."""
+    if not enabled():
+        return
+    _reader.next_refresh = _clock() + get_settings().route_rules_refresh_s
+    try:
+        await _reader._refresh()
+    except Exception:  # startup must not fail on rules; calls keep the YAML order
+        log.warning("route rules warm-up failed", exc_info=True)
+
+
 def reset() -> None:
     global _reader
     if _reader.task is not None and not _reader.task.done():

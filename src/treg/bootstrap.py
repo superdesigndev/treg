@@ -28,6 +28,7 @@ from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
+    _ClientNoticeMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -424,6 +425,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/archive/body', ('GET',), 'admin_archive_body'),
     ('/admin/archive/panel', ('GET',), 'admin_archive_panel'),
     ('/admin/referrals', ('GET',), 'admin_referrals'),
+    ('/admin/referrals/users', ('GET',), 'admin_referral_user_by_email'),
+    ('/admin/referrals/users/{user_id}', ('GET',), 'admin_referral_user'),
+    ('/admin/referrals/users/{user_id}/affiliate', ('PUT',), 'admin_set_referral_affiliate'),
     ('/catalog/endpoints/{endpoint_id}/access', ('GET',), 'catalog_endpoint_access'),
     ('/run', ('POST',), 'run_tool_server'),
 })
@@ -740,6 +744,10 @@ def _lifespan(role: AppRole):
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
                 logging.getLogger("treg").warning("kv configured but unreachable at startup")
+            # Published route rules (docs/context/architecture/route-rules.md) are read once before
+            # serving, so a new worker's first calls do not fall back to the YAML order.
+            from .application.call import route_rules as route_rules_app
+            await route_rules_app.warm()
 
             limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
             app.state.http = httpx.AsyncClient(
@@ -885,6 +893,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     # Registration order is part of the compatibility surface. add_middleware prepends entries.
     app.add_middleware(_LegacyHostRedirectMiddleware)
     app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_ClientNoticeMiddleware)
     app.add_middleware(_BodyDecodeMiddleware)
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:

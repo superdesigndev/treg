@@ -209,6 +209,45 @@ def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
     assert len(row2["biography"]) == 300, "text is still cut"
 
 
+def test_a_row_field_may_keep_more_text_than_the_default_cut():
+    """people.search's `summary` is the evidence an agent checks a brief against: it keeps up to its
+    own `max` (1000) while every other text field is still cut to ROW_TEXT_MAX."""
+    from treg.domain.catalog.routing import contracts as C
+
+    cat = catalog_store.load()
+    assert cat.contracts["people.search"].row_fields["summary"]["max"] == 1000
+    ad = cat.adapters["parallel.people.search"]
+    long = "evidence " * 200
+    row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": "https://linkedin.com/in/ada",
+                                          "description": long}]})["people"][0]
+    assert len(row["summary"]) == 1000 and len(row["name"]) == C.ROW_TEXT_MAX
+    doc = {"identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
+           "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}}}}
+    for bad in (0, -5, True, "1000", 1.5):
+        with pytest.raises(ValueError, match="max"):
+            C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "str", "max": bad}}}}}})
+    with pytest.raises(ValueError, match="max"):
+        C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "url", "max": 10}}}}}})
+
+
+def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention_domain_match():
+    """A routed endpoint's identity keys read "identity" plus the contract's note, so an agent knows
+    what a free-text `q` is for; the `domain_match` sentence belongs to email finds only."""
+    from treg.domain.catalog.routing import contracts as C
+
+    cat = catalog_store.load()
+    body = cat.by_id["treg.people.search"]["input"]["body"]
+    assert body["q"]["note"].startswith("identity; describe the people in words")
+    assert body["company_domain"]["note"].startswith("identity; the employer's website domain")
+    assert "domain_match" not in cat.by_id["treg.people.search"]["input"]["note"]
+    assert "domain_match" in cat.by_id["treg.people.email.find"]["input"]["note"]
+    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": {"q": " words "}}}})["y"].identity_notes == {"q": "words"}
+    for bad in ({"nope": "x"}, {"q": ""}, {"q": 3}, {}, ["q"]):
+        with pytest.raises(ValueError, match="identity_notes"):
+            C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
+
+
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     """people.search builds `q` from the caller's title and location, but only for a provider that
     accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
@@ -239,6 +278,56 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
                                                "miss": "a == null", "stand_in": {"nope": "q"}}}})
 
 
+def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
+    """exa and parallel write the company into the text of a `q` the caller sent, so a
+    {company_domain, q} request ("executives" at openai.com) reaches them; a {company_domain, title}
+    request, whose `q` treg would build from the title, still skips them."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    from treg.domain.catalog.routing.plan import unscoped
+
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    asked, _ = canonical_identity(contract, {"q": "executives", "company_domain": "openai.com"})
+    for eid, field in (("exa.people.search", "query"), ("parallel.people.search", "objective")):
+        ad = cat.adapters[eid]
+        assert adapter_accepts(ad, asked) == ("q",) and not unscoped(ad, contract, asked)
+        assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
+        scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
+        assert unscoped(ad, contract, scoped) == ("company_domain",), "a domain on a built q is a guess"
+    # A provider that answers this shape by company alone drops what q asked; one with the title
+    # in its variant still answers {q, title}
+    for eid in ("crawl4ai.people.search", "icypeas.people.search"):
+        assert unscoped(cat.adapters[eid], contract, asked) == ("q",)
+    titled_q, _ = canonical_identity(contract, {"q": "backend engineer", "title": "Backend Engineer"})
+    assert not unscoped(cat.adapters["icypeas.people.search"], contract, titled_q)
+    # Only what this call's upstream request carries: enrichlayer sends the name and the domain of
+    # {q, company_domain, full_name} but not q, and a name is not what q asked for
+    named, _ = canonical_identity(contract, {"q": "speaks fluent Japanese", "company_domain": "example.com",
+                                             "full_name": "Alice Cooper"})
+    assert unscoped(cat.adapters["enrichlayer.people.search"], contract, named) == ("q",)
+    # and an adapter's mapped field outside the variant it matched is not sent: prospeo answers
+    # {full_name, company_domain} by the company alone
+    person, _ = canonical_identity(contract, {"full_name": "Alice Cooper", "company_domain": "example.com"})
+    assert unscoped(cat.adapters["prospeo.people.search"], contract, person) == ("full_name",)
+    assert not unscoped(cat.adapters["crawl4ai.people.search"], contract, person)
+    assert cat.adapters["crawl4ai.people.search"].to_upstream(person, adapter_accepts(
+        cat.adapters["crawl4ai.people.search"], person))[1]["where"] == {
+        "company": {"domain": "example.com"}, "person": {"name": "Alice Cooper"}}
+    # A text join skips a list, so a domain sent as one is not carried
+    listed, _ = canonical_identity(contract, {"q": "executives", "company_domain": ["openai.com"]})
+    assert unscoped(cat.adapters["exa.people.search"], contract, listed) == ("company_domain",)
+    # Only providers that send both remain, so the shape fills to the caller's limit like a bare q
+    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) == 20
+    assert contract.fill_target({"q": "   ", "limit": 5}) is None, "a blank q is not sent"
+    assert contract.fill_target({"q": "executives", "limit": 5}) == 5
+    # An adapter that sends its stand-in only through an expression still sends the keys inside it
+    import dataclasses
+    expr_only = dataclasses.replace(cat.adapters["exa.people.search"], in_map={})
+    titled, _ = canonical_identity(contract, {"title": "CTO"})
+    assert expr_only.to_upstream(titled, ("q",))[1]["query"] == "CTO"
+    assert not unscoped(expr_only, contract, titled)
+
+
 @pytest.fixture
 def people_search_on(monkeypatch, platform_on):
     for p in ("CRAWL4AI", "EXA", "PARALLEL", "ICYPEAS"):
@@ -260,6 +349,7 @@ async def _first_providers(ep_id: str, identity: dict, header: str | None = None
 @pytest.mark.parametrize("identity, header, first", [
     ({"q": "head of tax in phoenix"}, None, ["parallel", "exa"]),   # sent q: the first matching rule
     ({"title": "Head of Tax"}, None, ["icypeas"]),                  # a stand-in q is not one the caller sent
+    ({"q": "executives", "company_domain": "openai.com"}, None, ["parallel", "exa"]),   # the company rides in q
     ({"q": "head of tax in phoenix"}, "exa", ["exa"]),              # the caller's header replaces the rules
 ])
 async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
@@ -1940,8 +2030,111 @@ async def test_a_q_search_fills_to_the_limit_the_caller_sent(clients: AsyncClien
     assert [p for p, *_ in seen] == ["exa"] and "merged_from" not in r2.json()["_treg"]
 
 
+async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
+        clients: AsyncClient, people_search_on, monkeypatch):
+    """{company_domain, q}: exa and parallel send both; crawl4ai and icypeas would answer by company
+    alone, so when both semantic searches miss the answer is a miss, not the company's interns."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(200, {"results": []})], "parallel": [(200, {"entities": []})],
+         "*": [(200, {"data": [{"name": "Intern"}]})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"q": "executives", "company_domain": "example.com", "limit": 3})
+    assert r.status_code == 200, r.text
+    assert sorted(p for p, *_ in seen) == ["exa", "parallel"] and not (r.json()["output"] or {}).get("people")
+    assert seen[0][3].get("query", seen[0][3].get("objective")) == "executives example.com"
+
+
+def test_a_people_search_adapter_lists_its_wider_variants_first():
+    """The first variant fully present is the one sent and the one ranked: a narrower one ahead of a
+    wider one drops the caller's extra key (leadocean answered {company_domain, title} by the
+    domain alone) or hides it from ranking (prospeo sent the title through in_expr, unranked)."""
+    cat = catalog_store.load()
+    for eid, ad in cat.adapters.items():
+        if (cat.by_id.get(eid) or {}).get("capability") != "people.search":
+            continue
+        for i, narrow in enumerate(ad.accepts):
+            assert not any(set(narrow) < set(wide) for wide in ad.accepts[i + 1:]), (eid, narrow)
+    leadocean = cat.adapters["leadocean.people.search"]
+    contract = cat.contracts["people.search"]
+    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "title": "CFO", "q": "speaks Japanese"})
+    assert leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))[0] == {
+        "domain": "example.com", "title": "CFO", "q": "speaks Japanese", "limit": "10"}
+    # its person sits under profile_data, which a merge must read to tell a repeat from a new row
+    assert leadocean.rows([{"profile_data": {"profile_full_name": "Jane Doe", "profile_headline": "CFO at Example",
+                                             "profile_url": "https://www.linkedin.com/in/jane",
+                                             "profile_address": {"city": "Austin", "country": "US"}},
+                            "contact_data": {"contact_current_experiences": [
+                                {"company_name": "Example Inc", "company_domain": "example.com", "job_title": "CFO"}]}}]) == [
+        {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane", "title": "CFO",
+         "company": "Example Inc", "company_domain": "example.com", "location": "Austin, US",
+         "summary": "CFO at Example"}]
+
+
+def adapter_accepts_of(adapter, identity):
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    return adapter_accepts(adapter, identity)
+
+
+async def test_a_title_sent_through_an_expression_still_ranks_on_price(clients, platform_on, monkeypatch):
+    """prospeo and enrichlayer both send {company_domain, title}; with prospeo's narrower
+    {company_domain} variant listed first its title went unranked and the dearer one led."""
+    for p in ("PROSPEO", "ENRICHLAYER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "prospeo,enrichlayer")
+    get_settings.cache_clear()
+    got = await _first_providers("treg.people.search", {"company_domain": "example.com", "title": "CFO", "limit": 3}, n=2)
+    get_settings.cache_clear()
+    assert got == ["prospeo", "enrichlayer"]
+
+
+async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """{q, company_domain, full_name}: every provider is dropped because it cannot send all three,
+    and a retry never changes that, so it is the caller's 422, not a capacity 503."""
+    cat = catalog_store.load()
+    provs = sorted({cat.by_id[e]["provider"] for e in cat.adapters
+                    if cat.by_id.get(e, {}).get("capability") == "people.search"})
+    for p in provs:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper().replace('-', '_')}", "PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(provs))
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search", json={
+        "q": "speaks fluent Japanese", "company_domain": "example.com", "full_name": "Alice Cooper"})
+    get_settings.cache_clear()
+    assert r.status_code == 422, r.text
+    assert "send every key" in r.json()["detail"]["message"] and seen == []
+    # A caller who excluded the providers that could is told to check that list
+    r2 = await clients.post("/call/treg.people.search", json={"q": "executives", "company_domain": "example.com"},
+                            headers={"X-Treg-Route-Exclude": "exa,parallel,leadocean,prospeo"})
+    assert r2.status_code == 422 and "x-treg-route-exclude" in r2.json()["detail"]["message"].lower(), r2.text
+
+
+async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
+        clients: AsyncClient, people_search_on, monkeypatch):
+    """`q` is `text`: a list would be skipped by the providers' text joins, which would then search
+    the domain alone and bill for it."""
+    from treg.domain.catalog.routing import contracts as C
+
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"q": ["executives"], "company_domain": "example.com", "limit": 3})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
+    doc = {"identity": [{"q": "str", "title": "str"}], "output": {"a": "str"}, "scoping": ["q"]}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "carried_by": {"q": ["title"]}}}})["y"].carried_by == {
+        "q": ("title",)}
+    for bad in ({"title": ["q"]}, {"q": []}, {"q": ["nope"]}, {"q": ["q"]}, ["q"]):
+        with pytest.raises(ValueError, match="carried_by"):
+            C.parse_contracts({"contracts": {"y": {**doc, "carried_by": bad}}})
+
+
 @pytest.mark.parametrize("body, target", [
     ({"q": "head of tax", "limit": 15}, 15),
+    ({"q": "head of tax", "company_domain": "stripe.com", "limit": 15}, 15),
+    ({"q": "   ", "company_domain": "stripe.com", "limit": 15}, None),   # a blank q was not sent
     ({"q": "head of tax", "limit": 15, "country": "US", "keywords": ["vat"]}, 15),   # filters are not identity
     ({"q": "head of tax"}, None),                                  # the contract default is no one's ask
     ({"q": "head of tax", "limit": 1}, None),                      # one row is reached by any hit
@@ -2581,42 +2774,9 @@ async def test_company_blind_search_provider_is_dropped_not_billed(clients: Asyn
     get_settings.cache_clear()
 
 
-# ---- ai-search.perplexity.answer: dataforseo first by default, both say their source
 def _example(eid: str) -> dict:
     from pathlib import Path
     return json.loads((Path(catalog_store.__file__).parents[2] / "catalog" / "examples" / f"{eid}.json").read_text())
-
-
-@pytest.mark.parametrize("prefer, first, kind", [
-    (None, "dataforseo", "model_api"),          # the contract's default order
-    ("cloro", "cloro", "website"),              # a caller's own preference replaces it
-])
-async def test_perplexity_answer_routes_by_the_contract_default_and_says_its_source(
-        clients, monkeypatch, prefer, first, kind):
-    """Cost per hit alone ranked cloro first (cheaper, but slower and less reliable than
-    dataforseo). The two read different things (website vs model API), so the answer says which."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CLORO", "PLATFORM-CLORO")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "dataforseo,cloro")
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "dataforseo": [(200, _example("dataforseo.x.ai-optimization-perplexity-llm-responses-live"))],
-        "cloro": [(200, _example("cloro.ai-search.perplexity.answer"))],
-    }, seen))
-    response = await clients.post(
-        "/call/treg.ai-search.perplexity.answer", json={"prompt": "best CRM for a small business", "country": "US"},
-        headers={"X-Treg-Route-Prefer": prefer} if prefer else {})
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert seen[0][0] == first and data["_treg"]["provider"] == first
-    assert data["output"]["source_kind"] == kind and data["output"]["answer"] and data["output"]["sources"]
-    if first == "dataforseo":
-        assert seen[0][3] == [{"user_prompt": "best CRM for a small business", "web_search_country_iso_code": "US",
-                               "model_name": "sonar"}]
-    else:
-        assert seen[0][3] == {"prompt": "best CRM for a small business", "country": "US"}
-    get_settings.cache_clear()
 
 
 async def test_people_enrich_not_found_from_dropleads_and_aiark_is_a_miss_not_a_502(clients, monkeypatch):

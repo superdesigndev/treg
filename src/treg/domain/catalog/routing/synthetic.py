@@ -43,7 +43,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
     for variant in contract.identity:
         for k in variant:
             body.setdefault(k, {"type": contract.identity_types.get(k, "str"), "required": False,
-                                "note": "identity"})
+                                "note": "; ".join(["identity"] + ([contract.identity_notes[k]]
+                                                                  if k in contract.identity_notes else []))})
     for k, spec in (contract.filters or {}).items():
         body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
                             "note": "; ".join(["filter"]
@@ -72,8 +73,9 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                               "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "
                            "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
-                           "X-Treg-Served-By names the provider. When you sent a domain, _treg.domain_match "
-                           "says whether the hit's mailbox domain matches it."
+                           "X-Treg-Served-By names the provider."
+                           + (" When you sent a domain, _treg.domain_match says whether the hit's mailbox domain "
+                              "matches it." if contract.advice_domain_mismatch else "")
                            + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
                               "at that call's own price, in _treg.verification." if contract.check else "")
                            + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "

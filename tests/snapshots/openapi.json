@@ -8,13 +8,13 @@
             "type": "string"
           },
           "email": {
+            "default": "",
             "title": "Email",
             "type": "string"
           }
         },
         "required": [
-          "code",
-          "email"
+          "code"
         ],
         "title": "AcceptIn",
         "type": "object"
@@ -63,6 +63,40 @@
           }
         },
         "title": "AccessIn",
+        "type": "object"
+      },
+      "AffiliateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "affiliate": {
+            "title": "Affiliate",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "maximum": 2147483646.0,
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "affiliate",
+          "expected_version",
+          "reason",
+          "operation_id"
+        ],
+        "title": "AffiliateIn",
         "type": "object"
       },
       "AgentIn": {
@@ -3457,6 +3491,205 @@
           }
         },
         "summary": "Admin Referrals"
+      }
+    },
+    "/admin/referrals/users": {
+      "get": {
+        "operationId": "admin_referral_user_by_email_admin_referrals_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "maxLength": 320,
+              "minLength": 3,
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Referral User By Email Admin Referrals Users Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Referral User By Email"
+      }
+    },
+    "/admin/referrals/users/{user_id}": {
+      "get": {
+        "operationId": "admin_referral_user_admin_referrals_users__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Referral User Admin Referrals Users  User Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Referral User"
+      }
+    },
+    "/admin/referrals/users/{user_id}/affiliate": {
+      "put": {
+        "operationId": "admin_set_referral_affiliate_admin_referrals_users__user_id__affiliate_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AffiliateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Set Referral Affiliate Admin Referrals Users  User Id  Affiliate Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Set Referral Affiliate"
       }
     },
     "/admin/shadow": {
@@ -8471,7 +8704,40 @@
     },
     "/invites/accept": {
       "post": {
+        "description": "Join a team with an invite code, signed in as the invited email.\n\nThe code is also returned to the admin who created the invite, so it only names the invite; it\nnever proves who the caller is. The caller's own sign-in (email code, GitHub or Google) proves\nthe email, exactly as on `POST /invites/{id}/accept`. A key pinned to one team cannot accept.",
         "operationId": "accept_invite_invites_accept_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8577,7 +8843,7 @@
     },
     "/invites/{invite_id}/accept": {
       "post": {
-        "description": "Accept an invite addressed to my already-proven email — no code needed (the identity token\nproves the email). The code path (`POST /invites/accept`) stays for out-of-band joins.",
+        "description": "Accept an invite addressed to my already-proven email by its id (the dashboard's list).",
         "operationId": "accept_my_invite_invites__invite_id__accept_post",
         "parameters": [
           {

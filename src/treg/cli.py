@@ -47,7 +47,7 @@ from urllib.parse import parse_qsl, quote, urlsplit
 import httpx
 
 from . import agents as _agents
-from . import cli_analytics, cli_session, cli_view
+from . import cli_analytics, cli_session, cli_view, client_notice
 from . import jsontext
 from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
@@ -218,6 +218,32 @@ def _is_loopback_url(url: str) -> bool:
     return host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")
 
 
+_client_notice_seen = False
+
+
+def _print_client_notice(resp: httpx.Response) -> None:
+    """The registry's word on this CLI's version (client_notice.py): on stderr, once a day per
+    notice, never under `--json`."""
+    global _client_notice_seen
+    text = resp.headers.get(client_notice.NOTICE_HEADER)
+    if not text or _client_notice_seen or _JSON_OVERRIDE:
+        return
+    _client_notice_seen = True
+    stamp = CONFIG_PATH.with_name("client-notice")
+    shown = f"{time.strftime('%Y-%m-%d')} {text}"
+    try:
+        if stamp.read_text(encoding="utf-8") == shown:
+            return
+    except OSError:
+        pass
+    print(f"  {_M}{text}{_R}", file=sys.stderr)
+    try:
+        stamp.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stamp.write_text(shown, encoding="utf-8")
+    except OSError:
+        pass
+
+
 class _RegistryClient(httpx.Client):
     """An httpx client that survives an upstream WAF. Some edges (Cloudflare, incl. Render's) 403 a
     request whose body matches an injection signature -- e.g. a skill recipe or a proxied `call` that
@@ -228,6 +254,7 @@ class _RegistryClient(httpx.Client):
 
     def send(self, request: httpx.Request, **kwargs) -> httpx.Response:
         resp = super().send(request, **kwargs)
+        _print_client_notice(resp)
         body = request.content or b""
         if (resp.status_code != 403 or not body
                 or "html" not in resp.headers.get("content-type", "").lower()
@@ -1609,9 +1636,7 @@ def cmd_accept(args, cfg) -> None:
             sys.exit(f"no pending invite for '{args.org}' — run `treg invites`")
         r = c.post(f"/invites/{inv['id']}/accept")
         if r.status_code == 200:
-            data = r.json()
-            cfg.update(token=data["token"], active_org=data["org"], identity=True)
-            _save_config(cfg)
+            _save_joined_team(cfg, r.json())
         _show(r)
 
 
@@ -5270,13 +5295,29 @@ def cmd_org_deny_rm(args, cfg) -> None:
 
 
 def cmd_org_join(args, cfg) -> None:
-    with _client(cfg, auth=False) as c:
-        r = c.post("/invites/accept", json={"code": args.code, "email": args.email})
+    """Join a team with an invite code, signed in as the invited email (`treg login` first)."""
+    if not (os.environ.get("TREG_TOKEN") or cfg.get("token")):
+        sys.exit("sign in first: run `treg login` with the email the invite was sent to, then retry")
+    body = {"code": args.code}
+    if args.email:
+        body["email"] = args.email
+    with _client(cfg) as c:
+        r = c.post("/invites/accept", json=body)
     if r.status_code == 200:
-        d = r.json()
-        cfg.update(token=d["token"], active_org=d["org"], email=args.email, identity=True)
-        _save_config(cfg)
+        _save_joined_team(cfg, r.json())
+    elif r.status_code == 403 and "different email" in r.text:
+        print("(this invite is for a different email — run `treg login` with that address, then retry)",
+              file=sys.stderr)
     _show(r)
+
+
+def _save_joined_team(cfg: dict, joined: dict) -> None:
+    """Keep the new team token, unless this run's identity came from `TREG_TOKEN`: that token is
+    per-process and must never overwrite the login saved in the config file."""
+    if os.environ.get("TREG_TOKEN"):
+        return
+    cfg.update(token=joined["token"], active_org=joined["org"], identity=True)
+    _save_config(cfg)
 
 
 def _clear_active_if_targeted(cfg: dict) -> None:
@@ -6238,6 +6279,7 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         # on a routed id, with a ceiling: how every route option is passed, shown on the call itself
         "call": _with_route_cap(template, (body.get("routing") or {}).get("max_cost_usd")) if routed_id else template,
         "requires": _requires(body.get("routing")),
+        **_answer_bar(body.get("routing")),
         **_params_view(e.get("input") or {}),
         **_price_table_view(cost),
         "async": _async_view(e.get("async")),
@@ -6275,7 +6317,8 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
 # where it comes from.
 _GET_GROUPS = [
     ("id", "name", "summary", "note", "job", "upstream"),
-    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires"),
+    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires",
+     "stops_at", "complete"),
     ("route_headers",),
     ("params_note", "params_shared", "params", "param_examples"),
     ("price_table", "async"),
@@ -6343,6 +6386,14 @@ def _requires(routing: dict | None) -> str | None:
     sets = ((routing or {}).get("contract") or {}).get("identity") or []
     names = [" + ".join(s) for s in sets if s]
     return None if not names else names[0] if len(names) == 1 else "one of " + " | ".join(names)
+
+
+def _answer_bar(routing: dict | None) -> dict:
+    """Which answer ends a routed call by default, and which one `X-Treg-Route-Complete` waits for."""
+    contract = (routing or {}).get("contract") or {}
+    return {"stops_at": f"the first answer unless {contract['miss']}" if contract.get("miss") else None,
+            "complete": ", ".join(contract["complete"]) + " (X-Treg-Route-Complete: 1 waits for all of them)"
+            if contract.get("complete") else None}
 
 
 def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
@@ -7088,8 +7139,8 @@ def build_parser() -> argparse.ArgumentParser:
     odr = mk(og, "deny-rm", "Remove a deny rule.", "treg org deny-rm 3")
     odr.add_argument("rule_id", type=int, help="the rule id (from `org deny-ls`)")
     odr.set_defaults(fn=cmd_org_deny_rm)
-    oj = mk(og, "join", "Join a team using an invite code.", "treg org join <code> --email you@company.com")
-    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", required=True, help="your email (creates you if new)"); oj.set_defaults(fn=cmd_org_join)
+    oj = mk(og, "join", "Join a team using an invite code (sign in as the invited email first).", "treg org join <code>")
+    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", default="", help="optional: the invited email, checked against the account you are signed in as"); oj.set_defaults(fn=cmd_org_join)
     mk(og, "leave", "Remove yourself from the active team.", "treg org leave").set_defaults(fn=cmd_org_leave)
     od = mk(og, "delete", "Delete a team you own (confirms by name).", "treg org delete superdesign")
     od.add_argument("slug", help="the org slug to delete"); od.set_defaults(fn=cmd_org_delete)

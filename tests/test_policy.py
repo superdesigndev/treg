@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from sqlmodel import select
 
-from conftest import verified_identity, invite_code_member
+from conftest import verified_identity, unproven_member
 from treg import policy
 from treg.bootstrap import create_app
 from treg.config import get_settings
@@ -195,7 +195,7 @@ async def test_ineligible_users_never_reach_the_point(clients, monkeypatch):
         seen.append(ctx)
         return policy.CreditDecision.GRANT
     monkeypatch.setattr(policy, "registry", _registry(handler))
-    member = await invite_code_member(clients, "legacy@example.org")
+    member = await unproven_member(clients, "legacy@example.org")
     await _team(clients, member["token"], "legacy-team")
     assert seen == []
 
