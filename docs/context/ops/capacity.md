@@ -286,8 +286,10 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
   check refused small requests while serving larger ones, which callers read as a plan change. Such
   a fallback charges the aggregator's flat fee, including an empty page.
 - **The seed** (`overflow_seed.json`) holds candidate mappings and verification evidence. Enabled
-  routes decay without verification. Verification records live in
-  `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
+  routes decay without verification. A free-to-us vendor route still carries the aggregator's list
+  price here (Apollo people search is `$0.002`/call): that figure is what catalog disclosure and the
+  child reserve use; settlement still follows the aggregator's in-band charge. Verification records
+  live in `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
   ContactOut routes whose static catalog examples cannot.
 - **Mark scope on a failed child** (`overflow.py`): only `aggregator_auth` and `aggregator_balance`
   mark `overflow:<aggregator>` for every provider. Everything else (the aggregator's account for

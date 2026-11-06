@@ -131,12 +131,12 @@ def cents_to_micro(amount_cents: int) -> int:
 
 
 def bonus_for_topup(amount_micro: int) -> tuple[int, int]:
-    """The promotional bonus a MANUAL top-up of `amount_micro` earns, as `(bonus_micro, percent)`.
+    """The promotional bonus a top-up of `amount_micro` earns, manual or automatic, as
+    `(bonus_micro, percent)`.
 
     Tiered by size (`topup_bonus_tiers`): the highest tier at or below the amount applies, so $99 gets
     the $50 rate and $250 the $200 rate. Integer micro-USD throughout — `amount * pct // 100`
     truncates the sub-micro remainder, which is at most a millionth of a dollar in treg's favour.
-    Callers decide whether the top-up qualifies at all (automatic refills never do).
     """
     tiers = get_settings().topup_bonus_tiers or {}
     usd = int(amount_micro) // MICRO_PER_USD
@@ -1299,14 +1299,19 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
         org_slug = org.slug
         db.add(org)
         await db.commit()
+        bonus_micro, bonus_pct = (0, 0) if already else await _grant_topup_bonus(
+            db, org_id, credited, pi["id"])
         if not already and (to or analytics.enabled()):
             balance_after = await ledger.balance_of(db, org_id)
             await db.rollback()  # release the read connection before sending the receipt
             if to:
-                await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True)
+                await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True,
+                                                  bonus_micro=bonus_micro)
             # The only emitter for an inline auto credit: the webhook finds it credited.
             _capture_topup_completed(to, org_id, org_slug, {"amount_micro": credited, "auto": True,
-                                                            "balance_after_micro": balance_after})
+                                                            "balance_after_micro": balance_after,
+                                                            "bonus_micro": bonus_micro,
+                                                            "bonus_pct": bonus_pct})
         return {"ok": True, "payment_intent": pi["id"], "amount_micro": credited}
 
 
@@ -1470,6 +1475,38 @@ def _capture_topup_completed(to: str | None, org_id: int, org_slug: str, props: 
                       groups={"team": org_slug})
 
 
+async def _grant_topup_bonus(db: AsyncSession, org_id: int, amount_micro: int,
+                             pi_id: str) -> tuple[int, int]:
+    """Grant the tiered bonus a credited top-up earned, as its own `bonus` block, at most once per
+    PaymentIntent. Returns `(bonus_micro, percent)`, `(0, 0)` when nothing was granted.
+
+    Runs after the purchased credit is committed, in its own transaction. The bonus burns with promo
+    credit and is never refundable, so it must not inflate the purchased (refundable) block. An auto
+    top-up reaches this from both the inline charge and the later webhook, so the purchased block is
+    locked first and an existing bonus for the payment ends it. Swallowed: a failure must not 500 the
+    webhook and make Stripe retry a payment that has already credited.
+    """
+    bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
+    if bonus_micro <= 0:
+        return 0, 0
+    try:
+        block_id = (await db.execute(
+            select(CreditBlock.id).where(CreditBlock.stripe_payment_intent == pi_id).with_for_update()
+        )).scalar_one_or_none()
+        if block_id is None or await _bonus_blocks_for(db, pi_id, org_id):
+            await db.rollback()
+            return 0, 0
+        await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
+                           meta={"source": "topup_bonus", "payment_intent": pi_id,
+                                 "pct": bonus_pct, "topup_block_id": block_id})
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        await db.rollback()
+        log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
+        return 0, 0
+    return bonus_micro, bonus_pct
+
+
 async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, *, auto: bool,
                   fingerprint: str | None = None, attribution: dict | None = None) -> dict:
     """Credit a paid PaymentIntent to the org's balance, once. Emails a receipt only when this
@@ -1496,24 +1533,8 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     # sweep) rolls back to here.
     await db.commit()
     fresh = not already
-    bonus_micro, bonus_pct = 0, 0
-    if fresh and not auto:
-        # The tiered bonus on a MANUAL top-up, as its own promotional block: it burns first and is
-        # never refundable, so it must not inflate the purchased (refundable) block above. `fresh` is
-        # the idempotency guard — a webhook redelivery finds `already` and grants nothing. Swallowed
-        # like the referral qualification below: a failure here must not 500 the handler and make
-        # Stripe retry a payment that has already credited.
-        bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
-        if bonus_micro > 0:
-            try:
-                await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
-                                   meta={"source": "topup_bonus", "payment_intent": pi_id,
-                                         "pct": bonus_pct, "topup_block_id": block_id})
-                await db.commit()
-            except Exception as e:  # noqa: BLE001
-                await db.rollback()
-                bonus_micro, bonus_pct = 0, 0
-                log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
+    bonus_micro, bonus_pct = (await _grant_topup_bonus(db, org_id, amount_micro, pi_id)
+                              if fresh else (0, 0))
     after = await ledger.balance_of(db, org_id)
     if fresh:
         org = await db.get(Org, org_id)

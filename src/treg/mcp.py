@@ -750,6 +750,30 @@ def _body(r: httpx.Response) -> Any:
     return jsontext.scrub_surrogates(body) if jsontext.may_hold_surrogates(r.content) else body
 
 
+def _dead_mcp_key_problem() -> dict:
+    """The saved MCP bearer is dead - CLI login does not refresh it. Name the cause and the repair.
+
+    A static Authorization header written by `treg mcp install` survives `treg login` and session-
+    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere.
+    Point them at `treg mcp install --oauth`, which rewrites every managed client to URL-only so the
+    client can authorize itself (Claude Code `/mcp`, Codex `codex mcp login`, Cursor/opencode OAuth).
+    A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written entry) is out of the installer's
+    reach, so the hint also says to replace it. This hint is the one place the repair is documented.
+    """
+    return {
+        "error": "not signed in, or this token is invalid or expired",
+        "hint": (
+            "This MCP server holds its own saved key, separate from the CLI login, and that key is "
+            "no longer valid. Run `treg update`, then `treg mcp install --oauth` (needs no login), "
+            "restart the agent, then authorize treg in the client (Claude Code: `/mcp`, then "
+            "Authenticate; Codex: `codex mcp login treg`; Cursor/opencode: follow the client's "
+            "sign-in prompt). If you set this key yourself (for example the `TREG_TOKEN` "
+            f"environment variable), replace it with a current team key from "
+            f"{get_settings().public_url.rstrip('/')} and restart the agent."
+        ),
+    }
+
+
 async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | None, dict | None]:
     """Which team is this caller acting for? Returns `(org_id, slug, problem)`.
 
@@ -770,6 +794,10 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     pinned = client.headers.get("X-Treg-Org")
     if pinned:
         r = await client.get("/orgs")
+        if r.status_code == 401:
+            # Dead team-pinned key (revoke-tokens / Default-key rotation / bad signature still
+            # carrying an org claim). The old answer said the TEAM was gone; the key is what died.
+            return None, None, _dead_mcp_key_problem()
         for o in (_body(r) or []) if r.status_code == 200 else []:
             if o.get("slug") == pinned:
                 return int(o["org_id"]), pinned, None
@@ -782,10 +810,7 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
 
     r = await client.get("/orgs")
     if r.status_code == 401 or me.status_code == 401:
-        return None, None, {"error": "not signed in, or this token is invalid or expired",
-                            "hint": ("sign in again with `treg login`, then run `treg mcp install` to "
-                                     "update this server's token, or configure a current key from "
-                                     f"{get_settings().public_url.rstrip('/')}")}
+        return None, None, _dead_mcp_key_problem()
     if r.status_code != 200:
         return None, None, {"error": "could not read the teams for this token"}
     orgs = _body(r) or []

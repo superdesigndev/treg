@@ -53,7 +53,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |
 | [Onboarding - first run in the dashboard and `treg onboard`](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, first_run.py, … |
-| [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, robots.txt, … |
+| [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, compare_pages.py, … |
 | [Shell mode (treg shell) - transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |
 | [The shippable treg skill and its distribution doors](interface/skill.md) | shipped | skill.md, integrate.md, install.sh, SKILL.md, … |
 | [Web Arena - private comparisons and live provider observations](interface/web-arena.md) | gated | web_arena.py, web_arena_scores.py, web_arena.py, web_arena_quality.py, … |
