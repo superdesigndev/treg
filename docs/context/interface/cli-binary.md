@@ -3,60 +3,81 @@ title: The binary CLI (cli/, Go) - compatibility, releases, self-update and usag
 status: building
 sources:
   - cli/cmd/treg/main.go
+  - cli/internal/agents/agents.go
+  - cli/internal/agents/mcp.go
+  - cli/internal/api/client.go
+  - cli/internal/api/proxy.go
+  - cli/internal/api/proxy_darwin.go
+  - cli/internal/api/proxy_other.go
+  - cli/internal/api/proxy_parse.go
+  - cli/internal/api/proxy_windows.go
+  - cli/internal/api/url.go
+  - cli/internal/api/view.go
+  - cli/internal/app/app.go
   - cli/internal/buildinfo/buildinfo.go
-  - cli/internal/term/term.go
-  - cli/internal/commands/root.go
-  - cli/internal/commands/env.go
-  - cli/internal/commands/helpers.go
   - cli/internal/commands/account.go
+  - cli/internal/commands/audit.go
+  - cli/internal/commands/await.go
+  - cli/internal/commands/balance.go
+  - cli/internal/commands/call.go
+  - cli/internal/commands/catalog.go
+  - cli/internal/commands/connections.go
+  - cli/internal/commands/env.go
+  - cli/internal/commands/feedback.go
+  - cli/internal/commands/feedback_get.go
+  - cli/internal/commands/health.go
+  - cli/internal/commands/help.go
+  - cli/internal/commands/helpers.go
+  - cli/internal/commands/home.go
+  - cli/internal/commands/host.go
+  - cli/internal/commands/mcp.go
+  - cli/internal/commands/org.go
+  - cli/internal/commands/pyargs.go
+  - cli/internal/commands/resources.go
+  - cli/internal/commands/review.go
+  - cli/internal/commands/root.go
+  - cli/internal/commands/secret.go
+  - cli/internal/commands/skills.go
+  - cli/internal/commands/tool.go
+  - cli/internal/commands/topup.go
+  - cli/internal/commands/update.go
+  - cli/internal/commands/upload.go
+  - cli/internal/commands/usage.go
+  - cli/internal/config/config.go
+  - cli/internal/minisign/minisign.go
+  - cli/internal/output/call.go
+  - cli/internal/output/output.go
+  - cli/internal/output/view.go
+  - cli/internal/prompt/hidden_other.go
+  - cli/internal/prompt/hidden_unix.go
+  - cli/internal/prompt/prompt.go
+  - cli/internal/prompt/termios_darwin.go
+  - cli/internal/prompt/termios_linux.go
+  - cli/internal/providers/providers.go
+  - cli/internal/providers/catalog.json
+  - cli/internal/pyjson/pyjson.go
+  - cli/internal/pymime/pymime.go
+  - cli/internal/pymime/tables.go
   - cli/internal/session/proc_darwin.go
   - cli/internal/session/proc_linux.go
   - cli/internal/session/proc_other.go
+  - cli/internal/session/session.go
+  - cli/internal/skillscan/cliprofile.go
+  - cli/internal/skillscan/skillscan.go
+  - cli/internal/telemetry/telemetry.go
+  - cli/internal/term/term.go
   - cli/internal/update/detach_unix.go
   - cli/internal/update/detach_windows.go
-  - cli/internal/api/client.go
-  - cli/internal/api/url.go
-  - cli/internal/api/proxy.go
-  - cli/internal/api/proxy_parse.go
-  - cli/internal/api/proxy_darwin.go
-  - cli/internal/api/proxy_windows.go
-  - cli/internal/api/proxy_other.go
-  - cli/internal/app/app.go
-  - cli/internal/config/config.go
-  - cli/internal/session/session.go
-  - cli/internal/output/output.go
-  - cli/internal/output/call.go
-  - cli/internal/commands/call.go
-  - cli/internal/commands/update.go
-  - cli/internal/commands/pyargs.go
-  - cli/internal/commands/secret.go
-  - cli/internal/commands/connections.go
-  - cli/internal/commands/topup.go
-  - cli/internal/pyjson/pyjson.go
-  - cli/internal/pymime/pymime.go
-  - cli/internal/prompt/prompt.go
-  - cli/internal/telemetry/telemetry.go
-  - cli/internal/update/update.go
-  - cli/internal/update/method.go
   - cli/internal/update/legacy.go
-  - cli/internal/minisign/minisign.go
+  - cli/internal/update/method.go
+  - cli/internal/update/update.go
+  - cli/scripts/check-beta.sh
   - cli/scripts/release.sh
   - src/treg/routers/cli_client.py
   - src/treg/web/install-bin.sh
   - src/treg/web/install.ps1
   - tests/cli_go/cli_go_harness.py
   - tests/cli_go/cli_go_live.py
-  - cli/internal/commands/skills.go
-  - cli/internal/commands/mcp.go
-  - cli/internal/commands/upload.go
-  - cli/internal/agents/agents.go
-  - cli/internal/agents/mcp.go
-  - cli/internal/providers/providers.go
-  - cli/internal/providers/catalog.json
-  - cli/internal/skillscan/skillscan.go
-  - cli/internal/skillscan/cliprofile.go
-  - cli/internal/pyjson/pyjson.go
-  - cli/internal/prompt/prompt.go
   - tests/cli_go/agent_sandbox.py
 related:
   - interface/cli.md

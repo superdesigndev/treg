@@ -48,7 +48,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, sitetrack.js, api.py, … |
-| [The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events](interface/cli-binary.md) | building | main.go, buildinfo.go, term.go, root.go, … |
+| [The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events](interface/cli-binary.md) | building | main.go, agents.go, mcp.go, client.go, … |
 | [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, __init__.py, toon.py, catalog.py, … |
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |

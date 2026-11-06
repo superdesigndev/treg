@@ -27,31 +27,52 @@ Regenerate via `scripts/build-map.py`.
 | `cli/internal/api/proxy_parse.go` | interface/cli-binary.md |
 | `cli/internal/api/proxy_windows.go` | interface/cli-binary.md |
 | `cli/internal/api/url.go` | interface/cli-binary.md |
+| `cli/internal/api/view.go` | interface/cli-binary.md |
 | `cli/internal/app/app.go` | interface/cli-binary.md |
 | `cli/internal/buildinfo/buildinfo.go` | interface/cli-binary.md |
 | `cli/internal/commands/account.go` | interface/cli-binary.md |
-| `cli/internal/commands/await.go` | architecture/tasks.md |
+| `cli/internal/commands/audit.go` | interface/cli-binary.md |
+| `cli/internal/commands/await.go` | architecture/tasks.md, interface/cli-binary.md |
+| `cli/internal/commands/balance.go` | interface/cli-binary.md |
 | `cli/internal/commands/call.go` | interface/cli-binary.md |
+| `cli/internal/commands/catalog.go` | interface/cli-binary.md |
 | `cli/internal/commands/connections.go` | interface/cli-binary.md |
 | `cli/internal/commands/env.go` | interface/cli-binary.md |
+| `cli/internal/commands/feedback.go` | interface/cli-binary.md |
+| `cli/internal/commands/feedback_get.go` | interface/cli-binary.md |
+| `cli/internal/commands/health.go` | interface/cli-binary.md |
+| `cli/internal/commands/help.go` | interface/cli-binary.md |
 | `cli/internal/commands/helpers.go` | interface/cli-binary.md |
+| `cli/internal/commands/home.go` | interface/cli-binary.md |
+| `cli/internal/commands/host.go` | interface/cli-binary.md |
 | `cli/internal/commands/mcp.go` | interface/cli-binary.md |
+| `cli/internal/commands/org.go` | interface/cli-binary.md |
 | `cli/internal/commands/pyargs.go` | interface/cli-binary.md |
+| `cli/internal/commands/resources.go` | interface/cli-binary.md |
+| `cli/internal/commands/review.go` | interface/cli-binary.md |
 | `cli/internal/commands/root.go` | interface/cli-binary.md |
 | `cli/internal/commands/secret.go` | interface/cli-binary.md |
 | `cli/internal/commands/skills.go` | interface/cli-binary.md |
+| `cli/internal/commands/tool.go` | interface/cli-binary.md |
 | `cli/internal/commands/topup.go` | interface/cli-binary.md |
 | `cli/internal/commands/update.go` | interface/cli-binary.md |
 | `cli/internal/commands/upload.go` | interface/cli-binary.md |
+| `cli/internal/commands/usage.go` | interface/cli-binary.md |
 | `cli/internal/config/config.go` | interface/cli-binary.md |
 | `cli/internal/minisign/minisign.go` | interface/cli-binary.md |
 | `cli/internal/output/call.go` | interface/cli-binary.md |
 | `cli/internal/output/output.go` | interface/cli-binary.md |
+| `cli/internal/output/view.go` | interface/cli-binary.md |
+| `cli/internal/prompt/hidden_other.go` | interface/cli-binary.md |
+| `cli/internal/prompt/hidden_unix.go` | interface/cli-binary.md |
 | `cli/internal/prompt/prompt.go` | interface/cli-binary.md |
+| `cli/internal/prompt/termios_darwin.go` | interface/cli-binary.md |
+| `cli/internal/prompt/termios_linux.go` | interface/cli-binary.md |
 | `cli/internal/providers/catalog.json` | interface/cli-binary.md |
 | `cli/internal/providers/providers.go` | interface/cli-binary.md |
 | `cli/internal/pyjson/pyjson.go` | interface/cli-binary.md |
 | `cli/internal/pymime/pymime.go` | interface/cli-binary.md |
+| `cli/internal/pymime/tables.go` | interface/cli-binary.md |
 | `cli/internal/session/proc_darwin.go` | interface/cli-binary.md |
 | `cli/internal/session/proc_linux.go` | interface/cli-binary.md |
 | `cli/internal/session/proc_other.go` | interface/cli-binary.md |
@@ -65,6 +86,7 @@ Regenerate via `scripts/build-map.py`.
 | `cli/internal/update/legacy.go` | interface/cli-binary.md |
 | `cli/internal/update/method.go` | interface/cli-binary.md |
 | `cli/internal/update/update.go` | interface/cli-binary.md |
+| `cli/scripts/check-beta.sh` | interface/cli-binary.md |
 | `cli/scripts/release.sh` | interface/cli-binary.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
 | `docs/hub-recipes/data-csv/run.js` | architecture/hub.md |
@@ -824,7 +846,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `await.go`, `test_tasks.py`, `test_await_parity.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `view.py`, `view_context.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
-| `interface/cli-binary.md` | `main.go`, `buildinfo.go`, `term.go`, `root.go`, `env.go`, `helpers.go`, `account.go`, `proc_darwin.go`, `proc_linux.go`, `proc_other.go`, `detach_unix.go`, `detach_windows.go`, `client.go`, `url.go`, `proxy.go`, `proxy_parse.go`, `proxy_darwin.go`, `proxy_windows.go`, `proxy_other.go`, `app.go`, `config.go`, `session.go`, `output.go`, `call.go`, `call.go`, `update.go`, `pyargs.go`, `secret.go`, `connections.go`, `topup.go`, `pyjson.go`, `pymime.go`, `prompt.go`, `telemetry.go`, `update.go`, `method.go`, `legacy.go`, `minisign.go`, `release.sh`, `cli_client.py`, `install-bin.sh`, `install.ps1`, `cli_go_harness.py`, `cli_go_live.py`, `skills.go`, `mcp.go`, `upload.go`, `agents.go`, `mcp.go`, `providers.go`, `catalog.json`, `skillscan.go`, `cliprofile.go`, `pyjson.go`, `prompt.go`, `agent_sandbox.py` |
+| `interface/cli-binary.md` | `main.go`, `agents.go`, `mcp.go`, `client.go`, `proxy.go`, `proxy_darwin.go`, `proxy_other.go`, `proxy_parse.go`, `proxy_windows.go`, `url.go`, `view.go`, `app.go`, `buildinfo.go`, `account.go`, `audit.go`, `await.go`, `balance.go`, `call.go`, `catalog.go`, `connections.go`, `env.go`, `feedback.go`, `feedback_get.go`, `health.go`, `help.go`, `helpers.go`, `home.go`, `host.go`, `mcp.go`, `org.go`, `pyargs.go`, `resources.go`, `review.go`, `root.go`, `secret.go`, `skills.go`, `tool.go`, `topup.go`, `update.go`, `upload.go`, `usage.go`, `config.go`, `minisign.go`, `call.go`, `output.go`, `view.go`, `hidden_other.go`, `hidden_unix.go`, `prompt.go`, `termios_darwin.go`, `termios_linux.go`, `providers.go`, `catalog.json`, `pyjson.go`, `pymime.go`, `tables.go`, `proc_darwin.go`, `proc_linux.go`, `proc_other.go`, `session.go`, `cliprofile.go`, `skillscan.go`, `telemetry.go`, `term.go`, `detach_unix.go`, `detach_windows.go`, `legacy.go`, `method.go`, `update.go`, `check-beta.sh`, `release.sh`, `cli_client.py`, `install-bin.sh`, `install.ps1`, `cli_go_harness.py`, `cli_go_live.py`, `agent_sandbox.py` |
 | `interface/cli.md` | `cli.py`, `__init__.py`, `toon.py`, `catalog.py`, `account.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `boot.js`, `SignedOutPage.vue`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
