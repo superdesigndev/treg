@@ -149,7 +149,7 @@ class Contract:
         limit = given.get("limit")
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
             return None
-        sent = {k for k, v in given.items() if k in self.identity_types and v not in (None, "")}
+        sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
         return limit if any(sent == set(keys) for keys in self.fill_limit_when) else None
 
     @property

@@ -294,7 +294,16 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
         assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
         scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
         assert unscoped(ad, contract, scoped) == ("company_domain",), "a domain on a built q is a guess"
-    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) == 20
+    # crawl4ai answers this shape without q, so filling to the limit would add the company's others
+    assert contract.fill_target({"q": "executives", "company_domain": "openai.com", "limit": 20}) is None
+    assert contract.fill_target({"q": "   ", "limit": 5}) is None, "a blank q is not sent"
+    assert contract.fill_target({"q": "executives", "limit": 5}) == 5
+    # An adapter that sends its stand-in only through an expression still sends the keys inside it
+    import dataclasses
+    expr_only = dataclasses.replace(cat.adapters["exa.people.search"], in_map={})
+    titled, _ = canonical_identity(contract, {"title": "CTO"})
+    assert expr_only.to_upstream(titled, ("q",))[1]["query"] == "CTO"
+    assert not unscoped(expr_only, contract, titled)
 
 
 @pytest.fixture

@@ -68,12 +68,12 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     stand_in = getattr(adapter, "_stand_in", None) or {}
     standing = {k for k in stand_in if identity.get(k) in (None, "")}
     # A key folded into a stand-in's text (`join(q, company_domain)`) scopes only a `q` the caller
-    # wrote: on a `q` treg built from a title, a domain in the text is a guess, not a scope.
+    # wrote: on a `q` treg built from a title, a domain in the text is a guess, not a scope. The
+    # stand-in key itself is still sent.
     used = set(adapter.in_map)
     for expr in (adapter.in_expr or {}).values():
         names = set(re.findall(r"[A-Za-z_]\w*", expr))
-        if not names & standing:
-            used |= names
+        used |= (names & standing) or names
     # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
     for k, expr in stand_in.items():
         if k in used and k in standing:
