@@ -59,7 +59,7 @@ endpoints:
     method: GET
     path: /v1/states
     name: "List supported US states"
-    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT, Copilot, Perplexity, Gemini and Grok endpoints. Only US is supported; any other country returns an empty array."
+    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT and Gemini endpoints. Only US is supported; any other country returns an empty array."
     input:
       queryParams:
         country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
@@ -197,6 +197,8 @@ endpoints:
     example_response: examples/cloro.ai-search.task.status.json
 
   - id: cloro.ai-search.copilot.scrape
+    status: retired
+    status_note: "cloro discontinued its Copilot endpoint: Copilot now blocks logged-out sessions, and every call answers 400 MODEL_UNAVAILABLE at no credit cost."
     domain: copilot
     capability: ai-search.copilot.scrape
     platform: ai-search
@@ -240,6 +242,8 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-copilot
 
   - id: cloro.ai-search.perplexity.answer
+    status: retired
+    status_note: "cloro discontinued its Perplexity endpoint: Perplexity now blocks logged-out sessions, and every call answers 400 MODEL_UNAVAILABLE at no credit cost. For a Perplexity answer, use dataforseo.x.ai-optimization-perplexity-llm-responses-live (the sonar model API)."
     domain: perplexity
     capability: ai-search.perplexity.answer
     platform: ai-search

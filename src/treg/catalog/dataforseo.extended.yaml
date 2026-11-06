@@ -10043,6 +10043,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-organic-live-advanced.json
+  note: "When an organic item's domain is google.com, its url is a google.com/goto wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination host; any other breadcrumb means the answer does not hold it."
   observed_cost: 0.004
 - id: dataforseo.x.serp-google-search-by-image-task-get-advanced
   added: '2026-10-15'

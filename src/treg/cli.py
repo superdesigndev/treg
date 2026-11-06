@@ -6238,6 +6238,7 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         # on a routed id, with a ceiling: how every route option is passed, shown on the call itself
         "call": _with_route_cap(template, (body.get("routing") or {}).get("max_cost_usd")) if routed_id else template,
         "requires": _requires(body.get("routing")),
+        **_answer_bar(body.get("routing")),
         **_params_view(e.get("input") or {}),
         **_price_table_view(cost),
         "async": _async_view(e.get("async")),
@@ -6275,7 +6276,8 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
 # where it comes from.
 _GET_GROUPS = [
     ("id", "name", "summary", "note", "job", "upstream"),
-    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires"),
+    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires",
+     "stops_at", "complete"),
     ("route_headers",),
     ("params_note", "params_shared", "params", "param_examples"),
     ("price_table", "async"),
@@ -6343,6 +6345,14 @@ def _requires(routing: dict | None) -> str | None:
     sets = ((routing or {}).get("contract") or {}).get("identity") or []
     names = [" + ".join(s) for s in sets if s]
     return None if not names else names[0] if len(names) == 1 else "one of " + " | ".join(names)
+
+
+def _answer_bar(routing: dict | None) -> dict:
+    """Which answer ends a routed call by default, and which one `X-Treg-Route-Complete` waits for."""
+    contract = (routing or {}).get("contract") or {}
+    return {"stops_at": f"the first answer unless {contract['miss']}" if contract.get("miss") else None,
+            "complete": ", ".join(contract["complete"]) + " (X-Treg-Route-Complete: 1 waits for all of them)"
+            if contract.get("complete") else None}
 
 
 def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:

@@ -949,6 +949,13 @@ returned and never documented as stable. An output field may say where it lands 
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
   unconfirmed.
+- `complete` (opt-in via `X-Treg-Route-Complete`) lists the output fields a full answer carries. An
+  answer missing any is weak (the waterfall keeps looking; the fullest so far wins if nothing fuller
+  turns up, at most `MAX_WEAK_FALLBACKS` extra providers); an adapter that cannot map them all is
+  asked after every adapter that can. When the list is empty, under half the contract's output is
+  the thin bar. An answer whose subject identity differs from the one asked waits for another
+  provider to report the same identifier. Off unless the caller sends the header; catalog_get names
+  the fields and the header when the contract sets `complete`.
 - `verdict` declares the per-call word stored on `CallRecord.verdict`: `from` field, closed `words`,
   `map`. It is read only from an answer that fills the required output, and is independent of
   `miss`. `verdict.decisive` (opt-in via `X-Treg-Route-Decisive`) keeps a non-deciding answer as
