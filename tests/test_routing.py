@@ -3354,3 +3354,25 @@ async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_
                            headers={"X-Treg-Route-Prefer": header} if header else {})
     assert r.status_code == 200, r.text
     assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"
+
+
+@pytest.mark.parametrize("contents, first", [(True, "exa"), (False, "crawl4ai"), (None, "crawl4ai")])
+async def test_a_web_search_that_asks_for_passages_goes_to_the_provider_that_returns_them(
+        clients, platform_on, monkeypatch, contents, first):
+    """`contents: true` puts exa ahead of the snippet-only default and asks it for the passages that
+    match q, at its search price; `false` or no flag leaves the plan and Exa's request unchanged."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    body = {"q": "top B2B sales influencers on Instagram", **({} if contents is None else {"contents": contents})}
+    got = await _first_providers("treg.web.search", body, n=1)
+    get_settings.cache_clear()
+    assert got == [first]
+    cat = catalog_store.load()
+    ident, _ = canonical_identity(cat.contracts["web.search"], body)
+    sent = cat.adapters["exa.web.search"].to_upstream(ident, ("q",))[1]
+    if contents:
+        assert sent["contents"] == {"highlights": {"query": body["q"], "maxCharacters": 2000}}
+    else:
+        assert "contents" not in sent

@@ -1352,6 +1352,7 @@ contracts:
       - {q: str}
     filters:
       limit: {type: int, default: 10, note: "maximum results, where the provider accepts one"}
+      contents: {type: bool, default: null, note: "true: each result also carries the page's passages that match q, so the names on a list page can be read without a treg.web.extract call. Served by a provider that returns them, at its search price"}
     output:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
@@ -1360,6 +1361,9 @@ contracts:
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
+    # Asked for passages: the provider that returns them leads, not the cheaper snippet-only one.
+    prefer_when:
+      - {sent: [contents], prefer: [exa]}
 
   web.search.news:
     summary: "Search recent news — provider-native article rows in `results`"

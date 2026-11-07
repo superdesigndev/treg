@@ -987,10 +987,12 @@ returned and never documented as stable. An output field may say where it lands 
 - A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
   the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
   deploy and, like them, only reorders.
-- `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
+- `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
+  page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if

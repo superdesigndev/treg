@@ -573,7 +573,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                     continue
                 if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
                     own.add(service)
-    given = {k for k, v in (identity_given or {}).items() if v not in (None, "")}
+    # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
+    given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}

@@ -142,7 +142,7 @@ class Contract:
     identity_notes: dict[str, str] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
-        """The default provider order for a caller who sent the identity keys `given`."""
+        """The default provider order for a caller who sent the identity and filter keys `given`."""
         return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
 
     def fill_target(self, given) -> int | None:
@@ -396,7 +396,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
-            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), types),
+            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), {**types, **(c.get("filters") or {})}),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
@@ -423,7 +423,7 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
         # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
         if (not isinstance(rule, dict) or set(rule) != {"sent", "prefer"} or not names(rule["sent"])
                 or not names(rule["prefer"]) or any(k.strip() not in types for k in rule["sent"])):
-            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity keys], "
+            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
