@@ -45,6 +45,8 @@ sources:
   - src/treg/routers/resources.py
   - src/treg/routers/referrals.py
   - src/treg/routers/signup_cookies.py
+  - src/treg/routers/view.py
+  - src/treg/application/view_context.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/api_keys.py
@@ -254,7 +256,7 @@ the provider.
 | `X-Treg-Call-Id` | On every relayed response and every refusal treg raises before the relay, including the saturation 503 (`_stamp_call_exit`); the audit row's join key. An unexpected fault is Starlette's bare 500 with no id, but the row and `tool_called` are still recorded. |
 | `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)) and for owned free polls. Absent on own-key and own-tool calls. |
 | `X-Treg-Error: 1` | treg's own refusal on `/call/`, `/catalog/call/`, `/table/`, so a caller can tell treg's 404 from the vendor's. Status and body untouched. |
-| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; provider bytes are not read. |
+| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
 | `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
@@ -305,8 +307,8 @@ are advisory; the balance is the hard limit. `usage/by-tag` reconciles:
 `attributed_micro + unattributed_micro == total_micro`.
 
 A token minted with `--pin customer=cust_A` beats the header (mismatch is 403), and call history,
-archived results, call references, runs and shared-provider async ownership require every pinned
-tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
+archived results, call references, runs, async tasks and shared-provider async ownership require
+every pinned tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
 [multi-tenancy](../architecture/multi-tenancy.md).
 
 ### Call inspection
@@ -316,6 +318,16 @@ invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` de
 with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
 `async_task_app.views_for`. `GET /calls/{id}/result` is described in
 [archive](../architecture/archive.md).
+
+### Async tasks
+
+`POST /tasks/{call_id}` (body: the async call's answer as received) and `GET /tasks/{call_id}`
+follow the provider task an async call started, for the team and pin that made it: the first
+reads the submission without a provider call, the second makes one ordinary poll on the call
+road. Both answer one stable JSON shape (`state` pending, succeeded, failed or error, the
+terminal response, result or fetch command, resume line) with `Retry-After` from the
+descriptor's interval. Unknown and other teams' ids are 404 `task_not_found` with
+`X-Treg-Error: 1`. Mechanism and fields: [tasks](../architecture/tasks.md).
 
 ## Request transport
 
@@ -345,12 +357,38 @@ cookie-authenticated mutation.
 included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
 ([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
 
+## Views
+
+A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
+`{"data": <its own body, byte for byte>, "text": <what the CLI prints>}`, its own status and
+headers, plus `X-Treg-View: 1`. Without the header, for a HEAD, for a non-JSON answer or on a
+route without a view, the answer is untouched. `bootstrap._include_routes` wraps each route's ASGI
+app (`view.wrap`), which captures the whole answer first, so a refusal raised before the handler
+runs (a rejected token) or by an exception handler is rendered too. Routes with views: `/home`,
+`/catalog/platforms`, `/catalog/platforms/{slug}`, `/catalog/search`, `/catalog/endpoints/{id}`,
+`POST /tool-requests`, `/orgs/{id}/balance`, `/feedback/{id}`.
+
+- The text comes from `routers/views/`, which the Python CLI also prints from. Open catalog routes
+  render for whoever the request names (`view.optional_caller`; an unresolvable token renders as
+  anonymous): `own_key` from the caller's connections, `access` from the endpoint access use case,
+  and a capability pin hides the providers it refuses in `catalog get`. Each is best-effort
+  (`view.quietly`), as the extra requests the CLI made for them were.
+- What the CLI asked for in a second request, a view asks the router for in process (`view.get`:
+  same headers, no view). `catalog get <job>` 404s as an endpoint; with the header it answers 200,
+  as the job's routed endpoint (that route's body is `data`) or as every provider of the job
+  (`data` is that view's JSON). `limit` on `/catalog/endpoints/{id}` is read only by its view.
+- `/home`'s text leaves out the client's own lines: `treg:` (version and path) and `registry:`.
+  `/feedback/{id}`'s refusal text never repeats the refusal body.
+
 ## Public pages and agent files
 
 - `/llms.txt`, `/skill.md`, `/quickstart.md`, `/tutorial.md`, `/vendor-listing` and
   `/install.sh` are templated with `{BASE}` from the serving host, so a self-hosted registry
   advertises itself. `/.well-known/skills/index.json` reads its `description` from the skill's
   frontmatter at request time, never a second copy ([skill](skill.md)).
+- `/install.sh?channel=beta` and `/install.ps1` install the binary CLI; `/cli/latest` names its
+  release per channel and platform, `/cli/latest/<os>-<arch>` redirects to that archive, and `/cli/events` relays its anonymous usage events
+  ([cli-binary](cli-binary.md)).
 - `/privacy` is the URL given to OAuth providers at app verification; never rename it.
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .contracts import Adapter, Contract
+from .plan import bills_miss
 
 ROUTED_KIND = "routed"
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
@@ -30,13 +31,10 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         return None
     prices = sorted(p for p in ((cost_view(e.get("cost"), e["provider"]) or {}).get("usd") for e in kids) if p is not None)
     lo, hi = (prices[0], prices[-1]) if prices else (None, None)
-    # A child priced per call or per result bills its provider's answer even when treg judges it a
-    # miss and moves on: the caller pays those too. A per-success child is free on a miss unless its
-    # cost declares `bills_miss` (its provider still charges for some misses, settled from the
-    # charge it reports).
-    billed_miss = sorted(e["id"] for e in kids
-                         if (e.get("cost") or {}).get("bills_miss") is True
-                         or (e.get("cost") or {}).get("type") not in ("per_success", "free", None))
+    # A child priced per call bills its provider's answer even when treg judges it a miss and moves
+    # on: the caller pays those too. A per-success or per-result child is free on a miss unless its
+    # cost bills one (`plan.bills_miss`), the same rule ranking prices.
+    billed_miss = sorted(e["id"] for e in kids if bills_miss(e.get("cost")))
     max_usd = contract.default_max_cost_usd or 1.00
     body = {}
     variants = " | ".join("{" + ", ".join(v) + "}" for v in contract.identity)

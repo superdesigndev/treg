@@ -180,6 +180,7 @@ endpoints:
       value: 0.001
       currency: USD
       unit: page
+      bills_miss: true
       source: docs
       source_url: https://you.com/docs/administration/billing
       checked: '2026-09-29'

@@ -288,6 +288,14 @@ new CLI ships only after that CLI is released. After a release is on PyPI, set `
 older CLIs are told to update; set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
 from working.
 
+**The binary CLI** is released by pushing a `v1.2.3` tag (`v1.3.0-beta.1` for beta), which runs
+the `CLI release` workflow; it needs the `cli-release` environment's `MINISIGN_SECRET_KEY` (an
+unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public key line). A
+channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
+`TREG_CLI_LATEST_VERSION` of 1.0.0 or later for stable) moves only when the operator moves it; one
+left empty, or at a 0.x value, follows the newest GitHub release
+([cli-binary](../interface/cli-binary.md)).
+
 ## Audit, archive and spool back-pressure
 
 `audit.record_call` enqueues rows off the request path; one batching writer per process drains them
@@ -335,6 +343,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` and `TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID` when those
   balances should be observed.
 - **`asynctasks settle`** completes durable holds for asynchronous upstream operations.
+- **`billing reconcile`** checks the top-ups Stripe collected against the ledger
+  ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
+  overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.
 - **`arena insights`** needs the archive object-store settings when R2 reads are on.
 - **`showcase activity`** is needed only where the showcase leaderboard is served.
 - **`media sweep`** deletes unreferenced public pictures (only `img/`, older than a day). Pictures are

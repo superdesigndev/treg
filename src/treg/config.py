@@ -599,6 +599,7 @@ class Settings(BaseSettings):
     # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    ops_slack_webhook_url: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
     # membership, session, and authorization authority. Empty keys disable setup and login.
     workos_api_key: str = ""
@@ -812,6 +813,13 @@ class Settings(BaseSettings):
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
     cli_min_version: str = ""
+    # The binary CLI's release channels (application/cli_releases.py). `/cli/latest` answers the stable
+    # channel with cli_latest_version and the beta channel with cli_beta_version; an empty one is
+    # answered from the newest matching GitHub release of cli_release_repo. Archives are fetched from
+    # cli_download_base_url with `{version}` filled in.
+    cli_beta_version: str = ""
+    cli_release_repo: str = "superdesigndev/treg"
+    cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both

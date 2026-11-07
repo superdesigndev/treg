@@ -3,7 +3,10 @@ title: The CLI (treg) + skill scaffolding
 status: shipped
 sources:
   - src/treg/cli.py
-  - src/treg/cli_view.py
+  - src/treg/routers/views/__init__.py
+  - src/treg/routers/views/toon.py
+  - src/treg/routers/views/catalog.py
+  - src/treg/routers/views/account.py
   - src/treg/application/home.py
   - tests/test_released_cli_compat.py
   - tests/test_cli_key_compatibility.py
@@ -19,6 +22,7 @@ sources:
 related:
   - interface/api.md
   - interface/skill.md
+  - interface/cli-binary.md
 ---
 
 # The `treg` CLI
@@ -26,7 +30,8 @@ related:
 A thin client over the API in `src/treg/cli.py` (stdlib `argparse` plus `httpx`): every command is
 HTTP calls with no business logic of its own. `USAGE.md` and `treg <cmd> -h` are the command
 reference; every command carries a description, per-argument help and an Examples epilog, so help
-is self-teaching. This fragment holds only what the code and help cannot say.
+is self-teaching. This fragment holds only what the code and help cannot say. The Go rewrite in
+`cli/` keeps these contracts; what is its own is in [cli-binary](cli-binary.md).
 
 ## Front page and routing
 
@@ -55,12 +60,16 @@ is self-teaching. This fragment holds only what the code and help cannot say.
 
 ## Output for agents
 
-- **TOON views.** The home view and `catalog` print through `cli_view.render` (the reference
-  `toon-format` encoder, pinned to one release because `cli_view` overrides its private table
-  decisions). The whole output decodes as TOON, which is how tests read it. Commands and request
-  values print unquoted so they copy without unescaping. Nothing is clipped except a list row's
-  `name`; ids, prices and notes print whole. A refusal is data too: `_fail` prints `error`, `message`
-  and `help` on stdout and exits 1.
+- **TOON views.** The home view and `catalog` print through `routers/views/toon.render` (the
+  reference `toon-format` encoder, pinned to one release because `toon` overrides its private table
+  decisions). The builders that turn the registry's JSON into a view (`routers/views/catalog.py`,
+  `routers/views/account.py`) are shared with the registry, which renders the same text for a client
+  that asks (`X-Treg-View`, [api](api.md) "Views"); what the CLI fetched in extra requests (connected
+  providers, a capability pin, endpoint access) the builders take as arguments, called lazily so this
+  CLI asks no more than before. The whole output decodes as TOON, which is how tests read it.
+  Commands and request values print unquoted so they copy without unescaping. Nothing is clipped
+  except a list row's `name`; ids, prices and notes print whole. A refusal is data too: `_fail`
+  prints `error`, `message` and `help` on stdout and exits 1.
 - **`--json`** prints the server's JSON as received. On `call` (not `--await`) it prints one envelope,
   `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
@@ -145,7 +154,8 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   result prints a retrieval command instead of downloading, and running it writes non-text bytes
   untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
   success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1
-  malformed usage or metadata.
+  malformed usage or metadata. The Go CLI keeps this output and these codes but follows the
+  registry's `/tasks/{call_id}` instead of reading the descriptor ([tasks](../architecture/tasks.md)).
 - **Pasted-key connect.** `connections connect --provider` reads `GET /oauth/providers`; a `key` or
   `token` provider reads the key with `getpass` or, with `--key-stdin`, all of stdin, keeping it off
   the command line. Without a terminal and without `--key-stdin` it exits with that instruction

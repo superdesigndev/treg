@@ -65,6 +65,7 @@ from .routers import call as call_routes
 from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
 from .routers import enterprise_sso as enterprise_sso_routes
+from .routers import cli_client as cli_client_routes
 from .routers import feedback as feedback_routes
 from .routers import hub as hub_routes
 from .routers import media as media_routes
@@ -74,6 +75,8 @@ from .routers import provider_resources as provider_resource_routes
 from .routers import referrals as referral_routes
 from .routers import resources as resources_routes
 from .routers import table as table_routes
+from .routers import tasks as task_routes
+from .routers import view as view_routes
 from .routers import web as web_routes
 from .routers.auth import _client_ip
 from .routers.auth_helpers import _same_origin
@@ -313,7 +316,10 @@ async def create_tool_request(
             "note": "logged — requests steer which provider gets keyed next"}
 
 
+view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)
+
 router.routes.extend(feedback_routes.app.routes)
+router.routes.extend(cli_client_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
@@ -884,6 +890,7 @@ router.routes.extend(admin_routes.reports_router.routes)
 
 router.routes.extend(call_routes.router.routes)
 router.routes.extend(table_routes.router.routes)
+router.routes.extend(task_routes.router.routes)
 router.routes.extend(activity_routes.app.routes)
 router.routes.extend(arena_routes.router.routes)
 router.routes.extend(web_arena_routes.router.routes)

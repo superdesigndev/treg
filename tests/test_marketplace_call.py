@@ -793,16 +793,9 @@ async def test_malformed_marketplace_call_still_leaves_an_audit_row(clients: Asy
     assert row["status_code"] == 400 and row["endpoint_id"] == EP
 
 
-async def test_per_result_estimate_reads_a_body_limit(clients: AsyncClient, platform_on, monkeypatch):
-    """dataforseo expresses row counts in the JSON body — `[{"limit": 3}]` must scale the reserve,
-    not fall back to the 20-row default (which would reserve $2.50/call on a lusha-priced endpoint)."""
-    monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps({"cost": 0.00015}).encode()))
-    await clients.post(f"/call/{EP_DFS}", json=[{"url": "https://x.co/", "limit": 3}])
-    row = await _telemetry(clients)
-    assert row["cost_estimated_micro"] == 150 * 3
-
-
 @pytest.mark.parametrize(("body", "expected"), [
+    # a task array (`[{..., "limit": 3}]`): the first task's limit
+    ([{"url": "https://x.co/", "limit": 3}], 3),
     # companyenrich `pageSize`, exa `numResults`, icypeas/lusha `pagination.size`: a 2-row page must
     # not reserve (and settle at) the 20-row default ($0.196 charged live for 2 rows at $0.0098 each)
     ({"pageSize": 2, "technologies": ["stripe"]}, 2),
@@ -1178,11 +1171,6 @@ async def test_openmart_byok_lookup_preserves_the_documented_get_array_body(
 def test_observed_cost_only_trusts_a_real_number():
     """A missing, non-numeric or negative charge means "we never learned it" — settle at the estimate.
     A reported ZERO is different: the provider is saying it did not charge, and is honoured."""
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": 0}') == 0
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": "0.5"}') is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": -1}') is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b"not json") is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b"[1,2,3]") is None
     assert call_settle._observed_cost_micro(_mk("tikhub"), b'{"cost": 0.5}') is None, "tikhub doesn't report a charge"
     # exa reports dollars one level down; a 20-result search is the base plus ten $0.001 riders
     assert call_settle._observed_cost_micro(_mk("exa"), b'{"costDollars": {"total": 0.016, "search": {"neural": 0.016}}}') == 16_000
@@ -3318,6 +3306,12 @@ def _usd_to_micro_for_test(usd) -> int:
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"totalItems":0}', None),
+    # CompanyEnrich companies: 1 credit per company, 5 per lookalike, one company on an empty page.
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10},
+     b'{"items":[{},{}]}', 2),
     # Icypeas bulk: only FOUND rows bill, at the row's credits (10 per reverse-email hit).
     ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
      b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),

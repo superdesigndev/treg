@@ -808,7 +808,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.limit: limit}
     body_array: true
     out: {keywords: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count"}
-    miss: "tasks[0].result[0].items == []"
   seranking.google.keywords.ideas:
     accepts: [[keyword]]
     in:  {keyword: queryParams.keyword}
@@ -830,7 +829,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.depth: limit}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-google-organic-live-advanced:
     accepts: [[q]]
     in:  {q: body.keyword}
@@ -838,7 +836,6 @@ adapters:
               body.load_async_ai_overview: "choose(ai_overview, true, null)"}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.google.serp.organic:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -871,6 +868,8 @@ adapters:
     in: {domain: body.domains}
     in_expr: {body.domains: "list(domain)"}
     const: {body.page: 1, body.pageSize: 10}
+    # pageSize is the price, and an empty page settles at the whole hold.
+    cost_units: "10"
     out: {companies: items, count: totalItems}
     miss: "items == []"
   oceanio.companies.lookalike:
@@ -1428,7 +1427,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {places: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-maps:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1511,11 +1509,12 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {rows: "tasks[0].result"}
-    miss: "tasks[0].result == []"
   seranking.google.keywords.volume:
     accepts: [[keywords]]
     in:  {keywords: body.keywords}
     in_expr: {queryParams.source: "seranking_source(country)"}
+    # Billed per keyword sent, and an empty answer settles at the whole hold.
+    cost_units: "len(list(keywords))"
     out: {rows: "."}
     miss: ". == []"
   dataforseo.x.keywords-data-dataforseo-trends-explore-live:
@@ -1524,7 +1523,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)"}
     body_array: true
     out: {series: "tasks[0].result[0].items"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-trends:
     accepts: [[keywords]]
     in:  {}
@@ -1539,7 +1537,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language, body.depth: limit}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   litescrape.google.serp.news:
     accepts: [[q]]
     in: {q: queryParams.q}
@@ -1687,6 +1684,16 @@ adapters:
     out: {posts: data.searchResults.edges}
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
+  exa.instagram.search.users:
+    accepts: [[q]]
+    in: {q: body.query}
+    # The accounts are named in the pages' passages; the query asks for pages that list creators.
+    in_expr: {body.query: "join(q, 'Instagram influencers')", body.contents.highlights.query: "join(q, 'Instagram influencers')",
+              body.contents.highlights.maxCharacters: "2000", body.numResults: "10"}
+    test_identity: {q: "specialty coffee Melbourne"}
+    out: {users: "instagram_handles(results)", count: "len(instagram_handles(results))"}
+    miss: "coalesce(instagram_handles(results), []) == []"
+    row: {username: username, url: url, biography: biography, matched_from: matched_from}
   scrapecreators.x.v1-instagram-search-profiles:
     accepts: [[q]]
     in:  {q: queryParams.query}
@@ -1697,10 +1704,18 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.data.items, count: data.data.count}
+    # The contract's row shape, with the profile url built from the handle: the router's merge
+    # recognises one account across providers by its url.
+    row: {id: id, username: username, full_name: full_name, url: "fmt('https://www.instagram.com/{}/', username)",
+          is_verified: is_verified, is_private: is_private}
   tikhub.x.instagram-v3-search-users:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {users: data.users, count: data.count}
+    # The contract's row shape, with the profile url built from the handle: the router's merge
+    # recognises one account across providers by its url.
+    row: {id: id, username: username, full_name: full_name, url: "fmt('https://www.instagram.com/{}/', username)",
+          is_verified: is_verified, is_private: is_private}
 
   dataforseo.x.serp-google-local-finder-live-advanced:
     accepts: [[q]]
@@ -1708,7 +1723,6 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.google-local:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1800,7 +1814,6 @@ adapters:
     in:  {target: body.target}
     body_array: true
     out: {summary: "tasks[0].result[0]", backlinks: "tasks[0].result[0].backlinks", referring_domains: "tasks[0].result[0].referring_domains"}
-    miss: "tasks[0].result[0] == null"
   seranking.web.backlinks.summary:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -1907,14 +1920,12 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-bing-organic-live-regular:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.bing-search:
     accepts: [[q]]
     in:  {q: queryParams.q}
@@ -1963,7 +1974,6 @@ adapters:
     const: {body.mode: one_per_domain}
     body_array: true
     out: {backlinks: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count", next_cursor: "tasks[0].result[0].search_after_token"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.backlinks.list:
     accepts: [[target]]
     in:  {target: body.target}
@@ -1986,7 +1996,6 @@ adapters:
     const: {body.rank_scale: one_hundred}
     body_array: true
     out: {metrics: "tasks[0].result[0].items[0]"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.url.metrics:
     accepts: [[target]]
     in:  {target: body.targets}
@@ -2362,7 +2371,6 @@ adapters:
     in_expr: {body.limit: limit}
     body_array: true
     out: {anchors: "tasks[0].result[0].items", count: "tasks[0].result[0].total_count"}
-    miss: "tasks[0].result[0].items == []"
   moz.web.anchors.list:
     accepts: [[target]]
     in:  {target: body.target}
@@ -2412,14 +2420,12 @@ adapters:
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   dataforseo.x.serp-yahoo-organic-live-regular:
     accepts: [[q]]
     in:  {q: body.keyword}
     in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
     body_array: true
     out: {results: "tasks[0].result[0].items", count: "tasks[0].result[0].items_count"}
-    miss: "tasks[0].result[0].items == []"
   serpapi.x.yahoo-search:
     accepts: [[q]]
     in:  {q: queryParams.p}
@@ -2998,7 +3004,6 @@ adapters:
     body_array: true
     out: {answer: "tasks[0].result[0].items[0].sections[0].text",
           sources: "tasks[0].result[0].items[0].sections[0].annotations", source_kind: "'model_api'"}
-    miss: "tasks[0].result[0].items[0].sections[0].text == null"
   perplexity.web.search.fast:
     accepts: [[q]]
     in: {q: body.query}
@@ -3056,7 +3061,10 @@ adapters:
   exa.web.search:
     accepts: [[q]]
     in: {q: body.query}
-    in_expr: {body.numResults: limit}
+    # `contents: true` asks for each page's passages that match q, which Exa returns at the search
+    # price; without it the request is unchanged.
+    in_expr: {body.numResults: limit, body.contents.highlights.query: "choose(contents, q, null)",
+              body.contents.highlights.maxCharacters: "choose(contents, 2000, null)"}
     const: {body.type: auto}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
