@@ -12,6 +12,8 @@ sources:
   - src/treg/models.py
   - src/treg/application/billing.py
   - src/treg/routers/billing.py
+  - src/treg/infra/slack.py
+  - tests/test_topup_reconcile.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -458,16 +460,37 @@ never a Stripe coupon.
 
 **The top-up bonus is a separate `grant`, manual and automatic alike.** `topup_bonus_tiers`
 (`{min_usd: percent}`) gives a top-up a `bonus` block at the highest tier at or below the amount
-(`bonus_for_topup`, integer arithmetic). `_grant_topup_bonus` grants it after the purchased credit
-commits, from `_credit`'s `fresh` branch and from the inline auto-top-up credit. An auto top-up
-reaches both doors, so the helper locks the payment's purchased block and grants nothing when a bonus
-for that PaymentIntent already exists. It is its own block that burns with promo credit, so the
+(`bonus_for_topup`, integer arithmetic, read at grant time). It burns with promo credit, so the
 purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
-bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up,
-so a bigger refill amount is the visible way to earn more. A refund or dispute does not
-reverse it on its own: a refund revokes the unspent bonus in proportion to what was refunded
-(see "Refunds revoke unspent credit"); a dispute only logs it for a human (`bonus_blocks_flagged`). The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which
-`topup_history` joins to show `bonus_micro`.
+bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up.
+The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which `topup_history` joins
+to show `bonus_micro`.
+
+`_grant_topup_bonus` grants per payment, not per first delivery: every delivery, and the inline
+auto-top-up credit, grants when no `topup_bonus` entry names the PaymentIntent. A lock on the
+purchased block (a no-op UPDATE, so SQLite serializes too) keeps two doors from both granting. A
+failed webhook grant still credits, then raises `BonusPending` (a 500) so Stripe redelivers; a failed
+inline grant only logs and the webhook grants it. Only a purchased block younger than Stripe's
+three-day retry window (`BONUS_HEAL_WINDOW`) is healed: an older gap may already have been paid by
+hand. A heal after a refund revokes the refunded share of the new bonus in the same transaction.
+`revoke_refunded` takes the same lock, after row-locking the purchased and bonus blocks in
+settlement's id order, so it neither misses a concurrent heal nor deadlocks a settlement. A refund
+revokes the unspent bonus in proportion (see "Refunds revoke unspent credit"); a dispute only logs
+it for a human (`bonus_blocks_flagged`).
+
+**Reconciliation against Stripe** (`treg-worker billing reconcile`, `billing.reconcile_topups`). The
+webhook is the only door for a paid top-up, so a delivery that keeps failing is money paid and not
+credited, and nothing in the request path notices. The command lists Stripe's
+`payment_intent.succeeded` events in `[now - grace - hours, now - grace)`, by success rather than
+creation time because a bank debit can succeed days later. It keeps the treg top-ups by the
+webhook's `_topup_metadata` rule and reports `not_credited` (no purchased block),
+`credited_differently` (another org or amount) and `bonus_missing` (owed a bonus at the current
+tiers, so a tier change inside the window reports false gaps). Payments of deleted teams are
+skipped: deletion removed what they would match. It writes nothing: the fix is a Stripe event
+resend, which goes through the webhook's idempotency, while a hand credit pays twice if Stripe later
+delivers the event. A resend heals `bonus_missing` only inside `BONUS_HEAL_WINDOW`. It prints one
+JSON line, exits 1 on a gap, and with `TREG_OPS_SLACK_WEBHOOK_URL` set posts the gaps or its own
+failure to that Slack incoming webhook (`infra/slack.py`).
 
 **The preselected amount** (`next_default_usd`) is the first preset above the org's last *manual*
 top-up, capped at `topup_default_cap_usd`; auto refills are skipped so the ladder cannot ratchet on

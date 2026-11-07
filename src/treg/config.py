@@ -599,6 +599,7 @@ class Settings(BaseSettings):
     # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    ops_slack_webhook_url: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
     # membership, session, and authorization authority. Empty keys disable setup and login.
     workos_api_key: str = ""
