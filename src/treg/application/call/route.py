@@ -80,7 +80,7 @@ from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
-                                                 invalid_identity, miss_status)
+                                                 flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
@@ -573,7 +573,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                     continue
                 if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
                     own.add(service)
-    given = {k for k, v in (identity_given or {}).items() if v not in (None, "")}
+    # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
+    given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}
@@ -618,7 +619,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             continue
         if tier == "platform" and not sampled_provider_allowed(
                 e["provider"], sample_percentages, org_id=caller.org_id,
-                capability=ep["capability"], identity=identity):
+                capability=ep["capability"], identity=flags_off(contract, identity)):
             dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
             continue
         if c.exhausted:
@@ -1266,6 +1267,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
                 served = merged_from[0]
+    # Every provider whose rows are in the answer: a merged row from one that ignored a filter
+    # answers the looser question too.
+    ignored = list(dict.fromkeys(k for c, _, core_i, _ in answers
+                                 if c.endpoint["id"] in merged_from for k in c.ignored)) if merged_from else list(cand.ignored)
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
     # filter. It is on the attempt, but no caller reads `tried[]` — say it where the answer is, and
     # on a header, or the agent post-filters nothing and never knows why the geography is wrong.
@@ -1338,7 +1343,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"upgrade": upgrade} if upgrade is not None else {}),
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
-                          **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
+                          **({"ignored_filters": ignored} if ignored else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=output,
@@ -1348,7 +1353,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
-                                 **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Ignored-Filters": ",".join(ignored)} if ignored else {}),
                                  **({"X-Treg-Limit-Exceeded":
                                      f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
                                     if limit_exceeded else {}),

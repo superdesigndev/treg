@@ -3060,7 +3060,10 @@ adapters:
   exa.web.search:
     accepts: [[q]]
     in: {q: body.query}
-    in_expr: {body.numResults: limit}
+    # `contents: true` asks for each page's passages that match q, which Exa returns at the search
+    # price; without it the request is unchanged.
+    in_expr: {body.numResults: limit, body.contents.highlights.query: "choose(contents, q, null)",
+              body.contents.highlights.maxCharacters: "choose(contents, 2000, null)"}
     const: {body.type: auto}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
