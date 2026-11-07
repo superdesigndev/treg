@@ -23,7 +23,7 @@ from ..infra.db import session_maker
 from ..models import CallTask
 from ..timeutil import utcnow_naive
 from .call.evidence import _decompress_for_scan
-from .call.types import CallerSnapshot, CallInput, UpstreamResponse
+from .call.types import CallerSnapshot, CallInput, EmptyBody, UpstreamResponse
 
 MAX_POLL_ANSWER_BYTES = 8 * 1024 * 1024
 DEFAULT_INTERVAL_S = 10.0
@@ -203,20 +203,8 @@ def poll_input(task: CallTask, headers: tuple[tuple[bytes, bytes], ...], caller:
     kept = tuple((k, v) for k, v in headers if k.lower() not in _DROPPED_LOOK_HEADERS)
     return CallInput(method="GET", raw_rest=target,
                      raw_headers=kept + ((b"accept-encoding", b"identity"),),
-                     query_items=query, raw_query=urlencode(query), body=_NoBody(),
+                     query_items=query, raw_query=urlencode(query), body=EmptyBody(),
                      caller=caller, client_ip=client_ip)
-
-
-class _NoBody:
-    async def _empty(self):
-        return
-        yield b""
-
-    def stream(self):
-        return self._empty()
-
-    async def read(self) -> bytes:
-        return b""
 
 
 async def read_poll_answer(upstream: UpstreamResponse) -> tuple[bytes, bool]:

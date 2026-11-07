@@ -573,20 +573,10 @@ async def _your_values(request: Request, db: AsyncSession, ep: dict) -> dict:
     """The values only this reader may send for a row's `team_label` and `caller_email` fields, so
     a signed-in agent gets its first call right. The route stays open: an anonymous reader, or one
     whose token does not resolve to a team, gets nothing extra. Not cached at the edge."""
-    token = request.headers.get("x-treg-token", "")
-    auth = request.headers.get("authorization", "")
-    if not token and auth.lower().startswith("bearer "):
-        token = auth[7:].strip()
-    cookie = request.cookies.get("treg_session", "")
-    if not token and not cookie:
+    caller = await view.optional_caller(request, db)
+    if caller is None:
         return {}
     from ..application.call.resolve import team_label
-    from ..domain.identity.access import require_member
-    try:
-        caller = await require_member(request, x_treg_token=token, x_treg_org=request.headers.get("x-treg-org", ""),
-                                      treg_session=cookie, db=db)
-    except HTTPException:
-        return {}
     values = {path: team_label(caller.org_id) for path in ep.get("team_label") or ()}
     values |= {path: caller.email for path in ep.get("caller_email") or ()}
     return {"your_values": values,
