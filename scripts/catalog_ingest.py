@@ -243,6 +243,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
                     ep["provenance"] = prev["provenance"]
                 else:
                     ep.pop("provenance", None)
+            for key in ("price", "expect", "reserve", "settle", "bill", "error", "miss", "not_found"):
+                if key in prev and prev[key] is None:
+                    ep[key] = None  # a reviewed opt-out of the provider's default
         if carry_input:
             carried_fields.append("input")
         if carry_capability:
@@ -860,6 +863,8 @@ DFS_TASK_GET = ("task_get/advanced/{id}", "task_get/{id}", "task_get/regular/{id
 # when it is POSTED, so an error the finished task reports is still a billed answer: the descriptor
 # settles it at the charge the submission reported, never at zero (the provider decides).
 DFS_TASK_PROGRESS = [20100, 40601, 40602]
+# A task_post answers 20100, task created, where every other route answers the provider's 20000.
+DFS_TASK_POSTED = {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
 DFS_TASK_FAILED = [40101, 40102, 40103, 40106, 40400, 40401, 40402, 40403, 40404, 40405, 40408,
                    50000, 50001, 50301, 50302, 50303, 50304, 50401, 50402]
 # The on-page crawl's readers take the crawl's task id: in the path (summary) or in a one-element
@@ -879,7 +884,6 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
     docs = DFS_DOCS.search(desc)
     row = {
         "id": endpoint_id,
-        "tier": "extended",
         "platform": post["platform"],
         "kind": "utility",
         "method": "GET",
@@ -891,8 +895,10 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
             "type": "string", "required": True,
             "note": "tasks[].id from the submission's answer",
             "example": "00000000-0000-0000-0000-000000000000"}}},
-        "cost": {"type": "free", "value": 0, "currency": "USD", "unit": "call",
-                 "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        "price": {"value": "0", "currency": "USD", "unit": "call",
+                  "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        # a task_get answers 20000 only once its task is done; the async status words judge it
+        "expect": None,
         "resource_ownership": {"requires": {"kind": f"poll:{endpoint_id}", "param": "id"}},
     }
     if docs:
@@ -902,7 +908,7 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
 
 def dfs_submission(post: dict, reader_id: str) -> None:
     """Make a /task_post row an async submission whose tasks the submitting team owns."""
-    post["expect"] = {"json_path": "tasks.0.status_code", "equals": 20100}
+    post["expect"] = DFS_TASK_POSTED
     post["resource_ownership"] = {"produces": [{"kind": f"poll:{reader_id}", "path": "tasks.*.id"}]}
     post["async"] = {
         "id_from": "tasks.0.id",
@@ -957,7 +963,6 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             summary = titlecase(seg[-1])
         entry = {
             "id": slug_id("dataforseo", path.replace("/v3/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             # base_url already ends in /v3 - a verbatim spec path would relay to /v3/v3/… (404).
@@ -987,7 +992,7 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             dfs_submission(post, reader["id"])
             readers.append(reader)
         elif post["path"] == "/on_page/task_post":
-            post["expect"] = {"json_path": "tasks.0.status_code", "equals": 20100}
+            post["expect"] = DFS_TASK_POSTED
             post["resource_ownership"] = {
                 "produces": [{"kind": DFS_ON_PAGE_TASK, "path": "tasks.*.id"}]}
     endpoints += readers

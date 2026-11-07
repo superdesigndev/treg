@@ -749,8 +749,12 @@ row.
   same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
   settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
   basis (`cost.persisted`); the worker settles a terminal answer through `cost.settle_terminal`: a
-  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on, with a
-  charge the provider reported on the submission standing in for a missing one.
+  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on. An async
+  row's `settle.reported` is the charge the provider reported on the submission, when it billed the
+  task (DataForSEO's task_post); the terminal answer's own figure is never read, as a row in today's
+  spelling settles an `observed` basis. Without a submission figure the outcome and `bill` decide.
+  This refines the settlement order for async rows: step 3 reads the submission's report, so a
+  provider that reports its charge only on the terminal answer needs its own declared change.
 - The served `cost` of a `rates` row carries the reserve `max` as its `fallback`, the most one
   call is held at, so eligibility on treg's key reads a price for it.
 - `MarketplaceCall.unit_micro` is one `price.value` (a table's fallback) and

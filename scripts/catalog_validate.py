@@ -488,7 +488,6 @@ def check_cost_quantity(cost: dict, input_schema: object, where: str, errors: li
 
 RESERVE_DEFAULT_SOURCES = {"docs", "observed"}
 UNDECLARED_RESERVE = frozenset({
-    "dataforseo.x.on-page-page-screenshot",
     "findymail.intellimatch.search",
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
@@ -1834,7 +1833,7 @@ def main(argv: list[str]) -> int:
             effective_async = effective_async_descriptor(data.get("async"), ep.get("async"))
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
-                # verification observed (a DataForSEO extended row carries `observed_cost` only).
+                # verification observed (a row in today's spelling may carry `observed_cost` only).
                 check_async_descriptor(effective_async, where, str(service), endpoint_index,
                                        _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
