@@ -116,7 +116,7 @@ func feedbackSubmitCmd(env *Env) *cobra.Command {
 		if endpointID != "" {
 			b.Set("endpoint_id", endpointID)
 		}
-		return env.feedbackRequest("POST", "/feedback", b)
+		return env.submitFeedback(b)
 	}
 	return cmd
 }
@@ -131,27 +131,16 @@ func feedbackError(code, message string, details *pyjson.Object) error {
 	return &output.Exit{Code: 1}
 }
 
-// feedbackRequest sends a feedback submission or lookup and prints the receipt. A refusal is
-// mapped to a fixed message by status, because a validation answer can echo the rejected input.
-func (e *Env) feedbackRequest(method, path string, b *pyjson.Object) error {
-	submitting := method == "POST"
+// submitFeedback sends a feedback submission and prints the receipt. A refusal is mapped to a fixed
+// message by status, because a validation answer can echo the rejected input.
+func (e *Env) submitFeedback(b *pyjson.Object) error {
 	uncertain := "Could not confirm whether feedback was saved. Check connectivity before submitting again."
-	req := api.Request{Method: method, Path: path}
-	if b != nil {
-		req.Body, req.Header = jsonBody(b), jsonHeader
-	}
-	r, err := e.Client().Do(req)
+	r, err := e.Client().Do(api.Request{Method: "POST", Path: "/feedback", Body: jsonBody(b), Header: jsonHeader})
 	if err != nil {
-		if submitting {
-			return feedbackError("submission_unconfirmed", uncertain, nil)
-		}
-		return feedbackError("request_failed", "Could not retrieve feedback. Check connectivity and retry.", nil)
+		return feedbackError("submission_unconfirmed", uncertain, nil)
 	}
 	if r.Status >= 400 {
-		code, message := "request_failed", "Could not retrieve feedback. Try again later."
-		if submitting {
-			code, message = "submission_unconfirmed", uncertain
-		}
+		code, message := "submission_unconfirmed", uncertain
 		switch r.Status {
 		case 401:
 			code, message = "authentication_required", "Sign in with `treg login`, or check the configured token."
@@ -169,10 +158,7 @@ func (e *Env) feedbackRequest(method, path string, b *pyjson.Object) error {
 	}
 	receipt, err := pyjson.Decode(r.Body)
 	if err != nil {
-		if submitting {
-			return feedbackError("invalid_response", uncertain, nil)
-		}
-		return feedbackError("invalid_response", "Invalid response. Retry the lookup later.", nil)
+		return feedbackError("invalid_response", uncertain, nil)
 	}
 	outln(pyjson.Dumps(receipt, pyjson.Pretty))
 	return nil

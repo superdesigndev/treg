@@ -13,7 +13,6 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/pyjson"
-	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
 // Exit stops the command with a status after its output is written.
@@ -120,5 +119,3 @@ func pyStr(v any) string {
 }
 
 func quote(s string) string { return strconv.Quote(s) }
-
-func colors() term.Palette { return term.Colors() }
