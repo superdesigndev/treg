@@ -3510,7 +3510,8 @@ def test_instagram_handles_reads_the_accounts_a_page_names():
     rows = P.evaluate("instagram_handles(results)", {"results": results})
     assert [r["username"] for r in rows] == ["coffee.one", "roaster_two", "433", "third"], "a linked all-digit handle is an account"
     assert rows[0]["url"] == "https://www.instagram.com/coffee.one/" and "12K followers" in rows[0]["biography"]
-    assert rows[0]["matched_from"] == "https://example.com/list"
+    assert rows[0]["matched_from"] == "example.com", "the site, not the page url: every row is read"
+    assert all(len(r["biography"]) <= 175 for r in rows)
     assert P.evaluate("instagram_handles(results)", {"results": None}) is None
 
 
@@ -3574,6 +3575,7 @@ async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clien
     users = r.json()["output"]["users"]
     assert len(users) == 25 and [u.get("follower_count") for u in users[:10]] == [1000 + i for i in range(10)]
     assert r.json()["_treg"]["merged_from"] == ["scrapecreators.x.v1-instagram-search-profiles", "exa.instagram.search.users"]
+    assert [p for p, *_ in seen] == ["scrapecreators", "exa"], "25 accounts reached: no third provider is paid"
 
     # bio search short, directory empty: TikHub fills, and an account it shares counts once
     seen.clear()

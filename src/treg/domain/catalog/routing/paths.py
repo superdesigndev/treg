@@ -411,7 +411,8 @@ _IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "a
 def instagram_handles(results: Any) -> list | None:
     """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
     directory or list page of creators), one row each in page order, first mention wins: username,
-    profile url, the passage around the mention as evidence, and the page it came from."""
+    profile url, the words around the mention as evidence (short: the agent reads every row), and
+    the site it came from."""
     if not isinstance(results, list):
         return None
     rows, seen = [], set()
@@ -430,9 +431,9 @@ def instagram_handles(results: Any) -> list | None:
                     or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
                 continue
             seen.add(handle.lower())
-            around = " ".join(text[max(0, m.start() - 120):m.end() + 180].split())
+            around = " ".join(text[max(0, m.start() - 40):m.end() + 100].split())
             rows.append({"username": handle, "url": f"https://www.instagram.com/{handle}/",
-                         "biography": around, "matched_from": r.get("url")})
+                         "biography": around, "matched_from": host(r.get("url"))})
     return rows
 
 
