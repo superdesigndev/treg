@@ -85,15 +85,15 @@ func AutoEnabled(cfg *config.Config, exe string) bool {
 }
 
 // MaybeStartBackground starts a detached `treg __update` at most once a day, and on the first run
-// on a machine that still has the Python CLI's package installed. The command that triggered it
-// never waits for it.
+// as the `treg` on PATH on a machine that still has the Python CLI's package installed. The
+// command that triggered it never waits for it.
 func MaybeStartBackground(cfg *config.Config, exe string) {
 	if !AutoEnabled(cfg, exe) {
 		return
 	}
 	s := readState()
 	due := time.Since(time.Unix(s.CheckedAt, 0)) >= checkEvery
-	if !due && legacyCleaned() {
+	if !due && (legacyCleaned() || !isPathTreg(exe)) {
 		return
 	}
 	s.CheckedAt = time.Now().Unix()

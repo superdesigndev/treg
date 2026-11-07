@@ -34,7 +34,7 @@ func TestRemovingThePythonCLIKeepsThisBinary(t *testing.T) {
 	log := filepath.Join(dir, "calls.log")
 	fakeTool(t, bin, "uv", "tools-registry v0.29.0", exe, log)
 	fakeTool(t, bin, "pipx", "tools-registry 0.29.0", exe, log)
-	t.Setenv("PATH", bin+":/bin:/usr/bin")
+	t.Setenv("PATH", dir+":"+bin+":/bin:/usr/bin")
 
 	RemovePythonCLI(exe)
 
@@ -68,7 +68,7 @@ func TestNothingToRemoveIsCheckedOnce(t *testing.T) {
 	os.WriteFile(exe, []byte("the binary"), 0o755)
 	log := filepath.Join(dir, "calls.log")
 	fakeTool(t, bin, "uv", "ruff v0.9.0", exe, log)
-	t.Setenv("PATH", bin+":/bin:/usr/bin")
+	t.Setenv("PATH", dir+":"+bin+":/bin:/usr/bin")
 
 	RemovePythonCLI(exe)
 

@@ -56,26 +56,31 @@ func (e *NoRelease) Error() string {
 }
 
 // Latest asks the registry which release this channel runs on this platform, and GitHub when the
-// registry is older than /cli/latest.
+// registry is older than /cli/latest. Any other failure is a failed check: the channel the
+// registry's operator holds is never left for GitHub's newest release.
 func Latest(ctx context.Context, registry, channel string) (*Manifest, error) {
 	q := url.Values{"channel": {channel}, "os": {runtime.GOOS}, "arch": {runtime.GOARCH}}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(registry, "/")+"/cli/latest?"+q.Encode(), nil)
 	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	resp, err := client.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		switch {
-		case resp.StatusCode == http.StatusOK:
-			var m Manifest
-			if json.Unmarshal(body, &m) == nil && m.Version != "" && m.URL != "" {
-				return &m, nil
-			}
-		case resp.StatusCode == http.StatusNotFound && !bytes.Contains(body, []byte(`"Not Found"`)):
-			return nil, &NoRelease{Channel: channel}
-		}
+	if err != nil {
+		return nil, fmt.Errorf("could not reach %s: %w", registry, err)
 	}
-	return fromGitHub(ctx, channel)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		var m Manifest
+		if json.Unmarshal(body, &m) == nil && m.Version != "" && m.URL != "" {
+			return &m, nil
+		}
+		return nil, fmt.Errorf("%s answered /cli/latest with an incomplete release", registry)
+	case resp.StatusCode == http.StatusNotFound && bytes.Contains(body, []byte(`"Not Found"`)):
+		return fromGitHub(ctx, channel)
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, &NoRelease{Channel: channel}
+	}
+	return nil, fmt.Errorf("%s answered /cli/latest with HTTP %d", registry, resp.StatusCode)
 }
 
 func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
@@ -128,6 +133,9 @@ func Install(ctx context.Context, m *Manifest, exe string) error {
 	key := strings.TrimSpace(buildinfo.UpdateKey)
 	if key == "" {
 		return errors.New("this build carries no release key, so it cannot verify an update; reinstall with the install command")
+	}
+	if want := ArchiveName(m.Version, runtime.GOOS, runtime.GOARCH); m.Archive != want {
+		return fmt.Errorf("the release answer names %s, not %s", m.Archive, want)
 	}
 	pk, err := minisign.ParsePublicKey(key)
 	if err != nil {

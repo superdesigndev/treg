@@ -221,9 +221,14 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
 
 ## Self-update
 
-`update.Install` fetches `SHA256SUMS` and its signature, verifies the signature with the key built
-into the binary (`internal/minisign`), checks the archive's sum, extracts the binary and renames it
-over the running one (Windows renames the running file to `.old`; the next run removes it). `treg
+`update.Latest` asks the registry's `/cli/latest`, and GitHub only when the registry is older than
+that route (FastAPI's `Not Found`); any other failure fails the check, retried the next day, so a
+channel the operator holds is never moved by a registry outage. `update.Install` takes only the
+archive named for the answer's version and this platform, fetches `SHA256SUMS` and its signature,
+verifies the signature with the key built into the binary (`internal/minisign`), checks the
+archive's sum, extracts the binary and renames it over the running one (Windows renames the
+running file to `.old`; the next run removes it). The signed `SHA256SUMS` names each archive by
+version and platform, so no answer can pass off an older release or another platform's. `treg
 update [--channel stable|beta]` does it in the foreground; a Homebrew or npm install is told its
 package manager's command. Switching channels installs that channel's release even when it is
 older, so leaving the beta returns to stable. A channel with no release yet (stable, during the
@@ -232,8 +237,10 @@ first release newer than itself.
 
 A release build the installer placed also updates itself: at most once a day a command starts a
 detached `treg __update` and never waits for it. That process removes the Python CLI's uv or pipx
-package once (their uninstallers delete the `treg` entry point, now this binary's path, so a copy
-is put back the moment it goes), installs a newer release, re-runs `skill bootstrap` as re-running
+package once, and only when the `treg` on PATH is this binary: their uninstallers delete the
+`treg` entry point, now this binary's path, so a copy is put back the moment it goes, while a
+binary run from anywhere else (an archive unpacked in Downloads) would leave no `treg` at all. It
+then installs a newer release, re-runs `skill bootstrap` as re-running
 the installer did, and leaves its outcome in `update-state.json`. `TREG_NO_AUTO_UPDATE` or
 `"auto_update": false` turn the background update off.
 

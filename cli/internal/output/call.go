@@ -29,7 +29,12 @@ func (p *Printer) ShowCall(r *api.Response) error {
 		p.largeAnswerHint(r)
 	}
 	if p.JSON {
-		data, _ := json.Marshal(envelope(r, ctype), jsontext.AllowInvalidUTF8(true))
+		e := envelope(r, ctype)
+		data, err := json.Marshal(e, jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
+		if err != nil {
+			e.Result = text(r.Body)
+			data, _ = json.Marshal(e, jsontext.AllowInvalidUTF8(true))
+		}
 		p.Out.Write(data)
 		fmt.Fprintln(p.Out)
 		if r.Status >= 400 {

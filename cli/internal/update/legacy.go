@@ -15,11 +15,22 @@ func legacyCleaned() bool {
 	return err == nil
 }
 
+// isPathTreg: the `treg` a shell runs is this binary, so removing the Python CLI leaves a treg.
+func isPathTreg(exe string) bool {
+	found, err := exec.LookPath("treg")
+	if err != nil {
+		return false
+	}
+	a, errA := os.Stat(found)
+	b, errB := os.Stat(exe)
+	return errA == nil && errB == nil && os.SameFile(a, b)
+}
+
 // RemovePythonCLI uninstalls the Python CLI's package (`tools-registry`) from uv and pipx once this
 // binary has replaced it. Their uninstallers delete the `treg` entry point they created, which is
 // now this binary's path, so a copy is kept and put back the moment it is gone.
 func RemovePythonCLI(exe string) {
-	if legacyCleaned() {
+	if legacyCleaned() || !isPathTreg(exe) {
 		return
 	}
 	defer func() { _ = os.WriteFile(config.Sibling(legacyMarker), nil, 0o600) }()

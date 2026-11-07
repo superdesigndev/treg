@@ -124,8 +124,10 @@ func (n Number) MarshalJSONTo(enc *jsontext.Encoder) error {
 }
 
 // Map keys in a stable order, and a string that is not UTF-8 written with replacement characters
-// rather than refused: a message piped in from a legacy console is still sent.
-var marshal = json.JoinOptions(json.Deterministic(true), jsontext.AllowInvalidUTF8(true))
+// rather than refused: a message piped in from a legacy console is still sent. A repeated name in
+// an upstream's JSON, which Valid accepts, is written as it came.
+var marshal = json.JoinOptions(json.Deterministic(true), jsontext.AllowInvalidUTF8(true),
+	jsontext.AllowDuplicateNames(true))
 
 // Compact is v as JSON on one line with no spaces, as a request body is sent.
 func Compact(v any) []byte {
