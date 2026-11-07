@@ -1691,8 +1691,7 @@ adapters:
     in_expr: {body.query: "join(q, 'Instagram influencers')", body.contents.highlights.query: "join(q, 'Instagram influencers')",
               body.contents.highlights.maxCharacters: "2000", body.numResults: "10"}
     test_identity: {q: "specialty coffee Melbourne"}
-    # At most 20 accounts per search: every row is read by the agent, and the bio search's rows lead.
-    out: {users: "instagram_handles(results, 20)", count: "len(instagram_handles(results, 20))"}
+    out: {users: "instagram_handles(results)", count: "len(instagram_handles(results))"}
     miss: "coalesce(instagram_handles(results), []) == []"
     row: {username: username, url: url, biography: biography, matched_from: matched_from}
   scrapecreators.x.v1-instagram-search-profiles:

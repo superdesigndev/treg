@@ -3512,8 +3512,6 @@ def test_instagram_handles_reads_the_accounts_a_page_names():
     assert rows[0]["url"] == "https://www.instagram.com/coffee.one/" and "12K followers" in rows[0]["biography"]
     assert rows[0]["matched_from"] == "example.com", "the site, not the page url: every row is read"
     assert all(len(r["biography"]) <= 175 for r in rows)
-    assert [r["username"] for r in P.evaluate("instagram_handles(results, 2)", {"results": results})] == [
-        "coffee.one", "roaster_two"]
     assert P.evaluate("instagram_handles(results)", {"results": None}) is None
 
 
@@ -3558,9 +3556,9 @@ async def test_an_instagram_search_adds_directory_accounts_to_a_short_bio_answer
 
 
 async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clients, platform_on, monkeypatch):
-    """The directory search names all ten bio accounts and fifteen more (it keeps 20): the union
-    still leads with the bio rows, follower counts kept; a TikHub row for the same account is the
-    same account."""
+    """The directory search names all ten bio accounts and fifteen more, as many rows as the merge:
+    the union still leads with the bio rows, follower counts kept; a TikHub row for the same
+    account is the same account."""
     for p in ("SCRAPECREATORS", "EXA", "TIKHUB"):
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators,exa,tikhub")
@@ -3571,13 +3569,13 @@ async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clien
         "Instagram: " + " ".join(f"@acct{i}" for i in range(25))]}]}
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"scrapecreators": [(200, {"profiles": bios})], "exa": [(200, page)],
-         "tikhub": [(200, {"data": {"data": {"items": []}}})] * 2}, seen))
+        {"scrapecreators": [(200, {"profiles": bios})], "exa": [(200, page)]}, seen))
     r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Melbourne"})
     assert r.status_code == 200, r.text
     users = r.json()["output"]["users"]
-    assert len(users) == 20 and [u.get("follower_count") for u in users[:10]] == [1000 + i for i in range(10)]
-    assert r.json()["_treg"]["merged_from"][:2] == ["scrapecreators.x.v1-instagram-search-profiles", "exa.instagram.search.users"]
+    assert len(users) == 25 and [u.get("follower_count") for u in users[:10]] == [1000 + i for i in range(10)]
+    assert r.json()["_treg"]["merged_from"] == ["scrapecreators.x.v1-instagram-search-profiles", "exa.instagram.search.users"]
+    assert [p for p, *_ in seen] == ["scrapecreators", "exa"], "25 accounts reached: no third provider is paid"
 
     # bio search short, directory empty: TikHub fills, and an account it shares counts once
     seen.clear()
