@@ -179,8 +179,6 @@ func (e *Env) loginWithToken(token string) error {
 	scope := tokenClaim(token, "scp")
 	cfg.Token, cfg.ActiveOrg = token, ""
 	cfg.Identity = scope == "team" || scope == "bootstrap"
-	// Verify before claiming success: a rejected token must not print "Token saved" and fail only
-	// on the first real call. /auth/me needs no team, so it validates either kind of token.
 	c := api.New(e.Registry(), token, e.EffectiveOrg(), e.JSON)
 	who, err := c.Do(api.Request{Path: "/auth/me"})
 	if err != nil {

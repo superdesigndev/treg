@@ -80,7 +80,6 @@ async def task_look(call_id: str, request: Request,
     try:
         return await run_call_input(request, caller, poll, finish=finish, rest=poll.raw_rest)
     except HTTPException as exc:
-        # treg refused the poll: audit it as `/call/` would, then report it as the poll's answer.
         await _stamp_call_exit(request, Response(), exc.status_code)
         return _answer(tasks_app.refusal_view(task, exc.status_code, exc.detail,
                                               getattr(request.state, "call_ref", None)))

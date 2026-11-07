@@ -38,7 +38,6 @@ func Main(argv []string, stderr io.Writer) int {
 	env := commands.NewEnv(cfg, json, org)
 	background := len(argv) > 0 && strings.HasPrefix(argv[0], "__")
 	if !background {
-		// Earlier commands' events ride this command's time on the network; nothing waits for them.
 		go telemetry.Flush(context.Background(), api.RegistryURL(cfg), api.Transport())
 		if exe, err := update.Executable(); err == nil {
 			update.RemoveLeftover(exe)

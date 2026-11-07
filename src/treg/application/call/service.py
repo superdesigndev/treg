@@ -125,7 +125,6 @@ class _ApplicationRequest:
         self.lease: asyncio.Task | None = None
 
 
-# An async answer is a task ticket; one this large is not, and is relayed without a record.
 _TASK_ANSWER_MAX = 2 * 1024 * 1024
 
 

@@ -29,8 +29,6 @@ MAX_POLL_ANSWER_BYTES = 8 * 1024 * 1024
 DEFAULT_INTERVAL_S = 10.0
 TIMED_OUT = "timed out while waiting for the async task"
 
-# What a look at the task never forwards: the look's own body, transport encodings (the answer
-# must be read), and a replay label that would freeze every later poll on its first answer.
 _DROPPED_LOOK_HEADERS = frozenset({
     b"content-type", b"content-length", b"content-encoding", b"transfer-encoding", b"expect",
     b"accept-encoding", b"x-treg-body-encoding", b"idempotency-key",
