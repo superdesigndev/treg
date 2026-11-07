@@ -589,10 +589,12 @@ fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `p
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
 the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
 An async endpoint must use `per_success` or `per_call`. Status values compare after string coercion;
-a missing or unknown value means still in progress in both the CLI awaiter and the worker (the CLI
-warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles usage
-instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before the
-response stream starts; it never inspects or buffers the upstream body.
+a missing or unknown value means still in progress in the CLI awaiter, `/tasks/` and the worker (a
+waiter warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles
+usage instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before
+the response stream starts; it never inspects or buffers the upstream body. The call runtime has
+already read a 2xx async answer to record the task it names, which `/tasks/{call_id}` follows for
+the caller ([tasks](tasks.md)).
 
 - **Poll mode.** Every listed provider polls a static catalog id, reachable through `/call/<id>` on
   any tier. The dynamic-URL mode (`poll.url_from` + `url_hosts`) stays in schema, validator and
@@ -605,7 +607,7 @@ response stream starts; it never inspects or buffers the upstream body.
   `example_response` stays the submission shown by the catalog.
 - `terminal_on_submission: true`: a submission whose own status is already a success word settles
   like a synchronous call (read through `domain.asynctasks.finished_on_submission` by the direct
-  path, routed bridge, Enrich Arena and `treg call --await`).
+  path, routed bridge, Enrich Arena, `/tasks/` and `treg call --await`).
 - `max_age` (seconds, at most a day) is the provider's polling window: the worker times the task out
   there and no waiter waits past it. `interval` also paces the CLI awaiter; treg does not count
   polls across pollers.

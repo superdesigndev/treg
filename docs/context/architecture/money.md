@@ -127,7 +127,8 @@ limit, and changing a type there rewrites a very large table under an exclusive 
 that sums or caps money is `BIGINT` from its first revision.
 
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
-it creates no other money movement.
+it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
+([tasks](tasks.md)).
 
 ## The six operations (`domain/money`)
 

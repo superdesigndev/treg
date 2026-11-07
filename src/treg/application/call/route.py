@@ -712,6 +712,22 @@ def _finished_on_submission(descriptor: dict, raw: bytes) -> bool:
         return False
 
 
+async def _remember_pending_task(parent: CallContext, endpoint_id: str, descriptor: dict,
+                                 task_id: str, kickoff: bytes) -> None:
+    """Name the child's task under the parent's call id: the id a routed caller holds."""
+    try:
+        poll_url = asynctasks_rules.extract_submission(descriptor, json.loads(kickoff)).poll_url
+    except ValueError:
+        poll_url = None
+    try:
+        await async_task_app.remember_routed_task(
+            parent.call_ref, parent.input.caller.org_id, endpoint_id, descriptor,
+            task_id, poll_url, parent.meta.tags)
+    except Exception:
+        log.warning("could not record the pending task of routed call %s", parent.call_ref,
+                    exc_info=True)
+
+
 async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) -> int:
     """Read the original async task's terminal money truth; BYOK has no task row and costs zero."""
     org_id = parent.input.caller.org_id
@@ -1012,6 +1028,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         **({"dropped": plan.dropped} if plan.dropped else {}),
                     },
                 }
+                if ":" not in parent.call_ref:
+                    await _remember_pending_task(parent, cand.endpoint["id"], descriptor,
+                                                 waited.task_id, kickoff_raw)
                 _summarize(parent, served_by=cand.endpoint["id"], tried_count=len(tried))
                 _audit_parent(parent, ep, 202, spent, audit_client)
                 return _json(body_out, 202, {
