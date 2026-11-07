@@ -3614,14 +3614,14 @@ def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
 
 @app.get("/install.sh", include_in_schema=False)
 async def install_sh(channel: str = ""):
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server.
+    """`curl -fsSL {BASE}/install.sh | sh`: installs the treg CLI and points it at this server.
     `?channel=beta` installs the binary CLI's beta channel instead."""
     return _install_script(channel="beta" if channel == "beta" else "")
 
 
 @app.get("/install.ps1", include_in_schema=False)
 async def install_ps1(channel: str = ""):
-    """`irm {BASE}/install.ps1 | iex` — installs the binary treg CLI on Windows."""
+    """`irm {BASE}/install.ps1 | iex`: installs the binary treg CLI on Windows."""
     f = _WEB_DIR / "install.ps1"
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.ps1 not bundled")

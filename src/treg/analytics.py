@@ -212,7 +212,7 @@ def relay(distinct_id: str, event: str, properties: dict, *, timestamp: str,
             item["uuid"] = uuid
         _queue.append(item)
         _ensure_flusher()
-    except Exception:  # noqa: BLE001 — analytics must never surface into a caller's path
+    except Exception:  # noqa: BLE001 - analytics must never surface into a caller's path
         pass
 
 
