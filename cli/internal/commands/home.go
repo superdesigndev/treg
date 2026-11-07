@@ -2,9 +2,7 @@ package commands
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -30,7 +28,7 @@ func (e *Env) home() error {
 	c := e.Client().WithTimeout(5 * time.Second)
 	resp, err := c.Do(api.Request{Path: "/home", Header: [][2]string{api.WithView}})
 	if err != nil {
-		return e.homeProblem("unavailable", transportName(err)+" reaching the registry")
+		return e.homeProblem("unavailable", "not reachable: "+transportReason(err))
 	}
 	v, ok := resp.View()
 	if !ok {
@@ -103,22 +101,6 @@ func executable() string {
 		exe = "~" + exe[len(home):]
 	}
 	return exe
-}
-
-// transportName names a failed request the way the Python CLI did, by its httpx exception.
-func transportName(err error) string {
-	var nerr net.Error
-	var op *net.OpError
-	dial := errors.As(err, &op) && op.Op == "dial"
-	switch {
-	case errors.As(err, &nerr) && nerr.Timeout() && dial:
-		return "ConnectTimeout"
-	case errors.As(err, &nerr) && nerr.Timeout():
-		return "ReadTimeout"
-	case strings.Contains(err.Error(), "is not a URL"):
-		return "UnsupportedProtocol"
-	}
-	return "ConnectError"
 }
 
 var toonNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)

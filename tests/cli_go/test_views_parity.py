@@ -84,8 +84,15 @@ def test_home_when_the_registry_cannot_render_it(tmp_path, go_bin, fake, canned)
 
 
 def test_home_when_nothing_answers(tmp_path, go_bin):
+    """The Python CLI named the failure by its httpx exception; the Go CLI gives the system's reason."""
     py, go = _pair(tmp_path, "http://127.0.0.1:9", go_bin, [], config={"token": "tok"})
-    _same_home(py, go)
+    assert py.code == go.code == 0, (py, go)
+    (py_registry, py_rest), (go_registry, go_rest) = _home(py.text), _home(go.text)
+    assert py_registry == 'registry: "http://127.0.0.1:9 (ConnectError reaching the registry)"'
+    assert go_registry == 'registry: "http://127.0.0.1:9 (not reachable: connection refused)"'
+    assert py_rest == go_rest and go.err == ""
+    go = run([str(go_bin), "--json"], home=tmp_path / "go", env=NO_PROXY)
+    assert json.loads(go.out)["unavailable"] == "not reachable: connection refused"
 
 
 # ---- catalog -----------------------------------------------------------------------------------

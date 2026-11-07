@@ -66,15 +66,33 @@ func (e *Env) Note(key, value string) { e.Telemetry[key] = value }
 
 // unreachable turns a transport failure into the one-line refusal the CLI prints.
 func (e *Env) unreachable(err error) error {
+	return output.Fail("treg: could not reach %s: %s", e.Registry(), transportReason(err))
+}
+
+// transportReason is why a request got no answer, in the system's words, without the operation
+// and addresses Go's error also names.
+func transportReason(err error) string {
 	var dns *net.DNSError
 	if errors.As(err, &dns) {
-		return output.Fail("treg: could not reach %s (%s)", e.Registry(), dns.Err)
+		return dns.Err
+	}
+	var nerr net.Error
+	if errors.As(err, &nerr) && nerr.Timeout() {
+		return "timed out"
+	}
+	var sys *os.SyscallError
+	if errors.As(err, &sys) {
+		var op *net.OpError
+		if errors.As(err, &op) && op.Op == "proxyconnect" {
+			return "proxy " + sys.Err.Error()
+		}
+		return sys.Err.Error()
 	}
 	var u *url.Error
 	if errors.As(err, &u) {
-		err = u.Err
+		return u.Err.Error()
 	}
-	return output.Fail("treg: could not reach %s: %v", e.Registry(), err)
+	return err.Error()
 }
 
 func (e *Env) do(c *api.Client, r api.Request) (*api.Response, error) {
