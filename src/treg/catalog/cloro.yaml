@@ -543,7 +543,52 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
 
+  # --- Bing -------------------------------------------------------------------------------------
+  - id: cloro.bing.serp.ai_mode
+    domain: serp
+    capability: bing.serp.ai_mode
+    platform: bing
+    scope: any_account
+    method: POST
+    path: /v1/monitor/bing/aimode
+    name: "Bing AI Mode answer — text, sources, citation pills"
+    summary: "Runs a prompt through Bing AI Mode from a chosen country and returns the answer text with its cited sources and citation pills, optionally as Markdown or HTML."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "best running shoes for flat feet"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. BY, CN, IR, RU, SY and VE are refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html. Both are free on this endpoint."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "best running shoes for flat feet"
+        country: "US"
+        include: {markdown: true, html: true}
+      bodyType: json
+    added: '2026-11-07'
+    example_response: examples/cloro.bing.serp.ai_mode.json
+    cost:
+      type: per_success
+      value: 6
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/api-reference/endpoint/monitor-bing-aimode'
+      checked: '2026-11-07'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "4 base + the 2-credit sync surcharge. include.markdown and include.html are free — only `state` moves the price, by 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-bing-aimode
+
 proposed_capabilities:
+  # Bing AI Mode is the same job as google.serp.ai_mode against Bing, so it gets the matching id.
+  bing.serp.ai_mode: "Get Bing AI Mode results for a keyword"
   # ai-search already carries chatgpt/gemini `.scrape` and perplexity `.answer`. Copilot is the same
   # job against one more answer engine and has no id yet.
   ai-search.copilot.scrape: "Scrape a live Microsoft Copilot answer page for a keyword"
