@@ -148,7 +148,8 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   upstream registered as its own tool) and compares exit status, stdout (JSON parsed), stderr,
   config writes and the request each sent; prompts run on a pseudo-terminal that is each CLI's
   controlling terminal, answered key by key. It runs with `TREG_GO_BIN` (or `TREG_GO_BUILD=1`); the
-  `cli-go` CI job runs it, and Go's vet and unit tests on Linux, macOS and Windows.
+  `cli-go` CI job runs it, and Go's vet and unit tests on Linux, macOS and Windows, and the
+  `modernize` analyzer, so code is written in the idioms `go.mod`'s Go version allows.
 
 ## Commands that write outside treg
 

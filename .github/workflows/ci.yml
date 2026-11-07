@@ -254,6 +254,11 @@ jobs:
         run: |
           go vet ./...
           go test ./...
+      - name: Modern Go
+        # The analyzer that rewrites code to the idioms go.mod's version allows; it reports any left.
+        if: runner.os == 'Linux'
+        working-directory: cli
+        run: go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@v0.52.0 -test ./...
       - name: Build
         working-directory: cli
         run: go build -o treg-go ./cmd/treg
