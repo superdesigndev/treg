@@ -1,0 +1,281 @@
+provider: docuqueue
+source: {docs: https://docuqueue.com/redoc, openapi: https://docuqueue.com/redoc-assets/openapi.json, curated: 2026-11-03}
+# DocuQueue renders documents from raw HTML, public page URLs, saved templates and AcroForm PDFs.
+# Curated from the vendor's redoc/OpenAPI 2026-11-03 and cross-checked against live wire calls the
+# same day.
+#
+# Billing is a FLAT DOCUMENT CREDIT: the pricing FAQ states "1 credit = 1 document, any size"
+# (fx.yaml carries the Starter $9/mo ÷ 250 documents/month rate). The meter counts DOCUMENTS, not
+# calls, and the routes below bill in units worth knowing before spending:
+#   - POST /convert charges 1 credit per REQUEST regardless of URL count (1-10 URLs in, one PDF
+#     per URL out).
+#   - The two fill-batch routes (template and forms) charge 1 credit per RECORD — 1-50 records
+#     per request = 1-50 credits.
+#   - POST /forms/upload charges 1 credit at upload.
+#   - Failed requests are refunded. The list/create/preview/status/download routes charge nothing
+#     (see each cost note).
+# convert and template fill are ASYNC: the call returns a job_id, poll GET /status/{job_id}, then
+# fetch GET /download/{job_id}. Forms fill (and forms fill-batch) is SYNCHRONOUS and returns the
+# filled document in the response.
+#
+# Auth: the key rides a header. A garbage key answers HTTP 401 {"detail": "Invalid API key"},
+# observed from the wire 2026-11-03.
+#
+# TESTING: system templates (is_system, user_id NULL) are seeded rows visible to EVERY account, so
+# the fill/preview/fill-batch test_requests below pass on any key. The forms family is strictly
+# PER-ACCOUNT (multipart upload; fill needs that upload's id), so those rows carry `untestable`
+# with the manual live-call evidence noted for the listing PR's ledger.
+limits: "5 free credits at signup, 25/month after email verification; plan tiers Starter 250, Pro 1,000, Business 5,000 documents/month; async convert/fill jobs"
+pricing_url: https://docuqueue.com/pricing
+proposed_capabilities:
+  documents.html_to_pdf: Render raw HTML into a downloadable PDF document
+  documents.url_to_pdf: Render public web page URLs into PDF documents
+  documents.template_list: List saved document templates with their ids
+  documents.template_create: Save an HTML template with placeholders for repeated document generation
+  documents.template_fill: Fill a saved template's placeholders and render it into a PDF
+  documents.batch_fill: Generate many PDFs from many record rows in one request
+  documents.template_preview: Render a template's output for review without spending a credit
+  documents.form_upload: Upload an AcroForm PDF as a field-detected fillable template
+  documents.form_list: List uploaded PDF form templates with their field counts
+  documents.form_fill: Fill named fields in an AcroForm PDF and return the filled document
+  documents.job_status: Poll an async document job until it completes
+  documents.job_download: Download the PDF produced by a completed document job
+endpoints:
+  - id: docuqueue.documents.html_to_pdf
+    added: '2026-11-03'
+    capability: documents.html_to_pdf
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/convert-html
+    name: "Render HTML into a PDF document"
+    summary: "Convert raw HTML to PDF"
+    input:
+      bodyType: json
+      body:
+        html: {type: string, required: true, note: "raw HTML, 1-500,000 chars", example: "<html><body><h1>Hello World</h1></body></html>"}
+        options: {type: object, required: false, note: "optional PDF rendering options (page format, orientation)"}
+    test_request: {body: {html: "<html><body><h1>treg</h1></body></html>"}}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per request; refunded if the job fails"}
+
+  - id: docuqueue.documents.url_to_pdf
+    added: '2026-11-03'
+    capability: documents.url_to_pdf
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/convert
+    name: "Render web page URLs into a PDF"
+    summary: "Convert URLs to PDF"
+    input:
+      body:
+        urls: {type: array, required: true, note: "1-10 URLs per request; each becomes one PDF", example: ["https://example.com"]}
+        options: {type: object, required: false}
+    test_request: {body: {urls: ["https://example.com"]}}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per REQUEST regardless of URL count (1-10 URLs); refunded if the job fails"}
+
+  - id: docuqueue.documents.template_list
+    added: '2026-11-03'
+    capability: documents.template_list
+    platform: documents
+    scope: any_account
+    method: GET
+    path: /api/v1/templates
+    name: "List document templates with ids"
+    summary: "List templates"
+    input:
+      note: "no parameters — returns your own templates plus system pre-built templates visible on every account"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "listing generates no document; billing is per document (pricing FAQ)"}
+
+  - id: docuqueue.documents.template_create
+    added: '2026-11-03'
+    capability: documents.template_create
+    platform: documents
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api/v1/templates
+    name: "Save an HTML template for repeated fills"
+    summary: "Create a template"
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: true, note: "1-255 chars", example: "Invoice"}
+        html_content: {type: string, required: true, note: "Jinja2 HTML, 10-2,000,000 chars; {{placeholders}} become fill fields", example: "<html><body><h1>{{title}}</h1></body></html>"}
+        description: {type: string, required: false, note: "max 1000 chars"}
+    test_request: {body: {name: "treg probe", html_content: "<html><body><p>{{title}}</p></body></html>"}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "creating a template generates no document; a plan-based template count limit applies"}
+
+  - id: docuqueue.documents.template_fill
+    added: '2026-11-03'
+    capability: documents.template_fill
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/templates/{template_id}/fill
+    name: "Fill a saved template with JSON values"
+    summary: "Fill template → PDF"
+    input:
+      pathParams:
+        template_id: {type: string, required: true, note: "id from template_list; system templates work on every account"}
+      bodyType: json
+      body:
+        data: {type: object, required: true, note: "JSON values for the template's placeholder fields"}
+        options: {type: object, required: false, note: "PDF rendering options"}
+        share: {type: boolean, required: false, note: "true → also create a public share URL"}
+    test_request: {pathParams: {template_id: "40cd6ac8-ac54-415e-9996-bca08c426444"}, body: {data: {company_name: "treg probe", company_address: "1 Test St", company_email: "probe@example.com", invoice_number: "TR-001", date: "2026-11-03", due_date: "2026-11-10", is_paid: false, client_name: "Verifier", client_address: "2 Example Rd", client_email: "verifier@example.com", subtotal: "10.00", tax_rate: "0", tax_amount: "0.00", total: "10.00", notes: "treg verification", line_items: [{description: "probe", quantity: "1", unit_price: "10.00", amount: "10.00"}]}}}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per fill; ASYNC — returns job_id, poll /status/{job_id}, download /download/{job_id}; refunded if the job fails"}
+
+  - id: docuqueue.documents.template_fill_batch
+    added: '2026-11-03'
+    capability: documents.batch_fill
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/templates/{template_id}/fill-batch
+    name: "Batch-fill a template from many record rows"
+    summary: "Batch fill template → multiple PDFs"
+    input:
+      pathParams:
+        template_id: {type: string, required: true, note: "id from template_list; system templates work on every account"}
+      body:
+        records: {type: array, required: true, note: "1-50 data objects; each generates one PDF job", example: [{}]}
+        options: {type: object, required: false}
+    test_request: {pathParams: {template_id: "40cd6ac8-ac54-415e-9996-bca08c426444"}, body: {records: [{company_name: "treg probe", company_address: "1 Test St", company_email: "probe@example.com", invoice_number: "TR-001", date: "2026-11-03", due_date: "2026-11-10", is_paid: false, client_name: "Verifier", client_address: "2 Example Rd", client_email: "verifier@example.com", subtotal: "10.00", tax_rate: "0", tax_amount: "0.00", total: "10.00", notes: "treg verification", line_items: [{description: "probe", quantity: "1", unit_price: "10.00", amount: "10.00"}]}]}}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per RECORD (1-50 per request = 1-50 credits); async job_ids[]"}
+
+  - id: docuqueue.documents.template_preview
+    added: '2026-11-03'
+    capability: documents.template_preview
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/templates/{template_id}/preview
+    name: "Preview a template before filling it"
+    summary: "Preview template (HTML or PDF, no credit cost)"
+    input:
+      pathParams:
+        template_id: {type: string, required: true, note: "id from template_list; system templates work on every account"}
+      bodyType: json
+      body:
+        data: {type: object, required: true, note: "values to render; empty object returns the raw template HTML"}
+    test_request: {pathParams: {template_id: "40cd6ac8-ac54-415e-9996-bca08c426444"}, body: {data: {}}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "OpenAPI: no credit is consumed; HTML by default, send Accept: application/pdf for a PDF"}
+
+  - id: docuqueue.documents.form_list
+    added: '2026-11-03'
+    capability: documents.form_list
+    platform: documents
+    scope: any_account
+    method: GET
+    path: /api/v1/forms/
+    name: "List PDF form templates with field counts"
+    summary: "List PDF form templates"
+    input:
+      note: "no parameters — per-account forms only; TRAILING SLASH in the path is required (the API 307s without it)"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "listing generates no document; billing is per document (pricing FAQ)"}
+
+  - id: docuqueue.documents.form_upload
+    added: '2026-11-03'
+    capability: documents.form_upload
+    platform: documents
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api/v1/forms/upload
+    name: "Upload an AcroForm PDF as a fillable template"
+    summary: "Upload PDF form template"
+    input:
+      bodyType: multipart
+      body:
+        file: {type: string, required: true, note: "fillable PDF file part; %PDF- header required, field detection runs server-side"}
+    untestable: "multipart file body — a test_request cannot carry a file. Manually live-called 2026-11-04 with the vendor key: HTTP 200, field_count 126 detected on an i9 AcroForm, 1 credit charged (bracketed in the listing PR ledger)."
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit charged at upload; refunded if PDF storage fails"}
+
+  - id: docuqueue.documents.form_fill
+    added: '2026-11-03'
+    capability: documents.form_fill
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/forms/{form_id}/fill
+    name: "Fill named fields in an AcroForm PDF"
+    summary: "Fill PDF form"
+    input:
+      pathParams:
+        form_id: {type: string, required: true, note: "id from form_upload on the same account"}
+      bodyType: json
+      body:
+        data: {type: object, required: true, note: "field names or aliases → values"}
+    untestable: "needs a form_id from form_upload on the same account (forms are per-account; no system forms exist). Manually live-called 2026-11-04: HTTP 200, application/pdf (678,861 bytes), 1 credit (bracketed in the listing PR ledger)."
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per fill; SYNCHRONOUS — returns the filled PDF directly"}
+
+  - id: docuqueue.documents.form_fill_batch
+    added: '2026-11-03'
+    capability: documents.batch_fill
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/forms/{form_id}/fill-batch
+    name: "Batch-fill an AcroForm from many record rows"
+    summary: "Batch fill PDF forms"
+    input:
+      pathParams:
+        form_id: {type: string, required: true, note: "id from form_upload on the same account"}
+      body:
+        records: {type: array, required: true, note: "1-50 data objects; each generates one filled PDF", example: [{}]}
+    untestable: "needs a form_id from form_upload on the same account. Manually live-called 2026-11-04: HTTP 200, 1 record -> 1 filled PDF, 1 credit (bracketed in the listing PR ledger)."
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "1 credit per record (1-50 per request); synchronous"}
+
+  - id: docuqueue.documents.job_status
+    added: '2026-11-03'
+    capability: documents.job_status
+    platform: documents
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /api/v1/status/{job_id}
+    name: "Poll a document job until completed"
+    summary: "Check job status"
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "job_id returned by convert/fill"}
+    untestable: "needs a job_id from a sibling convert/fill call on the same account. Manually live-called 2026-11-04: HTTP 200, observed queued -> processing -> completed."
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "polling a job generates no document"}
+
+  - id: docuqueue.documents.job_download
+    added: '2026-11-03'
+    capability: documents.job_download
+    platform: documents
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /api/v1/download/{job_id}
+    name: "Download the PDF from a completed job"
+    summary: "Download generated PDF"
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "job_id returned by convert/fill"}
+    untestable: "needs a job_id from a sibling convert/fill call on the same account. Manually live-called 2026-11-04: HTTP 200, application/pdf, 7,004 bytes (%PDF-1.4)."
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-03', confidence: documented, note: "downloading an already-generated document charges nothing"}
+
+  - id: docuqueue.documents.create_document
+    added: '2026-11-04'
+    capability: documents.template_fill
+    platform: documents
+    scope: any_account
+    method: POST
+    path: /api/v1/create-document
+    name: "Create a document from template with a webhook"
+    summary: "Create document from template"
+    input:
+      bodyType: json
+      body:
+        template_id: {type: string, required: true, note: "id from template_list; system templates work on every account"}
+        data: {type: object, required: true, note: "key-value pairs for template fields"}
+        callback_url: {type: string, required: false, note: "webhook URL called on completion (Zapier/n8n/Make)"}
+        record_id: {type: string, required: false, note: "Airtable/external record id echoed back for tracking"}
+    test_request: {body: {template_id: "40cd6ac8-ac54-415e-9996-bca08c426444", data: {company_name: "treg probe", company_address: "1 Test St", company_email: "probe@example.com", invoice_number: "TR-001", date: "2026-11-04", due_date: "2026-11-11", is_paid: false, client_name: "Verifier", client_address: "2 Example Rd", client_email: "verifier@example.com", subtotal: "10.00", tax_rate: "0", tax_amount: "0.00", total: "10.00", notes: "treg verification", line_items: [{description: "probe", quantity: "1", unit_price: "10.00", amount: "10.00"}]}}}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://docuqueue.com/pricing", checked: '2026-11-04', confidence: documented, note: "1 credit per document; ASYNC — returns job_id; the automation envelope of /templates/{id}/fill (adds callback_url/record_id); refunded if the job fails"}

@@ -4219,6 +4219,34 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+DOCUQUEUE = OAuthProvider(
+    service="docuqueue",
+    display_name="DocuQueue",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your DocuQueue API key",
+    # The key rides raw in the api-key header (Authorization: Bearer is not the documented form).
+    # Header keeps it out of logged URLs; a garbage key answers 401 {"detail": "Invalid API key"}.
+    token_header="api-key",
+    token_format="{secret}",
+    setup_url="https://docuqueue.com/register",
+    setup_action_label="Get your DocuQueue API key",
+    setup_steps=(
+        "Sign up at docuqueue.com/register — the API key is issued immediately at account creation.",
+        "Copy the API key from the dashboard and keep it secret (43-char URL-safe string).",
+        "5 free credits start immediately; 25 credits a month after email verification.",
+    ),
+    setup_note="1 credit = 1 document of any size; failed requests are refunded. Lists, previews, status and download are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Generate, fill and batch-render PDF documents from HTML, URLs, saved templates and AcroForm fields.",
+    base_url="https://docuqueue.com",
+    docs_url="https://docuqueue.com/redoc",
+    probe_path="/api/v1/templates",  # free list route; bad key → 401 {"detail": "Invalid API key"}
+)
+
 CORPOAPI = OAuthProvider(
     service="corpoapi",
     display_name="Corpo API",
@@ -4263,7 +4291,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, DOCUQUEUE,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
