@@ -690,13 +690,13 @@ def _sent(v: Any) -> bool:
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
     """The caller's identity fields, and bool filters, that are present but not of their declared
-    type. A flag is checked before planning: `"false"` or `0` would otherwise read as asked for."""
+    type. A bool filter is checked before planning: `"false"` or `0` would otherwise read as asked
+    for. A bool identity key keeps its own rule (a blank value is not sent)."""
     bad = []
-    checks = [*contract.identity_types.items(),
-              *((k, "bool") for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool")]
-    for k, t in checks:
+    flags = [(k, "bool", True) for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool"]
+    for k, t, flag in [*((k, t, False) for k, t in contract.identity_types.items()), *flags]:
         v = given.get(k)
-        if t == "bool":
+        if flag:
             wrong = v is not None and not isinstance(v, bool)
         else:
             wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None

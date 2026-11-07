@@ -1267,6 +1267,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
                 served = merged_from[0]
+    # Every provider whose rows are in the answer: a merged row from one that ignored a filter
+    # answers the looser question too.
+    ignored = list(dict.fromkeys(k for c, _, core_i, _ in answers
+                                 if c.endpoint["id"] in merged_from for k in c.ignored)) if merged_from else list(cand.ignored)
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
     # filter. It is on the attempt, but no caller reads `tried[]` — say it where the answer is, and
     # on a header, or the agent post-filters nothing and never knows why the geography is wrong.
@@ -1339,7 +1343,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"upgrade": upgrade} if upgrade is not None else {}),
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
-                          **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
+                          **({"ignored_filters": ignored} if ignored else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=output,
@@ -1349,7 +1353,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
-                                 **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Ignored-Filters": ",".join(ignored)} if ignored else {}),
                                  **({"X-Treg-Limit-Exceeded":
                                      f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
                                     if limit_exceeded else {}),

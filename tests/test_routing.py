@@ -3446,3 +3446,32 @@ async def test_a_request_without_the_flag_samples_providers_as_before(clients, p
             assert ("crawl4ai" in await _first_providers("treg.web.search", body, n=9)) is want, body
     get_settings.cache_clear()
     assert seen == {True, False}, "the sample split the questions both ways"
+
+
+def test_only_bool_filters_get_the_strict_flag_check():
+    """`ai_overview` is a bool identity key of google.serp.organic: a blank one is still not sent, as before."""
+    from treg.domain.catalog.routing.contracts import invalid_identity
+
+    cat = catalog_store.load()
+    assert invalid_identity(cat.contracts["google.serp.organic"], {"q": "example", "ai_overview": ""}) == []
+    assert invalid_identity(cat.contracts["web.search"], {"q": "example", "contents": ""})[0]["type"] == "bool"
+
+
+async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(clients, platform_on, monkeypatch):
+    """contents asked, rows merged from exa (passages) and crawl4ai (snippets): the answer says contents
+    was ignored for some rows, on the body and the header, not only in tried[]."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(200, {"results": [{"url": "https://a.example", "title": "a", "highlights": ["x"]}]})],
+         "*": [(200, {"results": [{"url": "https://b.example", "title": "b"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": True},
+                           headers={"X-Treg-Route-Merge": "1", "X-Treg-Route-Min-Results": "3"})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    t = r.json()["_treg"]
+    assert len(t.get("merged_from") or []) == 2, t
+    assert t["ignored_filters"] == ["contents"] and r.headers.get("x-treg-ignored-filters") == "contents"
