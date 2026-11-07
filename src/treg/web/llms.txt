@@ -42,7 +42,9 @@ holds those accounts and bills a fraction of a cent per call.
       treg login    # browser sign-in: GitHub, Google or an emailed code
       treg          # check: account, team, balance, own tools, next commands
 
-  Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a
+  In an agent's shell `treg login` prints a sign-in link and waits about 20 seconds. If it exits 3,
+  the sign-in is still pending: give the link to the human, then run `treg login` again once they
+  have signed in (`treg login --wait` blocks until then). Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a
   browser. `treg login --email you@company.com` signs in with an emailed code; an invited person runs
   `treg accept`. Asked to share the human's own keys and skills with the team? `treg scan` shows what
   would be registered and sends nothing; register only what they approve with

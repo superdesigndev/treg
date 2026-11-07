@@ -265,8 +265,11 @@ def verify_pkce(verifier: str, challenge: str) -> bool:
     secret, so anyone who intercepts the authorization request can redeem the code."""
     if not verifier or not challenge:
         return False
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    return hmac.compare_digest(_b64(digest), challenge)
+    return hmac.compare_digest(pkce_challenge(verifier), challenge)
+
+
+def pkce_challenge(verifier: str) -> str:
+    return _b64(hashlib.sha256(verifier.encode("ascii")).digest())
 
 
 # A client-id metadata document is fetched from a URL the CALLER chose, which makes it a

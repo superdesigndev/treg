@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -100,7 +101,8 @@ async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, versio
         return True
 
     monkeypatch.setattr(cli, "webbrowser", SimpleNamespace(open=browser_open))
-    monkeypatch.setattr(cli, "time", SimpleNamespace(sleep=lambda seconds: None))
+    monkeypatch.setattr(cli, "time", SimpleNamespace(sleep=lambda seconds: None, time=time.time,
+                                                     monotonic=time.monotonic))
     cfg = {'base_url': 'http://test', 'token': None}
     parser = cli.build_parser()
 
@@ -114,7 +116,7 @@ async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, versio
             return r.status_code
 
     outcomes = {}
-    await command('login')
+    await command('login', *(['--wait'] if version == 'current' else []))
     outcomes['browser_login'] = await resources()
     await command('org', 'use', second)
     outcomes['team_switch'] = await resources()
