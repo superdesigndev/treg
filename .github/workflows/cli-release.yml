@@ -1,20 +1,14 @@
 name: CLI release
 
-# One binary CLI release: every platform's archive, SHA256SUMS signed with the release key, and a
-# GitHub release tagged cli-v<version> (a pre-release on the beta channel). Publishing does not
-# move any registry: /cli/latest answers what TREG_CLI_LATEST_VERSION / TREG_CLI_BETA_VERSION
-# name, so a registry operator decides when a release reaches users.
+# One binary CLI release per tag: `v1.2.3` on the stable channel, `v1.3.0-beta.1` (a GitHub
+# pre-release) on the beta channel. cli/.goreleaser.yaml builds every platform's archive, signs
+# SHA256SUMS with the release key and checks it against the key the binaries carry before it
+# publishes. Publishing moves no registry: /cli/latest answers what TREG_CLI_LATEST_VERSION /
+# TREG_CLI_BETA_VERSION name, so a registry operator decides when a release reaches users. The
+# repository's 0.x tags are the registry's own releases and never run this.
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "MAJOR.MINOR.PATCH, at least 1.0.0"
-        required: true
-      channel:
-        description: "beta releases are GitHub pre-releases"
-        type: choice
-        options: [beta, stable]
-        default: beta
+  push:
+    tags: ["v[1-9]*"]
 
 permissions:
   contents: write
@@ -26,6 +20,8 @@ jobs:
     environment: cli-release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: cli/go.mod
@@ -35,27 +31,22 @@ jobs:
         run: |
           go vet ./...
           go test ./...
-      - name: Build and sign
+      - name: Release key
         env:
-          VERSION: ${{ inputs.version }}
-          TREG_UPDATE_KEY: ${{ vars.TREG_UPDATE_KEY }}
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          case "$VERSION" in [1-9]*.[0-9]*.[0-9]*) ;; *) echo "version must be >= 1.0.0"; exit 1 ;; esac
-          sudo apt-get update && sudo apt-get install -y minisign zip
-          key="$RUNNER_TEMP/minisign.key"
-          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
-          MINISIGN_KEY_FILE="$key" cli/scripts/release.sh "$VERSION" "$RUNNER_TEMP/dist"
-          rm -f "$key"
-          printf '%s\n' "untrusted comment: treg release key" "$TREG_UPDATE_KEY" > "$RUNNER_TEMP/release.pub"
-          minisign -V -p "$RUNNER_TEMP/release.pub" -m "$RUNNER_TEMP/dist/SHA256SUMS"
-      - name: Publish
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "v2.20.0"
+          workdir: cli
+          args: release --clean
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
-          CHANNEL: ${{ inputs.channel }}
-        run: |
-          pre=""
-          [ "$CHANNEL" = beta ] && pre="--prerelease"
-          gh release create "cli-v$VERSION" "$RUNNER_TEMP"/dist/* --target "$GITHUB_SHA" \
-            --title "treg $VERSION" --notes "treg CLI $VERSION ($CHANNEL channel)." $pre
+          GITHUB_TOKEN: ${{ github.token }}
+          TREG_UPDATE_KEY: ${{ vars.TREG_UPDATE_KEY }}
+          MINISIGN_KEY_FILE: ${{ runner.temp }}/minisign.key
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/minisign.key"

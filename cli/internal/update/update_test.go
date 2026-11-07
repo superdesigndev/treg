@@ -174,7 +174,9 @@ func TestNewer(t *testing.T) {
 		a, b string
 		want bool
 	}{{"1.0.1", "1.0.0", true}, {"1.0.0", "1.0.0", false}, {"1.10.0", "1.9.9", true}, {"1.0", "1.0.0", false},
-		{"0.9.0", "1.0.0", false}, {"1.0.0", "dev", true}} {
+		{"0.9.0", "1.0.0", false}, {"1.0.0", "dev", true}, {"dev", "1.0.0", false},
+		{"1.1.0-beta.1", "1.0.0", true}, {"1.1.0", "1.1.0-beta.2", true}, {"1.1.0-beta.2", "1.1.0", false},
+		{"1.1.0-beta.10", "1.1.0-beta.9", true}, {"1.0.0", "1.1.0-beta.1", false}} {
 		if got := Newer(c.a, c.b); got != c.want {
 			t.Errorf("Newer(%s, %s) = %v", c.a, c.b, got)
 		}
@@ -202,5 +204,26 @@ func TestOldRegistryFallsBackOnlyWhenTheRouteIsMissing(t *testing.T) {
 	defer srv.Close()
 	if _, err := Latest(context.Background(), srv.URL, "beta"); err == nil || !strings.Contains(err.Error(), "no treg release") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOldRegistryUsesGitHubsBinaryReleases(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		w.Write([]byte(`{"detail":"Not Found"}`))
+	}))
+	defer registry.Close()
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"tag_name":"v1.3.0","draft":true},{"tag_name":"v0.31.0"},` +
+			`{"tag_name":"v1.2.0-beta.1","prerelease":true},{"tag_name":"v1.1.0"}]`))
+	}))
+	defer github.Close()
+	defer func(old string) { gitHubAPI = old }(gitHubAPI)
+	gitHubAPI = github.URL
+	for channel, want := range map[string]string{"stable": "1.1.0", "beta": "1.2.0-beta.1"} {
+		m, err := Latest(context.Background(), registry.URL, channel)
+		if err != nil || m.Version != want || !strings.Contains(m.URL, "/releases/download/v"+want+"/") {
+			t.Errorf("%s: %+v, %v", channel, m, err)
+		}
 	}
 }

@@ -1,39 +1,39 @@
-"""The newest GitHub release of a repository whose tag starts with a prefix, from GitHub's public
-releases API, kept per process for a few minutes so a burst of CLIs asks GitHub once."""
+"""A repository's published GitHub releases, from GitHub's public releases API, kept per process for
+a few minutes so a burst of CLIs asks GitHub once."""
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import httpx
 
 _TTL_S = 600.0
-_cache: dict[tuple[str, str, bool], tuple[float, str]] = {}
+_cache: dict[str, tuple[float, list[Release]]] = {}
 
 
-async def newest(repo: str, prefix: str, *, prereleases: bool) -> str:
-    """The newest published release's tag without `prefix`, or "" when there is none or GitHub
-    cannot be read. Drafts never count; pre-releases count only when asked for."""
-    key = (repo, prefix, prereleases)
-    cached = _cache.get(key)
+@dataclass(frozen=True)
+class Release:
+    tag: str
+    prerelease: bool
+
+
+async def published(repo: str) -> list[Release]:
+    """The repository's newest releases, newest first, drafts left out; empty when GitHub cannot be
+    read."""
+    cached = _cache.get(repo)
     if cached and time.monotonic() - cached[0] < _TTL_S:
         return cached[1]
-    version = ""
+    releases: list[Release] = []
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get(f"https://api.github.com/repos/{repo}/releases",
                                  params={"per_page": 30},
                                  headers={"Accept": "application/vnd.github+json"})
         if r.status_code == 200:
-            for release in r.json():
-                tag = release.get("tag_name") or ""
-                if release.get("draft") or not tag.startswith(prefix):
-                    continue
-                if release.get("prerelease") and not prereleases:
-                    continue
-                version = tag.removeprefix(prefix)
-                break
-    except (httpx.HTTPError, ValueError):
-        version = ""
-    _cache[key] = (time.monotonic(), version)
-    return version
+            releases = [Release(str(item.get("tag_name") or ""), bool(item.get("prerelease")))
+                        for item in r.json() if not item.get("draft")]
+    except (httpx.HTTPError, ValueError, AttributeError):
+        releases = []
+    _cache[repo] = (time.monotonic(), releases)
+    return releases

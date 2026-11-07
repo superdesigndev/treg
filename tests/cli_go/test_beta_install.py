@@ -1,8 +1,8 @@
 """The beta channel end to end on this machine: the registry's installer, sign-in, a call, `treg
 update` and the background update, against signed releases served locally.
 
-Opt-in: TREG_GO_RELEASES names a directory holding `cli-v1.0.0/` and `cli-v1.0.1/`, each built by
-cli/scripts/release.sh with TREG_UPDATE_KEY and signed with that key's secret half.
+Opt-in: TREG_GO_RELEASES names a directory holding `v1.0.0/` and `v1.0.1/`, each built by
+cli/.goreleaser.yaml with TREG_UPDATE_KEY and signed with that key's secret half (check-beta.sh).
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def downloads():
 def _registry(tmp_path_factory, downloads, beta: str) -> LiveRegistry:
     return LiveRegistry(tmp_path_factory.mktemp(f"reg-{beta}"), extra_env={
         "TREG_CLI_BETA_VERSION": beta,
-        "TREG_CLI_DOWNLOAD_BASE_URL": f"{downloads}/cli-v{{version}}",
+        "TREG_CLI_DOWNLOAD_BASE_URL": f"{downloads}/v{{version}}",
         # Stable has no release here: no setting, and a repository with no releases to fall back to.
         "TREG_CLI_RELEASE_REPO": "superdesigndev/treg-no-releases-here",
     })
@@ -139,9 +139,9 @@ def test_leaving_the_beta_before_stable_has_a_release(tmp_path, registries):
 def test_a_tampered_release_is_refused(tmp_path, registries, tmp_path_factory, downloads):
     first, _ = registries
     treg, env = _installed(tmp_path, first)
-    forged = Path(RELEASES) / "cli-v1.0.9"
+    forged = Path(RELEASES) / "v1.0.9"
     shutil.rmtree(forged, ignore_errors=True)
-    shutil.copytree(Path(RELEASES) / "cli-v1.0.1", forged)
+    shutil.copytree(Path(RELEASES) / "v1.0.1", forged)
     for archive in forged.glob("treg_1.0.1_*"):
         archive.rename(forged / archive.name.replace("1.0.1", "1.0.9"))
     sums = (forged / "SHA256SUMS").read_text().replace("1.0.1", "1.0.9")

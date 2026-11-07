@@ -288,11 +288,13 @@ new CLI ships only after that CLI is released. After a release is on PyPI, set `
 older CLIs are told to update; set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
 from working.
 
-**The binary CLI** is released by the manual `CLI release` workflow, which needs the
-`cli-release` environment's `MINISIGN_SECRET_KEY` (an unencrypted `minisign -G -W` key) and the
-`TREG_UPDATE_KEY` variable (its public key line). A release reaches users only when the operator
-names it: `TREG_CLI_BETA_VERSION` for the beta channel, `TREG_CLI_LATEST_VERSION` (1.0.0 or later)
-for stable ([cli-binary](../interface/cli-binary.md)).
+**The binary CLI** is released by pushing a `v1.2.3` tag (`v1.3.0-beta.1` for beta), which runs
+the `CLI release` workflow; it needs the `cli-release` environment's `MINISIGN_SECRET_KEY` (an
+unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public key line). A
+channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
+`TREG_CLI_LATEST_VERSION` of 1.0.0 or later for stable) moves only when the operator moves it; one
+left empty, or at a 0.x value, follows the newest GitHub release
+([cli-binary](../interface/cli-binary.md)).
 
 ## Audit, archive and spool back-pressure
 

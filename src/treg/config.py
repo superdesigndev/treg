@@ -818,7 +818,7 @@ class Settings(BaseSettings):
     # cli_download_base_url with `{version}` filled in.
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
-    cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/cli-v{version}"
+    cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both

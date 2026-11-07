@@ -20,9 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/minisign"
@@ -44,6 +45,8 @@ type Manifest struct {
 }
 
 var client = &http.Client{Timeout: fetchTimeout}
+
+var gitHubAPI = "https://api.github.com"
 
 // NoRelease is a channel with no release for this platform yet: during the beta, stable has none.
 type NoRelease struct{ Channel string }
@@ -76,7 +79,7 @@ func Latest(ctx context.Context, registry, channel string) (*Manifest, error) {
 }
 
 func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+Repo+"/releases?per_page=30", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, gitHubAPI+"/repos/"+Repo+"/releases?per_page=30", nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	resp, err := client.Do(req)
@@ -93,8 +96,8 @@ func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
 		return nil, fmt.Errorf("GitHub releases answered %d", resp.StatusCode)
 	}
 	for _, r := range releases {
-		version, ok := strings.CutPrefix(r.Tag, "cli-v")
-		if r.Draft || !ok || (channel == "stable" && r.Prerelease) {
+		version, ok := strings.CutPrefix(r.Tag, "v")
+		if r.Draft || !ok || !IsBinaryRelease(version) || (channel == "stable" && r.Prerelease) {
 			continue
 		}
 		base := "https://github.com/" + Repo + "/releases/download/" + r.Tag
@@ -274,32 +277,17 @@ func RemoveLeftover(exe string) {
 	}
 }
 
-// Newer reports whether release version a sorts after b (plain dotted numbers).
+// Newer reports whether release version a sorts after b as semantic versions do, a pre-release
+// (1.1.0-beta.1) before its release; a version that is not one (a dev build) is older than any.
 func Newer(a, b string) bool {
-	pa, pb := parts(a), parts(b)
-	if pa == nil || pb == nil {
-		return a != b
+	va, vb := "v"+a, "v"+b
+	if !semver.IsValid(va) || !semver.IsValid(vb) {
+		return semver.IsValid(va) || (!semver.IsValid(vb) && a != b)
 	}
-	for i := range 3 {
-		if pa[i] != pb[i] {
-			return pa[i] > pb[i]
-		}
-	}
-	return false
+	return semver.Compare(va, vb) > 0
 }
 
-func parts(v string) []int {
-	fields := strings.Split(v, ".")
-	if len(fields) == 0 || len(fields) > 3 {
-		return nil
-	}
-	out := make([]int, 3)
-	for i, f := range fields {
-		n, err := strconv.Atoi(f)
-		if err != nil || n < 0 {
-			return nil
-		}
-		out[i] = n
-	}
-	return out
+// IsBinaryRelease is a version from 1.0.0 up: a 0.x version names a Python CLI or registry release.
+func IsBinaryRelease(v string) bool {
+	return semver.IsValid("v"+v) && semver.Major("v"+v) != "v0"
 }

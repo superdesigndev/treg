@@ -103,7 +103,7 @@ def release_settings(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "cli_latest_version", "", raising=False)
     monkeypatch.setattr(s, "cli_beta_version", "", raising=False)
-    monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/cli-v{version}", raising=False)
+    monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/v{version}", raising=False)
     github_releases._cache.clear()
     return s
 
@@ -114,9 +114,9 @@ async def test_latest_answers_each_channel_from_settings(clients, release_settin
     stable = (await clients.get("/cli/latest", params={"os": "darwin", "arch": "arm64"})).json()
     assert stable == {"version": "1.2.0", "channel": "stable", "os": "darwin", "arch": "arm64",
                       "archive": "treg_1.2.0_darwin_arm64.tar.gz",
-                      "url": "https://dl.example/cli-v1.2.0/treg_1.2.0_darwin_arm64.tar.gz",
-                      "checksums_url": "https://dl.example/cli-v1.2.0/SHA256SUMS",
-                      "signature_url": "https://dl.example/cli-v1.2.0/SHA256SUMS.minisig"}
+                      "url": "https://dl.example/v1.2.0/treg_1.2.0_darwin_arm64.tar.gz",
+                      "checksums_url": "https://dl.example/v1.2.0/SHA256SUMS",
+                      "signature_url": "https://dl.example/v1.2.0/SHA256SUMS.minisig"}
     beta = (await clients.get("/cli/latest", params={"channel": "beta", "os": "windows", "arch": "amd64"})).json()
     assert beta["version"] == "1.3.0" and beta["archive"] == "treg_1.3.0_windows_amd64.zip"
 
@@ -125,20 +125,23 @@ async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, 
     release_settings.cli_latest_version = "0.31.0"
     asked = []
 
-    async def github(repo, prefix, *, prereleases):
-        asked.append((repo, prefix, prereleases))
-        return "1.0.4"
+    async def github(repo):
+        asked.append(repo)
+        return [github_releases.Release("v0.32.0", False), github_releases.Release("v1.1.0-beta.1", True),
+                github_releases.Release("treg-v9.0.0", False), github_releases.Release("v1.0.4", False)]
 
-    monkeypatch.setattr(github_releases, "newest", github)
-    r = await clients.get("/cli/latest", params={"os": "linux", "arch": "amd64"})
-    assert r.json()["version"] == "1.0.4" and asked == [("superdesigndev/treg", "cli-v", False)]
+    monkeypatch.setattr(github_releases, "published", github)
+    stable = await clients.get("/cli/latest", params={"os": "linux", "arch": "amd64"})
+    beta = await clients.get("/cli/latest", params={"channel": "beta", "os": "linux", "arch": "amd64"})
+    assert stable.json()["version"] == "1.0.4" and beta.json()["version"] == "1.1.0-beta.1"
+    assert asked == ["superdesigndev/treg"] * 2
 
 
 async def test_latest_refuses_unknown_platforms_and_missing_releases(clients, release_settings, monkeypatch):
-    async def none(repo, prefix, *, prereleases):
-        return ""
+    async def none(repo):
+        return []
 
-    monkeypatch.setattr(github_releases, "newest", none)
+    monkeypatch.setattr(github_releases, "published", none)
     assert (await clients.get("/cli/latest", params={"os": "aix", "arch": "amd64"})).status_code == 404
     assert (await clients.get("/cli/latest", params={"os": "linux", "arch": "amd64"})).status_code == 404
     assert (await clients.get("/cli/latest", params={"channel": "nightly", "os": "linux", "arch": "amd64"})).status_code == 422
@@ -148,30 +151,30 @@ async def test_latest_download_redirects_to_the_platforms_archive(clients, relea
     release_settings.cli_latest_version = "1.2.0"
     release_settings.cli_beta_version = "1.3.0"
     r = await clients.get("/cli/latest/darwin-arm64", follow_redirects=False)
-    assert r.status_code == 302 and r.headers["location"] == "https://dl.example/cli-v1.2.0/treg_1.2.0_darwin_arm64.tar.gz"
+    assert r.status_code == 302 and r.headers["location"] == "https://dl.example/v1.2.0/treg_1.2.0_darwin_arm64.tar.gz"
     r = await clients.get("/cli/latest/windows-amd64", params={"channel": "beta"}, follow_redirects=False)
-    assert r.headers["location"] == "https://dl.example/cli-v1.3.0/treg_1.3.0_windows_amd64.zip"
+    assert r.headers["location"] == "https://dl.example/v1.3.0/treg_1.3.0_windows_amd64.zip"
     assert (await clients.get("/cli/latest/aix-ppc64", follow_redirects=False)).status_code == 404
     assert (await clients.get("/cli/latest/darwin", follow_redirects=False)).status_code in (404, 422)
 
 
-async def test_github_lookup_skips_drafts_other_tags_and_stable_pre_releases(monkeypatch):
-    releases = [{"tag_name": "cli-v1.3.0", "draft": True}, {"tag_name": "v0.31.0"},
-                {"tag_name": "cli-v1.2.0-beta.1", "prerelease": True}, {"tag_name": "cli-v1.1.0"}]
+async def test_github_lookup_leaves_out_drafts_and_is_kept_a_while(monkeypatch):
     seen = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request.url.path)
-        return httpx.Response(200, json=releases)
+        return httpx.Response(200, json=[{"tag_name": "v1.3.0", "draft": True},
+                                         {"tag_name": "v1.2.0-beta.1", "prerelease": True},
+                                         {"tag_name": "v1.1.0"}])
 
     real = httpx.AsyncClient
     monkeypatch.setattr(github_releases.httpx, "AsyncClient",
                         lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     github_releases._cache.clear()
-    assert await github_releases.newest("o/r", "cli-v", prereleases=False) == "1.1.0"
-    assert await github_releases.newest("o/r", "cli-v", prereleases=True) == "1.2.0-beta.1"
-    assert await github_releases.newest("o/r", "cli-v", prereleases=False) == "1.1.0"
-    assert seen == ["/repos/o/r/releases"] * 2
+    want = [github_releases.Release("v1.2.0-beta.1", True), github_releases.Release("v1.1.0", False)]
+    assert await github_releases.published("o/r") == want
+    assert await github_releases.published("o/r") == want
+    assert seen == ["/repos/o/r/releases"]
 
 
 def test_only_a_release_from_1_0_0_is_a_binary_one():

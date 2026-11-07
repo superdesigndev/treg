@@ -2,6 +2,7 @@
 title: The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events
 status: building
 sources:
+  - cli/.goreleaser.yaml
   - cli/cmd/treg/main.go
   - cli/internal/agents/agents.go
   - cli/internal/agents/mcp.go
@@ -58,8 +59,8 @@ sources:
   - cli/internal/prompt/prompt.go
   - cli/internal/prompt/termios_darwin.go
   - cli/internal/prompt/termios_linux.go
-  - cli/internal/providers/providers.go
   - cli/internal/providers/catalog.json
+  - cli/internal/providers/providers.go
   - cli/internal/pyjson/pyjson.go
   - cli/internal/session/proc_darwin.go
   - cli/internal/session/proc_linux.go
@@ -75,7 +76,7 @@ sources:
   - cli/internal/update/method.go
   - cli/internal/update/update.go
   - cli/scripts/check-beta.sh
-  - cli/scripts/release.sh
+  - cli/scripts/sign-release.sh
   - src/treg/application/cli_releases.py
   - src/treg/infra/github_releases.py
   - src/treg/routers/cli_client.py
@@ -183,18 +184,23 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
 
 ## Releases and channels
 
-- `cli/scripts/release.sh <version>` builds six targets into `treg_<version>_<os>_<arch>.tar.gz`
-  (`.zip` on Windows), writes `SHA256SUMS` and signs it with minisign. It refuses to build without
-  `TREG_UPDATE_KEY`, the public key compiled into each binary: a build without it could never
-  verify, and so never apply, an update. The manual `CLI release` workflow publishes the result as a
-  `cli-v<version>` GitHub release, a pre-release on the beta channel.
+- A release is a tag: `v1.2.3` for stable, `v1.3.0-beta.1` for beta. Pushing it runs the `CLI
+  release` workflow (behind the `cli-release` environment's reviewers), and GoReleaser
+  (`cli/.goreleaser.yaml`) builds six targets into `treg_<version>_<os>_<arch>.tar.gz` (`.zip` on
+  Windows), writes `SHA256SUMS`, signs it with minisign and verifies the signature with
+  `TREG_UPDATE_KEY` (`cli/scripts/sign-release.sh`) before it publishes the GitHub release, a
+  pre-release when the version has one. A build without `TREG_UPDATE_KEY`, the public key compiled
+  into each binary, is refused: it could never verify, and so never apply, an update. The
+  repository's 0.x tags are the registry package's own releases; nothing here reads them, and
+  versions compare as semantic versions (a pre-release before its release).
 - `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
   `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
   a CLI on that channel and platform runs: `TREG_CLI_LATEST_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
-  (beta falls back to stable), else the newest matching GitHub release of `cli_release_repo`. A 0.x
+  (beta falls back to stable), else the newest GitHub release of `cli_release_repo` tagged
+  `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
-  `TREG_CLI_DOWNLOAD_BASE_URL`. Publishing a release moves no one; the operator's variable does,
-  so a bad release is held back without a new one. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
+  `TREG_CLI_DOWNLOAD_BASE_URL`. On a channel the operator names, publishing a release moves no
+  one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
