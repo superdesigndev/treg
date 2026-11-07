@@ -282,7 +282,7 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
-The CLI sends anonymous command usage to PostHog when using treg.to (no arguments or credentials).
+The CLI and its installer send anonymous usage to PostHog when using treg.to (no arguments or credentials).
 Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 See [analytics details](USAGE.md#anonymous-usage-analytics).
 
@@ -296,7 +296,7 @@ and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
 ```bash
 treg org create "Acme"                        # make a team, become owner
 treg org invite teammate@acme.com             # invite by email (pick role + tool access)
-treg org join <code> --email you@acme.com     # accept an invite (creates you if new)
+treg org join <code>                          # accept an invite (sign in as the invited email first)
 treg org ls | use <slug> | members            # switch orgs, see the roster
 treg org access <member> --tools a,b          # per-member tool access (admin+)
 ```

@@ -16,6 +16,7 @@ from treg.domain.governance.usage import count_today
 from treg.timeutil import utcnow_naive as _utcnow_naive
 from treg.infra.db import session_maker
 from treg.models import CallRecord, Membership, RunRecord, User
+from conftest import accept_with_code
 
 
 async def _set_cap(cap: int, email: str = "tim@superdesign.dev") -> int:
@@ -84,7 +85,7 @@ async def test_cap_is_per_member_not_global(clients: AsyncClient):
     assert (await clients.get("/call/echo/anything")).status_code == 200  # tim is now at his cap
     # invite bob into the SAME org (default cap -1)
     code = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "bob@x.io", "role": "member"})).json()["code"]
-    btok = (await clients.post("/invites/accept", json={"code": code, "email": "bob@x.io"})).json()["token"]
+    btok = (await accept_with_code(clients, json={"code": code, "email": "bob@x.io"})).json()["token"]
 
     assert (await clients.get("/call/echo/anything")).status_code == 429  # tim blocked
     bob = await clients.get("/call/echo/anything", headers={"X-Treg-Token": btok})
@@ -139,7 +140,7 @@ async def _get_org_id(email: str = "tim@superdesign.dev") -> int:
 
 async def _invite(clients: AsyncClient, org_id: int, email: str, role: str) -> str:
     code = (await clients.post(f"/orgs/{org_id}/invites", json={"email": email, "role": role})).json()["code"]
-    return (await clients.post("/invites/accept", json={"code": code, "email": email})).json()["token"]
+    return (await accept_with_code(clients, json={"code": code, "email": email})).json()["token"]
 
 
 # ---- step 3: the endpoints -----------------------------------------------------------------

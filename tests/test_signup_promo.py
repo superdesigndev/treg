@@ -9,7 +9,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlmodel import select
 
-from conftest import invite_code_member, verified_identity
+from conftest import unproven_member, verified_identity
 from treg.config import get_settings
 from treg.domain import money
 from treg.infra.db import session_maker
@@ -36,7 +36,7 @@ async def _funding(ids):
 
 
 async def test_an_unproven_identity_cannot_mint_credit(clients):
-    created = await invite_code_member(clients, 'unverified@example.org')
+    created = await unproven_member(clients, 'unverified@example.org')
     teams = []
     for index in range(3):
         teams.append(await _team(clients, created['token'], f'unverified-{index}'))
@@ -53,7 +53,7 @@ async def test_an_unproven_identity_cannot_mint_credit(clients):
 
 async def test_verifying_after_making_a_team_funds_that_team(clients):
     """An invite-code member can make a team before any inbox proof; proving the inbox later funds it."""
-    member = await invite_code_member(clients, 'later@example.org')
+    member = await unproven_member(clients, 'later@example.org')
     registered = await _team(clients, member['token'], 'later-first')
     assert await _funding([registered['org_id']]) == (0, [])
     token = await verified_identity(clients, 'later@example.org')
@@ -120,18 +120,6 @@ async def test_deleting_funded_team_does_not_restore_claim(clients):
     assert deleted.status_code == 200, deleted.text
     recreated = await _team(clients, token, 'delete-me')
     assert await _funding([recreated['org_id']]) == (0, [])
-
-
-async def test_invite_code_is_not_an_email_proof(clients):
-    org = (await clients.get('/orgs')).json()[0]
-    invite = await clients.post(f"/orgs/{org['org_id']}/invites",
-        json={'email': 'invite-code@example.org', 'role': 'member'})
-    assert invite.status_code == 200
-    accepted = await clients.post('/invites/accept', json={
-        'email': 'invite-code@example.org', 'code': invite.json()['code']})
-    assert accepted.status_code == 200
-    team = await _team(clients, accepted.json()['token'], 'invite-code-team')
-    assert await _funding([team['org_id']]) == (0, [])
 
 
 async def test_legacy_user_remains_ineligible_after_verification(clients):

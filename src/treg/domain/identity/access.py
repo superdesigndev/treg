@@ -214,6 +214,26 @@ async def require_identity(
     raise HTTPException(status_code=401, detail="not authenticated")
 
 
+async def require_person(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """The caller as a person, for acts on the account rather than inside one team: joining a team
+    or minting a Default key for another team. An identity token or a browser session qualifies; a
+    key that resolves to one membership (an Additional, agent or legacy team key) names a team, not a
+    person, so it is refused here even though `require_identity` accepts it."""
+    if x_treg_token:
+        membership, _ = await _membership_and_key_by_token(x_treg_token, db)
+        if membership is not None:
+            raise HTTPException(status_code=403, detail=(
+                "this key belongs to one team and cannot act for your account — sign in with "
+                "`treg login` or the dashboard"))
+    return await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 def _sso_scope_allows(request: Request, org_id: int) -> bool:
     path = request.url.path.split("/")
     scoped_team_path = len(path) > 2 and path[1] == "orgs" and path[2] == str(org_id)

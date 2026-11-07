@@ -73,6 +73,10 @@ class Contract:
     # the caller sent answers about someone else entirely (a title-only search asked for the CEO of
     # one company returns CEOs of any company), so the router drops it instead of ranking it down.
     scoping: tuple[str, ...] = ()
+    # Scoping key -> other identity keys that ask the same thing in a field: a {q, title} search
+    # answered through a provider's {title} variant still asks for that role. Any other variant
+    # that leaves the key out answers a different question.
+    carried_by: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # The provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per hit alone ignores
     # time and reliability: for `ai-search.perplexity.answer` it ranked the cheaper, slower and less
     # reliable cloro above dataforseo. A caller's own prefer header still replaces it.
@@ -149,7 +153,7 @@ class Contract:
         limit = given.get("limit")
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
             return None
-        sent = {k for k, v in given.items() if k in self.identity_types and v not in (None, "")}
+        sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
         return limit if any(sent == set(keys) for keys in self.fill_limit_when) else None
 
     @property
@@ -323,7 +327,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
     "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
@@ -389,6 +393,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
             routed=bool(c.get("routed", True)),
             scoping=tuple(str(k) for k in scoping),
+            carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
             prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), types),
@@ -422,6 +427,16 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
+
+
+def _parse_carried_by(cap: str, raw, types: dict, scoping: list) -> dict[str, tuple[str, ...]]:
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not raw
+            or any(k not in scoping or not isinstance(v, list) or not v or any(x not in types or x == k for x in v)
+                   for k, v in raw.items())):
+        raise ValueError(f"contract {cap}: carried_by maps scoping keys to other identity keys, got {raw!r}")
+    return {k: tuple(v) for k, v in raw.items()}
 
 
 def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
@@ -664,7 +679,9 @@ def _as_url(v: Any) -> str | None:
     return candidate
 
 
-_TYPE_NORMALISERS = {"url": _as_url}
+# `text`: a string and nothing else. A list in a key that providers join into free text is skipped
+# by the join, so the provider would answer the rest of the request alone.
+_TYPE_NORMALISERS = {"url": _as_url, "text": lambda v: v if isinstance(v, str) else None}
 
 
 def _sent(v: Any) -> bool:

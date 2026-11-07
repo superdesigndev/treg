@@ -901,7 +901,7 @@ adapters:
     miss: "data.leads == []"
     row: {name: "join(first_name, last_name)", title: title, company: organization_name, location: "place(city, state, country)", profile_url: linkedin_url, email: email}
   prospeo.people.search:
-    accepts: [[q], [company_domain], [title, company_domain], [title]]
+    accepts: [[q], [title, company_domain], [company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
          company_domain: body.filters.company.websites.include,
          title: body.filters.person_job_title.include}
@@ -939,7 +939,9 @@ adapters:
     # The passages that match the brief come back with each row (not billed on top of the search):
     # an agent checks the brief against them instead of fetching every profile. Capped at the row's
     # `summary` length, enough to check a brief and short of a full page.
-    in_expr: {body.query: "join(q, csv(keywords))", body.numResults: limit,
+    # The company rides in the text, so a {company_domain, q} request reaches the semantic search
+    # (the router counts it as scoped only when the caller wrote `q`).
+    in_expr: {body.query: "join(q, company_domain, csv(keywords))", body.numResults: limit,
               body.contents.highlights.query: "join(q, csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
     out: {people: results, count: "len(results)"}
@@ -948,7 +950,7 @@ adapters:
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
-    in_expr: {body.objective: "join(q, csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
+    in_expr: {body.objective: "join(q, company_domain, csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
     const: {body.entity_type: people}
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
@@ -2634,7 +2636,9 @@ adapters:
     out: {people: people, count: total_entries}
     miss: "coalesce(people, []) == []"
   crawl4ai.people.search:
-    accepts: [[title, company_domain], [company_domain], [title], [full_name], [q]]
+    # `where` combines person and company filters; `q` replaces `where`, so it stays alone.
+    accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title],
+              [title, company_domain], [company_domain], [title], [full_name], [q]]
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
@@ -3388,7 +3392,9 @@ adapters:
 
   # Search returns profile URLs; full profile enrichment remains a direct provider option.
   enrichlayer.people.search:
-    accepts: [[full_name], [company_domain], [title, company_domain], [title]]
+    # name, role and company are independent query filters: send every one the caller gave.
+    accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title], [full_name],
+              [title, company_domain], [company_domain], [title]]
     in: {title: queryParams.current_role_title, company_domain: queryParams.current_company_domain_name,
          country: queryParams.country}
     in_expr: {queryParams.first_name: "split_first(full_name)", queryParams.last_name: "split_last(full_name)",
@@ -3725,13 +3731,24 @@ adapters:
           location: "join(data.company_data.company_primary_address.city, data.company_data.company_primary_address.country)"}
     miss: "data.company_data.company_name == null"
   leadocean.people.search:
-    accepts: [[company_domain], [title], [q]]
+    # domain, title and q are independent filters upstream (combined with AND): send every one the
+    # caller gave.
+    accepts: [[company_domain, title, q], [company_domain, title], [company_domain, q], [title, q],
+              [company_domain], [title], [q]]
     # Each returned person uses a search record, so larger requests use another routed provider.
     max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
     in_expr: {queryParams.limit: limit}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
+    # The person sits under profile_data, the current job under contact_data: without name and url a
+    # merge cannot tell a repeat from a new row, and without the rest it keeps only those two.
+    row: {name: profile_data.profile_full_name, profile_url: profile_data.profile_url,
+          title: "coalesce(contact_data.contact_current_experiences[0].job_title, profile_data.profile_headline)",
+          company: "contact_data.contact_current_experiences[0].company_name",
+          company_domain: "contact_data.contact_current_experiences[0].company_domain",
+          location: "place(profile_data.profile_address.city, profile_data.profile_address.country)",
+          summary: profile_data.profile_headline}
   leadocean.companies.search:
     accepts: [[domain], [name], [industry], [q]]
     in: {domain: queryParams.domain, name: queryParams.name, industry: queryParams.industry, q: queryParams.q}
