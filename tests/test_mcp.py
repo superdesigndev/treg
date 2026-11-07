@@ -389,7 +389,8 @@ async def test_a_revoked_team_key_names_the_oauth_repair_not_a_missing_team(clie
     `treg mcp install` writes a team-pinned Default key as a static Authorization header. After
     revoke-tokens (or session-secret rotation) that header is still present, so `_resolve_org`
     takes the pinned branch. The old copy answered "team … no longer available"; agents then
-    chased the wrong fix.
+    chased the wrong fix. The hint prefers `treg mcp install` when the CLI already works, and
+    keeps `--oauth` for the no-login path.
     """
     token = (await verified_signup(clients, json={"email": "dead-pinned@superdesign.dev"})).json()["token"]
     clients.headers["X-Treg-Token"] = token
@@ -405,10 +406,13 @@ async def test_a_revoked_team_key_names_the_oauth_repair_not_a_missing_team(clie
         out = await _call_tool(c, "balance", {}, token=token)
     assert "no longer available" not in json.dumps(out), out
     assert "not signed in" in out.get("error", ""), out
-    assert "treg mcp install --oauth" in out.get("hint", ""), out
-    assert "separate from the CLI login" in out.get("hint", ""), out
-    assert "treg update" in out.get("hint", ""), out
-    assert "TREG_TOKEN" in out.get("hint", ""), out
+    hint = out.get("hint", "")
+    assert "separate from the CLI login" in hint, out
+    assert "treg mcp install" in hint, out
+    assert "treg mcp install --oauth" in hint, out
+    assert "If the `treg` CLI already works" in hint, out
+    assert "treg update" in hint, out
+    assert "TREG_TOKEN" in hint, out
 
 
 async def test_one_team_cannot_read_another_teams_tools(clients):
@@ -884,7 +888,7 @@ async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
     """The challenge fires only when there is NO credential. Deciding whether a token is valid needs
     the database, and doing that in transport middleware would put a second authentication
     implementation in front of the first. A garbage bearer still answers 200 at the transport and
-    the tool names the OAuth repair command (MCP grant ≠ CLI login)."""
+    the tool names both repairs: refresh from a live CLI login, or `--oauth` when there is none."""
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -893,7 +897,10 @@ async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
     assert r.status_code == 200
     body = json.loads(r.json()["result"]["content"][0]["text"])
     assert "error" in body
-    assert "treg mcp install --oauth" in body.get("hint", ""), body
+    hint = body.get("hint", "")
+    assert "treg mcp install" in hint, body
+    assert "treg mcp install --oauth" in hint, body
+    assert "If the `treg` CLI already works" in hint, body
 
 
 async def test_call_accepts_an_ARRAY_body(clients):
