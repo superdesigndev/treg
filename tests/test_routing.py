@@ -2903,6 +2903,62 @@ async def test_google_organic_asks_crawl4ai_first_and_falls_back_when_it_is_empt
     get_settings.cache_clear()
 
 
+
+def test_empty_output_uses_list_and_count_defaults_not_null():
+    """A routed miss must keep list-typed contract fields as [] (and count as 0), never null."""
+    from treg.application.call.route import _empty_output
+    from types import SimpleNamespace
+    contract = SimpleNamespace(output={
+        "results": {"type": "list", "required": True},
+        "count": {"type": "int"},
+        "email": {"type": "str"},
+    })
+    assert _empty_output(contract) == {"results": [], "count": 0, "email": None}
+
+
+async def test_routed_web_search_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    """Catalog contract: results is a required list. An all-miss waterfall used to return
+    output.results=null / count=null; callers then mistook HTTP 200 for a broken/usable hit shape.
+    Empty answers stay outcome=miss with results=[] and count=0."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TINYFISH", "PLATFORM-TINYFISH")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,tinyfish")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "n": 0})],
+        "tinyfish": [(200, {"results": [], "total_results": 0})],
+    }, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "site:example.invalid nonexistent-xyzzy-12345", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai,tinyfish", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["_treg"]["served_by"] is None
+    assert body["output"] == {"results": [], "count": 0}
+    assert isinstance(body["output"]["results"], list) and body["output"]["results"] == []
+    assert all(t["outcome"] in ("miss", "skipped") for t in body["_treg"]["tried"])
+    assert [s[0] for s in seen] == ["crawl4ai", "tinyfish"]
+    get_settings.cache_clear()
+
+
+async def test_routed_google_serp_organic_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "empty_reason": "rescue_no_results"})],
+    }, seen))
+    r = await clients.post("/call/treg.google.serp.organic", json={"q": "site:example.invalid xyzzy-no-hits", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["output"] == {"results": [], "count": 0}
+    get_settings.cache_clear()
+
+
 # ---- web.extract.structured: a new routed job, crawl4ai first ----------------------------------------
 _SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}
 
