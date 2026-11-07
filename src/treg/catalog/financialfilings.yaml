@@ -1,0 +1,308 @@
+provider: financialfilings
+source:
+  docs: https://financialfilings.com/developers/
+  openapi: https://api.financialreports.eu/api/schema/
+  curated: '2026-11-04'
+pricing_url: https://financialfilings.com/pricing/
+limits: "Self-serve pay-as-you-go priced in credits (1 credit = $0.01, first 500 credits free every month, volume tiers cut the per-credit price above 50,000 credits a month). Only 2xx responses are billed. Every response to a credit-billed account carries the exact charge in an X-Credits-Charged header and the billing category in X-Credits-Category, and GET /usage/ (free) returns the running cycle spend. 120 requests/minute per key on the free and pay-as-you-go tiers. Coverage is official filings, as published, and normalized financials for listed companies in the US, EU, UK, APAC and LATAM: annual and interim reports, earnings releases, ad-hoc disclosures, insider transactions, ESG reports and prospectuses."
+
+# A team's own key and treg's platform key call the same paths. Prices are in FinancialFilings
+# credits (fx.yaml rate), and a credit-billed account reports the exact charge in X-Credits-Charged,
+# which settles the call (settle._CREDIT_HEADERS). Markdown is 6 credits for standard filing types
+# and 12 for annual reports, interim reports, earnings releases, call transcripts and prospectuses;
+# the catalog reserves the 12-credit ceiling and the header settles the real figure.
+proposed_capabilities:
+  stocks.company.search: "Find a listed company by name, ticker, ISIN or LEI"
+  stocks.isin.lookup: "Look up the company behind an ISIN"
+  stocks.filings.detail: "Get one company filing by ID"
+  stocks.filings.text: "Read the full text of a company filing"
+  stocks.filings.text-search: "Search inside the text of one company filing"
+  stocks.reports.next-date: "Get the expected date of a company's next annual report"
+
+endpoints:
+  - id: financialfilings.companies.list
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.company.search
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/
+    name: "Find listed companies"
+    summary: "Search companies by name, ticker, ISIN, LEI, country or industry and get the internal company id every per-company route takes"
+    input:
+      queryParams:
+        search: {type: string, required: false, note: "company name or part of it", example: Siemens}
+        ticker: {type: string, required: false, note: "exchange ticker", example: SIE}
+        isin: {type: string, required: false, note: "ISIN of any of the company's securities", example: DE0007236101}
+        lei: {type: string, required: false, note: "Legal Entity Identifier"}
+        countries: {type: string, required: false, note: "ISO alpha-2 codes, comma-separated", example: DE}
+        listing_status: {type: string, required: false, note: "LISTED | DELISTED | SUSPENDED | UNKNOWN"}
+        page_size: {type: integer, required: false, min: 1, max: 100, example: 3}
+        page: {type: integer, required: false, min: 1}
+      note: "Confirm the match by name and country before using the id: a short name can match several companies."
+    test_request: {queryParams: {search: Siemens, countries: DE, page_size: 3}}
+    cost: &raw_cost {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://financialfilings.com/pricing/", checked: '2026-11-04', confidence: documented, note: "1 credit ($0.01) per successful call; the exact charge is in X-Credits-Charged"}
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.detail
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.company.profile
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/
+    name: "Company profile"
+    summary: "Get a company's identity, ISINs, LEI, listings, industry classification, country and listing status"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id from financialfilings.companies.list", example: 390}
+    test_request: {pathParams: {id: 390}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.isins.detail
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.isin.lookup
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /isins/{code}/
+    name: "Company behind an ISIN"
+    summary: "Resolve an ISIN to its issuing company and internal company id"
+    input:
+      pathParams:
+        code: {type: string, required: true, note: "12-character ISIN", example: DE0007236101}
+    test_request: {pathParams: {code: DE0007236101}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filings.list
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.filings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/
+    name: "List company filings"
+    summary: "List official filings, as published, for one company or a whole market: annual and interim reports, earnings releases, ad-hoc disclosures, ESG reports and more, filterable by type, country, language and date"
+    input:
+      queryParams:
+        company: {type: integer, required: false, note: "internal company id", example: 390}
+        company_isin: {type: string, required: false, note: "company ISIN instead of the id"}
+        type: {type: string, required: false, note: "one filing type code, e.g. 10-K (annual report), 10-K-ESEF (annual report, EU electronic format), IR (interim report), ER (earnings release), DIRS (insider transaction); codes from financialfilings.filing-types.list", example: 10-K-ESEF}
+        types: {type: string, required: false, note: "several type codes, comma-separated"}
+        countries: {type: string, required: false, note: "ISO alpha-2 codes, comma-separated"}
+        languages: {type: string, required: false, note: "ISO 639-1 codes, comma-separated"}
+        release_datetime_from: {type: string, required: false, note: "YYYY-MM-DDTHH:MM:SSZ"}
+        release_datetime_to: {type: string, required: false, note: "YYYY-MM-DDTHH:MM:SSZ"}
+        fiscal_year: {type: integer, required: false}
+        search: {type: string, required: false, note: "matches filing title and company name"}
+        ordering: {type: string, required: false, note: "release_datetime | -release_datetime | added_to_platform | -added_to_platform | id", example: -release_datetime}
+        page_size: {type: integer, required: false, min: 1, max: 100, example: 2}
+        page: {type: integer, required: false, min: 1}
+    test_request: {queryParams: {company: 390, type: 10-K-ESEF, ordering: -release_datetime, page_size: 2}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filings.insider-trades
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.insider-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/
+    name: "Insider transaction filings"
+    summary: "List insider (director and manager) transaction filings for a company or a market, outside the US as well as inside"
+    input:
+      queryParams:
+        type: {type: string, required: true, enum: [DIRS], note: "always DIRS (insider transactions)", example: DIRS}
+        company: {type: integer, required: false, note: "internal company id"}
+        countries: {type: string, required: false, note: "ISO alpha-2 codes, comma-separated", example: DE}
+        release_datetime_from: {type: string, required: false, note: "YYYY-MM-DDTHH:MM:SSZ"}
+        ordering: {type: string, required: false, example: -release_datetime}
+        page_size: {type: integer, required: false, min: 1, max: 100, example: 2}
+      note: "Rows are filing metadata; read a filing's text with financialfilings.filings.markdown."
+    test_request: {queryParams: {type: DIRS, countries: DE, ordering: -release_datetime, page_size: 2}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filings.detail
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.filings.detail
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/{id}/
+    name: "Filing details"
+    summary: "Get one filing's metadata: company, type, fiscal period, release time, language, document link and processing status"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "filing id from financialfilings.filings.list", example: 69389073}
+    test_request: {pathParams: {id: 69389073}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filings.markdown
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.filings.text
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/{id}/markdown/
+    name: "Filing full text (markdown)"
+    summary: "Read a filing's full text as markdown, in character windows for long documents"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "filing id", example: 69389073}
+      queryParams:
+        offset: {type: integer, required: false, min: 0, note: "character offset of the window"}
+        limit: {type: integer, required: false, min: 1, note: "window length in characters", example: 2000}
+    test_request: {pathParams: {id: 69389073}, queryParams: {limit: 2000}}
+    cost: &markdown_cost {type: per_success, value: 12, currency: credit, per: 1, unit: call, source: docs, source_url: "https://financialfilings.com/pricing/", checked: '2026-11-04', confidence: documented, note: "6 credits for standard filing types, 12 for annual and interim reports, earnings releases, call transcripts and prospectuses. 12 is the reserve; X-Credits-Charged carries the exact charge"}
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filings.markdown.search
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.filings.text-search
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/{id}/markdown/search/
+    name: "Search inside a filing"
+    summary: "Find a phrase inside one filing's text and get the matching snippets with their character offsets"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "filing id", example: 69389073}
+      queryParams:
+        q: {type: string, required: true, note: "text to find", example: dividend}
+        max_hits: {type: integer, required: false, min: 1, example: 3}
+    test_request: {pathParams: {id: 69389073}, queryParams: {q: dividend, max_hits: 3}}
+    cost: *markdown_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.financials
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.financials.all
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/financials/
+    name: "Standardized financial statements"
+    summary: "Get standardized income statement, balance sheet and cash-flow line items by fiscal year and period, with point-in-time options"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id", example: 390}
+      queryParams:
+        fiscal_year: {type: integer, required: false, example: 2025}
+        fiscal_year_from: {type: integer, required: false}
+        fiscal_year_to: {type: integer, required: false}
+        fiscal_period: {type: string, required: false, enum: [FY, H1, H2, Q1, Q2, Q3, Q4, 9M]}
+        statement_type: {type: string, required: false, enum: [IS, BS, CFS], example: IS}
+        line_items: {type: string, required: false, note: "comma-separated KPI codes, e.g. revenue,ebitda,net_income_loss"}
+        as_of: {type: string, required: false, note: "YYYY-MM-DD: only filings released on or before this date"}
+    test_request: {pathParams: {id: 390}, queryParams: {fiscal_year: 2025, statement_type: IS}}
+    cost: &kpi_cost {type: per_success, value: 40, currency: credit, per: 1, unit: call, source: docs, source_url: "https://financialfilings.com/pricing/", checked: '2026-11-04', confidence: documented, note: "40 credits ($0.40) per successful call"}
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.segments
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.financials.segments
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/segments/
+    name: "Segment financials"
+    summary: "Get reported segment values (business and geographic) by metric and period"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id", example: 29735}
+      queryParams:
+        axis: {type: string, required: false, note: "business | geographic"}
+        metric: {type: string, required: false, note: "e.g. revenue"}
+        period: {type: string, required: false, note: "FY or a quarter", example: FY}
+    test_request: {pathParams: {id: 29735}, queryParams: {period: FY}}
+    cost: *kpi_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.dividends
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.actions.dividends
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/dividends/
+    name: "Dividend history"
+    summary: "Get a company's declared dividends with amounts, currency and key dates, each linked to its announcing filing"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id", example: 390}
+      queryParams:
+        status: {type: string, required: false}
+    test_request: {pathParams: {id: 390}}
+    cost: *kpi_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.splits
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.actions.splits
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/splits/
+    name: "Stock split history"
+    summary: "Get a company's stock splits and reverse splits with ratios and key dates, each linked to its announcing filing"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id", example: 29733}
+      queryParams:
+        status: {type: string, required: false}
+    test_request: {pathParams: {id: 29733}}
+    cost: *kpi_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.companies.next-annual-report
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.reports.next-date
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /companies/{id}/next-annual-report/
+    name: "Next annual report date"
+    summary: "Get the expected publication window of a company's next annual report, with a confidence score"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "internal company id", example: 390}
+    test_request: {pathParams: {id: 390}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
+
+  - id: financialfilings.filing-types.list
+    added: '2026-11-04'
+    domain: stocks
+    capability: stocks.discovery.filings-types
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filing-types/
+    name: "Filing type codes"
+    summary: "List the filing type codes the type and types filters accept, with names and categories"
+    input:
+      queryParams:
+        search: {type: string, required: false}
+        page_size: {type: integer, required: false, min: 1, max: 100, example: 5}
+    test_request: {queryParams: {page_size: 5}}
+    cost: *raw_cost
+    docs_url: https://financialfilings.com/developers/
