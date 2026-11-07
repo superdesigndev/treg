@@ -138,7 +138,7 @@ func record(e Event) {
 // Flush sends the queued events to the registry's relay. It claims the queue by renaming it, so
 // two CLIs never send one event twice; whatever it cannot send goes back into the queue, and a
 // claim left by a process that died mid-send is picked up once it is a minute old.
-func Flush(ctx context.Context, registry string) {
+func Flush(ctx context.Context, registry string, transport http.RoundTripper) {
 	if !Enabled() {
 		return
 	}
@@ -154,7 +154,7 @@ func Flush(ctx context.Context, registry string) {
 		var unsent [][]byte
 		for start := 0; start < len(events); start += batchSize {
 			end := min(start+batchSize, len(events))
-			if !send(ctx, registry, events[start:end]) {
+			if !send(ctx, registry, transport, events[start:end]) {
 				unsent = append(unsent, events[start:]...)
 				break
 			}
@@ -218,7 +218,7 @@ func requeue(dir string, lines [][]byte) {
 
 // send reports whether the batch is done with: delivered, or refused for good (a 4xx other than
 // 429 would be refused again).
-func send(ctx context.Context, registry string, lines [][]byte) bool {
+func send(ctx context.Context, registry string, transport http.RoundTripper, lines [][]byte) bool {
 	var body bytes.Buffer
 	body.WriteString(`{"events":[`)
 	body.Write(bytes.Join(lines, []byte(",")))
@@ -229,7 +229,7 @@ func send(ctx context.Context, registry string, lines [][]byte) bool {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", buildinfo.UserAgent())
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Transport: transport}).Do(req)
 	if err != nil {
 		return false
 	}

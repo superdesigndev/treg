@@ -225,8 +225,9 @@ The binary records the Python CLI's `cli_command_completed` (same vocabulary and
 "Anonymous CLI analytics"; the command name is the Python handler's, so one command keeps one name)
 plus `arch` and `channel`. At the end of a command the event is appended to
 `telemetry-queue.jsonl` beside the config; a later command sends the queue to its registry's
-`/cli/events` on a goroutine while it works, so no command waits on analytics and none is lost to a
-process that exits first. A sender claims the queue by renaming it, requeues what it could not
+`/cli/events` on a goroutine while it works, through the command's own connection pool (one per
+process, `api.Transport`), so no command waits on analytics and none is lost to a process that
+exits first. A sender claims the queue by renaming it, requeues what it could not
 send, picks up a claim a killed process left after a minute, and drops events for a registry
 without the relay. Each event carries a uuid, so PostHog drops a resend.
 

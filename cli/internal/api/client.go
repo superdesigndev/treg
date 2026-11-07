@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	_ "golang.org/x/crypto/x509roots/fallback" // CA roots for machines that ship none
@@ -19,6 +20,7 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
 	"github.com/superdesigndev/treg/cli/internal/session"
+	"github.com/superdesigndev/treg/cli/internal/telemetry"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -77,12 +79,18 @@ func Token(cfg *config.Config) string {
 	return cfg.Token
 }
 
-func New(base, token, org string, json bool) *Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+// Transport is every registry request's, the usage events' included: one connection pool per
+// process, so a command's later requests reuse its first one's connection.
+var Transport = sync.OnceValue(func() http.RoundTripper {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	// Relayed upstreams run long and the registry's own upstream timeout is 180 s: the client must
 	// outlive it so the caller sees the registry's answer, not a client-side cutoff.
-	transport.ResponseHeaderTimeout = 190 * time.Second
+	t.ResponseHeaderTimeout = 190 * time.Second
+	return t
+})
+
+func New(base, token, org string, json bool) *Client {
 	return &Client{
 		BaseURL: base,
 		Token:   token,
@@ -90,7 +98,7 @@ func New(base, token, org string, json bool) *Client {
 		JSON:    json,
 		Stderr:  os.Stderr,
 		http: &http.Client{
-			Transport: transport,
+			Transport: Transport(),
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -168,7 +176,7 @@ func (c *Client) setHeaders(req *http.Request, r Request, encoded bool) {
 	h.Set("X-Treg-Client", Runtime())
 	h.Set("X-Treg-Client-Version", buildinfo.Version)
 	h.Set("X-Treg-Key-Protocol", "1")
-	if TelemetryEnabled() {
+	if telemetry.Enabled() {
 		s := session.Current(config.Path())
 		h.Set("X-Treg-Session", s.ID)
 		h.Set("X-Treg-Agent", s.Agent)
@@ -206,14 +214,6 @@ func (c *Client) printNotice(resp *Response) {
 	fmt.Fprintf(c.Stderr, "  %s%s%s\n", p.Muted, text, p.Reset)
 	_ = os.MkdirAll(config.Sibling(""), 0o700)
 	_ = os.WriteFile(stamp, []byte(shown), 0o600)
-}
-
-func TelemetryEnabled() bool {
-	switch strings.ToLower(os.Getenv("TREG_TELEMETRY")) {
-	case "0", "false", "off":
-		return false
-	}
-	return os.Getenv("DO_NOT_TRACK") != "1"
 }
 
 // Runtime names the coding agent this CLI runs inside, sent as X-Treg-Client for attribution only.
