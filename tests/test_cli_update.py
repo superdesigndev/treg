@@ -75,6 +75,9 @@ def test_windows_update_hands_off_to_a_detached_installer(update, monkeypatch):
     assert argv[0] == "powershell" and "-EncodedCommand" in argv
     script = __import__("base64").b64decode(argv[-1]).decode("utf-16-le")
     assert "uv tool install --force" in script and "Get-Process" in script
+    # After the wait deadline, refuse the install while any install-prefix process remains.
+    assert "Still running after 2 minutes" in script
+    assert script.index("if ($busy)") < script.index("uv tool install --force")
     assert kw["creationflags"]
 
 

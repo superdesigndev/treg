@@ -4841,22 +4841,35 @@ def _update_windows_handoff() -> NoReturn:
         sys.exit(f"`treg update` on Windows needs uv or pipx on PATH. Update directly instead:\n  {_UPDATE_RECOVERY}")
     prefix = str(Path(sys.prefix).resolve()).replace("'", "''")
     log = str(Path(tempfile.gettempdir()) / "treg-update.log")
+    recovery = _UPDATE_RECOVERY.replace(chr(39), chr(39) * 2)
+    busy_filter = (
+        "Get-Process -ErrorAction SilentlyContinue | Where-Object { "
+        "$_.Name -in 'treg','treg-worker' -or ($_.Path -and $_.Path.StartsWith($prefix, 'OrdinalIgnoreCase')) }"
+    )
     script = "\n".join([
         f"Start-Transcript -Path '{log.replace(chr(39), chr(39) * 2)}' | Out-Null",
         f"$prefix = '{prefix}'",
         "$deadline = (Get-Date).AddMinutes(2)",
         "Write-Host 'Waiting for treg to exit...'",
         "while ((Get-Date) -lt $deadline) {",
-        "  $busy = Get-Process -ErrorAction SilentlyContinue | Where-Object {",
-        "    $_.Name -in 'treg','treg-worker' -or ($_.Path -and $_.Path.StartsWith($prefix, 'OrdinalIgnoreCase')) }",
+        f"  $busy = {busy_filter}",
         "  if (-not $busy) { break }",
         "  Start-Sleep -Milliseconds 500",
+        "}",
+        f"$busy = {busy_filter}",
+        "if ($busy) {",
+        "  Write-Host 'Still running after 2 minutes; stop these processes and retry `treg update`:'",
+        "  $busy | ForEach-Object { Write-Host ('  ' + $_.Id + ' ' + $_.Name + ' ' + $_.Path) }",
+        f"  Write-Host 'Or reinstall directly:'; Write-Host '  {recovery}'",
+        "  Read-Host 'Press Enter to close'",
+        "  Stop-Transcript | Out-Null",
+        "  exit 1",
         "}",
         install,
         "$rc = $LASTEXITCODE",
         "if ($rc -eq 0) { treg skill bootstrap; Write-Host 'treg is updated.'; Start-Sleep -Seconds 5 }",
         "else { Write-Host 'The update failed. Reinstall with:'; "
-        f"Write-Host '  {_UPDATE_RECOVERY.replace(chr(39), chr(39) * 2)}'; Read-Host 'Press Enter to close' }}",
+        f"Write-Host '  {recovery}'; Read-Host 'Press Enter to close' }}",
         "Stop-Transcript | Out-Null",
         "exit $rc",
     ])
