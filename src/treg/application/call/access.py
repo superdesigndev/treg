@@ -151,18 +151,20 @@ async def catalog_endpoint_access(
 
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     """Estimate the catalog's runnable example, including provider-specific request pricing."""
-    if schema.is_v2(endpoint):
-        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
-    if service != "openmart":
-        return _platform_estimate_micro(cost, {})
     test_request = endpoint.get("test_request") or {}
     body_value = test_request.get("body")
     body = json.dumps(body_value).encode() if body_value is not None else b""
     query = dict(test_request.get("query") or {})
-    estimate, _unit = _marketplace_pricing(
-        service, endpoint["id"], cost, query, body,
-    )
-    return estimate
+    if schema.is_v2(endpoint):
+        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
+    if service == "openmart":
+        estimate, _unit = _marketplace_pricing(
+            service, endpoint["id"], cost, query, body,
+        )
+        return estimate
+    # Match the RUN IT example: empty body would fall through to the page-size default (20) and
+    # print a 20× hold next to a 1-target/1-limit example (Moz quota_rows and similar).
+    return _platform_estimate_micro(cost, query, body)
 
 
 async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
