@@ -480,7 +480,7 @@ endpoints:
       source_url: https://exa.ai/pricing
       checked: '2026-11-07'
       confidence: verified
-      note: "$0.007 per call for up to 10 results (OBSERVED 2026-11-07: 10 results with highlights billed the search base), plus $0.001 per result beyond 10."
+      note: "$0.007 per call for up to 10 results, highlights included, plus $0.001 per result beyond 10."
     docs_url: https://docs.exa.ai/reference/search
 
   - id: exa.web.answer
