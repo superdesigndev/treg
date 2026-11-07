@@ -76,6 +76,8 @@ sources:
   - cli/internal/update/update.go
   - cli/scripts/check-beta.sh
   - cli/scripts/release.sh
+  - src/treg/application/cli_releases.py
+  - src/treg/infra/github_releases.py
   - src/treg/routers/cli_client.py
   - src/treg/web/install-bin.sh
   - src/treg/web/install.ps1
@@ -186,8 +188,9 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   `TREG_UPDATE_KEY`, the public key compiled into each binary: a build without it could never
   verify, and so never apply, an update. The manual `CLI release` workflow publishes the result as a
   `cli-v<version>` GitHub release, a pre-release on the beta channel.
-- `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`) names the release a CLI on that
-  channel and platform runs: `TREG_CLI_LATEST_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
+- `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
+  `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
+  a CLI on that channel and platform runs: `TREG_CLI_LATEST_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
   (beta falls back to stable), else the newest matching GitHub release of `cli_release_repo`. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
   `TREG_CLI_DOWNLOAD_BASE_URL`. Publishing a release moves no one; the operator's variable does,

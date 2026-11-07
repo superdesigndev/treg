@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import subprocess
 
+import httpx
 import pytest
 
 from treg import analytics
+from treg.application import cli_releases
 from treg.config import get_settings
+from treg.infra import github_releases
 from treg.routers import cli_client
 
 INSTALL_ID = "0b6f2b1e-7d1c-4c55-9a43-5d0c1f6a2b3c"
@@ -101,7 +104,7 @@ def release_settings(monkeypatch):
     monkeypatch.setattr(s, "cli_latest_version", "", raising=False)
     monkeypatch.setattr(s, "cli_beta_version", "", raising=False)
     monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/cli-v{version}", raising=False)
-    cli_client._github_cache.clear()
+    github_releases._cache.clear()
     return s
 
 
@@ -122,23 +125,47 @@ async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, 
     release_settings.cli_latest_version = "0.31.0"
     asked = []
 
-    async def github(repo, channel):
-        asked.append((repo, channel))
+    async def github(repo, prefix, *, prereleases):
+        asked.append((repo, prefix, prereleases))
         return "1.0.4"
 
-    monkeypatch.setattr(cli_client, "_github_latest", github)
+    monkeypatch.setattr(github_releases, "newest", github)
     r = await clients.get("/cli/latest", params={"os": "linux", "arch": "amd64"})
-    assert r.json()["version"] == "1.0.4" and asked == [("superdesigndev/treg", "stable")]
+    assert r.json()["version"] == "1.0.4" and asked == [("superdesigndev/treg", "cli-v", False)]
 
 
 async def test_latest_refuses_unknown_platforms_and_missing_releases(clients, release_settings, monkeypatch):
-    async def none(repo, channel):
+    async def none(repo, prefix, *, prereleases):
         return ""
 
-    monkeypatch.setattr(cli_client, "_github_latest", none)
+    monkeypatch.setattr(github_releases, "newest", none)
     assert (await clients.get("/cli/latest", params={"os": "aix", "arch": "amd64"})).status_code == 404
     assert (await clients.get("/cli/latest", params={"os": "linux", "arch": "amd64"})).status_code == 404
     assert (await clients.get("/cli/latest", params={"channel": "nightly", "os": "linux", "arch": "amd64"})).status_code == 422
+
+
+async def test_github_lookup_skips_drafts_other_tags_and_stable_pre_releases(monkeypatch):
+    releases = [{"tag_name": "cli-v1.3.0", "draft": True}, {"tag_name": "v0.31.0"},
+                {"tag_name": "cli-v1.2.0-beta.1", "prerelease": True}, {"tag_name": "cli-v1.1.0"}]
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json=releases)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(github_releases.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    github_releases._cache.clear()
+    assert await github_releases.newest("o/r", "cli-v", prereleases=False) == "1.1.0"
+    assert await github_releases.newest("o/r", "cli-v", prereleases=True) == "1.2.0-beta.1"
+    assert await github_releases.newest("o/r", "cli-v", prereleases=False) == "1.1.0"
+    assert seen == ["/repos/o/r/releases"] * 2
+
+
+def test_only_a_release_from_1_0_0_is_a_binary_one():
+    assert [cli_releases.is_binary_release(v) for v in ("1.0.0", "2.1.0-beta.1", "0.31.0", "", "x.y", "1.0/../")] == \
+        [True, True, False, False, False, False]
 
 
 async def test_beta_installer_is_the_binary_one(clients):

@@ -812,7 +812,7 @@ class Settings(BaseSettings):
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
     cli_min_version: str = ""
-    # The binary CLI's release channels (routers/cli_client.py). `/cli/latest` answers the stable
+    # The binary CLI's release channels (application/cli_releases.py). `/cli/latest` answers the stable
     # channel with cli_latest_version and the beta channel with cli_beta_version; an empty one is
     # answered from the newest matching GitHub release of cli_release_repo. Archives are fetched from
     # cli_download_base_url with `{version}` filled in.
