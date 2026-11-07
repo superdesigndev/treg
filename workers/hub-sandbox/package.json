@@ -1,0 +1,12 @@
+{
+  "name": "treg-hub-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0",
+    "wrangler": "4.156.2"
+  }
+}

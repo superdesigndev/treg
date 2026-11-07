@@ -236,7 +236,7 @@ says `byok` or `platform`. The raw `/call/fishaudio.voices.list` remains a faith
 `* /call/{rest}` captures a framework-neutral `CallInput` for `application.call.service.execute_call`
 ([proxy-model](../architecture/proxy-model.md)). `_execute_call` tries an own tool, a catalog
 endpoint, then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
-per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden from public
+per-team or per-tool slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden from public
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
 
