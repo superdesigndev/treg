@@ -54,6 +54,9 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "provider_capacity": "treg",
     # This deployment paused the provider (TREG_PAUSED_PROVIDERS): refused before any hold.
     "provider_paused": "treg",
+    # The team's daily share of an allowance treg's app holds with the provider is spent
+    # (application/call/allowance.py). Not charged; the team's own credential has no share.
+    "shared_allowance_share": "caller",
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
     "share_busy": "caller",

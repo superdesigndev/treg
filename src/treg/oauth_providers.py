@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from dataclasses import dataclass, replace
 from urllib.parse import urlsplit
 
@@ -44,6 +45,25 @@ class CatalogTarget:
     token_header: str = ""
     token_param: str = ""
     token_format: str = ""
+
+
+@dataclass(frozen=True)
+class SharedAllowance:
+    """A daily allowance the provider meters on treg's app, not on the connected account, so every
+    team's connection spends the same one. `drawn_by` says which calls spend it: "app" for a
+    connection made through treg's own OAuth client, "platform_extra" for one carrying treg's own
+    second credential (`extra_credential_setting`). A connection on the team's own client or second
+    credential draws on its own allowance and is never counted. `units` prices a call in the
+    provider's own units: the first `(call_regex, units)` found in "METHOD /upstream/path", else one."""
+    drawn_by: str
+    units: tuple[tuple[str, int], ...] = ()
+
+    def __post_init__(self):
+        if self.drawn_by not in ("app", "platform_extra"):
+            raise ValueError(f"unknown drawn_by {self.drawn_by!r}")
+
+    def units_for(self, call: str) -> int:
+        return next((units for regex, units in self.units if re.search(regex, call)), 1)
 
 
 @dataclass(frozen=True)
@@ -231,6 +251,7 @@ class OAuthProvider:
     billed_read_usd: float = 0.0        # per resource returned, GET routes
     billed_write_usd: float = 0.0       # per request, write routes
     billed_write_link_usd: float = 0.0  # per request when the posted text carries a URL (X: 13x)
+    shared_allowance: SharedAllowance | None = None
 
     @property
     def needs_extra_credential(self) -> bool:
@@ -710,6 +731,9 @@ GOOGLE_ADS = OAuthProvider(
     enrich_body={"query": "SELECT customer.descriptive_name FROM customer LIMIT 1"},
     enrich_label_path="results.0.customer.descriptiveName",
     enrich_header_name="login-customer-id",
+    # Google meters operations per developer token, whoever's account the call acts on.
+    # https://developers.google.com/google-ads/api/docs/best-practices/quotas
+    shared_allowance=SharedAllowance(drawn_by="platform_extra"),
 )
 
 # Every YouTube scope is SENSITIVE — there is no gate-free read the way webmasters.readonly is for
@@ -757,6 +781,14 @@ YOUTUBE = OAuthProvider(
     discover_key="items",
     discover_id_field="id",
     discover_label_field="snippet.title",
+    # The Data API's daily units belong to the Cloud project behind treg's client.
+    # https://developers.google.com/youtube/v3/determine_quota_cost
+    shared_allowance=SharedAllowance(drawn_by="app", units=(
+        (r"^POST /(?:upload/)?youtube/v3/videos/*$", 1),
+        (r"^POST /(?:upload/)?youtube/v3/captions", 400),
+        (r"^PUT /(?:upload/)?youtube/v3/captions", 450),
+        (r"^(?:POST|PUT|PATCH|DELETE) ", 50),
+    )),
 )
 
 LINKEDIN = OAuthProvider(

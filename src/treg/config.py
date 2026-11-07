@@ -81,6 +81,40 @@ def _parse_platform_pools(raw: str) -> dict[str, dict[str, dict[str, str]]]:
     return pools
 
 
+# The services whose OAuthProvider declares a `shared_allowance` (a test keeps them in step); a
+# share named for any other service would silently never apply.
+SHARED_ALLOWANCE_SERVICES = frozenset({"google-ads", "youtube"})
+
+
+@lru_cache(maxsize=4)
+def _parse_allowance_shares(raw: str) -> dict[str, dict]:
+    if not raw.strip():
+        return {}
+    error = ValueError('shared_allowance_shares must be {"<service>": {"daily": n, '
+                       '"orgs": {"<org id>": n}}} with positive integer units')
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise error from None
+    if not isinstance(parsed, dict):
+        raise error
+    shares = {}
+    for service, rule in parsed.items():
+        if service not in SHARED_ALLOWANCE_SERVICES:
+            raise ValueError(f"shared_allowance_shares names {service!r}, which has no shared "
+                             f"allowance; known: {', '.join(sorted(SHARED_ALLOWANCE_SERVICES))}")
+        if not isinstance(rule, dict) or set(rule) - {"daily", "orgs"}:
+            raise error
+        daily, orgs = rule.get("daily"), rule.get("orgs", {})
+        if type(daily) is not int or daily <= 0 or not isinstance(orgs, dict):
+            raise error
+        if not all(re.fullmatch(r"[1-9][0-9]*", org) and type(n) is int and n > 0
+                   for org, n in orgs.items()):
+            raise error
+        shares[service] = {"daily": daily, "orgs": {int(org): n for org, n in orgs.items()}}
+    return shares
+
+
 def platform_setting_name(provider: str) -> str:
     """The Settings attribute holding treg's own key for `provider` — the string a `platform_setting`
     binding carries, and the only form of a platform credential that ever leaves this module."""
@@ -294,6 +328,11 @@ class Settings(BaseSettings):
     # about every platform call that goes upstream and logs its verdicts; the buckets named in
     # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
     # suffix) are also refused when full. Both need a Redis TREG_KV_URL.
+    # Each team's daily share of an allowance treg's app holds with a provider
+    # (application/call/allowance.py), in the provider's own units (JSON,
+    # TREG_SHARED_ALLOWANCE_SHARES): {"<service>": {"daily": n, "orgs": {"<org id>": n}}}. Empty
+    # (the default) limits nothing; a service missing from it is not limited.
+    shared_allowance_shares: str = ""
     provider_rate_mode: Literal["off", "observe"] = "off"
     provider_rate_enforce: str = ""
 
@@ -986,6 +1025,19 @@ class Settings(BaseSettings):
                     isinstance(k, str) and isinstance(m, str) and m.strip() for k, m in parsed.items()):
                 raise ValueError("paused_provider_messages must map service ids to non-empty strings")
         return v
+
+    @field_validator("shared_allowance_shares")
+    @classmethod
+    def _shared_allowance_shares_shape(cls, v: str) -> str:
+        _parse_allowance_shares(v)  # raises ValueError on a malformed value
+        return v
+
+    def allowance_share(self, service: str, org_id: int) -> int | None:
+        """A team's daily share of `service`'s shared allowance, or None when it has none."""
+        rule = _parse_allowance_shares(self.shared_allowance_shares).get(service)
+        if rule is None:
+            return None
+        return rule["orgs"].get(org_id, rule["daily"])
 
     @field_validator("platform_accounts")
     @classmethod
