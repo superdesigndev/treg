@@ -29,6 +29,7 @@ from ..timeutil import utcnow_naive
 from . import call_events as call_event_app
 from .call import cost as call_cost, keyslots
 from .call.resolve import _host_of
+from .call.settle import _note_capacity_recovery, _note_capacity_signal
 from .call.types import ResolutionFailed, UpstreamRequest
 
 
@@ -555,7 +556,22 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
                 snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code, body)
         except Exception:
             log.exception("could not archive terminal evidence for %s", snapshot.call_id)
+        await _note_terminal_capacity(snapshot, outcome, status_code, body)
     return result
+
+
+async def _note_terminal_capacity(snapshot: AsyncTaskRecord, outcome: str, status_code: int,
+                                  body: bytes) -> None:
+    """The terminal answer, not the accepted submission, says whether treg's account could pay: a
+    vendor can queue a job on an empty account and fail it later. Every task runs on treg's own
+    account (`_poll_target` polls with the platform binding) and is metered, and only the finalizer
+    that moved the task out of PENDING calls this, so each task is at most one strike."""
+    if outcome == "success":
+        await _note_capacity_recovery(snapshot.provider, snapshot.endpoint_id, snapshot.key_slot,
+                                      metered=True)
+    else:
+        await _note_capacity_signal(snapshot.provider, snapshot.endpoint_id, snapshot.key_slot,
+                                    status_code, None, body)
 
 
 async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,

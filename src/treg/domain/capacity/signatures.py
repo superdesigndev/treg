@@ -75,6 +75,12 @@ _TABLE: list[Signature] = [
     # Wiza: an empty credit pool is a 400 {"status": {"code": 400, "message": "Insufficient API
     # credits. You need 2 credits for company enrichment."}}; its other 400s are bad input.
     Signature("wiza", 400, r"insufficient api credits", "balance", tripwire=True),
+    # Wiza searches on an empty pool allow only the free size-0 preview: the fixed size=1 is a 400
+    # {"status": {"code": 400, "message": "The size parameter is not allowed."}}.
+    Signature("wiza", 400, r'"message"\s*:\s*"the size parameter is not allowed', "balance"),
+    # Wiza queues a reveal on an empty pool and its terminal poll ends {"data": {"status":
+    # "failed", "fail_error": "billing_issue", ...}}; read once per task by application/asynctasks.
+    Signature("wiza", 200, r'"fail_error"\s*:\s*"billing_issue"', "balance"),
     # CoinGecko: a lapsed paid plan is a 401 "API subscription deactivated. Please reactivate your
     # account via ..."; a wrong key is a 401 without this phrase.
     Signature("coingecko", 401, r"api subscription deactivated", "balance", tripwire=True),
@@ -135,8 +141,7 @@ _TABLE: list[Signature] = [
     Signature("tavily", 433, r"exceeds the pay-as-you-go limit", "quota", tripwire=True),
     # Icypeas answers an empty credit pool with a 200: {"validationErrors": [{"message":
     # "insufficient_credits", "type": "InsufficientCredits", ...}], "success": false}, on every paid
-    # route. The only 2xx row: callers of `classify` that
-    # gate on >= 400 would never see it.
+    # route. A 2xx row: callers of `classify` that gate on >= 400 would never see it.
     Signature("icypeas", 200, r'"message"\s*:\s*"insufficient_credits"', "balance"),
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).

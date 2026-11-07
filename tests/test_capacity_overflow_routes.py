@@ -212,6 +212,10 @@ def test_signature_table_classifies_balance_quota_and_burst():
 _OUT_OF_CREDITS = [
     ("wiza", 400, b'{"status":{"code":400,"message":"Insufficient API credits. You need 2 credits for company enrichment."}}',
      b'{"status":{"code":400,"message":"company_domain is invalid"}}'),
+    ("wiza", 400, b'{"status":{"code":400,"message":"The size parameter is not allowed."}}',
+     b'{"status":{"code":400,"message":"location is not a valid filter"}}'),
+    ("wiza", 200, b'{"data":{"id":903976137,"is_complete":true,"status":"failed","fail_error":"billing_issue"}}',
+     b'{"data":{"id":903976137,"is_complete":true,"status":"finished","email":null}}'),
     ("coingecko", 401, b'{"status":{"timestamp":"2026-11-03T16:15:06.855+00:00","error_code":10003,'
      b'"error_message":"API subscription deactivated. Please reactivate your account via '
      b'https://www.coingecko.com/en/api/pricing or submit a ticket at: https://support.coingecko.com"}}',

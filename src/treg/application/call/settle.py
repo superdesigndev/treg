@@ -1539,27 +1539,29 @@ async def _finish_cancelled_call(
             # same cleanup task so compensation completes before the original cancellation escapes.
             continue
     await cleanup
-async def _note_capacity_signal(mk: MarketplaceCall, status_code: int, headers, body: bytes) -> str | None:
-    """After a tier-4 answer: did the provider just tell us OUR account is out? A confirmed balance/
-    quota signature (domain.capacity.signatures) is a strike on the breaker (domain.capacity.marks);
-    the second strike locks the provider so the next call is refused before a hold exists.
-    Burst/unknown 429s only log (D′ smooths them). Runs after the settle, on its own short session,
-    and never raises. Platform tier only: an org's own key running dry is the org's business, and an
-    oauth-billed connect has no shared account to mark. Returns the signal kind for the audit funnel."""
-    if mk.tier != "platform":
-        return None
+async def _note_capacity_signal(provider: str, endpoint_id: str, key_slot: str | None,
+                                status_code: int, headers, body: bytes) -> str | None:
+    """After an answer on treg's own account (a tier-4 call, or an async task's terminal poll): did
+    the provider just tell us OUR account is out? A confirmed balance/quota signature
+    (domain.capacity.signatures) is a strike on the breaker (domain.capacity.marks); the second
+    strike locks the provider so the next call is refused before a hold exists. Burst/unknown 429s
+    only log (D′ smooths them). Runs after the settle, on its own short session, and never raises.
+    Platform tier only, which the caller checks: an org's own key running dry is the org's
+    business, and an oauth-billed connect has no shared account to mark. Returns the signal kind
+    for the audit funnel."""
     signal = None
     try:
-        signal = capacity_signatures.classify(mk.provider, status_code, headers, body[:4096])
+        signal = capacity_signatures.classify(provider, status_code, headers, body[:4096])
         if signal is None:
             return None
-        where = {"provider": mk.provider, "slot": keyslots.capacity_slot(mk.key_slot),
-                 "endpoint_id": mk.endpoint_id, "kind": signal.kind, "status": status_code}
+        slot = keyslots.capacity_slot(key_slot)
+        where = {"provider": provider, "slot": slot,
+                 "endpoint_id": endpoint_id, "kind": signal.kind, "status": status_code}
         if capacity_signatures.is_exhausting(signal):
             lock = await capacity_marks.strike(
-                mk.provider, endpoint_id=mk.endpoint_id, kind=signal.kind,
-                resets_at=signal.resets_at, slot=keyslots.capacity_slot(mk.key_slot),
-                note=f"{signal.kind} signature on {mk.endpoint_id}: {signal.detail[:80]}")
+                provider, endpoint_id=endpoint_id, kind=signal.kind,
+                resets_at=signal.resets_at, slot=slot,
+                note=f"{signal.kind} signature on {endpoint_id}: {signal.detail[:80]}")
             capacity_view.invalidate()
             # A signature meeting a lock already in place says nothing new: the request log
             # carries each refused or relayed call, so only the transitions are events.
@@ -1582,33 +1584,34 @@ async def _note_capacity_signal(mk: MarketplaceCall, status_code: int, headers, 
     return signal.kind if signal is not None else None
 
 
-async def _note_capacity_recovery(mk: MarketplaceCall) -> None:
-    """After a tier-4 2xx: clear pending strikes on the endpoint and the provider, and the active
-    lock or sweep reading this call was admitted through as a probe. Reloads the view first (a no-op inside the
-    TTL) so a strike written while this call was in flight is not missed. Never raises."""
-    if mk.tier != "platform":
-        return
+async def _note_capacity_recovery(provider: str, endpoint_id: str, key_slot: str | None, *,
+                                  metered: bool, probe_lock_id: str | None = None) -> None:
+    """After a 2xx on treg's own account (a tier-4 call, or an async task's successful terminal
+    poll): clear pending strikes on the endpoint and the provider, and the active lock or sweep
+    reading this call was admitted through as a probe (`probe_lock_id`). Platform tier only, which
+    the caller checks. Reloads the view first (a no-op inside the TTL) so a strike written while
+    this call was in flight is not missed. Never raises."""
     try:
         await capacity_view.load()
         cleared = False
+        slot = keyslots.capacity_slot(key_slot)
         # A free route's 2xx says nothing about the balance: it clears only its endpoint's own row.
-        for lock in capacity_view.locks(mk.provider, mk.endpoint_id, keyslots.capacity_slot(mk.key_slot),
-                                        metered=capacity_marks.spends_balance(mk.cost_type)):
-            if lock.is_active() and lock.lock_id != mk.probe_lock_id:
+        for lock in capacity_view.locks(provider, endpoint_id, slot, metered=metered):
+            if lock.is_active() and lock.lock_id != probe_lock_id:
                 continue
-            if await capacity_marks.clear(lock.key, lock_id=mk.probe_lock_id):
+            if await capacity_marks.clear(lock.key, lock_id=probe_lock_id):
                 cleared = True
                 if lock.is_active():
                     capacity_events.emit(
-                        "lock_cleared", provider=mk.provider, slot=keyslots.capacity_slot(mk.key_slot),
-                        endpoint_id=mk.endpoint_id, key=lock.key, lock_id=lock.lock_id, via="probe",
+                        "lock_cleared", provider=provider, slot=slot,
+                        endpoint_id=endpoint_id, key=lock.key, lock_id=lock.lock_id, via="probe",
                         locked_s=int((_utcnow_naive() - (lock.opened_at or lock.first_signal_at))
                                      .total_seconds()))
-        if ((mk.probe_lock_id or "").startswith(capacity_marks.SWEEP_PROBE)
-                and await capacity_marks.clear_sweep_state(mk.provider, probe_id=mk.probe_lock_id)):
+        if ((probe_lock_id or "").startswith(capacity_marks.SWEEP_PROBE)
+                and await capacity_marks.clear_sweep_state(provider, probe_id=probe_lock_id)):
             cleared = True
-            capacity_events.emit("lock_cleared", provider=mk.provider, slot=None,
-                                 endpoint_id=mk.endpoint_id, key=mk.provider, via="sweep_probe")
+            capacity_events.emit("lock_cleared", provider=provider, slot=None,
+                                 endpoint_id=endpoint_id, key=provider, via="sweep_probe")
         if cleared:
             capacity_view.invalidate()
     except asyncio.CancelledError:

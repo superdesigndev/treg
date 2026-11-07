@@ -41,6 +41,7 @@ sources:
   - tests/test_influencersclub_overflow.py
   - scripts/contactout_overflow_verify.py
   - src/treg/worker.py
+  - src/treg/application/asynctasks.py
   - scripts/provider_balances.py
   - src/treg/alembic/versions/0005_capacity_policy_snapshot.py
   - tests/test_capacity_know.py
@@ -141,6 +142,12 @@ of calls; one strike must not take the provider away from everyone.
   sweep's reading neither refuse it nor take its 2xx as recovery; only its endpoint's own quota row
   applies. Otherwise a vendor answering free searches at zero credits erases the paid routes'
   strikes.
+- An accepted async submission is no recovery either, because a vendor can queue a job on an
+  empty account and fail it later. The task's terminal answer is read through the table once, by
+  whichever finalizer (the caller's poll or the settlement worker) moves it out of pending: a
+  matching failure is one strike, and a success clears pending strikes. It cannot lift an active
+  lock or the sweep's reading, since the task does not record the probe it was admitted under;
+  those lift at expiry, by a synchronous route's probe, or at the next sweep.
 - A signature the call could not avoid (the strike itself, a probe through a lock, a free route)
   is relayed as the provider answered, with `X-Treg-Capacity: exhausted` so the caller is told it is
   treg's account, not its balance (`capacity_notice.py`).
