@@ -237,5 +237,6 @@ without the relay. Each event carries a uuid, so PostHog drops a resend.
 `POST /cli/events` takes no token: each event's properties are checked against a fixed vocabulary
 and anything else is dropped, the caller's address is never forwarded (`$geoip_disable`), each
 address has an in-memory window, and a well-formed batch is always a 204. A registry without a
-PostHog key drops them, so a self-hosted CLI reports nowhere else. `install-bin.sh` sends
-`cli_install_step` the same way.
+PostHog key drops them, so a self-hosted CLI reports nowhere else. `install-bin.sh` and
+`install.ps1` send `cli_install_step` the same way (`started`, then `installed` or `failed` with a
+reason), under the same opt-outs.
