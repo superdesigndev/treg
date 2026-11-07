@@ -3616,6 +3616,16 @@ adapters:
     in: {company_domain: body.company_domain}
     out: {ads: ads, count: "len(ads)", next_cursor: continuation_token}
     miss: "coalesce(ads, []) == []"
+  adyntel.linkedin.search.ads.company:
+    accepts: [[company_domain], [linkedin_page_id]]
+    in: {company_domain: body.company_domain, linkedin_page_id: body.linkedin_page_id}
+    out: {ads: ads, page_id: page_id, count: "len(ads)", next_cursor: continuation_token}
+    miss: "coalesce(ads, []) == []"
+  adyntel.linkedin.search.ads.keyword:
+    accepts: [[keyword]]
+    in: {keyword: body.keyword}
+    out: {ads: ads, count: "len(ads)", next_cursor: continuation_token}
+    miss: "coalesce(ads, []) == []"
   scrapecreators.x.v1-facebook-adlibrary-company-ads:
     accepts: [[page_id], [company_name]]
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
