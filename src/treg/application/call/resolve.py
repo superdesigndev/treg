@@ -1593,6 +1593,9 @@ _APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "t
 _APOLLO_WEBHOOK_PARAMS = frozenset({
     "reveal_phone_number", "webhook_url", "poll_only", "run_waterfall_email", "run_waterfall_phone",
 })
+# Boolean switches whose exact `false` asks for the documented default (no phone, no waterfall, no
+# webhook), so it reaches Apollo unchanged; any other spelling stays refused.
+_APOLLO_FALSE_ALLOWED = _APOLLO_WEBHOOK_PARAMS - {"webhook_url"}
 _ASCII_INT = re.compile(r"[0-9]+")
 _ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 
@@ -1748,7 +1751,9 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
     if ep.get("id") == "apollo.people.enrich" and query is not None:
         # These answer later at the caller's webhook, outside the response settlement reads, and
         # the phone and waterfall reveals draw credits the 1-credit hold never covered.
-        for name, _ in query.multi_items():
+        for name, raw in query.multi_items():
+            if name in _APOLLO_FALSE_ALLOWED and _query_value(raw, False) is False:
+                continue
             if name in _APOLLO_WEBHOOK_PARAMS:
                 raise ResolutionFailed(
                     "catalog_parameter_invalid", status_code=400, detail={
