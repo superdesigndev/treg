@@ -701,6 +701,8 @@ contracts:
         google_description: {type: str}
     miss: "users == []"
     idempotent: true
+    # Shown on every answer (a search has no `verified`): an agent reads it while choosing its next call.
+    advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil Instagram') returns the names they list."
 
   google.serp.local:
     summary: "Google local pack / local finder results for a keyword — provider-native business rows in `results`"
@@ -754,6 +756,8 @@ contracts:
       has_more: {type: bool}
     miss: "users == []"
     idempotent: true
+    # Shown on every answer (a search has no `verified`): an agent reads it while choosing its next call.
+    advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil TikTok') returns the names they list."
 
   tiktok.search.videos:
     summary: "Search TikTok videos by keyword, first page only — provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor"
