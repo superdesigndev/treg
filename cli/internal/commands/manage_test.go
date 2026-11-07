@@ -86,8 +86,7 @@ func TestFindSecretFile(t *testing.T) {
 
 func TestContractSync(t *testing.T) {
 	dir := t.TempDir()
-	// The entry's file is the relative path in this OS's spelling.
-	rel := strings.ReplaceAll(filepath.FromSlash(".secret/token.json"), `\`, `\\`)
+	rel := ".secret/token.json"
 	writeFiles(t, dir, map[string]string{
 		".secret/token.json": `{"token": "t"}`,
 		"treg.json":          `{"name": "s", "secrets": [{"file": "` + rel + `", "name": "old", "kind": "env", "n": 1.0}], "ü": "é"}`,

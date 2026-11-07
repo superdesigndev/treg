@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,7 +49,7 @@ func TestReadTextWantsUTF8AndUnixLineEndings(t *testing.T) {
 
 func TestOSErrorNamesThePathAndTheReason(t *testing.T) {
 	_, err := os.ReadFile(filepath.Join(t.TempDir(), "missing.json"))
-	if got := osError(err, "missing.json"); got != "missing.json: no such file or directory" {
+	if got := osError(err, "missing.json"); got != "missing.json: "+err.(*fs.PathError).Err.Error() || strings.Contains(got, "open") {
 		t.Errorf("osError = %q", got)
 	}
 }

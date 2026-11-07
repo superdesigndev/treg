@@ -278,7 +278,7 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 		if !ok {
 			return errors.New("a secrets entry is not an object")
 		}
-		if file, ok := o.Value("file").(string); ok && file == rel {
+		if file, ok := o.Value("file").(string); ok && filepath.ToSlash(file) == rel {
 			entry = o
 			break
 		}
@@ -295,8 +295,8 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 	return nil
 }
 
-// relativeTo is path relative to base, both with every symlink followed; a path outside base is an
-// error.
+// relativeTo is path relative to base, both with every symlink followed, with "/" between its parts
+// so a treg.json reads the same on every system; a path outside base is an error.
 func relativeTo(path, base string) (string, error) {
 	p, err := resolve(path)
 	if err != nil {
@@ -310,7 +310,7 @@ func relativeTo(path, base string) (string, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s is not inside %s", quote(p), quote(b))
 	}
-	return rel, nil
+	return filepath.ToSlash(rel), nil
 }
 
 // resolve is the absolute path with every symlink followed.

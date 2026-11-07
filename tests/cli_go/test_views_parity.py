@@ -33,8 +33,7 @@ def _same(py, go):
 
 
 def _identity(live, email: str) -> str:
-    started = live.http.post("/auth/email/start", json={"email": email})
-    proof = live.http.post("/auth/email/verify", json={"email": email, "code": started.json()["dev_code"]})
+    proof = live.http.post("/auth/email/verify", json={"email": email, "code": live.email_code(email)})
     live.http.cookies.clear()
     return proof.json()["token"]
 

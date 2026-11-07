@@ -99,9 +99,8 @@ def test_mcp_install_claude_marker_without_cli(tmp_path, live, team, go_bin):
 
 
 def test_mcp_install_refusals(tmp_path, live, team, go_bin):
-    started = live.http.post("/auth/email/start", json={"email": "mcp-solo@example.com"}).json()
     bootstrap = live.http.post("/auth/email/verify", json={"email": "mcp-solo@example.com",
-                                                           "code": started["dev_code"]}).json()["token"]
+                                                           "code": live.email_code("mcp-solo@example.com")}).json()["token"]
     live.http.cookies.clear()
     for i, (config, env) in enumerate((({}, {}), ({"token": bootstrap, "identity": True}, {}),
                                        ({"token": "not-a-token"}, {}), ({}, {"TREG_TOKEN": "also-bad"}))):

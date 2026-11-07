@@ -4,6 +4,7 @@ database in dev mode, one signed-up team, and an echo upstream registered as tha
 from __future__ import annotations
 
 import json
+import itertools
 import os
 import secrets
 import socket
@@ -87,6 +88,9 @@ class Team:
     org_id: int
 
 
+_addresses = itertools.count()
+
+
 class LiveRegistry:
     def __init__(self, tmp: Path, extra_env: dict[str, str] | None = None,
                  catalog_patch: dict | None = None) -> None:
@@ -104,6 +108,9 @@ class LiveRegistry:
             "TREG_SESSION_SECRET": secrets.token_hex(24),
             "TREG_PROXY_SSRF_CHECK": "false",
             "TREG_ADMIN_TOKEN": ADMIN_TOKEN,
+            # Every sign-up the harness makes comes from its own address, so the per-address
+            # window on email codes counts the CLIs' requests, not the fixtures'.
+            "TREG_CLIENT_IP_HEADER": "x-test-client-ip",
         } | (extra_env or {})
         command = [sys.executable, "-m", "treg"]
         if catalog_patch is not None:
@@ -125,10 +132,16 @@ class LiveRegistry:
             raise RuntimeError("the registry did not come up")
         self.http = httpx.Client(base_url=self.url, headers={"X-Treg-Key-Protocol": "1"}, timeout=30)
 
-    def signup(self, email: str, team: str) -> Team:
-        started = self.http.post("/auth/email/start", json={"email": email})
+    def email_code(self, email: str) -> str:
+        """The dev-mode sign-in code for `email`, asked for from an address of its own."""
+        n = next(_addresses)
+        started = self.http.post("/auth/email/start", json={"email": email},
+                                 headers={"X-Test-Client-Ip": f"198.18.{n // 250}.{n % 250 + 1}"})
         started.raise_for_status()
-        proof = self.http.post("/auth/email/verify", json={"email": email, "code": started.json()["dev_code"]})
+        return started.json()["dev_code"]
+
+    def signup(self, email: str, team: str) -> Team:
+        proof = self.http.post("/auth/email/verify", json={"email": email, "code": self.email_code(email)})
         proof.raise_for_status()
         identity = proof.json()["token"]
         created = self.http.post("/orgs", json={"name": team}, headers={"X-Treg-Token": identity})

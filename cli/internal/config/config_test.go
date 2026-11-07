@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -33,7 +34,7 @@ func TestReadsAndWritesThePythonLayout(t *testing.T) {
 	if string(raw) != want {
 		t.Fatalf("wrote\n%s", raw)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %v", info.Mode())
 	}
 }

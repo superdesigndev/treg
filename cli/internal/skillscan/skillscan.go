@@ -673,7 +673,7 @@ func AutoBindings(base string, files []string) ([]*pyjson.Object, []any) {
 		}
 		seen[name] = true
 		rel, _ := filepath.Rel(base, f)
-		secrets = append(secrets, pyjson.Ordered("file", rel, "name", name, "kind", kind))
+		secrets = append(secrets, pyjson.Ordered("file", filepath.ToSlash(rel), "name", name, "kind", kind))
 		if f == primary {
 			field := "access_token"
 			if kind == "oauth" {
