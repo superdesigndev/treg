@@ -3475,3 +3475,22 @@ async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(
     t = r.json()["_treg"]
     assert len(t.get("merged_from") or []) == 2, t
     assert t["ignored_filters"] == ["contents"] and r.headers.get("x-treg-ignored-filters") == "contents"
+
+
+async def test_a_search_contract_advice_rides_on_every_hit(clients, platform_on, monkeypatch):
+    """A search contract has no `verified` output, so its `advice_unverified` sentence reaches the
+    agent on every hit, where it chooses its next call."""
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "instagram.search.users", dataclasses.replace(
+        cat.contracts["instagram.search.users"], advice_unverified="Try the other search."))
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPECREATORS", "PLATFORM-SC-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"*": [(200, {"profiles": [{"username": "a", "url": "https://www.instagram.com/a/"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "productivity coach Brazil"})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["advice"] == "Try the other search."
