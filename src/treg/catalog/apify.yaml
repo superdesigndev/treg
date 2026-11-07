@@ -553,5 +553,279 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.web.domain.status
+    capability: web.domain.status
+    platform: web
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~website-liveness-check/run-sync-get-dataset-items
+    name: "Check whether a website is live, parked, redirected or dead"
+    summary: "One verdict per domain (LIVE, PARKED, REDIRECTED, DEAD_DNS and the other states) with the evidence behind it: registration dates and registrar, certificate, MX and email provider, SPF and DMARC, hosting and CDN, the page's tech, the services the domain is verified with and that send its mail, its organization record and social links"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.01}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        registration: {type: boolean, required: false, note: "registrar, creation and expiry dates, domain age, status codes, name servers and DNSSEC. Default true, no extra charge", example: true}
+        profile: {type: boolean, required: false, note: "email provider, SPF and DMARC, hosting, page tech, DNS-verified services and mail senders, meta, organization record and social links. Default true, no extra charge", example: true}
+        links: {type: boolean, required: false, note: "the homepage's links to pricing, about, team, contact, careers and the rest. Default true, no extra charge", example: true}
+        only_states: {type: "array[string]", required: false, note: "return rows only for these verdicts, for example [PARKED, DEAD_DNS]"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per input domain with state, score and reason, plus registration, certificate, dns, hosting, tech, page, organization and social blocks. An input that could not be checked comes back as an error item and is not charged"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.01, timeout: 90}
+      body: {"domains": ["stripe.com"]}
+    cost: {type: per_result, value: 0.001, call_fee: 0.00005, currency: USD, per: 1, unit: domain, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~website-liveness-check', checked: '2026-11-05', confidence: verified, reserve: {entities: {}}, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: domain_check 0.001 flat; domain_history FREE/BRONZE 0.003, SILVER 0.0025, GOLD/PLATINUM/DIAMOND 0.002; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, domain_check: 1} in 8.3 s, $0.00105 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/website-liveness-check
+
+  - id: apify.web.url.metrics
+    capability: web.url.metrics
+    platform: web
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~website-popularity-rank/run-sync-get-dataset-items
+    name: "Get a website's popularity and link authority rank"
+    summary: "A domain's popularity among Chrome users (world and its top countries, from the Chrome UX Report), its Common Crawl web-graph rank with history, its Majestic Million rank and referring networks, Core Web Vitals and device share, registration facts and whether the site answers today. Ranks only, no visit counts"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.01}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        domains: {type: "array[string]", required: true, note: "website domains or URLs, one per entry; each ranked domain is one web_rank event", example: ["honeybook.com"]}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per domain: popularity (top_sites_world, top_countries), link_rank (commoncrawl with history, majestic), speed, domain_facts and site. A domain no source ranks comes back uncharged and says so"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.01, timeout: 90}
+      body: {"domains": ["honeybook.com"]}
+    cost: {type: per_result, value: 0.002, call_fee: 0.00005, currency: USD, per: 1, unit: domain, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~website-popularity-rank', checked: '2026-11-05', confidence: verified, reserve: {entities: {}}, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: web_rank 0.002 flat; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, web_rank: 1} in 19.9 s, $0.00205 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/website-popularity-rank
+
+  - id: apify.companies.registry.search
+    capability: companies.registry.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~company-registry-lookup/run-sync-get-dataset-items
+    name: "Look up a company in an official business register"
+    summary: "The official register record of a company from 40+ registers (Companies House, the Israeli register, EU and US state registers and others): legal name, registration number, legal form, status, incorporation and dissolution dates, registered address, officers where the register publishes them. A name search returns a shortlist of candidates"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.01}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        queries: {type: "array[object]", required: true, note: "one lookup per entry: {query: a company name or a registration number, jurisdiction: a two-letter country code or a US state such as us-de}", example: [{"query": "00445790", "jurisdiction": "gb"}]}
+        max_candidates: {type: integer, required: false, note: "how many shortlist candidates a name search may return in total; default 50", example: 50}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. A registration number returns one record item (registry_record). A name returns candidate items under one registry_search event. A query no register answers comes back uncharged"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.01, timeout: 90}
+      body: {"queries": [{"query": "00445790", "jurisdiction": "gb"}]}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~company-registry-lookup', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: registry_record FREE/BRONZE 0.005, SILVER 0.004, GOLD/PLATINUM/DIAMOND 0.003; registry_search FREE/BRONZE 0.15, SILVER 0.12, GOLD/PLATINUM/DIAMOND 0.1; no start event. Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {registry_record: 1} in 12.3 s, $0.00500 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/company-registry-lookup
+
+  - id: apify.companies.patents
+    capability: companies.patents
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~patent-lookup/run-sync-get-dataset-items
+    name: "List a company's patents or search patents"
+    summary: "The patents a company owns, verified against the company (EPO, USPTO and WIPO publications), with title, abstract, applicants, inventors, dates, CPC classes and family; or patents by an inventor, or by keyword and CPC. Document mode adds family, legal status and citations for one publication"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.02}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        mode: {type: string, required: false, note: "company (default) | inventor | search | document", example: "company"}
+        queries: {type: "array[string]", required: true, note: "one per entry, read in the mode above: company names, inventor names, search phrases or publication numbers", example: ["Mobileye Vision Technologies Ltd"]}
+        max_results: {type: integer, required: false, note: "cap on patent rows per query; each row is one patent_record event; default 100", example: 1}
+        granted_only: {type: boolean, required: false, note: "keep granted patents only; default false", example: false}
+        one_per_family: {type: boolean, required: false, note: "one row per patent family; default false", example: false}
+        countries: {type: "array[string]", required: false, note: "keep publications from these offices only: US, EP, WO, CN, JP, KR, IL, DE, GB and others"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. A summary item per query (one patent_search event) followed by one item per patent (patent_record)"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.02, timeout: 90}
+      body: {"queries": ["Mobileye Vision Technologies Ltd"], "max_results": 1}
+    cost: {type: per_result, value: 0.0015, call_fee: 0.00205, call_fee_per: ["body.queries"], currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~patent-lookup', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: patent_search 0.002 flat; patent_record FREE/BRONZE 0.0015, SILVER 0.0012, GOLD/PLATINUM/DIAMOND 0.001; patent_document 0.0075 flat; patent_family 0.003 flat; plus apify-actor-start 5e-05 per run. Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, patent_search: 1, patent_record: 1} in 22.2 s, $0.00355 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price). The call_fee is the patent_search event (0.002, once per entry of body.queries) plus apify-actor-start (5e-05, once per run), so a multi-query call overstates the start by 5e-05 a query"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/patent-lookup
+
+  - id: apify.companies.funding_rounds
+    capability: companies.funding_rounds
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~startup-funding/run-sync-get-dataset-items
+    name: "Get a startup's funding rounds, investors and exits"
+    summary: "A company's funding rounds with date, type, amount, valuation where published, lead and other investors, total raised, and its acquisition or IPO, by website or LinkedIn company URL. Companies outside our catalogue are researched live from public sources"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.02}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        companies: {type: "array[string]", required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_funding event", example: ["honeybook.com"]}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per company: rounds (each with sources), totals, the latest round and any exit. One company per call fits treg's 90-second timeout (the slowest observed live research took 74 s)"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.02, timeout: 90}
+      body: {"companies": ["honeybook.com"]}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~startup-funding', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: company_funding 0.005 flat; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, company_funding: 1} in 25.8 s, $0.00505 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/startup-funding
+
+  - id: apify.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~company-record/run-sync-get-dataset-items
+    name: "Enrich a company by domain, LinkedIn URL or name"
+    summary: "A company record: identity, description, classification with products and technologies, headcount, location, founding year, registry entity and the company's profiles; the full tier adds funding rounds, investors, founders and team, acquisitions, related companies and events"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.05}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        companies: {type: "array[string]", required: true, note: "a domain, a website URL, a LinkedIn company URL or a company name, one per entry", example: ["linear.app"]}
+        tier: {type: string, required: false, note: "basic (company_basic) | full (company_full)", example: "basic"}
+        maxAgeDays: {type: integer, required: false, note: "full tier only: refresh a record older than this many days"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per company. Basic is answered from the catalogue; a company the catalogue lacks may take longer than treg's 90 s on the full tier, so use the async web.scrape.job.* pair for a cold full record"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {"companies": ["linear.app"], "tier": "basic"}
+    cost: {type: per_result, value: 0.02, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~company-record', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: company_basic 0.02 flat; company_full FREE/BRONZE 0.05, SILVER 0.045, GOLD/PLATINUM/DIAMOND 0.04; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {company_basic: 1, apify-actor-start: 1} in 26.4 s, $0.02005 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/company-record
+
+  - id: apify.companies.jobs
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~job-postings/run-sync-get-dataset-items
+    name: "List a company's open jobs from its own job board"
+    summary: "Every open role of a company from its own careers page or ATS board (Greenhouse, Lever, Ashby, Workday, SmartRecruiters and others), one schema: title, department, locations, remote, employment type, posted date, apply URL and the full description"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.02}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        queries: {type: "array[string]", required: true, note: "a domain, a website URL or a careers or ATS board URL, one per entry; each company is one company_search event", example: ["notion.so"]}
+        max_jobs: {type: integer, required: false, note: "cap on job rows per company; each row is one job_record event; default 200", example: 1}
+        include_description: {type: boolean, required: false, note: "full description text and html on every row; default true", example: false}
+        keywords: {type: "array[string]", required: false, note: "keep roles whose title contains any of these words"}
+        country: {type: string, required: false, note: "two-letter code; keep roles located there"}
+        remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. A summary item per company (company_search) followed by one item per role (job_record)"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.02, timeout: 90}
+      body: {"queries": ["notion.so"], "max_jobs": 1, "include_description": false}
+    cost: {type: per_result, value: 0.0008, call_fee: 0.00205, call_fee_per: ["body.queries"], currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~job-postings', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: company_search 0.002 flat; job_record FREE/BRONZE 0.0008, SILVER 0.0006, GOLD/PLATINUM/DIAMOND 0.0005; job_detail 0.003 flat; plus apify-actor-start 5e-05 per run. Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, company_search: 1, job_record: 1} in 18.8 s, $0.00285 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price). The call_fee is the company_search event (0.002, once per entry of body.queries) plus apify-actor-start (5e-05, once per run), so a multi-query call overstates the start by 5e-05 a query"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/job-postings
+
+  - id: apify.people.enrich
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~linkedin-person-enrichment/run-sync-get-dataset-items
+    name: "Enrich a person from a LinkedIn profile URL"
+    summary: "A person's public career from a LinkedIn profile URL: headline, location, experience with dates, education, skills, certifications and a career summary; team mode reads 2-10 profiles as one team"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.05}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        profileUrls: {type: "array[string]", required: true, note: "LinkedIn profile URLs (https://www.linkedin.com/in/<slug>) or bare slugs; each is one profile-processed event", example: ["https://www.linkedin.com/in/gergelyorosz"]}
+        mode: {type: string, required: false, note: "enrich (each URL on its own, default) | team (2-10 URLs as one team)", example: "enrich"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per profile under `person`. A profile that cannot be read comes back uncharged"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {"profileUrls": ["https://www.linkedin.com/in/gergelyorosz"]}
+    cost: {type: per_result, value: 0.03, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~linkedin-person-enrichment', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: profile-processed FREE/BRONZE 0.03, SILVER 0.025, GOLD/PLATINUM/DIAMOND 0.02; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, profile-processed: 1} in 4.9 s, $0.03005 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/linkedin-person-enrichment
+
+  - id: apify.companies.markets
+    capability: companies.markets
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~company-markets/run-sync-get-dataset-items
+    name: "Get the markets a company sells into, with their size"
+    summary: "The markets a company sells into, read from its own site, each with research-firm size and growth estimates and their sources"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.05}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        companies: {type: "array[string]", required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_markets event", example: ["covergenius.com"]}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per company with its markets, each with size estimates (value, year, CAGR, publisher)"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {"companies": ["covergenius.com"]}
+    cost: {type: per_result, value: 0.025, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~company-markets', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: company_markets 0.025 flat; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, company_markets: 1} in 30.0 s, $0.02505 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/company-markets
+
+  - id: apify.markets.size
+    capability: markets.size
+    platform: markets
+    scope: any_account
+    method: POST
+    path: /actors/pvalyou~market-size-by-name/run-sync-get-dataset-items
+    name: "Get size and growth estimates for a named market"
+    summary: "Research-firm estimates for a market named in plain words (embedded insurance, RPA, AI agents): size by year, CAGR and forecast, each with its publisher"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1", example: 0.02}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
+      body:
+        markets: {type: "array[string]", required: true, note: "market names in plain words, one per entry; each answered market is one market_by_name event", example: ["embedded insurance"]}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. One item per market with its estimates (value, year, CAGR, forecast year, publisher)"
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 256, maxTotalChargeUsd: 0.02, timeout: 90}
+      body: {"markets": ["embedded insurance"]}
+    cost: {type: per_result, value: 0.01, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/pvalyou~market-size-by-name', checked: '2026-11-05', confidence: verified, note: "pay-per-event, read live 2026-11-05 from the Actor's pricingInfos: market_by_name 0.01 flat; plus apify-actor-start 5e-05 per run (the call_fee). Unanswered inputs come back as error items and are not charged. OBSERVED 2026-11-05: the test_request billed {apify-actor-start: 1, market_by_name: 1} in 8.5 s, $0.01005 at the rate card (run on the publisher's own account, where Apify bills events at the rate card but does not charge the publisher, so the figure is billed events times listed price)"}
+    added: '2026-11-05'
+    docs_url: https://apify.com/pvalyou/market-size-by-name
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
+  web.domain.status: "Whether a website is live, parked, redirected or dead, with the registration, certificate, mail and hosting evidence"
+  companies.registry.search: "Find a company in an official business register by name or registration number"
+  companies.funding_rounds: "List a company's funding rounds"
+  companies.patents: "A company's patents, verified against the company, plus inventor and keyword patent search"
+  companies.markets: "The markets a company sells into, with sized estimates"
+  markets.size: "Size and growth estimates for a named market, from research-firm reports"
