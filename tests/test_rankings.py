@@ -5,6 +5,7 @@ import json
 import re
 from datetime import date, timedelta
 
+import pytest
 from httpx import AsyncClient
 
 from treg.application import rankings as rankings_app
@@ -333,8 +334,8 @@ def test_a_model_that_moved_vendor_compares_with_all_its_earlier_calls():
             cat.endpoints.remove(ep); cat.by_id.pop(ep["id"])
 
 
-def test_a_decision_model_is_its_own_type_and_counts_in_all():
-    (jev,) = [e for e in store.load().endpoints if e["platform"] == "ai-judge" and store.browsable(e)]
-    board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
+@pytest.mark.parametrize("endpoint_id", ["openrouter.ai-judge.decide", "parallel.ai-judge.decide"])
+def test_a_decision_model_is_its_own_type_and_counts_in_all(endpoint_id):
+    board = rankings.build(_rows(endpoint_id, {0: 50}), store.load(), LAST)["ai_models"]["7d"]
     (model,) = board["models"]
     assert model["type"] == "Decision" and model["calls"] == 50
