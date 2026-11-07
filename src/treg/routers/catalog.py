@@ -670,16 +670,19 @@ async def catalog_endpoint(
         # The QUOTE (routing plan §3.5): the contract and the ranked children on treg's key, priced
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
-        from ..domain.catalog.routing.plan import Candidate, cost_at, rank
+        from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
         cands = []
         for k in kids:
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
+            cv = cat.cost_view(k.get("cost"), k["provider"])
+            price = cost_at(cv, {}, ad)
             cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
-                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}, ad), st.get("hit_rate"),
-                                   st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days")))
+                                   price, st.get("hit_rate"),
+                                   st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
+                                   miss_micro=miss_charge_micro(cv, {}, ad, price) if price is not None else None))
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": {
                              # `analytics` is treg's own event mapping, not part of the answer.

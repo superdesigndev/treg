@@ -871,6 +871,8 @@ adapters:
     in: {domain: body.domains}
     in_expr: {body.domains: "list(domain)"}
     const: {body.page: 1, body.pageSize: 10}
+    # pageSize is the price, and an empty page settles at the whole hold.
+    cost_units: "10"
     out: {companies: items, count: totalItems}
     miss: "items == []"
   oceanio.companies.lookalike:
@@ -1516,6 +1518,8 @@ adapters:
     accepts: [[keywords]]
     in:  {keywords: body.keywords}
     in_expr: {queryParams.source: "seranking_source(country)"}
+    # Billed per keyword sent, and an empty answer settles at the whole hold.
+    cost_units: "len(list(keywords))"
     out: {rows: "."}
     miss: ". == []"
   dataforseo.x.keywords-data-dataforseo-trends-explore-live:

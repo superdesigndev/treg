@@ -1129,10 +1129,17 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     """
     if cost.get("type") not in COST_TYPES:
         fail(errors, where, f"cost.type missing or not one of {sorted(COST_TYPES)}")
-    # `bills_miss` marks a per-success price whose provider still charges for some misses (a
-    # routed row counts it among the children that bill a miss); other types already say so.
-    if "bills_miss" in cost and (cost["bills_miss"] is not True or cost.get("type") != "per_success"):
-        fail(errors, where, "cost.bills_miss must be true, and only on a per_success price")
+    # `bills_miss` marks a per-success or per-result price whose provider still charges for some
+    # misses (routing.plan.bills_miss: ranking prices those misses and a routed row counts the
+    # child among those that bill one); every other priced type already bills each call.
+    if "bills_miss" in cost and (cost["bills_miss"] is not True
+                                 or cost.get("type") not in ("per_success", "per_result")):
+        fail(errors, where, "cost.bills_miss must be true, and only on a per_success or per_result price")
+    # `miss_units`: how many rows a per-result miss bills (a minimum charge on an empty page);
+    # without it a billed miss costs the whole request.
+    if "miss_units" in cost and (type(cost["miss_units"]) is not int or cost["miss_units"] < 1
+                                 or cost.get("bills_miss") is not True or cost.get("type") != "per_result"):
+        fail(errors, where, "cost.miss_units must be a positive integer, beside bills_miss on a per_result price")
     value, conf = cost.get("value"), cost.get("confidence")
     if conf is not None and conf not in CONFIDENCES:
         fail(errors, where, f"cost.confidence '{conf}' not one of {sorted(CONFIDENCES)}")
