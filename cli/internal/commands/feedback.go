@@ -138,7 +138,7 @@ func (e *Env) feedbackRequest(method, path string, b *pyjson.Object) error {
 	uncertain := "Could not confirm whether feedback was saved. Check connectivity before submitting again."
 	req := api.Request{Method: method, Path: path}
 	if b != nil {
-		req.Body, req.Header = pyBody(b), jsonHeader
+		req.Body, req.Header = jsonBody(b), jsonHeader
 	}
 	r, err := e.Client().Do(req)
 	if err != nil {

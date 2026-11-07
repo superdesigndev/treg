@@ -87,7 +87,7 @@ func (e *Env) topup(amount *float64) error {
 	if amount != nil {
 		b.Set("amount_usd", float64(*amount))
 	}
-	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/topup", Body: pyBody(b), Header: jsonHeader})
+	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/topup", Body: jsonBody(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 		}
 		b.Set("consent", true)
 	}
-	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/autotopup", Body: pyBody(b), Header: jsonHeader})
+	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/autotopup", Body: jsonBody(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}

@@ -58,7 +58,7 @@ func connectionsCmd(env *Env) *cobra.Command {
 			return err
 		}
 		return env.show(api.Request{Method: "POST", Path: "/connections/" + string(id) + "/resource",
-			Body: pyBody(pyjson.Ordered("resource_ref", args[1])), Header: jsonHeader})
+			Body: jsonBody(pyjson.Ordered("resource_ref", args[1])), Header: jsonHeader})
 	}
 	rm := leaf("rm <id>", "Disconnect (bound tools stay, but stop working until reconnected).", "treg connections rm 12")
 	rm.Args = cobra.ExactArgs(1)
@@ -204,7 +204,7 @@ func (e *Env) connect(f connectFlags) error {
 			"or --client-secret <file> to bring your own")
 	}
 	c := e.Client()
-	r, err := e.do(c, api.Request{Method: "POST", Path: "/oauth/start", Body: pyBody(b), Header: jsonHeader})
+	r, err := e.do(c, api.Request{Method: "POST", Path: "/oauth/start", Body: jsonBody(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
@@ -334,14 +334,14 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 	}
 	c := e.Client()
 	r, err := e.do(c, api.Request{Method: "POST", Path: "/connections/token",
-		Body: pyBody(pyjson.Ordered("provider", service, "token", providers.Strip(key))), Header: jsonHeader})
+		Body: jsonBody(pyjson.Ordered("provider", service, "token", providers.Strip(key))), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
 	if r.Status == 200 && extraLabel != "" {
 		secretID := pyjson.Text(responseObject(r).Value("id"))
 		r, err = e.do(c, api.Request{Method: "POST", Path: "/connections/" + secretID + "/extra-credential",
-			Body: pyBody(pyjson.Ordered("value", providers.Strip(extra))), Header: jsonHeader})
+			Body: jsonBody(pyjson.Ordered("value", providers.Strip(extra))), Header: jsonHeader})
 		if err != nil {
 			return err
 		}

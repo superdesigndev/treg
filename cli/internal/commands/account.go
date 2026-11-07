@@ -20,6 +20,7 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
 	"github.com/superdesigndev/treg/cli/internal/output"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func versionCmd(env *Env) *cobra.Command {
@@ -58,12 +59,10 @@ func configCmd(env *Env) *cobra.Command {
 					return err
 				}
 			}
-			view := ordered{
-				{"base_url", cfg.BaseURL}, {"email", nullable(cfg.Email)},
-				{"active_org", nullable(cfg.ActiveOrg)}, {"logged_in", cfg.Token != ""},
-			}
+			view := pyjson.Ordered("base_url", cfg.BaseURL, "email", nullable(cfg.Email),
+				"active_org", nullable(cfg.ActiveOrg), "logged_in", cfg.Token != "")
 			if cfg.Channel != "" {
-				view = append(view, pair{"channel", cfg.Channel})
+				view.Set("channel", cfg.Channel)
 			}
 			env.Out.ShowJSON(view)
 			return nil
@@ -120,7 +119,7 @@ func whoamiCmd(env *Env) *cobra.Command {
 				if active != nil {
 					team, role = active.Slug, nullable(active.Role)
 				}
-				env.Out.ShowJSON(ordered{{"email", nullable(email)}, {"team", team}, {"role", role}, {"registry", env.Registry()}})
+				env.Out.ShowJSON(pyjson.Ordered("email", nullable(email), "team", team, "role", role, "registry", env.Registry()))
 				return nil
 			}
 			team := firstString(env.EffectiveOrg(), "-")

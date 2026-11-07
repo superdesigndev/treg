@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -58,41 +59,9 @@ func isJSONType(t string) bool {
 	return t == "application/json" || strings.HasSuffix(t, "+json")
 }
 
-type orderedMeta struct {
-	keys   []string
-	values map[string]any
-}
-
-func (m *orderedMeta) set(k string, v any) {
-	if _, ok := m.values[k]; !ok {
-		m.keys = append(m.keys, k)
-	}
-	m.values[k] = v
-}
-
-func (m *orderedMeta) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	for i, k := range m.keys {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		key, _ := marshal(k)
-		val, err := marshal(m.values[k])
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(key)
-		buf.WriteByte(':')
-		buf.Write(val)
-	}
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
-}
-
 type callEnvelope struct {
-	Result any          `json:"result"`
-	Treg   *orderedMeta `json:"_treg"`
+	Result any            `json:"result"`
+	Treg   *pyjson.Object `json:"_treg"`
 }
 
 // envelope is `treg --json call`: the provider body under `result` (JSON, text, or base64 for
@@ -113,43 +82,43 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 		result = map[string]string{"base64": base64.StdEncoding.EncodeToString(r.Body), "content_type": ctype}
 	}
 	h := r.Header
-	m := &orderedMeta{values: map[string]any{}}
-	m.set("http_status", r.Status)
+	m := pyjson.NewObject()
+	m.Set("http_status", r.Status)
 	if saturated(r) {
-		m.set("treg_saturated", true)
+		m.Set("treg_saturated", true)
 		if wait, err := strconv.Atoi(h.Get("Retry-After")); err == nil && isDigits(h.Get("Retry-After")) {
-			m.set("retry_after_seconds", wait)
+			m.Set("retry_after_seconds", wait)
 		}
 	}
 	if id := h.Get("X-Treg-Call-Id"); id != "" {
-		m.set("call_id", id)
+		m.Set("call_id", id)
 	}
 	if cost := h.Get("X-Treg-Cost-Micro"); cost != "" {
 		if n, err := strconv.ParseInt(strings.TrimSpace(cost), 10, 64); err == nil {
 			if h.Get("X-Treg-Async") != "" {
-				m.set("reserved_micro", n)
+				m.Set("reserved_micro", n)
 			} else {
-				m.set("charged_micro", n)
+				m.Set("charged_micro", n)
 			}
 		}
 	}
 	if h.Get("X-Treg-Idempotent-Replay") != "" {
-		m.set("replay", true)
+		m.Set("replay", true)
 	}
 	if v := h.Get("X-Treg-Upstream-Failed"); v != "" {
-		m.set("upstream_failed", v)
+		m.Set("upstream_failed", v)
 	}
 	if h.Get(capacityHeader) == exhausted {
-		m.set("capacity", exhausted)
+		m.Set("capacity", exhausted)
 	}
 	if h.Get("X-Treg-Async") != "" {
-		m.set("async", true)
+		m.Set("async", true)
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
-		m.set("hint", v)
+		m.Set("hint", v)
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
-		m.set("routed_tool", v)
+		m.Set("routed_tool", v)
 	}
 	return callEnvelope{Result: result, Treg: m}
 }

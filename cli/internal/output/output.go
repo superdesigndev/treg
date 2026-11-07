@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -96,22 +97,9 @@ func (p *Printer) refused(r *api.Response) error {
 	return &Exit{Code: 1}
 }
 
-// ShowJSON prints a value the way Python's json.dumps(value, indent=2) lays it out.
+// ShowJSON prints a value the way Python's json.dumps(value, indent=2) lays it out, UTF-8 kept.
 func (p *Printer) ShowJSON(v any) {
-	data, _ := MarshalIndent(v)
-	p.Out.Write(data)
-	fmt.Fprintln(p.Out)
-}
-
-func MarshalIndent(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	fmt.Fprintln(p.Out, pyjson.Dumps(v, pyjson.Options{Indent: 2}))
 }
 
 func jsonObject(body []byte) map[string]any {

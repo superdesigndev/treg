@@ -212,7 +212,7 @@ func writeJSONAgent(path, root, name string, entry *pyjson.Object, oauth bool) (
 	}
 	servers.Set(name, entry)
 	data.Set(root, servers)
-	text := pyjson.Dumps(data, pyjson.Options{Indent: 2, EnsureASCII: true}) + "\n"
+	text := pyjson.Dumps(data, pyjson.Pretty) + "\n"
 	if err := WritePrivate(path, text); err != nil {
 		return Failed, fmt.Sprintf("%s: %v", path, err)
 	}

@@ -91,7 +91,7 @@ func secretAddCmd(env *Env) *cobra.Command {
 		}
 		c := env.Client()
 		r, err := env.do(c, api.Request{Method: "POST", Path: "/secrets",
-			Body: pyBody(pyjson.Ordered("name", name, "value", value, "kind", f.kind)), Header: jsonHeader})
+			Body: jsonBody(pyjson.Ordered("name", name, "value", value, "kind", f.kind)), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,7 @@ func secretUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --name / --value / --kind)")
 		}
-		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + string(id), Body: pyBody(b), Header: jsonHeader})
+		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + string(id), Body: jsonBody(b), Header: jsonHeader})
 	}
 	return cmd
 }

@@ -83,7 +83,7 @@ func toolAddCmd(env *Env) *cobra.Command {
 			}
 			b.Set("health_check", health)
 		}
-		return env.show(api.Request{Method: "POST", Path: "/tools", Body: pyBody(b), Header: jsonHeader})
+		return env.show(api.Request{Method: "POST", Path: "/tools", Body: jsonBody(b), Header: jsonHeader})
 	}
 	return cmd
 }
@@ -193,7 +193,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --base-url / --bind / --binding / --health / --local-run)")
 		}
-		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + string(id), Body: pyBody(b), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + string(id), Body: jsonBody(b), Header: jsonHeader})
 		if err != nil {
 			return err
 		}

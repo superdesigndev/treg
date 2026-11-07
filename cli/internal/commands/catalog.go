@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/output"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 const catalogUsage = `Browse the library of endpoints & tools for data access and integrations.
@@ -257,8 +257,8 @@ func (e *Env) catalogRequest(text string) error {
 	if capability == "" {
 		return output.Fail(`request what? e.g. treg catalog request "Ahrefs backlinks"`)
 	}
-	body, _ := marshalCompact(ordered{{"capability", capability}, {"source", "cli"}})
-	resp, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/tool-requests", Body: body,
+	resp, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/tool-requests",
+		Body:   jsonBody(pyjson.Ordered("capability", capability, "source", "cli")),
 		Header: [][2]string{{"Content-Type", "application/json"}, api.WithView}})
 	if err != nil {
 		return err
@@ -285,17 +285,4 @@ func quoteAll(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// marshalCompact is JSON without spaces and without HTML escaping, as httpx sends a body.
-func marshalCompact(v any) ([]byte, error) {
-	data, err := output.MarshalIndent(v)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := json.Compact(&buf, data); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }

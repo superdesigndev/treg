@@ -12,6 +12,7 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 const homeAbout = "The tool catalog for your agent. Search and call its tools"
@@ -78,8 +79,8 @@ func (e *Env) homeProblem(kind, problem string) error {
 	}
 	help := append([]string{first}, homeNextSteps...)
 	if e.JSON {
-		outln(pyDumps(ordered{{"bin", executable()}, {"version", buildinfo.Version}, {"description", homeAbout},
-			{"registry", e.Registry()}, {kind, problem}, {"help", help}}))
+		outln(pyjson.Dumps(pyjson.Ordered("bin", executable(), "version", buildinfo.Version, "description", homeAbout,
+			"registry", e.Registry(), kind, problem, "help", help), pyjson.Options{Indent: -1}))
 		return nil
 	}
 	outln(e.homeLines(problem))
@@ -142,24 +143,4 @@ func toonString(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
-}
-
-// pyDumps is Python's json.dumps(value, ensure_ascii=False): ", " and ": " between the parts.
-func pyDumps(v any) string {
-	switch t := v.(type) {
-	case ordered:
-		parts := make([]string, len(t))
-		for i, p := range t {
-			parts[i] = pyDumps(p.key) + ": " + pyDumps(p.value)
-		}
-		return "{" + strings.Join(parts, ", ") + "}"
-	case []string:
-		parts := make([]string, len(t))
-		for i, s := range t {
-			parts[i] = pyDumps(s)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	}
-	data, _ := marshalCompact(v)
-	return string(data)
 }

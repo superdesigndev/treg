@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -9,39 +8,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
-	"github.com/superdesigndev/treg/cli/internal/output"
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
-
-// ordered is a JSON object that keeps its keys in the order written, as a Python dict does.
-type ordered []pair
-
-type pair struct {
-	key   string
-	value any
-}
-
-func (o ordered) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	for i, p := range o {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		k, err := output.MarshalIndent(p.key)
-		if err != nil {
-			return nil, err
-		}
-		v, err := output.MarshalIndent(p.value)
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(k)
-		buf.WriteByte(':')
-		buf.Write(v)
-	}
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
-}
 
 // quote names a value inside a message, quoted and escaped.
 func quote(s string) string { return strconv.Quote(s) }
@@ -93,10 +61,8 @@ func clip(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-func jsonBody(v any) []byte {
-	data, _ := json.Marshal(v)
-	return data
-}
+// jsonBody is a request body as httpx encodes `json=`.
+func jsonBody(v any) []byte { return []byte(pyjson.Dumps(v, pyjson.Body)) }
 
 var jsonHeader = [][2]string{{"Content-Type", "application/json"}}
 

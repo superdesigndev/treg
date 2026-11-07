@@ -44,7 +44,7 @@ func reviewCmd(env *Env) *cobra.Command {
 			b.Set("reason", reason)
 		}
 		uncertain := "Could not confirm whether the review was saved. Retry with the same call ID to confirm."
-		r, err := env.Client().Do(api.Request{Method: "POST", Path: "/reviews", Body: pyBody(b), Header: jsonHeader})
+		r, err := env.Client().Do(api.Request{Method: "POST", Path: "/reviews", Body: jsonBody(b), Header: jsonHeader})
 		if err != nil {
 			return feedbackError("submission_unconfirmed", uncertain, nil)
 		}

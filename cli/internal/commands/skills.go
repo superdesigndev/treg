@@ -637,7 +637,7 @@ func (e *Env) skillBootstrap(allAgents, project bool, skillsArg string) error {
 		if optional == nil {
 			body.Set("error", "could not read the skill list from "+base)
 		}
-		outln(pyjson.Dumps(body, pyjson.Options{Indent: 2, EnsureASCII: true}))
+		outln(pyjson.Dumps(body, pyjson.Pretty))
 		return nil
 	}
 	detected := agents.Detected()

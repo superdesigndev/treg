@@ -3,13 +3,11 @@
 package config
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 const ProductionBaseURL = "https://treg.to"
@@ -27,25 +25,15 @@ type Config struct {
 	// NoAutoUpdate turns off background updates for this machine.
 	NoAutoUpdate bool
 
-	// Fields this version does not know, kept in their original order so a newer writer's
-	// additions survive a save by this one.
-	extra []field
+	// file is the config as read, so a save keeps the fields this version does not know, where
+	// they were, and a newer writer's additions survive.
+	file *pyjson.Object
 	// A one-command `--org` exchange: Save writes these instead of the temporary token and team.
 	once *saved
 }
 
-type field struct {
-	key   string
-	value json.RawMessage
-}
-
 type saved struct {
 	token, activeOrg string
-}
-
-var known = map[string]bool{
-	"base_url": true, "token": true, "email": true, "active_org": true, "identity": true, "admin_token": true,
-	"channel": true, "auto_update": true,
 }
 
 // Path is TREG_CONFIG when set, else ~/.treg/config.json.
@@ -79,49 +67,34 @@ func expandUser(p string) string {
 // Load never fails: a missing, corrupt or half-written file reads as a fresh config, so it cannot
 // brick every command, login and logout included.
 func Load() *Config {
-	cfg := &Config{BaseURL: ProductionBaseURL}
+	cfg := &Config{BaseURL: ProductionBaseURL, file: pyjson.NewObject()}
 	raw, err := os.ReadFile(Path())
 	if err != nil {
 		return cfg
 	}
-	fields, err := decodeObject(raw)
-	if err != nil {
+	v, err := pyjson.Decode(raw)
+	file, ok := v.(*pyjson.Object)
+	if err != nil || !ok {
 		return cfg
 	}
-	values := map[string]json.RawMessage{}
-	for _, f := range fields {
-		values[f.key] = f.value
-		if !known[f.key] {
-			cfg.extra = append(cfg.extra, f)
-		}
+	cfg.file = file
+	if _, ok := file.Get("base_url"); ok {
+		cfg.BaseURL = file.String("base_url")
 	}
-	if v, ok := values["base_url"]; ok {
-		cfg.BaseURL = str(v)
-	}
-	cfg.Email = str(values["email"])
-	cfg.ActiveOrg = str(values["active_org"])
-	cfg.AdminToken = str(values["admin_token"])
-	if orgs, ok := values["orgs"]; ok {
+	cfg.Email = file.String("email")
+	cfg.ActiveOrg = file.String("active_org")
+	cfg.AdminToken = file.String("admin_token")
+	cfg.Channel = file.String("channel")
+	cfg.NoAutoUpdate = file.Value("auto_update") == false
+	if orgs, ok := file.Value("orgs").(*pyjson.Object); ok {
 		// The legacy multi-org format: the active org's token becomes the one bearer.
-		var byOrg map[string]struct {
-			Token json.RawMessage `json:"token"`
-		}
-		_ = json.Unmarshal(orgs, &byOrg)
-		cfg.Token = str(byOrg[cfg.ActiveOrg].Token)
-		cfg.Identity = false
-		cfg.extra = without(cfg.extra, "orgs")
+		active, _ := orgs.Value(cfg.ActiveOrg).(*pyjson.Object)
+		cfg.Token = active.String("token")
+		file.Delete("orgs")
 		return cfg
 	}
-	cfg.Channel = str(values["channel"])
-	var auto bool
-	if json.Unmarshal(values["auto_update"], &auto) == nil && !auto {
-		cfg.NoAutoUpdate = true
-	}
-	cfg.Token = str(values["token"])
-	var identity bool
-	if json.Unmarshal(values["identity"], &identity) == nil {
-		cfg.Identity = identity
-	}
+	cfg.Token = file.String("token")
+	cfg.Identity = file.Value("identity") == true
 	return cfg
 }
 
@@ -133,7 +106,8 @@ func (c *Config) UseOnce(token, activeOrg string) {
 	c.Token, c.ActiveOrg = token, activeOrg
 }
 
-// Save writes atomically (write, then rename) with mode 0600 in a 0700 directory.
+// Save writes atomically (write, then rename) with mode 0600 in a 0700 directory, in the layout
+// of Python's json.dumps(indent=2).
 func (c *Config) Save() error {
 	path := Path()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -143,26 +117,23 @@ func (c *Config) Save() error {
 	if c.once != nil {
 		token, active = c.once.token, c.once.activeOrg
 	}
-	fields := []field{
-		{"base_url", nullable(c.BaseURL)},
-		{"token", nullable(token)},
-		{"email", nullable(c.Email)},
-		{"active_org", nullable(active)},
-		{"identity", boolean(c.Identity)},
-		{"admin_token", nullable(c.AdminToken)},
-	}
+	file := c.file.Copy()
+	file.Set("base_url", nullable(c.BaseURL))
+	file.Set("token", nullable(token))
+	file.Set("email", nullable(c.Email))
+	file.Set("active_org", nullable(active))
+	file.Set("identity", c.Identity)
+	file.Set("admin_token", nullable(c.AdminToken))
+	file.Delete("channel")
 	if c.Channel != "" {
-		fields = append(fields, field{"channel", quoted(c.Channel)})
+		file.Set("channel", c.Channel)
 	}
+	file.Delete("auto_update")
 	if c.NoAutoUpdate {
-		fields = append(fields, field{"auto_update", boolean(false)})
-	}
-	body, err := encodeObject(append(fields, c.extra...))
-	if err != nil {
-		return err
+		file.Set("auto_update", false)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	if err := os.WriteFile(tmp, []byte(pyjson.Dumps(file, pyjson.Pretty)), 0o600); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0o600); err != nil {
@@ -174,98 +145,9 @@ func (c *Config) Save() error {
 	return os.Chmod(path, 0o600)
 }
 
-func str(v json.RawMessage) string {
-	var s string
-	if json.Unmarshal(v, &s) != nil {
-		return ""
+func nullable(s string) any {
+	if s == "" {
+		return nil
 	}
 	return s
-}
-
-func nullable(s string) json.RawMessage {
-	if s == "" {
-		return json.RawMessage("null")
-	}
-	return quoted(s)
-}
-
-func quoted(s string) json.RawMessage {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(s)
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
-}
-
-func boolean(b bool) json.RawMessage {
-	if b {
-		return json.RawMessage("true")
-	}
-	return json.RawMessage("false")
-}
-
-func without(fields []field, key string) []field {
-	out := fields[:0]
-	for _, f := range fields {
-		if f.key != key {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-func decodeObject(raw []byte) ([]field, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	tok, err := dec.Token()
-	if err != nil {
-		return nil, err
-	}
-	if d, ok := tok.(json.Delim); !ok || d != '{' {
-		return nil, errors.New("config is not a JSON object")
-	}
-	var fields []field
-	for dec.More() {
-		tok, err := dec.Token()
-		if err != nil {
-			return nil, err
-		}
-		key, _ := tok.(string)
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return nil, err
-		}
-		fields = append(fields, field{key, value})
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return nil, errors.New("trailing data after the config object")
-	}
-	return fields, nil
-}
-
-// encodeObject writes the layout Python's json.dumps(indent=2) gives a flat object.
-func encodeObject(fields []field) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString("{")
-	for i, f := range fields {
-		if i > 0 {
-			buf.WriteString(",")
-		}
-		key := quoted(f.key)
-		var value bytes.Buffer
-		if err := json.Indent(&value, f.value, "  ", "  "); err != nil {
-			return nil, err
-		}
-		buf.WriteString("\n  ")
-		buf.Write(key)
-		buf.WriteString(": ")
-		buf.Write(value.Bytes())
-	}
-	if len(fields) > 0 {
-		buf.WriteString("\n")
-	}
-	buf.WriteString("}")
-	return buf.Bytes(), nil
 }

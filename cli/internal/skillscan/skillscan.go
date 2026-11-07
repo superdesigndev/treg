@@ -729,7 +729,7 @@ func WriteContract(det *Detection) (string, error) {
 	if exists(path) {
 		return "", nil
 	}
-	text := pyjson.Dumps(ToContract(det), pyjson.Options{Indent: 2, EnsureASCII: true})
+	text := pyjson.Dumps(ToContract(det), pyjson.Pretty)
 	if err := os.WriteFile(path, []byte(text), 0o666); err != nil {
 		return "", err
 	}

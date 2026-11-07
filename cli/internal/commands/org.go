@@ -32,7 +32,7 @@ func orgCreateCmd(env *Env) *cobra.Command {
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
 		c := env.Client()
-		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: pyBody(pyjson.Ordered("name", args[0])), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: jsonBody(pyjson.Ordered("name", args[0])), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -234,7 +234,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 				}
 				b.Set("pinned_tags", pins)
 			}
-			return api.Request{Method: "POST", Path: fmt.Sprintf("/orgs/%d/agents", orgID), Body: pyBody(b), Header: jsonHeader}, nil
+			return api.Request{Method: "POST", Path: fmt.Sprintf("/orgs/%d/agents", orgID), Body: jsonBody(b), Header: jsonHeader}, nil
 		})
 	}
 	return cmd
@@ -384,9 +384,6 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
-
-// pyBody is a request body as httpx encodes `json=`.
-func pyBody(v any) []byte { return []byte(pyjson.Dumps(v, pyjson.Body)) }
 
 // responseObject is a response's JSON object in key order, empty when it is not one.
 func responseObject(r *api.Response) *pyjson.Object {
