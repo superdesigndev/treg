@@ -22,14 +22,6 @@ func nullable(s string) any {
 	return s
 }
 
-// orDash is a value for a line of output, "-" when there is none.
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}
-
 func str(v any) string {
 	switch t := v.(type) {
 	case string:
@@ -42,15 +34,6 @@ func str(v any) string {
 		return strconv.FormatBool(t)
 	}
 	return fmt.Sprint(v)
-}
-
-func firstString(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // clip is Python's s[:n], counted in characters.

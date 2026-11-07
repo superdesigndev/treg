@@ -296,7 +296,7 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 			break
 		}
 		var lines []string
-		for _, line := range strings.Split(piped, "\n") {
+		for line := range strings.SplitSeq(piped, "\n") {
 			if l := providers.Strip(line); l != "" {
 				lines = append(lines, l)
 			}

@@ -72,24 +72,21 @@ func (e *Env) unreachable(err error) error {
 // transportReason is why a request got no answer, in the system's words, without the operation
 // and addresses Go's error also names.
 func transportReason(err error) string {
-	var dns *net.DNSError
-	if errors.As(err, &dns) {
+	if dns, ok := errors.AsType[*net.DNSError](err); ok {
 		return dns.Err
 	}
 	var nerr net.Error
 	if errors.As(err, &nerr) && nerr.Timeout() {
 		return "timed out"
 	}
-	var sys *os.SyscallError
-	if errors.As(err, &sys) {
+	if sys, ok := errors.AsType[*os.SyscallError](err); ok {
 		var op *net.OpError
 		if errors.As(err, &op) && op.Op == "proxyconnect" {
 			return "proxy " + sys.Err.Error()
 		}
 		return sys.Err.Error()
 	}
-	var u *url.Error
-	if errors.As(err, &u) {
+	if u, ok := errors.AsType[*url.Error](err); ok {
 		return u.Err.Error()
 	}
 	return err.Error()

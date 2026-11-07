@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"cmp"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -113,7 +114,7 @@ func whoamiCmd(env *Env) *cobra.Command {
 			if me.Status == 200 {
 				_ = json.Unmarshal(me.Body, &who)
 			}
-			email := firstString(str(who["email"]), env.Cfg.Email)
+			email := cmp.Or(str(who["email"]), env.Cfg.Email)
 			if env.JSON {
 				var team, role any
 				if active != nil {
@@ -122,14 +123,14 @@ func whoamiCmd(env *Env) *cobra.Command {
 				env.Out.ShowJSON(pyjson.Ordered("email", nullable(email), "team", team, "role", role, "registry", env.Registry()))
 				return nil
 			}
-			team := firstString(env.EffectiveOrg(), "-")
+			team := cmp.Or(env.EffectiveOrg(), "-")
 			if active != nil {
 				team = active.Slug
 				if active.Role != "" {
 					team = fmt.Sprintf("%s  (%s)", active.Slug, active.Role)
 				}
 			}
-			env.kv("email", firstString(email, "-"))
+			env.kv("email", cmp.Or(email, "-"))
 			env.kv("team", team)
 			env.kv("server", env.Registry())
 			return nil

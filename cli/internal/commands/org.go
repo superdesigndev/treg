@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -100,10 +100,10 @@ func orgUseCmd(env *Env) *cobra.Command {
 					slugs = append(slugs, "")
 				}
 			}
-			sort.Strings(slugs)
+			slices.Sort(slugs)
 		}
 		if verified {
-			if !contains(slugs, slug) {
+			if !slices.Contains(slugs, slug) {
 				teams := strings.Join(slugs, ", ")
 				if teams == "" {
 					teams = "(none)"
@@ -243,7 +243,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 // splitList is a comma-separated flag as a list, blanks dropped.
 func splitList(s string) []any {
 	out := []any{}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		if p := providers.Strip(part); p != "" {
 			out = append(out, p)
 		}
@@ -271,7 +271,7 @@ func (e *Env) resolveToolAccess(c *api.Client, allTools bool, tools string) (any
 			row, _ := t.(*pyjson.Object)
 			names = append(names, pyjson.Text(row.Value("name")))
 		}
-		sort.Strings(names)
+		slices.Sort(names)
 	}
 	if len(names) == 0 {
 		return nil, nil
@@ -296,7 +296,7 @@ func (e *Env) resolveToolAccess(c *api.Client, allTools bool, tools string) (any
 	for i, n := range picked {
 		chosen[i] = names[n]
 	}
-	sort.Strings(chosen)
+	slices.Sort(chosen)
 	out := make([]any, len(chosen))
 	for i, n := range chosen {
 		out[i] = n
@@ -374,15 +374,6 @@ func (e *Env) inActiveOrg(missing string, build func(*api.Client, int64) (api.Re
 		return err
 	}
 	return e.Out.Show(r)
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // responseObject is a response's JSON object in key order, empty when it is not one.

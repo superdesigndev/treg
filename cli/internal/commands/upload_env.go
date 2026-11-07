@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -60,7 +61,7 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 			}
 			for _, a := range chosen {
 				outf("  ✓ %-14s %s   [%s: %s]  (secret %s)\n", a.ToolName, a.BaseURL,
-					orDash(a.Binding.String("name")), orDash(a.Binding.String("format")), a.SecretName)
+					cmp.Or(a.Binding.String("name"), "-"), cmp.Or(a.Binding.String("format"), "-"), a.SecretName)
 			}
 		}
 		if len(oauthDets) > 0 {
@@ -179,7 +180,7 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 		} else {
 			var provs []string
 			for _, d := range oauthDets {
-				provs = append(provs, firstString(d.Provider, "?"))
+				provs = append(provs, cmp.Or(d.Provider, "?"))
 			}
 			outf("\n%d OAuth app(s) detected (%s) - not connected. Connect when ready:  treg connections connect <name>\n",
 				len(oauthDets), strings.Join(provs, ", "))
@@ -299,7 +300,7 @@ func (e *Env) oauthConnect(c *api.Client, d providers.Detection, vals map[string
 			}
 			return nil
 		case "error":
-			outf("  ✗ %s: %s\n", d.Provider, firstString(str(st["detail"]), "the connection failed"))
+			outf("  ✗ %s: %s\n", d.Provider, cmp.Or(str(st["detail"]), "the connection failed"))
 			return nil
 		}
 	}

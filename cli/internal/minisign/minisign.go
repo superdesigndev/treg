@@ -20,7 +20,7 @@ type PublicKey struct {
 // ParsePublicKey accepts a minisign public key file or its base64 line alone.
 func ParsePublicKey(text string) (PublicKey, error) {
 	var line string
-	for _, l := range strings.Split(strings.TrimSpace(text), "\n") {
+	for l := range strings.SplitSeq(strings.TrimSpace(text), "\n") {
 		l = strings.TrimSpace(l)
 		if l != "" && !strings.HasPrefix(l, "untrusted comment:") {
 			line = l

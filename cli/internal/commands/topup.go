@@ -1,10 +1,11 @@
 package commands
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -108,7 +109,7 @@ func (e *Env) topup(amount *float64) error {
 		if pct != 0 {
 			outf("  %s+%d%% bonus credit%s (%s) added when it lands\n", p.Green, pct, p.Reset, usd(floorDiv(amountMicro*pct, 100)))
 		}
-		sort.SliceStable(tiers, func(i, j int) bool { return tiers[i][0] < tiers[j][0] })
+		slices.SortStableFunc(tiers, func(a, b [2]int64) int { return cmp.Compare(a[0], b[0]) })
 		for _, t := range tiers {
 			if t[0] > dollars && t[1] > pct {
 				outf("  %stop up $%d or more for +%d%% bonus credit%s\n", p.Muted, t[0], t[1], p.Reset)

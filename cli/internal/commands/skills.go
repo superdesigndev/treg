@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -437,13 +437,8 @@ func saveSkillLedger(ledger map[string]string) {
 	if err := agents.MkdirLeaf(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	keys := make([]string, 0, len(ledger))
-	for k := range ledger {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	obj := pyjson.NewObject()
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(ledger)) {
 		obj.Set(k, ledger[k])
 	}
 	text := pyjson.Dumps(obj, pyjson.Options{Indent: 2, EnsureASCII: true, SortKeys: true}) + "\n"
@@ -551,7 +546,7 @@ func (e *Env) skillBootstrap(allAgents, project bool, skillsArg string) error {
 		names[o.name] = true
 	}
 	asked := map[string]bool{}
-	for _, s := range strings.Split(skillsArg, ",") {
+	for s := range strings.SplitSeq(skillsArg, ",") {
 		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
 			asked[s] = true
 		}
@@ -569,12 +564,9 @@ func (e *Env) skillBootstrap(allAgents, project bool, skillsArg string) error {
 				unknown = append(unknown, k)
 			}
 		}
-		sort.Strings(unknown)
+		slices.Sort(unknown)
 	} else {
-		for k := range asked {
-			unread = append(unread, k)
-		}
-		sort.Strings(unread)
+		unread = slices.Sorted(maps.Keys(asked))
 	}
 	installed, failed := []string{}, []string{}
 	for _, o := range optional {

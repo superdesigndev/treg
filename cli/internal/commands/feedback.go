@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -61,7 +62,7 @@ func feedbackCmd(env *Env) *cobra.Command {
 		if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
 			return cmd.Help()
 		}
-		if contains(feedbackCategories, args[0]) {
+		if slices.Contains(feedbackCategories, args[0]) {
 			if err := submit.Flags().Parse(args); err != nil {
 				return err
 			}

@@ -8,7 +8,7 @@ func parseScutil(out string) systemSettings {
 	values := map[string]string{}
 	var exceptions []string
 	inExceptions := false
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		key, value, ok := strings.Cut(line, " : ")
 		switch {
@@ -44,7 +44,7 @@ func parseRegistryProxy(server, override string) systemSettings {
 		return s
 	}
 	if strings.Contains(server, "=") {
-		for _, part := range strings.Split(server, ";") {
+		for part := range strings.SplitSeq(server, ";") {
 			scheme, address, ok := strings.Cut(strings.TrimSpace(part), "=")
 			if !ok || address == "" {
 				continue
@@ -59,7 +59,7 @@ func parseRegistryProxy(server, override string) systemSettings {
 	} else {
 		s.http, s.https = withScheme(server), withScheme(server)
 	}
-	for _, p := range strings.Split(override, ";") {
+	for p := range strings.SplitSeq(override, ";") {
 		if p = strings.TrimSpace(p); p == "<local>" {
 			s.local = true
 		} else if p != "" {

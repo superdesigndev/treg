@@ -166,7 +166,7 @@ func (e *Env) noteTool(target string) {
 // parseQuery is Python's parse_qsl(keep_blank_values=True).
 func parseQuery(q string) [][2]string {
 	var out [][2]string
-	for _, part := range strings.Split(q, "&") {
+	for part := range strings.SplitSeq(q, "&") {
 		if part == "" {
 			continue
 		}

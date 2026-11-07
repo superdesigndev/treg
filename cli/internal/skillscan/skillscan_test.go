@@ -3,7 +3,7 @@ package skillscan
 import (
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/superdesigndev/treg/cli/internal/providers"
@@ -134,7 +134,7 @@ func TestStemAndHeader(t *testing.T) {
 
 func TestPathOrder(t *testing.T) {
 	paths := []string{"a.py", "a-b/q.py", ".x.py", ".hid/y.py", "sub/z.py"}
-	sort.SliceStable(paths, func(i, j int) bool { return lessParts(paths[i], paths[j]) })
+	slices.SortStableFunc(paths, compareParts)
 	want := []string{".hid/y.py", ".x.py", "a-b/q.py", "a.py", "sub/z.py"}
 	for i := range want {
 		if paths[i] != want[i] {

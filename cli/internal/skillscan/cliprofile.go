@@ -3,6 +3,7 @@ package skillscan
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/superdesigndev/treg/cli/internal/pyjson"
@@ -89,7 +90,7 @@ func validCLIProfile(v any) bool {
 	}
 	if val, ok := cli.Get("auth_mechanism"); ok {
 		s, _ := val.(string)
-		if _, isStr := val.(string); !isStr || !contains(authMechanisms, s) {
+		if _, isStr := val.(string); !isStr || !slices.Contains(authMechanisms, s) {
 			return false
 		}
 	}
@@ -103,10 +104,8 @@ func validCLIProfile(v any) bool {
 			if !ok {
 				return false
 			}
-			for _, p := range list {
-				if p == "" {
-					return false
-				}
+			if slices.Contains(list, "") {
+				return false
 			}
 		}
 	}
@@ -152,7 +151,7 @@ func validCLIProfile(v any) bool {
 			}
 			if verdict, ok := e.Get("verdict"); ok && verdict != nil {
 				s, isStr := verdict.(string)
-				if !isStr || !contains(verdicts, s) {
+				if !isStr || !slices.Contains(verdicts, s) {
 					return false
 				}
 			}

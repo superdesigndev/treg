@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -133,9 +134,9 @@ func (e *Env) runUpload(cmd *cobra.Command, args []string, f uploadFlags) error 
 		errln("note: `treg import` is now `treg upload` (same command; preview with `treg scan`)")
 	}
 	cwd := workingDir()
-	baseDir := firstString(f.dir, cwd)
-	envPath := firstString(f.envFile, filepath.Join(baseDir, ".env"))
-	skillsDir := firstString(f.skillsDir, baseDir)
+	baseDir := cmp.Or(f.dir, cwd)
+	envPath := cmp.Or(f.envFile, filepath.Join(baseDir, ".env"))
+	skillsDir := cmp.Or(f.skillsDir, baseDir)
 	haveEnv := isRegularFile(envPath)
 	haveSkills := false
 	if isDirectory(skillsDir) {
@@ -178,7 +179,7 @@ func (e *Env) runUpload(cmd *cobra.Command, args []string, f uploadFlags) error 
 			// A skill's env credential lives in the project .env, which may sit above the skills dir.
 			skillsEnv := envPath
 			if !isRegularFile(envPath) {
-				skillsEnv = firstString(f.envFile, findEnvUpwards(skillsDir, cwd), envPath)
+				skillsEnv = cmp.Or(f.envFile, findEnvUpwards(skillsDir, cwd), envPath)
 			}
 			if err := e.uploadSkills(f, skillsDir, skillsEnv, cwd); err != nil {
 				return err
@@ -320,7 +321,7 @@ func (e *Env) detailURL(kind, name string) string {
 
 func selected(want string) map[string]bool {
 	out := map[string]bool{}
-	for _, s := range strings.Split(want, ",") {
+	for s := range strings.SplitSeq(want, ",") {
 		out[strings.ToLower(strings.TrimSpace(s))] = true
 	}
 	return out

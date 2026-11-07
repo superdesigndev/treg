@@ -4,7 +4,6 @@
 package session
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 )
 
 const (
@@ -142,38 +142,17 @@ func idleWindowID(configPath string) string {
 	path := filepath.Join(filepath.Dir(configPath), "session-id")
 	if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) < idleWindow {
 		if raw, err := os.ReadFile(path); err == nil {
-			if id, ok := canonicalUUID(strings.TrimSpace(string(raw))); ok {
+			if id, err := uuid.Parse(strings.TrimSpace(string(raw))); err == nil {
 				now := time.Now()
 				_ = os.Chtimes(path, now, now)
-				return id
+				return id.String()
 			}
 		}
 	}
-	id := NewUUID()
+	id := uuid.New().String()
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	_ = os.WriteFile(path, []byte(id), 0o644)
 	return id
-}
-
-// NewUUID is a random (version 4) UUID in its canonical lower-case form.
-func NewUUID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b[:])
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
-}
-
-var uuidShape = regexp.MustCompile(`^(?i)(urn:uuid:)?\{?([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})\}?$`)
-
-// canonicalUUID accepts the spellings Python's uuid.UUID accepts and returns its str() form.
-func canonicalUUID(s string) (string, bool) {
-	m := uuidShape.FindStringSubmatch(s)
-	if m == nil {
-		return "", false
-	}
-	return strings.ToLower(m[2] + "-" + m[3] + "-" + m[4] + "-" + m[5] + "-" + m[6]), true
 }
 
 func ancestors() []Proc {

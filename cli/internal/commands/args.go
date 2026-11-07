@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -55,10 +56,8 @@ func leaf(use, short string, examples ...string) *cobra.Command {
 
 // choice refuses a value outside options as a usage error.
 func choice(flag, value string, options ...string) error {
-	for _, o := range options {
-		if value == o {
-			return nil
-		}
+	if slices.Contains(options, value) {
+		return nil
 	}
 	quoted := make([]string, len(options))
 	for i, o := range options {
@@ -108,8 +107,7 @@ func exists(path string) bool {
 // osError says why path could not be used: the path and the system's reason, without the
 // operation Go's error also names.
 func osError(err error, path string) string {
-	var pe *fs.PathError
-	if errors.As(err, &pe) {
+	if pe, ok := errors.AsType[*fs.PathError](err); ok {
 		return path + ": " + pe.Err.Error()
 	}
 	return err.Error()

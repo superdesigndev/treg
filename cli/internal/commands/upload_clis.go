@@ -1,10 +1,11 @@
 package commands
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -49,7 +50,7 @@ func (e *Env) uploadCLIs(f uploadFlags, envPath string) error {
 		if name == "" {
 			return ""
 		}
-		return firstString(os.Getenv(name), envVals[name])
+		return cmp.Or(os.Getenv(name), envVals[name])
 	}
 	var scanned []scannedCLI
 	stop := prompt.Spin("checking this machine for installed CLIs")
@@ -123,7 +124,7 @@ func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) st
 	if s.decision.Tier == "server" {
 		val := value(s.envVar)
 		if val == "" {
-			return "no value for " + orDash(s.envVar), nil
+			return "no value for " + cmp.Or(s.envVar, "-"), nil
 		}
 		rs, err := e.post(c, "/secrets", pyjson.Ordered("name", name+"-key", "value", val, "kind", "env"))
 		if err != nil {
@@ -173,7 +174,7 @@ func (e *Env) printCLIReport(scanned []scannedCLI, registered []registeredCLI, r
 		for _, r := range rows {
 			bins = append(bins, r.cli.String("bin"))
 		}
-		sort.Strings(bins)
+		slices.Sort(bins)
 		for _, b := range bins {
 			outln("  " + b)
 		}
@@ -217,7 +218,7 @@ func (e *Env) printCLIReport(scanned []scannedCLI, registered []registeredCLI, r
 			if r.decision.Login != "" {
 				alt = " (or run: " + r.decision.Login + ")"
 			}
-			outf("  %s: set %s in your env%s\n", r.cli.String("bin"), firstString(r.decision.Env, "the API key"), alt)
+			outf("  %s: set %s in your env%s\n", r.cli.String("bin"), cmp.Or(r.decision.Env, "the API key"), alt)
 		}
 		for _, r := range buckets["needs_login"] {
 			outf("  %s: %s\n", r.cli.String("bin"), r.decision.Action)

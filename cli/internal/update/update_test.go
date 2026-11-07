@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -117,11 +116,11 @@ func TestInstallsASignedRelease(t *testing.T) {
 	exe := filepath.Join(t.TempDir(), "treg")
 	os.WriteFile(exe, []byte("old binary"), 0o755)
 
-	m, err := Latest(context.Background(), r.srv.URL, "beta")
+	m, err := Latest(t.Context(), r.srv.URL, "beta")
 	if err != nil || m.Version != "1.2.3" {
 		t.Fatalf("Latest = %+v, %v", m, err)
 	}
-	if err := Install(context.Background(), m, exe); err != nil {
+	if err := Install(t.Context(), m, exe); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(exe)
@@ -151,8 +150,8 @@ func TestRefusesWhatTheKeyDidNotSign(t *testing.T) {
 			tamper(r)
 			exe := filepath.Join(t.TempDir(), "treg")
 			os.WriteFile(exe, []byte("old binary"), 0o755)
-			m, _ := Latest(context.Background(), r.srv.URL, "stable")
-			if err := Install(context.Background(), m, exe); err == nil {
+			m, _ := Latest(t.Context(), r.srv.URL, "stable")
+			if err := Install(t.Context(), m, exe); err == nil {
 				t.Fatal("installed a release the key did not sign")
 			}
 			if got, _ := os.ReadFile(exe); string(got) != "old binary" {
@@ -164,7 +163,7 @@ func TestRefusesWhatTheKeyDidNotSign(t *testing.T) {
 
 func TestNoKeyNoUpdate(t *testing.T) {
 	withKey(t, "")
-	if err := Install(context.Background(), &Manifest{}, "/nonexistent"); err == nil || !strings.Contains(err.Error(), "release key") {
+	if err := Install(t.Context(), &Manifest{}, "/nonexistent"); err == nil || !strings.Contains(err.Error(), "release key") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -202,7 +201,7 @@ func TestOldRegistryFallsBackOnlyWhenTheRouteIsMissing(t *testing.T) {
 		w.Write([]byte(`{"detail":"no treg release on the beta channel"}`))
 	}))
 	defer srv.Close()
-	if _, err := Latest(context.Background(), srv.URL, "beta"); err == nil || !strings.Contains(err.Error(), "no treg release") {
+	if _, err := Latest(t.Context(), srv.URL, "beta"); err == nil || !strings.Contains(err.Error(), "no treg release") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -221,7 +220,7 @@ func TestOldRegistryUsesGitHubsBinaryReleases(t *testing.T) {
 	defer func(old string) { gitHubAPI = old }(gitHubAPI)
 	gitHubAPI = github.URL
 	for channel, want := range map[string]string{"stable": "1.1.0", "beta": "1.2.0-beta.1"} {
-		m, err := Latest(context.Background(), registry.URL, channel)
+		m, err := Latest(t.Context(), registry.URL, channel)
 		if err != nil || m.Version != want || !strings.Contains(m.URL, "/releases/download/v"+want+"/") {
 			t.Errorf("%s: %+v, %v", channel, m, err)
 		}

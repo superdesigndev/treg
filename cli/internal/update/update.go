@@ -188,7 +188,7 @@ func fetch(ctx context.Context, u string) ([]byte, error) {
 }
 
 func checksumFor(sums []byte, name string) string {
-	for _, line := range strings.Split(string(sums), "\n") {
+	for line := range strings.SplitSeq(string(sums), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
 			return strings.ToLower(fields[0])

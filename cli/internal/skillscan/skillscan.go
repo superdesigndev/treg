@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -102,11 +102,11 @@ func newlines(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 }
 
-func lessName(a, b string) bool {
+func compareName(a, b string) int {
 	if runtime.GOOS == "windows" {
-		return strings.ToLower(a) < strings.ToLower(b)
+		a, b = strings.ToLower(a), strings.ToLower(b)
 	}
-	return a < b
+	return strings.Compare(a, b)
 }
 
 // sortedEntries is a directory's entries in the order Python sorts Path objects.
@@ -115,20 +115,13 @@ func sortedEntries(dir string) []os.DirEntry {
 	if err != nil {
 		return nil
 	}
-	sort.SliceStable(entries, func(i, j int) bool { return lessName(entries[i].Name(), entries[j].Name()) })
+	slices.SortStableFunc(entries, func(a, b os.DirEntry) int { return compareName(a.Name(), b.Name()) })
 	return entries
 }
 
-// lessParts orders relative paths as Python orders Path objects: part by part.
-func lessParts(a, b string) bool {
-	pa := strings.Split(filepath.ToSlash(a), "/")
-	pb := strings.Split(filepath.ToSlash(b), "/")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		if pa[i] != pb[i] {
-			return lessName(pa[i], pb[i])
-		}
-	}
-	return len(pa) < len(pb)
+// compareParts orders relative paths as Python orders Path objects: part by part.
+func compareParts(a, b string) int {
+	return slices.CompareFunc(strings.Split(filepath.ToSlash(a), "/"), strings.Split(filepath.ToSlash(b), "/"), compareName)
 }
 
 // walk lists every path under root as rglob("*") does: hidden entries included, symlinked
@@ -149,7 +142,7 @@ func walk(root string) []string {
 		out = append(out, rel)
 		return nil
 	})
-	sort.SliceStable(out, func(i, j int) bool { return lessParts(out[i], out[j]) })
+	slices.SortStableFunc(out, compareParts)
 	return out
 }
 
@@ -303,8 +296,8 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 			continue
 		}
 		seenEnv[e] = true
-		for _, part := range strings.Split(e, "_") {
-			if contains(authy, part) {
+		for part := range strings.SplitSeq(e, "_") {
+			if slices.Contains(authy, part) {
 				authEnvs = append(authEnvs, e)
 				break
 			}
@@ -384,15 +377,6 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 	}
 	flagHeaderCollisions(det)
 	return det
-}
-
-func contains(items []string, s string) bool {
-	for _, i := range items {
-		if i == s {
-			return true
-		}
-	}
-	return false
 }
 
 func containsAny(s string, subs []string) bool {
@@ -490,7 +474,7 @@ func flagHeaderCollisions(det *Detection) {
 			dup = append(dup, h)
 		}
 	}
-	sort.Strings(dup)
+	slices.Sort(dup)
 	if len(dup) > 0 {
 		det.Gaps = append(det.Gaps, "ships multiple credentials that all map to one header ("+strings.Join(dup, ", ")+") - add a "+
 			"treg.json mapping each credential to its own header (e.g. Authorization + developer-token)")
@@ -504,7 +488,7 @@ func ResolveSecretPath(base, rel string) string {
 		return exact
 	}
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(rel)), "/")
-	if len(parts) > 0 && contains(secretDirs, parts[0]) {
+	if len(parts) > 0 && slices.Contains(secretDirs, parts[0]) {
 		for _, sd := range secretDirs {
 			alt := filepath.Join(append([]string{base, sd}, parts[1:]...)...)
 			if exists(alt) {
@@ -544,7 +528,8 @@ func readRecipe(dir string) string {
 
 // guessBaseURL is the best API host named in SKILL.md and the top-level scripts, preferring api.*.
 func guessBaseURL(dir string) string {
-	text := readRecipe(dir)
+	var text strings.Builder
+	text.WriteString(readRecipe(dir))
 	var pys []string
 	for _, e := range sortedEntries(dir) {
 		if matchExt(e.Name(), ".py") {
@@ -556,10 +541,10 @@ func guessBaseURL(dir string) string {
 		if err != nil {
 			continue
 		}
-		text += "\n" + t
+		text.WriteString("\n" + t)
 	}
 	var hosts []string
-	for _, m := range urlRE.FindAllString(text, -1) {
+	for _, m := range urlRE.FindAllString(text.String(), -1) {
 		scheme, rest, _ := strings.Cut(m, "://")
 		host, _, _ := strings.Cut(rest, "/")
 		host = strings.ToLower(host)
@@ -567,16 +552,16 @@ func guessBaseURL(dir string) string {
 			continue
 		}
 		base := scheme + "://" + host
-		if !contains(hosts, base) {
+		if !slices.Contains(hosts, base) {
 			hosts = append(hosts, base)
 		}
 	}
 	if len(hosts) == 0 {
 		return ""
 	}
-	sort.SliceStable(hosts, func(i, j int) bool {
-		return strings.Contains(hosts[i], "//api.") && !strings.Contains(hosts[j], "//api.")
-	})
+	if i := slices.IndexFunc(hosts, func(h string) bool { return strings.Contains(h, "//api.") }); i >= 0 {
+		return hosts[i]
+	}
 	return hosts[0]
 }
 
@@ -618,9 +603,8 @@ func oauthSecretField(f string) string {
 
 // stem is Python's Path.stem: the name without its last suffix.
 func stem(name string) string {
-	i := strings.LastIndex(name, ".")
-	if 0 < i && i < len(name)-1 {
-		return name[:i]
+	if before, after, found := strings.CutLast(name, "."); found && before != "" && after != "" {
+		return before
 	}
 	return name
 }

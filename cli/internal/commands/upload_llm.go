@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -53,7 +54,7 @@ func llmChat(base, token, model, system, user string) (string, error) {
 
 // uploadLLM asks a model for the unknown keys' providers, then registers each only after a yes.
 func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText string, f uploadFlags) error {
-	token := firstString(f.llmToken, os.Getenv("TREG_LLM_TOKEN"))
+	token := cmp.Or(f.llmToken, os.Getenv("TREG_LLM_TOKEN"))
 	if token == "" {
 		outln("\n[--llm needs an API token: pass --llm-token <key> or set TREG_LLM_TOKEN]")
 		return nil
@@ -96,10 +97,10 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 		}
 		hdr := ""
 		if auth.String("shape") != "bearer" {
-			hdr = " " + orDash(firstString(auth.String("header"), auth.String("param")))
+			hdr = " " + cmp.Or(cmp.Or(auth.String("header"), auth.String("param")), "-")
 		}
 		ans := "n"
-		question := fmt.Sprintf("  LLM: %s → %s %s  [%s%s]. Register? [y/N]: ", v, orDash(row.String("provider")), base, auth.String("shape"), hdr)
+		question := fmt.Sprintf("  LLM: %s → %s %s  [%s%s]. Register? [y/N]: ", v, cmp.Or(row.String("provider"), "-"), base, auth.String("shape"), hdr)
 		if prompt.StdinIsTerminal() {
 			if line, err := prompt.Line(question); err == nil {
 				ans = line
@@ -117,7 +118,7 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 			outf("  ✗ %s: no value in the env - skipped\n", v)
 			continue
 		}
-		slug := providers.Slug(firstString(row.String("provider"), v))
+		slug := providers.Slug(cmp.Or(row.String("provider"), v))
 		toolName, n := slug, 2
 		for used[toolName] {
 			if _, existing := tools[toolName]; f.replace && existing {

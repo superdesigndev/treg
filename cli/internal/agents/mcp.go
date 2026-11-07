@@ -394,7 +394,7 @@ func WritePrivate(path, text string) error {
 func Wrap(text string, width int) []string {
 	var lines []string
 	line := ""
-	for _, word := range strings.Fields(text) {
+	for word := range strings.FieldsSeq(text) {
 		switch {
 		case line == "":
 			line = word

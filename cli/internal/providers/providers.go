@@ -214,7 +214,7 @@ func MatchProvider(comps map[string]bool, catalog []Entry) Entry {
 
 func Components(name string) map[string]bool {
 	comps := map[string]bool{}
-	for _, c := range strings.Split(strings.ToUpper(name), "_") {
+	for c := range strings.SplitSeq(strings.ToUpper(name), "_") {
 		comps[c] = true
 	}
 	return comps
@@ -674,8 +674,8 @@ func LLMPrompt(names []string) (string, string) {
 // LLMParse keeps the model's well-formed suggestions: a var, a safe https base_url and a known auth
 // shape, each var once. Reasoning a model writes inline before `</think>` is dropped first.
 func LLMParse(text string) []*pyjson.Object {
-	if i := strings.LastIndex(text, "</think>"); i >= 0 {
-		text = text[i+len("</think>"):]
+	if _, after, found := strings.CutLast(text, "</think>"); found {
+		text = after
 	}
 	data, err := pyjson.Decode([]byte(text))
 	if err != nil {

@@ -10,9 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/big"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -183,7 +184,7 @@ func encode(b *strings.Builder, v any, opt Options, depth int) {
 		keys := t.keys
 		if opt.SortKeys {
 			keys = append([]string(nil), keys...)
-			sort.Strings(keys)
+			slices.Sort(keys)
 		}
 		encodeObject(b, keys, t.values, opt, depth)
 	case map[string]string:
@@ -191,22 +192,13 @@ func encode(b *strings.Builder, v any, opt Options, depth int) {
 		for k, s := range t {
 			values[k] = s
 		}
-		encodeObject(b, sortedKeys(values), values, opt, depth)
+		encodeObject(b, slices.Sorted(maps.Keys(values)), values, opt, depth)
 	case map[string]any:
-		encodeObject(b, sortedKeys(t), t, opt, depth)
+		encodeObject(b, slices.Sorted(maps.Keys(t)), t, opt, depth)
 	default:
 		data, _ := json.Marshal(t)
 		b.Write(data)
 	}
-}
-
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func newline(b *strings.Builder, opt Options, depth int) {

@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -129,7 +129,7 @@ func (e *Env) audit(limit int) error {
 		s, _ := o.Value("created_at").(string)
 		return s
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return createdAt(rows[i]) > createdAt(rows[j]) })
+	slices.SortStableFunc(rows, func(a, b *pyjson.Object) int { return strings.Compare(createdAt(b), createdAt(a)) })
 	out := make([]any, 0, len(rows))
 	for _, row := range rows[:min(limit, len(rows))] {
 		out = append(out, row)

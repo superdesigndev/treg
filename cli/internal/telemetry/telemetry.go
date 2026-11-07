@@ -9,13 +9,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
@@ -48,16 +49,13 @@ func Enabled() bool {
 	return os.Getenv("DO_NOT_TRACK") != "1"
 }
 
-var uuidShape = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-
 // InstallationID is the random id in analytics-id beside the config, the one the installer and
 // the Python CLI use, independent of login.
 func InstallationID() string {
 	path := config.Sibling("analytics-id")
 	if raw, err := os.ReadFile(path); err == nil {
-		id := strings.ToLower(strings.TrimSpace(string(raw)))
-		if uuidShape.MatchString(id) {
-			return id
+		if id, err := uuid.Parse(strings.TrimSpace(string(raw))); err == nil {
+			return id.String()
 		}
 		return ""
 	}
@@ -67,7 +65,7 @@ func InstallationID() string {
 		return ""
 	}
 	defer f.Close()
-	id := session.NewUUID()
+	id := uuid.New().String()
 	if _, err := f.WriteString(id); err != nil {
 		return ""
 	}
@@ -98,9 +96,7 @@ func Command(command string, exitCode int, duration time.Duration, notes map[str
 	}
 	s := session.Current(config.Path())
 	props := map[string]any{}
-	for k, v := range notes {
-		props[k] = v
-	}
+	maps.Copy(props, notes)
 	props["command"] = command
 	props["exit_code"] = exitCode
 	props["success"] = exitCode == 0
@@ -113,7 +109,7 @@ func Command(command string, exitCode int, duration time.Duration, notes map[str
 	if channel != "" {
 		props["channel"] = channel
 	}
-	record(Event{Event: "cli_command_completed", DistinctID: id, UUID: session.NewUUID(),
+	record(Event{Event: "cli_command_completed", DistinctID: id, UUID: uuid.New().String(),
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano), Properties: props})
 }
 
@@ -171,7 +167,7 @@ func claimQueue(dir string) string {
 	if info, err := os.Stat(queue); err != nil || info.Size() == 0 {
 		return ""
 	}
-	claim := filepath.Join(dir, "telemetry-"+session.NewUUID()+".sending")
+	claim := filepath.Join(dir, "telemetry-"+uuid.New().String()+".sending")
 	if os.Rename(queue, claim) != nil {
 		return ""
 	}

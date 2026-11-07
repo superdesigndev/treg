@@ -61,8 +61,7 @@ func status(err error, ran *cobra.Command, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
-	var exit *output.Exit
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*output.Exit](err); ok {
 		if exit.Message != "" {
 			fmt.Fprintln(stderr, exit.Message)
 		}
@@ -112,8 +111,7 @@ func record(env *commands.Env, ran *cobra.Command, err error, code int, took tim
 		delete(notes, "command")
 	}
 	if code == usageError && err != nil {
-		var exit *output.Exit
-		if !errors.As(err, &exit) {
+		if _, ok := errors.AsType[*output.Exit](err); !ok {
 			name = "usage_error"
 			if found := optionName.FindAllString(err.Error(), 10); len(found) > 0 {
 				notes = map[string]any{"options": found}

@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -58,7 +57,7 @@ func TestQueuedEventsAreSentByALaterFlush(t *testing.T) {
 	if len(r.events) != 0 {
 		t.Fatal("recording sent something")
 	}
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	if len(r.events) != 2 {
 		t.Fatalf("sent %d events", len(r.events))
 	}
@@ -73,7 +72,7 @@ func TestQueuedEventsAreSentByALaterFlush(t *testing.T) {
 	if first["distinct_id"] != string(id) {
 		t.Fatal("the event is not keyed by analytics-id")
 	}
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	if len(r.events) != 2 {
 		t.Fatal("a sent event was sent again")
 	}
@@ -84,9 +83,9 @@ func TestUnsentEventsStayQueued(t *testing.T) {
 	r := newRelay(t)
 	r.status.Store(503)
 	Command("call", 0, 0, nil, "")
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	r.status.Store(204)
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	if len(r.events) != 1 {
 		t.Fatalf("sent %d events after the relay recovered", len(r.events))
 	}
@@ -97,7 +96,7 @@ func TestARegistryWithoutTheRelayDropsEvents(t *testing.T) {
 	r := newRelay(t)
 	r.status.Store(404)
 	Command("call", 0, 0, nil, "")
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	if _, err := os.Stat(filepath.Join(dir, queueName)); err == nil {
 		t.Fatal("events for a registry without the relay were kept")
 	}
@@ -119,7 +118,7 @@ func TestAClaimLeftByADeadProcessIsSentLater(t *testing.T) {
 	claim := claimQueue(dir)
 	old := time.Now().Add(-2 * orphanAge)
 	os.Chtimes(claim, old, old)
-	Flush(context.Background(), r.srv.URL, http.DefaultTransport)
+	Flush(t.Context(), r.srv.URL, http.DefaultTransport)
 	if len(r.events) != 1 {
 		t.Fatalf("sent %d events", len(r.events))
 	}

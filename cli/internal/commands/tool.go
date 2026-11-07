@@ -209,7 +209,7 @@ func parseBinds(specs []string) ([]any, error) {
 	for _, spec := range specs {
 		b := pyjson.Ordered("injector", "env", "location", "header", "name", "Authorization",
 			"format", "Bearer {secret}", "secret_field", "access_token")
-		for _, part := range strings.Split(spec, ",") {
+		for part := range strings.SplitSeq(spec, ",") {
 			k, v, _ := strings.Cut(part, "=")
 			k, v = providers.Strip(k), providers.Strip(v)
 			switch _, known := b.Get(k); {
