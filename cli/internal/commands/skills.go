@@ -105,7 +105,7 @@ type bundleRow struct {
 func (e *Env) skillInstall(name string, f installFlags) error {
 	bases, ok := agents.Targets(f.dir, f.agent, f.global, f.allAgents)
 	if !ok {
-		return output.Fail("unknown agent %s - one of: %s", pyRepr(f.agent), strings.Join(agents.Names(), ", "))
+		return output.Fail("unknown agent %s - one of: %s", quote(f.agent), strings.Join(agents.Names(), ", "))
 	}
 	c := e.Client()
 	stop := prompt.Spin("fetching the skill list")
@@ -143,7 +143,7 @@ func (e *Env) skillInstall(name string, f installFlags) error {
 		}
 		seen[b.Name] = true
 		if b.Name == "" || strings.ContainsAny(b.Name, `/\`) || b.Name == ".." || b.Name == "." {
-			outf("  ✗ %s: unsafe skill name - skipped\n", pyRepr(b.Name))
+			outf("  ✗ %s: unsafe skill name - skipped\n", quote(b.Name))
 			continue
 		}
 		stop := prompt.Spin("downloading " + b.Name)
@@ -218,7 +218,7 @@ func (e *Env) skillInstall(name string, f installFlags) error {
 // works as `treg skill bootstrap --skills lead-signals` does, into the dirs `skill install` targets.
 func (e *Env) installPublicSkill(name string, bases []string, force bool) error {
 	base := strings.TrimRight(e.Registry(), "/")
-	notFound := output.Fail("no skill named %s in this org (see `treg skill ls`)", pyRepr(name))
+	notFound := output.Fail("no skill named %s in this org (see `treg skill ls`)", quote(name))
 	optional := optionalSkills(base)
 	listed := false
 	for _, o := range optional {

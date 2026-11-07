@@ -233,11 +233,13 @@ func (e *Env) mcpUseTeam(grant, team string) error {
 	var body map[string]any
 	_ = json.Unmarshal(r.Body, &body)
 	p := e.Colors()
-	outf("%s now spends from %s%s%s (%s)\n", str(body["grant"]), p.Bold, str(body["team"]), p.Reset, str(body["team_name"]))
-	note, present := body["note"]
-	if present && note == nil {
-		note = "None"
+	line := fmt.Sprintf("%s now spends from %s%s%s", str(body["grant"]), p.Bold, str(body["team"]), p.Reset)
+	if name := str(body["team_name"]); name != "" {
+		line += " (" + name + ")"
 	}
-	setupScreen{p}.dim("  " + str(note))
+	outln(line)
+	if note := str(body["note"]); note != "" {
+		setupScreen{p}.dim("  " + note)
+	}
 	return nil
 }

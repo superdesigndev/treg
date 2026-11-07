@@ -133,7 +133,7 @@ def test_skill_install_unknown_agent_go(tmp_path, live, skills_team, go_bin):
     _, go_m = _machines(tmp_path, live, skills_team)
     go = run_in(go_m, [str(go_bin)], ["skill", "install", "x", "--agent", "bogus"])
     assert go.code == 1
-    assert go.err.startswith("unknown agent 'bogus' - one of: claude-code, cursor, codex")
+    assert go.err.startswith('unknown agent "bogus" - one of: claude-code, cursor, codex')
 
 
 @pytest.mark.parametrize("argv,agents", [

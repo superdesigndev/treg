@@ -10,8 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -44,7 +42,7 @@ func invalidSubcommand(cmd *cobra.Command, word string) error {
 			names = append(names, c.Name())
 		}
 	}
-	return fmt.Errorf("argument <subcommand>: invalid choice: %s (choose from %s)", pyRepr(word), strings.Join(names, ", "))
+	return fmt.Errorf("argument <subcommand>: invalid choice: %s (choose from %s)", quote(word), strings.Join(names, ", "))
 }
 
 func examplesText(lines ...string) string {
@@ -68,16 +66,16 @@ func choice(flag, value string, options ...string) error {
 	}
 	quoted := make([]string, len(options))
 	for i, o := range options {
-		quoted[i] = pyRepr(o)
+		quoted[i] = quote(o)
 	}
-	return fmt.Errorf("argument %s: invalid choice: %s (choose from %s)", flag, pyRepr(value), strings.Join(quoted, ", "))
+	return fmt.Errorf("argument %s: invalid choice: %s (choose from %s)", flag, quote(value), strings.Join(quoted, ", "))
 }
 
 // intArg is argparse's `type=int`: Python's int() of the text, else a usage error.
 func intArg(name, s string) (json.Number, error) {
 	n, ok := pyInt(s)
 	if !ok {
-		return "", fmt.Errorf("argument %s: invalid int value: %s", name, pyRepr(s))
+		return "", fmt.Errorf("argument %s: invalid int value: %s", name, quote(s))
 	}
 	return n, nil
 }
@@ -141,7 +139,7 @@ func isDigitByte(c byte) bool { return c >= '0' && c <= '9' }
 func floatArg(name, s string) (float64, error) {
 	f, ok := pyFloat(s)
 	if !ok {
-		return 0, fmt.Errorf("argument %s: invalid float value: %s", name, pyRepr(s))
+		return 0, fmt.Errorf("argument %s: invalid float value: %s", name, quote(s))
 	}
 	return f, nil
 }
@@ -222,35 +220,14 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// osError is str() of the OSError Python raises for this failure: "[Errno 2] No such file or
-// directory: 'name'".
+// osError says why path could not be used: the path and the system's reason, without the
+// operation Go's error also names.
 func osError(err error, path string) string {
-	// Python names these two by their C errno on every platform, Windows included.
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return "[Errno 2] No such file or directory: " + pyRepr(path)
-	case errors.Is(err, fs.ErrPermission):
-		return "[Errno 13] Permission denied: " + pyRepr(path)
-	}
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		return fmt.Sprintf("[Errno %d] %s: %s", int(errno), pyStrerror(errno), pyRepr(path))
-	}
 	var pe *fs.PathError
 	if errors.As(err, &pe) {
-		return pe.Err.Error() + ": " + pyRepr(path)
+		return path + ": " + pe.Err.Error()
 	}
 	return err.Error()
-}
-
-// pyStrerror is the C library's message for an errno, which Python prints capitalised.
-func pyStrerror(errno syscall.Errno) string {
-	msg := errno.Error()
-	if msg == "" {
-		return msg
-	}
-	r, size := utf8.DecodeRuneInString(msg)
-	return string(unicode.ToUpper(r)) + msg[size:]
 }
 
 // universalNewlines is Python's text-mode read: "\r\n" and "\r" become "\n".

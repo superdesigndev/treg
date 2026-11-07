@@ -230,7 +230,11 @@ func (e *Env) connect(f connectFlags) error {
 		}
 		switch s.Value("status") {
 		case "done":
-			outf("✅ Connected. New oauth secret id: %s (%s)\n", pyjson.Text(s.Value("secret_id")), pyjson.Text(s.Value("name")))
+			line := "✅ Connected. New oauth secret id: " + pyjson.Text(s.Value("secret_id"))
+			if name := pyjson.Text(s.Value("name")); name != "" {
+				line += " (" + name + ")"
+			}
+			outln(line)
 			return nil
 		case "error":
 			return output.Fail("❌ Failed: %s", pyjson.Text(s.Value("detail")))
@@ -362,13 +366,13 @@ func byoBody(f connectFlags) (*pyjson.Object, error) {
 	text, err := readText(f.clientSecret)
 	if err != nil {
 		if _, ok := errors.AsType[*os.PathError](err); ok {
-			return nil, output.Fail("could not read client-secret JSON %s: %s", pyRepr(f.clientSecret), osError(err, f.clientSecret))
+			return nil, output.Fail("could not read client-secret JSON %s: %s", quote(f.clientSecret), osError(err, f.clientSecret))
 		}
-		return nil, output.Fail("could not read client-secret JSON %s: %s", pyRepr(f.clientSecret), err)
+		return nil, output.Fail("could not read client-secret JSON %s: %s", quote(f.clientSecret), err)
 	}
 	parsed, err := pyjson.Loads(text)
 	if err != nil {
-		return nil, output.Fail("could not read client-secret JSON %s: %s", pyRepr(f.clientSecret), err)
+		return nil, output.Fail("could not read client-secret JSON %s: %s", quote(f.clientSecret), err)
 	}
 	cs, _ := parsed.(*pyjson.Object)
 	var block any = cs

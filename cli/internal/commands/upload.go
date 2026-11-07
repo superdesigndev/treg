@@ -52,7 +52,7 @@ func modeArg(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unrecognized arguments: %s", strings.Join(args[1:], " "))
 	}
 	if len(args) == 1 && !slices.Contains(uploadModes, args[0]) {
-		return fmt.Errorf("argument mode: invalid choice: %s (choose from 'env', 'skills', 'clis')", pyRepr(args[0]))
+		return fmt.Errorf("argument mode: invalid choice: %s (choose from 'env', 'skills', 'clis')", quote(args[0]))
 	}
 	return nil
 }
@@ -464,7 +464,7 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 			}
 			for _, a := range chosen {
 				outf("  ✓ %-14s %s   [%s: %s]  (secret %s)\n", a.ToolName, a.BaseURL,
-					pyNone(a.Binding.String("name")), pyNone(a.Binding.String("format")), a.SecretName)
+					orDash(a.Binding.String("name")), orDash(a.Binding.String("format")), a.SecretName)
 			}
 		}
 		if len(oauthDets) > 0 {
@@ -696,10 +696,14 @@ func (e *Env) oauthConnect(c *api.Client, d providers.Detection, vals map[string
 		}
 		switch st["status"] {
 		case "done":
-			outf("  ✓ %s connected (oauth secret id %s)\n", d.Provider, pyNone(str(st["secret_id"])))
+			if id := str(st["secret_id"]); id != "" {
+				outf("  ✓ %s connected (oauth secret id %s)\n", d.Provider, id)
+			} else {
+				outf("  ✓ %s connected\n", d.Provider)
+			}
 			return nil
 		case "error":
-			outf("  ✗ %s: %s\n", d.Provider, pyNone(str(st["detail"])))
+			outf("  ✗ %s: %s\n", d.Provider, firstString(str(st["detail"]), "the connection failed"))
 			return nil
 		}
 	}
@@ -789,10 +793,10 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 		}
 		hdr := ""
 		if auth.String("shape") != "bearer" {
-			hdr = " " + pyNone(firstString(auth.String("header"), auth.String("param")))
+			hdr = " " + orDash(firstString(auth.String("header"), auth.String("param")))
 		}
 		ans := "n"
-		question := fmt.Sprintf("  LLM: %s → %s %s  [%s%s]. Register? [y/N]: ", v, pyNone(row.String("provider")), base, auth.String("shape"), hdr)
+		question := fmt.Sprintf("  LLM: %s → %s %s  [%s%s]. Register? [y/N]: ", v, orDash(row.String("provider")), base, auth.String("shape"), hdr)
 		if prompt.StdinIsTerminal() {
 			if line, err := prompt.Line(question); err == nil {
 				ans = line
@@ -972,7 +976,7 @@ func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) st
 	if s.decision.Tier == "server" {
 		val := value(s.envVar)
 		if val == "" {
-			return "no value for " + pyNone(s.envVar), nil
+			return "no value for " + orDash(s.envVar), nil
 		}
 		rs, err := e.post(c, "/secrets", pyjson.Ordered("name", name+"-key", "value", val, "kind", "env"))
 		if err != nil {

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"sort"
@@ -169,10 +170,10 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 	if on {
 		threshold, amount := "your threshold", "the default amount"
 		if a.threshold != nil {
-			threshold = "$" + pyjson.Repr(*a.threshold)
+			threshold = fmt.Sprintf("$%.2f", *a.threshold)
 		}
 		if a.amount != nil {
-			amount = "$" + pyjson.Repr(*a.amount)
+			amount = fmt.Sprintf("$%.2f", *a.amount)
 		}
 		perHour := "up to 5"
 		if a.perHour != "" && a.perHour != "0" {

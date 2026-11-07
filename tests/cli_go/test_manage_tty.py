@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from .cli_go_harness import PYTHON_CLI, Canned, write_config
+from .cli_go_harness import PYTHON_CLI, Canned, normalize, write_config
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX pseudo-terminals")
 
@@ -133,7 +133,7 @@ def test_auto_topup_consent(fake, tmp_path, go_bin, answer, code):
     py, go = _both(fake, tmp_path, go_bin, ["topup", "--auto", "on", "--threshold", "5", "--amount", "20"], routes,
                    [("Authorize treg", answer)])
     for screen in (py, go):
-        assert "Whenever your balance drops below $5.0, we charge $20.0" in screen, screen
+        assert "Whenever your balance drops below $5.00, we charge $20.00" in normalize(screen), screen
         assert ("Auto top-up is on." in screen) == (code == 0), screen
 
 

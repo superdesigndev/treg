@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -121,18 +122,46 @@ class FakeRegistry:
         self.server.shutdown()
 
 
+_ERRNO = re.compile(r"\[Errno \d+\] ([^:\n]+): '([^'\n]*)'")
+_CRASH = re.compile(r"^treg: (?:FileNotFoundError|PermissionError|IsADirectoryError|OSError): ", re.M)
+_LIST = re.compile(r"\[('(?:[^'\n]*)'(?:, '(?:[^'\n]*)')*)\]")
+_REPR = re.compile(r"(?<![\w])'([^'\n]*)'(?![\w])")
+_PY_JSON_ERROR = re.compile(r"(?:Expecting [^:\n]*|Extra data|Unterminated string starting at|Invalid [^:\n]*"
+                            r"|Illegal trailing comma[^:\n]*): line \d+ column \d+ \(char \d+\)")
+_GO_JSON_ERROR = re.compile(r"invalid character '.'[a-z ]*|unexpected end of JSON input|unexpected EOF"
+                            r"|invalid JSON: [a-z ]+")
+_PY_DOLLARS = re.compile(r"\$(\d+)\.(\d)(?!\d)")
+_NO_TEAM = ("You're not in a team yet: create one with `treg org create \"Your Team\"` or accept an invite.")
+
+
 def normalize(text: str) -> str:
-    """The Go CLI writes a plain dash where the Python CLI wrote an em dash."""
-    return text.replace(" — ", " - ").replace("—", "-")
+    """Each CLI's text in one spelling, so a comparison sees only real differences. These are the
+    Go CLI's intentional ones: a plain dash for an em dash, a value quoted as Go quotes it ("x",
+    where Python wrote 'x' and a list as ['a', 'b']), the system's reason for a file it cannot read
+    instead of Python's errno text and exception name, its own JSON parser's errors, dollars with
+    cents, and no "None" where the Python CLI printed an absent value."""
+    text = text.replace(" — ", " - ").replace("—", "-")
+    text = _ERRNO.sub(lambda m: f"{m.group(2)}: {m.group(1).lower()}", text)
+    text = _CRASH.sub("treg: cannot read ", text)
+    text = _LIST.sub(lambda m: ", ".join(item.strip("'") for item in m.group(1).split(", ")), text)
+    text = _PY_JSON_ERROR.sub("<invalid JSON>", text)
+    text = _GO_JSON_ERROR.sub("<invalid JSON>", text)
+    text = _REPR.sub(lambda m: json.dumps(m.group(1), ensure_ascii=False), text)
+    text = _PY_DOLLARS.sub(lambda m: f"${m.group(1)}.{m.group(2)}0", text)
+    text = text.replace("Active org: None", _NO_TEAM).replace(" (None)", "")
+    text = re.sub(r'"None (?=\S)', '"', text)
+    return text
 
 
 def same_stdout(py: Run, go: Run) -> bool:
     if py.out == go.out:
         return True
     try:
-        return json.loads(py.out) == json.loads(go.out)
+        if json.loads(py.out) == json.loads(go.out):
+            return True
     except ValueError:
-        return normalize(py.text) == normalize(go.text)
+        pass
+    return normalize(py.text) == normalize(go.text)
 
 
 def write_config(home: Path, **fields) -> None:

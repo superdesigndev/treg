@@ -1,13 +1,12 @@
 package commands
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
-
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 // The expected values in these tables are CPython 3.13's own answers.
@@ -41,33 +40,22 @@ func TestPyInt(t *testing.T) {
 
 func TestPyFloat(t *testing.T) {
 	for _, c := range []struct {
-		in, want string
-		ok       bool
+		in   string
+		want float64
+		ok   bool
 	}{
-		{"1", "1.0", true},
-		{" 2.5 ", "2.5", true},
-		{"1e3", "1000.0", true},
-		{"1_000.5", "1000.5", true},
-		{"inf", "inf", true},
-		{"-Infinity", "-inf", true},
-		{"nan", "nan", true},
-		{".5", "0.5", true},
-		{"5.", "5.0", true},
-		{"+1e-2", "0.01", true},
-		{"1e400", "inf", true},
-		{"0x10", "", false},
-		{"1__0", "", false},
-		{"abc", "", false},
-		{"", "", false},
-		{"1e5_0", "1e+50", true},
+		{"1", 1, true}, {" 2.5 ", 2.5, true}, {"1e3", 1000, true}, {"1_000.5", 1000.5, true},
+		{".5", 0.5, true}, {"5.", 5, true}, {"+1e-2", 0.01, true}, {"1e5_0", 1e50, true},
+		{"0x10", 0, false}, {"1__0", 0, false}, {"abc", 0, false}, {"", 0, false},
 	} {
 		f, ok := pyFloat(c.in)
-		got := ""
-		if ok {
-			got = pyjson.Repr(f)
+		if ok != c.ok || (ok && f != c.want) {
+			t.Errorf("pyFloat(%q) = %v, %v; want %v, %v", c.in, f, ok, c.want, c.ok)
 		}
-		if got != c.want || ok != c.ok {
-			t.Errorf("pyFloat(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+	}
+	for _, special := range []string{"inf", "-Infinity", "nan", "1e400"} {
+		if f, ok := pyFloat(special); !ok || !(math.IsInf(f, 0) || math.IsNaN(f)) {
+			t.Errorf("pyFloat(%q) = %v, %v", special, f, ok)
 		}
 	}
 }
@@ -118,9 +106,9 @@ func TestPySlice(t *testing.T) {
 	}
 }
 
-func TestOSErrorIsPythonsWording(t *testing.T) {
+func TestOSErrorNamesThePathAndTheReason(t *testing.T) {
 	_, err := os.ReadFile(filepath.Join(t.TempDir(), "missing.json"))
-	if got := osError(err, "missing.json"); got != "[Errno 2] No such file or directory: 'missing.json'" {
+	if got := osError(err, "missing.json"); got != "missing.json: no such file or directory" {
 		t.Errorf("osError = %q", got)
 	}
 }

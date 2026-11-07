@@ -19,7 +19,7 @@ func feedbackGetCmd(env *Env) *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
-				return fmt.Errorf("argument feedback_id: invalid int value: %s", pyRepr(args[0]))
+				return fmt.Errorf("argument feedback_id: invalid int value: %s", quote(args[0]))
 			}
 			return env.feedbackGet(id)
 		},

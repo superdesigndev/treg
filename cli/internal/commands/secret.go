@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -104,21 +103,9 @@ func secretAddCmd(env *Env) *cobra.Command {
 	return cmd
 }
 
-// fileError is the OSError a Python read of path raised, as its last traceback line names it.
+// fileError refuses a command whose file could not be read.
 func fileError(err error, path string) error {
-	kind := "OSError"
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		kind = "FileNotFoundError"
-	case errors.Is(err, os.ErrPermission):
-		kind = "PermissionError"
-	case errors.Is(err, syscall.EISDIR):
-		kind = "IsADirectoryError"
-	}
-	if _, ok := errors.AsType[*os.PathError](err); !ok {
-		return output.Fail("treg: %s", err)
-	}
-	return output.Fail("treg: %s: %s", kind, osError(err, path))
+	return output.Fail("treg: cannot read %s", osError(err, path))
 }
 
 func secretLsCmd(env *Env) *cobra.Command {
@@ -203,10 +190,10 @@ func findSecretFile(dir, kind string) (string, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no %s secret in %s (found: %s)", pyRepr(kind), p, pyjson.Repr(baseNames(candidates)))
+		return "", fmt.Errorf("no %s secret in %s (found: %s)", quote(kind), p, strings.Join(baseNames(candidates), ", "))
 	}
 	if len(matches) > 1 {
-		return "", fmt.Errorf("ambiguous %s secret in %s: %s - use --file", pyRepr(kind), p, pyjson.Repr(baseNames(matches)))
+		return "", fmt.Errorf("ambiguous %s secret in %s: %s - use --file", quote(kind), p, strings.Join(baseNames(matches), ", "))
 	}
 	return matches[0], nil
 }
@@ -325,7 +312,7 @@ func relativeTo(path, base string) (string, error) {
 	sep := string(filepath.Separator)
 	prefix := strings.TrimSuffix(b, sep) + sep
 	if !strings.HasPrefix(p, prefix) {
-		return "", fmt.Errorf("%s is not in the subpath of %s", pyRepr(p), pyRepr(b))
+		return "", fmt.Errorf("%s is not in the subpath of %s", quote(p), quote(b))
 	}
 	return p[len(prefix):], nil
 }

@@ -65,7 +65,7 @@ func (e *Env) call(target, path string, f callFlags) error {
 	for _, kv := range f.query {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
-			return output.Fail("--query expects K=V, got: %s", pyRepr(kv))
+			return output.Fail("--query expects K=V, got: %s", quote(kv))
 		}
 		params = append(params, [2]string{k, v})
 	}
@@ -101,11 +101,11 @@ func (e *Env) call(target, path string, f callFlags) error {
 	for _, kv := range f.header {
 		name, value, ok := strings.Cut(kv, ":")
 		if !ok {
-			return output.Fail("--header expects 'Name: value', got: %s", pyRepr(kv))
+			return output.Fail("--header expects 'Name: value', got: %s", quote(kv))
 		}
 		name = strings.TrimSpace(name)
 		if name == "" {
-			return output.Fail("--header needs a name before the colon, got: %s", pyRepr(kv))
+			return output.Fail("--header needs a name before the colon, got: %s", quote(kv))
 		}
 		header = setHeader(header, name, strings.TrimSpace(value))
 	}
@@ -284,7 +284,7 @@ func multipartBody(parts []string) ([]byte, string, error) {
 	for _, kv := range parts {
 		name, val, ok := strings.Cut(kv, "=")
 		if !ok {
-			return nil, "", output.Fail("--upload expects NAME=@/path (or NAME=value), got: %s", pyRepr(kv))
+			return nil, "", output.Fail("--upload expects NAME=@/path (or NAME=value), got: %s", quote(kv))
 		}
 		h := textproto.MIMEHeader{}
 		if strings.HasPrefix(val, "@") {
@@ -335,17 +335,4 @@ func expandUser(p string) string {
 		}
 	}
 	return p
-}
-
-// pyRepr is Python's repr() of a plain string, as the Python CLI names a bad argument.
-func pyRepr(s string) string {
-	quote := "'"
-	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
-		quote = `"`
-	}
-	r := strings.ReplaceAll(s, `\`, `\\`)
-	if quote == "'" {
-		r = strings.ReplaceAll(r, "'", `\'`)
-	}
-	return quote + r + quote
 }

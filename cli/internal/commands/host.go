@@ -8,7 +8,6 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/pyjson"
-	"github.com/superdesigndev/treg/cli/internal/pymime"
 )
 
 func hostCmd(env *Env) *cobra.Command {
@@ -29,7 +28,7 @@ func hostCmd(env *Env) *cobra.Command {
 		name := pyName(path)
 		ctype := contentType
 		if ctype == "" {
-			ctype = pymime.GuessType(name)
+			ctype = guessMediaType(name)
 		}
 		if ctype == "" {
 			return output.Fail("treg host: cannot guess the media type of %s; pass --content-type image/png (or audio/*, video/*)", name)

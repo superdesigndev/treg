@@ -55,14 +55,14 @@ func usageCmd(env *Env) *cobra.Command {
 			row, _ := item.(*pyjson.Object)
 			calls := row.Value("calls")
 			plural := "s"
-			if pyjson.Repr(calls) == "1" {
+			if pyjson.Text(calls) == "1" {
 				plural = ""
 			}
 			outf("    %-28s %10s  %s%s call%s%s\n", pyjson.Text(row.Value("value")), usd(row.Value("charged_micro")),
 				p.Muted, pyjson.Text(calls), plural, p.Reset)
 		}
 		if len(rows) == 0 {
-			outf("    %snothing tagged %s in this window.%s\n", p.Muted, pyjson.Repr(key), p.Reset)
+			outf("    %snothing tagged %s in this window.%s\n", p.Muted, quote(pyjson.Text(key)), p.Reset)
 		}
 		if pyjson.Truthy(d.Value("unattributed_micro")) {
 			outf("    %s%-28s %10s%s\n", p.Muted, "(unattributed)", usd(d.Value("unattributed_micro")), p.Reset)

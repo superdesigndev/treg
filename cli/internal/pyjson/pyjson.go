@@ -1,20 +1,21 @@
-// Package pyjson reads JSON keeping object member order and writes it byte for byte as Python's
-// json.dumps does, so a file the Python CLI and the Go CLI both write (an agent's MCP config, the
-// skill ledger, a skill's treg.json) comes out the same whichever wrote it, and a request body is
-// the bytes httpx sent. A document that does not parse is refused in json.loads's own words.
+// Package pyjson reads JSON keeping object member order, so a file the CLI edits (an agent's MCP
+// config, the skill ledger, a skill's treg.json) keeps the order its owner wrote, and writes it as
+// Python's json.dumps does, so the Python CLI and this one write those files the same way while
+// both are in use.
 package pyjson
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
-	"unicode/utf8"
 )
 
 // Object is a JSON object in document order. A key read twice keeps its first position and its
@@ -353,40 +354,8 @@ func FloatRepr(f float64) string {
 	return sign + digits[:decpt] + "." + digits[decpt:]
 }
 
-// Equal compares two decoded values the way Python compares the dicts json.loads returns.
-func Equal(a, b any) bool {
-	switch x := a.(type) {
-	case *Object:
-		y, ok := b.(*Object)
-		if !ok || x.Len() != y.Len() {
-			return false
-		}
-		for _, k := range x.keys {
-			yv, ok := y.values[k]
-			if !ok || !Equal(x.values[k], yv) {
-				return false
-			}
-		}
-		return true
-	case []any:
-		y, ok := b.([]any)
-		if !ok || len(x) != len(y) {
-			return false
-		}
-		for i := range x {
-			if !Equal(x[i], y[i]) {
-				return false
-			}
-		}
-		return true
-	case json.Number:
-		y, ok := b.(json.Number)
-		return ok && number(string(x)) == number(string(y))
-	}
-	return a == b
-}
-
-// Truthy is Python's bool() of a decoded value.
+// Truthy says whether a decoded value holds anything: false for null, false, 0, "" and empty
+// containers.
 func Truthy(v any) bool {
 	switch t := v.(type) {
 	case nil:
@@ -406,18 +375,16 @@ func Truthy(v any) bool {
 	return true
 }
 
-// Text is Python's str() of a decoded value.
+// Text is a decoded value as one line of text: a string as it is, nothing for null, a number as
+// written, anything else as compact JSON.
 func Text(v any) string {
 	switch t := v.(type) {
 	case nil:
-		return "None"
+		return ""
 	case string:
 		return t
 	case bool:
-		if t {
-			return "True"
-		}
-		return "False"
+		return strconv.FormatBool(t)
 	case json.Number:
 		return number(string(t))
 	}
@@ -430,425 +397,63 @@ func List(v any) []any {
 	return items
 }
 
-// Repr is Python's repr() of a decoded JSON value.
-func Repr(v any) string {
-	switch t := v.(type) {
-	case nil:
-		return "None"
-	case bool:
-		if t {
-			return "True"
-		}
-		return "False"
-	case string:
-		return reprString(t)
-	case json.Number:
-		if !strings.ContainsAny(string(t), ".eE") {
-			return number(string(t))
-		}
-		f, _ := strconv.ParseFloat(string(t), 64)
-		return reprFloat(f)
-	case float64:
-		return reprFloat(t)
-	case int:
-		return strconv.Itoa(t)
-	case int64:
-		return strconv.FormatInt(t, 10)
-	case []any:
-		parts := make([]string, len(t))
-		for i, x := range t {
-			parts[i] = Repr(x)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	case []string:
-		parts := make([]string, len(t))
-		for i, x := range t {
-			parts[i] = reprString(x)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	case *Object:
-		parts := make([]string, 0, t.Len())
-		for _, k := range t.Keys() {
-			parts = append(parts, reprString(k)+": "+Repr(t.values[k]))
-		}
-		return "{" + strings.Join(parts, ", ") + "}"
-	}
-	return fmt.Sprint(v)
-}
-
-// reprString is Python's repr() of a str: single quotes unless the text has a single quote and no
-// double quote, with control characters escaped.
-func reprString(s string) string {
-	quote := byte('\'')
-	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
-		quote = '"'
-	}
-	var b strings.Builder
-	b.WriteByte(quote)
-	for _, r := range s {
-		switch {
-		case r == '\\':
-			b.WriteString(`\\`)
-		case r == rune(quote):
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		case r == '\n':
-			b.WriteString(`\n`)
-		case r == '\r':
-			b.WriteString(`\r`)
-		case r == '\t':
-			b.WriteString(`\t`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&b, `\x%02x`, r)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	b.WriteByte(quote)
-	return b.String()
-}
-
-// reprFloat is repr() of a float, which spells the specials "nan" and "inf" where JSON spells
-// them NaN and Infinity.
-func reprFloat(f float64) string {
-	switch {
-	case math.IsNaN(f):
-		return "nan"
-	case math.IsInf(f, 1):
-		return "inf"
-	case math.IsInf(f, -1):
-		return "-inf"
-	}
-	return FloatRepr(f)
-}
-
-// DecodeError is json.JSONDecodeError; Error() is its str().
-type DecodeError struct {
-	Msg               string
-	Pos, Line, Column int
-}
-
-func (e *DecodeError) Error() string {
-	return fmt.Sprintf("%s: line %d column %d (char %d)", e.Msg, e.Line, e.Column, e.Pos)
-}
-
-// Decode is json.loads over bytes, as httpx's Response.json() and a file read call it: a UTF-8
-// byte-order mark is skipped. Objects become *Object, arrays []any, numbers json.Number as written,
-// and NaN and Infinity float64.
+// Decode parses JSON keeping object members in document order: objects become *Object, arrays
+// []any, numbers json.Number as written. A UTF-8 byte-order mark is skipped.
 func Decode(data []byte) (any, error) {
-	return Loads(string(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
-}
-
-// Loads is json.loads(str): a byte-order mark here is an error, as it is to Python.
-func Loads(s string) (any, error) {
-	d := &decoder{s: []rune(strings.ToValidUTF8(s, "\uFFFD"))}
-	if len(d.s) > 0 && d.s[0] == '\ufeff' {
-		return nil, d.err("Unexpected UTF-8 BOM (decode using utf-8-sig)", 0)
-	}
-	idx := d.skip(0)
-	v, end, err := d.scan(idx)
+	dec := json.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
+	dec.UseNumber()
+	v, err := decodeValue(dec)
 	if err != nil {
 		return nil, err
 	}
-	end = d.skip(end)
-	if end != len(d.s) {
-		return nil, d.err("Extra data", end)
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("invalid JSON: data after the value")
 	}
 	return v, nil
 }
 
-type decoder struct {
-	s []rune
-}
+// Loads is Decode over text.
+func Loads(s string) (any, error) { return Decode([]byte(s)) }
 
-// stopIteration is the scanner's "no value here", which json.loads reports as "Expecting value".
-type stopIteration struct{ pos int }
-
-func (s *stopIteration) Error() string { return "stop" }
-
-func (d *decoder) err(msg string, pos int) *DecodeError {
-	line := 1
-	last := -1
-	for i := 0; i < pos && i < len(d.s); i++ {
-		if d.s[i] == '\n' {
-			line++
-			last = i
+func decodeValue(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		if err == io.EOF {
+			return nil, errors.New("invalid JSON: no value")
 		}
+		return nil, err
 	}
-	return &DecodeError{Msg: msg, Pos: pos, Line: line, Column: pos - last}
-}
-
-func (d *decoder) skip(i int) int {
-	for i < len(d.s) && isSpace(d.s[i]) {
-		i++
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		return tok, nil
 	}
-	return i
-}
-
-func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }
-
-func (d *decoder) has(i int, word string) bool {
-	w := []rune(word)
-	if i+len(w) > len(d.s) {
-		return false
-	}
-	for k, r := range w {
-		if d.s[i+k] != r {
-			return false
-		}
-	}
-	return true
-}
-
-func (d *decoder) scan(idx int) (any, int, error) {
-	v, end, err := d.scanOnce(idx)
-	if stop, ok := err.(*stopIteration); ok {
-		return nil, 0, d.err("Expecting value", stop.pos)
-	}
-	return v, end, err
-}
-
-func (d *decoder) scanOnce(idx int) (any, int, error) {
-	if idx >= len(d.s) {
-		return nil, 0, &stopIteration{idx}
-	}
-	switch d.s[idx] {
-	case '"':
-		return d.scanString(idx + 1)
+	switch delim {
 	case '{':
-		return d.scanObject(idx + 1)
+		o := NewObject()
+		for dec.More() {
+			key, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			v, err := decodeValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			o.Set(key.(string), v)
+		}
+		_, err := dec.Token()
+		return o, err
 	case '[':
-		return d.scanArray(idx + 1)
-	case 'n':
-		if d.has(idx, "null") {
-			return nil, idx + 4, nil
-		}
-	case 't':
-		if d.has(idx, "true") {
-			return true, idx + 4, nil
-		}
-	case 'f':
-		if d.has(idx, "false") {
-			return false, idx + 5, nil
-		}
-	case 'N':
-		if d.has(idx, "NaN") {
-			return math.NaN(), idx + 3, nil
-		}
-	case 'I':
-		if d.has(idx, "Infinity") {
-			return math.Inf(1), idx + 8, nil
-		}
-	case '-':
-		if d.has(idx, "-Infinity") {
-			return math.Inf(-1), idx + 9, nil
-		}
-	}
-	return d.scanNumber(idx)
-}
-
-func isDigit(r rune) bool { return r >= '0' && r <= '9' }
-
-func (d *decoder) scanNumber(start int) (any, int, error) {
-	s, idx, end := d.s, start, len(d.s)-1
-	if s[idx] == '-' {
-		idx++
-		if idx > end {
-			return nil, 0, &stopIteration{start}
-		}
-	}
-	switch {
-	case s[idx] >= '1' && s[idx] <= '9':
-		idx++
-		for idx <= end && isDigit(s[idx]) {
-			idx++
-		}
-	case s[idx] == '0':
-		idx++
-	default:
-		return nil, 0, &stopIteration{start}
-	}
-	if idx < end && s[idx] == '.' && isDigit(s[idx+1]) {
-		idx += 2
-		for idx <= end && isDigit(s[idx]) {
-			idx++
-		}
-	}
-	if idx < end && (s[idx] == 'e' || s[idx] == 'E') {
-		eStart := idx
-		idx++
-		if idx < end && (s[idx] == '-' || s[idx] == '+') {
-			idx++
-		}
-		for idx <= end && isDigit(s[idx]) {
-			idx++
-		}
-		if !isDigit(s[idx-1]) {
-			idx = eStart
-		}
-	}
-	return json.Number(string(s[start:idx])), idx, nil
-}
-
-func (d *decoder) scanString(end int) (any, int, error) {
-	s := d.s
-	begin := end - 1
-	var b strings.Builder
-	for {
-		next := end
-		var c rune
-		for ; next < len(s); next++ {
-			c = s[next]
-			if c == '"' || c == '\\' {
-				break
-			}
-			if c <= 0x1f {
-				return nil, 0, d.err("Invalid control character at", next)
-			}
-		}
-		if next >= len(s) || (c != '"' && c != '\\') {
-			return nil, 0, d.err("Unterminated string starting at", begin)
-		}
-		b.WriteString(string(s[end:next]))
-		next++
-		if c == '"' {
-			return b.String(), next, nil
-		}
-		if next == len(s) {
-			return nil, 0, d.err("Unterminated string starting at", begin)
-		}
-		c = s[next]
-		if c != 'u' {
-			end = next + 1
-			switch c {
-			case '"', '\\', '/':
-			case 'b':
-				c = '\b'
-			case 'f':
-				c = '\f'
-			case 'n':
-				c = '\n'
-			case 'r':
-				c = '\r'
-			case 't':
-				c = '\t'
-			default:
-				return nil, 0, d.err("Invalid \\escape", end-2)
-			}
-			b.WriteRune(c)
-			continue
-		}
-		next++
-		end = next + 4
-		if end >= len(s) {
-			return nil, 0, d.err("Invalid \\uXXXX escape", next-1)
-		}
-		u, ok := hex4(s[next:end])
-		if !ok {
-			return nil, 0, d.err("Invalid \\uXXXX escape", end-5)
-		}
-		next = end
-		if u >= 0xd800 && u <= 0xdbff && end+6 < len(s) && s[next] == '\\' && s[next+1] == 'u' {
-			end += 6
-			low, ok := hex4(s[next+2 : end])
-			if !ok {
-				return nil, 0, d.err("Invalid \\uXXXX escape", end-5)
-			}
-			if low >= 0xdc00 && low <= 0xdfff {
-				u = 0x10000 + (u-0xd800)<<10 + (low - 0xdc00)
-			} else {
-				end -= 6
-			}
-		}
-		if !utf8.ValidRune(u) {
-			u = utf8.RuneError
-		}
-		b.WriteRune(u)
-	}
-}
-
-func hex4(rs []rune) (rune, bool) {
-	var v rune
-	for _, r := range rs {
-		v <<= 4
-		switch {
-		case r >= '0' && r <= '9':
-			v |= r - '0'
-		case r >= 'a' && r <= 'f':
-			v |= r - 'a' + 10
-		case r >= 'A' && r <= 'F':
-			v |= r - 'A' + 10
-		default:
-			return 0, false
-		}
-	}
-	return v, true
-}
-
-func (d *decoder) scanObject(idx int) (any, int, error) {
-	s, end := d.s, len(d.s)-1
-	o := NewObject()
-	idx = d.skip(idx)
-	if idx > end || s[idx] != '}' {
-		for {
-			if idx > end || s[idx] != '"' {
-				return nil, 0, d.err("Expecting property name enclosed in double quotes", idx)
-			}
-			key, next, err := d.scanString(idx + 1)
+		items := []any{}
+		for dec.More() {
+			v, err := decodeValue(dec)
 			if err != nil {
-				return nil, 0, err
+				return nil, err
 			}
-			idx = d.skip(next)
-			if idx > end || s[idx] != ':' {
-				return nil, 0, d.err("Expecting ':' delimiter", idx)
-			}
-			idx = d.skip(idx + 1)
-			val, next, err := d.scanOnce(idx)
-			if err != nil {
-				return nil, 0, err
-			}
-			o.Set(key.(string), val)
-			idx = d.skip(next)
-			if idx <= end && s[idx] == '}' {
-				break
-			}
-			if idx > end || s[idx] != ',' {
-				return nil, 0, d.err("Expecting ',' delimiter", idx)
-			}
-			comma := idx
-			idx = d.skip(idx + 1)
-			if idx <= end && s[idx] == '}' {
-				return nil, 0, d.err("Illegal trailing comma before end of object", comma)
-			}
+			items = append(items, v)
 		}
+		_, err := dec.Token()
+		return items, err
 	}
-	return o, idx + 1, nil
-}
-
-func (d *decoder) scanArray(idx int) (any, int, error) {
-	s, end := d.s, len(d.s)-1
-	items := []any{}
-	idx = d.skip(idx)
-	if idx > end || s[idx] != ']' {
-		for {
-			val, next, err := d.scanOnce(idx)
-			if err != nil {
-				return nil, 0, err
-			}
-			items = append(items, val)
-			idx = d.skip(next)
-			if idx <= end && s[idx] == ']' {
-				break
-			}
-			if idx > end || s[idx] != ',' {
-				return nil, 0, d.err("Expecting ',' delimiter", idx)
-			}
-			comma := idx
-			idx = d.skip(idx + 1)
-			if idx <= end && s[idx] == ']' {
-				return nil, 0, d.err("Illegal trailing comma before end of array", comma)
-			}
-		}
-	}
-	return items, idx + 1, nil
+	return nil, fmt.Errorf("invalid JSON: unexpected %v", delim)
 }

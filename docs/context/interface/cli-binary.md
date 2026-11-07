@@ -31,6 +31,7 @@ sources:
   - cli/internal/commands/home.go
   - cli/internal/commands/host.go
   - cli/internal/commands/mcp.go
+  - cli/internal/commands/mediatype.go
   - cli/internal/commands/org.go
   - cli/internal/commands/pyargs.go
   - cli/internal/commands/resources.go
@@ -56,8 +57,6 @@ sources:
   - cli/internal/providers/providers.go
   - cli/internal/providers/catalog.json
   - cli/internal/pyjson/pyjson.go
-  - cli/internal/pymime/pymime.go
-  - cli/internal/pymime/tables.go
   - cli/internal/session/proc_darwin.go
   - cli/internal/session/proc_linux.go
   - cli/internal/session/proc_other.go
@@ -111,20 +110,22 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   body is re-indented by two spaces like the Python CLI's, but strings and numbers keep the
   upstream's spelling (the Python CLI escapes non-ASCII as `\uXXXX` and normalizes numbers): the
   parsed values are equal, the bytes are not. treg's own lines use a plain dash where the Python
-  CLI wrote an em dash.
+  CLI wrote an em dash, quote a value as Go does (`"x"`, not Python's `'x'`), name a file it cannot
+  read with the system's reason rather than Python's errno text and exception name, write dollars
+  with cents, and print nothing (or `-`) where the Python CLI printed an absent value as `None`.
 - **Views.** Bare `treg`, `catalog`, `balance` and `feedback get` send `X-Treg-View: 1` and print
   the registry's `text`; `--json` prints its `data` ([api](api.md), "Views"). A registry without
   views gets its JSON printed and one stderr line saying so. The client prints only what the
   registry cannot know: the `treg:` line (version and path) and a `registry:` line off treg.to.
 - **`call --await`** follows the registry's task (`/tasks/{call_id}`, [tasks](../architecture/tasks.md))
   and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it.
-- **Bodies and files.** `internal/pyjson` decodes JSON keeping key order and number spelling and
-  encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8 kept), the
-  `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON argument that does
-  not parse is refused in Python's own `JSONDecodeError` wording. Arguments are typed as argparse
+- **Bodies and files.** `internal/pyjson` decodes JSON with Go's decoder, keeping key order and
+  number spelling, and encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8
+  kept), the `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON
+  argument that does not parse is refused in the decoder's words. Arguments are typed as argparse
   types them (`int()`, `float()`, `choices`), so the same command line sends the same bytes.
-  `treg host` guesses the media type from CPython's `mimetypes` table and the machine's
-  `mime.types` files, which is what the Python CLI read.
+  `treg host` takes the media type from the extension: its own table for the image, audio and video
+  formats vendors fetch, else the system's (`mime.TypeByExtension`).
 - **Prompts.** A command asks only where the Python CLI asks, and only a person at a terminal
   (`internal/prompt`): the tool-access checklist of `org agent-new`, a pasted key read without echo
   from the controlling terminal, the auto top-up consent. Without a terminal the access is every
@@ -147,9 +148,10 @@ same files. It is not the default install yet: `/install.sh` installs the Python
 whose `claude` records its arguments, and compares every file left in HOME, modes included.
 
 - **Same bytes.** `internal/pyjson` reads JSON keeping member order (a repeated key keeps its first
-  place and last value) and writes it as Python's `json.dumps` does (`ensure_ascii`, float `repr`),
-  and files are read with Python's universal newlines, so an agent's MCP config, `skills.json` or a
-  skill's `treg.json` is the same whichever CLI wrote it.
+  place and last value), so a file the CLI edits keeps its owner's order, and writes it as Python's
+  `json.dumps` does (`ensure_ascii`, float `repr`), and files are read with Python's universal
+  newlines, so an agent's MCP config, `skills.json` or a skill's `treg.json` is the same whichever
+  CLI wrote it. The Python-exact writing goes when the Python CLI does; the order stays.
 - **Where agents live.** `internal/agents` holds both tables: each agent's skill directories
   (honouring `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`) and the MCP writers. Every path
   is under the home directory, which is `%USERPROFILE%` on Windows.

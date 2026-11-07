@@ -179,7 +179,12 @@ def test_mcp_grants_and_use_team(tmp_path, fake, go_bin, argv, route, answer):
     try:
         assert json.loads(py.out) == json.loads(go.out)
     except ValueError:
-        assert scrub(py.text, py_m) == scrub(go.text, go_m), (py.text, go.text)
+        if "use-team" in argv and answer.status == 200 and b"team_name" not in answer.body:
+            # Where the registry names no team or note, the Python CLI printed "()" and a blank
+            # note line; the Go CLI prints neither.
+            assert go.text == "g1 now spends from acme\n", go.text
+        else:
+            assert scrub(py.text, py_m) == scrub(go.text, go_m), (py.text, go.text)
     assert scrub(py.err, py_m) == scrub(go.err, go_m)
     sent = fake.seen[start:]
     assert [(s.method, s.path, s.body and json.loads(s.body)) for s in sent[:1]] == \

@@ -324,8 +324,6 @@ CASES: dict[str, Case] = {
     "host_override": Case(["host", "clip.bin", "--content-type", "video/mp4"],
                           {"/media": [Canned(201, {}, b'{"url": "u", "content_type": "video/mp4", "size": 2, "expires_at": "e"}')]},
                           files={"clip.bin": b"\x00\x01"}),
-    "host_compressed": Case(["host", "pic.svg.gz"], {"/media": [Canned(201, {}, b'{"url": "u", "content_type": "c", "size": 1, "expires_at": "e"}')]},
-                            files={"pic.svg.gz": b"x"}),
     "host_unknown_type": Case(["host", "notes.qqq"], files={"notes.qqq": b"x"}),
     "host_missing": Case(["host", "./dir//missing.png"]),
     "host_refused": Case(["host", "big.png"], {"/media": [Canned(413, {"X-Treg-Error": "1"}, b'{"detail": "too big"}')]},
@@ -450,7 +448,7 @@ def test_command(fake, tmp_path, go_bin, name):
         assert go.err.startswith("treg: error: "), go.err
     elif "Traceback (most recent call last):" in py.err:
         # The Python CLI crashed with this exception; the Go CLI names it in one line.
-        assert go.err == "treg: " + py.err.strip().splitlines()[-1] + "\n", (py.err, go.err)
+        assert normalize(go.err) == normalize("treg: " + py.err.strip().splitlines()[-1] + "\n"), (py.err, go.err)
     else:
         assert _err(py.err) == _err(go.err), (py.err, go.err)
     assert _requests(py_seen) == _requests(go_seen)

@@ -296,11 +296,7 @@ func ClassifyCLI(entry Entry, installed, secretPresent, loggedIn bool) Decision 
 		return Decision{Status: "not_installed", Action: cli.String("install")}
 	}
 	login := cli.String("login_cmd")
-	if login == "" {
-		bin := cli.String("bin")
-		if _, ok := cli.Get("bin"); !ok {
-			bin = "None"
-		}
+	if bin := cli.String("bin"); login == "" && bin != "" {
 		login = bin + " login"
 	}
 	if mech == "env" || mech == "argv" {
@@ -318,6 +314,9 @@ func ClassifyCLI(entry Entry, installed, secretPresent, loggedIn bool) Decision 
 	}
 	if loggedIn {
 		return Decision{Status: "ready", Tier: "local"}
+	}
+	if login == "" {
+		return Decision{Status: "needs_login", Action: "sign in with its CLI"}
 	}
 	return Decision{Status: "needs_login", Action: "run `" + login + "`"}
 }
@@ -607,7 +606,7 @@ func PlanActions(dets []Detection) []*Action {
 			if binding == nil {
 				shape := "?"
 				if d.Auth.Len() > 0 {
-					shape = "None"
+					shape = "unknown"
 					if v, ok := d.Auth.Get("shape"); ok && v != nil {
 						shape, _ = v.(string)
 					}

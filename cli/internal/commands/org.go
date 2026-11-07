@@ -108,7 +108,7 @@ func orgUseCmd(env *Env) *cobra.Command {
 				if teams == "" {
 					teams = "(none)"
 				}
-				return output.Fail("you're not a member of %s - your teams: %s\nsee `treg org ls`; active org unchanged.", pyRepr(slug), teams)
+				return output.Fail("you're not a member of %s - your teams: %s\nsee `treg org ls`; active org unchanged.", quote(slug), teams)
 			}
 		} else {
 			errln("warning: could not verify the team against the registry")
@@ -118,7 +118,7 @@ func orgUseCmd(env *Env) *cobra.Command {
 			// must succeed before either local value changes.
 			token, detail := env.defaultTokenForOrg(slug, nil)
 			if token == "" {
-				return output.Fail("could not switch to %s: %s. Active team unchanged.", pyRepr(slug), detail)
+				return output.Fail("could not switch to %s: %s. Active team unchanged.", quote(slug), detail)
 			}
 			cfg.Token, cfg.ActiveOrg = token, slug
 		} else if cfg.ActiveOrg != slug {
@@ -228,7 +228,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 				for _, item := range f.pins {
 					dim, val, ok := strings.Cut(item, "=")
 					if !ok || providers.Strip(dim) == "" || providers.Strip(val) == "" {
-						return api.Request{}, output.Fail("--pin wants dim=value, got %s", pyRepr(item))
+						return api.Request{}, output.Fail("--pin wants dim=value, got %s", quote(item))
 					}
 					pins.Set(strings.ToLower(providers.Strip(dim)), providers.Strip(val))
 				}

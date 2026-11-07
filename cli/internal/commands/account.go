@@ -125,7 +125,10 @@ func whoamiCmd(env *Env) *cobra.Command {
 			}
 			team := firstString(env.EffectiveOrg(), "-")
 			if active != nil {
-				team = fmt.Sprintf("%s  (%s)", active.Slug, pyNone(active.Role))
+				team = active.Slug
+				if active.Role != "" {
+					team = fmt.Sprintf("%s  (%s)", active.Slug, active.Role)
+				}
 			}
 			env.kv("email", firstString(email, "-"))
 			env.kv("team", team)
@@ -249,8 +252,21 @@ func (e *Env) loginWithEmail(email string) (bool, error) {
 	}
 	e.pickActiveOrg(false)
 	e.pinTokenToActiveOrg(verify.Cookies)
-	outln("✓ Logged in as " + cfg.Email + ". Active org: " + pyNone(cfg.ActiveOrg))
+	outln(loggedIn(cfg.Email, cfg.ActiveOrg))
 	return true, nil
+}
+
+// loggedIn is the line a sign-in ends with; without a team it says how to get one, as a token
+// sign-in does.
+func loggedIn(email, org string) string {
+	who := "✓ Logged in"
+	if email != "" {
+		who += " as " + email
+	}
+	if org == "" {
+		return who + ". You're not in a team yet: create one with `treg org create \"Your Team\"` or accept an invite."
+	}
+	return who + ". Active org: " + org
 }
 
 var adLinkShape = regexp.MustCompile(`^[a-z0-9]{6}$`)
@@ -322,7 +338,7 @@ func (e *Env) loginInBrowser() error {
 		} else {
 			e.pinTokenToActiveOrg(nil)
 		}
-		outln("✓ Logged in as " + pyNone(cfg.Email) + ". Active org: " + pyNone(cfg.ActiveOrg))
+		outln(loggedIn(cfg.Email, cfg.ActiveOrg))
 		return nil
 	}
 	return output.Fail("Login timed out - run `treg login` again.")

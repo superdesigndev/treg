@@ -97,7 +97,7 @@ func parseCatalogArgs(argv []string) (catalogArgs, bool, error) {
 			}
 			n, err := strconv.Atoi(v)
 			if err != nil {
-				return a, false, fmt.Errorf("argument --limit: invalid int value: %s", pyRepr(v))
+				return a, false, fmt.Errorf("argument --limit: invalid int value: %s", quote(v))
 			}
 			a.limit = &n
 		case name == "--new":
@@ -106,7 +106,7 @@ func parseCatalogArgs(argv []string) (catalogArgs, bool, error) {
 				n, err := strconv.Atoi(v)
 				if err != nil {
 					return a, false, fmt.Errorf("argument --new: --new takes a number of days, not %s; put search "+
-						"words before --new (treg catalog search phone --new 60)", pyRepr(v))
+						"words before --new (treg catalog search phone --new 60)", quote(v))
 				}
 				days = n
 			}
@@ -117,7 +117,7 @@ func parseCatalogArgs(argv []string) (catalogArgs, bool, error) {
 				return a, false, fmt.Errorf("argument --sort: expected one argument")
 			}
 			if v != "best" && v != "newest" {
-				return a, false, fmt.Errorf("argument --sort: invalid choice: %s (choose from best, newest)", pyRepr(v))
+				return a, false, fmt.Errorf("argument --sort: invalid choice: %s (choose from best, newest)", quote(v))
 			}
 			a.sort = v
 		case arg == "--all":
@@ -165,7 +165,7 @@ func (e *Env) catalog(a catalogArgs) error {
 	}
 	if len(a.rest) > 0 {
 		return output.Fail("unexpected argument %s - did you mean `treg catalog search %s %s`?",
-			pyRepr(a.rest[0]), a.verb, strings.Join(a.rest, " "))
+			quote(a.rest[0]), a.verb, strings.Join(a.rest, " "))
 	}
 	if a.verb == "" {
 		return e.catalogPage(e.AnonymousClient(), api.Request{Path: "/catalog/platforms"}, "")

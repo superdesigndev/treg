@@ -88,7 +88,7 @@ func (p *Printer) refused(r *api.Response) error {
 	}
 	if detail, ok := body["detail"]; ok && strings.Contains(pyStr(detail), "choose an org") {
 		if p.OrgOverride != "" {
-			fmt.Fprintf(p.Err, "(the --org value %s isn't one of your teams - see `treg org ls`)\n", pyRepr(p.OrgOverride))
+			fmt.Fprintf(p.Err, "(the --org value %s isn't one of your teams - see `treg org ls`)\n", quote(p.OrgOverride))
 		} else {
 			fmt.Fprintln(p.Err, "(no valid active team - pick one with `treg org use <slug>`; see `treg org ls`)")
 		}
@@ -131,17 +131,6 @@ func pyStr(v any) string {
 	return string(data)
 }
 
-// pyRepr is Python's repr() of a plain string.
-func pyRepr(s string) string {
-	quote := "'"
-	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
-		quote = `"`
-	}
-	r := strings.ReplaceAll(s, `\`, `\\`)
-	if quote == "'" {
-		r = strings.ReplaceAll(r, "'", `\'`)
-	}
-	return quote + r + quote
-}
+func quote(s string) string { return strconv.Quote(s) }
 
 func colors() term.Palette { return term.Colors() }

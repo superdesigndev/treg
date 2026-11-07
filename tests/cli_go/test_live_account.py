@@ -52,7 +52,8 @@ def test_login_with_email_code(tmp_path, live, go_bin):
         assert "your code is" in first, (label, first)
         out, err = proc.communicate((first.rsplit(" ", 1)[1].strip() + "\n").encode(), timeout=60)
         assert proc.returncode == 0, (label, out, err)
-        assert out.decode().endswith("Active org: None\n"), (label, out)
+        # No team yet: the Python CLI printed "Active org: None", the Go CLI says how to get one.
+        assert normalize(out.decode()).endswith("or accept an invite.\n"), (label, out)
         cfg = json.loads((home / ".treg" / "config.json").read_text())
         configs.append({k: v for k, v in cfg.items() if k not in ("token", "email")})
         assert cfg["identity"] is True and cfg["email"] == email

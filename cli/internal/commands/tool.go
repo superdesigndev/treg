@@ -173,7 +173,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 			}
 			var current *pyjson.Object
 			for _, t := range responseList(r) {
-				if o, ok := t.(*pyjson.Object); ok && pyjson.Repr(o.Value("id")) == string(id) {
+				if o, ok := t.(*pyjson.Object); ok && pyjson.Text(o.Value("id")) == string(id) {
 					current = o
 					break
 				}
@@ -216,13 +216,13 @@ func parseBinds(specs []string) ([]any, error) {
 			case k == "secret" || k == "secret_id":
 				id, ok := pyInt(v)
 				if !ok {
-					return nil, output.Fail("--bind secret= must be an integer id, got %s", pyRepr(v))
+					return nil, output.Fail("--bind secret= must be an integer id, got %s", quote(v))
 				}
 				b.Set("secret_id", id)
 			case known:
 				b.Set(k, v)
 			default:
-				return nil, output.Fail("unknown --bind key %s", pyRepr(k))
+				return nil, output.Fail("unknown --bind key %s", quote(k))
 			}
 		}
 		if _, ok := b.Get("secret_id"); !ok {

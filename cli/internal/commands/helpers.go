@@ -43,6 +43,9 @@ func (o ordered) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// quote names a value inside a message, quoted and escaped.
+func quote(s string) string { return strconv.Quote(s) }
+
 // nullable is JSON null for an empty string, as Python writes None.
 func nullable(s string) any {
 	if s == "" {
@@ -51,10 +54,10 @@ func nullable(s string) any {
 	return s
 }
 
-// pyNone is how Python's f-string prints an absent value.
-func pyNone(s string) string {
+// orDash is a value for a line of output, "-" when there is none.
+func orDash(s string) string {
 	if s == "" {
-		return "None"
+		return "-"
 	}
 	return s
 }
@@ -68,10 +71,7 @@ func str(v any) string {
 	case float64:
 		return strconv.FormatFloat(t, 'f', -1, 64)
 	case bool:
-		if t {
-			return "True"
-		}
-		return "False"
+		return strconv.FormatBool(t)
 	}
 	return fmt.Sprint(v)
 }
