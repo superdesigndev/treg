@@ -689,15 +689,31 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's identity fields that are present but not of their declared type."""
+    """The caller's identity fields, and bool filters, that are present but not of their declared
+    type. A flag is checked before planning: `"false"` or `0` would otherwise read as asked for."""
     bad = []
-    for k, t in contract.identity_types.items():
+    checks = [*contract.identity_types.items(),
+              *((k, "bool") for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool")]
+    for k, t in checks:
         v = given.get(k)
-        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+        if t == "bool":
+            wrong = v is not None and not isinstance(v, bool)
+        else:
+            wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None
+        if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
             bad.append({"field": k, "type": t,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
+
+
+def flags_off(contract: Contract, identity: dict[str, Any]) -> dict[str, Any]:
+    """The identity without the bool filters that are off. An unsent or `false` flag asks for
+    nothing, so it is no part of the question: a provider sample keyed on it would move every
+    request that never sent the flag."""
+    off = {k for k, spec in (contract.filters or {}).items()
+           if (spec or {}).get("type") == "bool" and identity.get(k) is not True}
+    return {k: v for k, v in identity.items() if k not in off} if off else identity
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:

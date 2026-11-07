@@ -80,7 +80,7 @@ from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
-                                                 invalid_identity, miss_status)
+                                                 flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
@@ -619,7 +619,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             continue
         if tier == "platform" and not sampled_provider_allowed(
                 e["provider"], sample_percentages, org_id=caller.org_id,
-                capability=ep["capability"], identity=identity):
+                capability=ep["capability"], identity=flags_off(contract, identity)):
             dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
             continue
         if c.exhausted:

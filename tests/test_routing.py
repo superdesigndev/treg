@@ -3376,3 +3376,73 @@ async def test_a_web_search_that_asks_for_passages_goes_to_the_provider_that_ret
         assert sent["contents"] == {"highlights": {"query": body["q"], "maxCharacters": 2000}}
     else:
         assert "contents" not in sent
+
+
+def test_a_flag_that_is_off_leaves_the_provider_sample_where_it_was():
+    """An unsent or `false` flag asks for nothing: the sample hash sees the identity it saw before the
+    filter existed, so a request that never sends `contents` keeps its provider."""
+    from treg.domain.catalog.routing.contracts import flags_off
+    from treg.domain.catalog.routing.plan import sampled_provider_allowed
+
+    contract = catalog_store.load().contracts["web.search"]
+    before = {"q": "example", "limit": 10}
+    for body in ({"q": "example"}, {"q": "example", "contents": False}):
+        ident, _ = canonical_identity(contract, body)
+        assert flags_off(contract, ident) == before
+    asked, _ = canonical_identity(contract, {"q": "example", "contents": True})
+    assert flags_off(contract, asked)["contents"] is True
+    picks = [sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=o, capability="web.search", identity=before)
+             for o in range(40)]
+    assert picks == [sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=o, capability="web.search",
+                                              identity=flags_off(contract, canonical_identity(contract, {"q": "example"})[0]))
+                     for o in range(40)]
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1, "true", [True]])
+async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients, platform_on, monkeypatch, value):
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": value})
+    get_settings.cache_clear()
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == [], r.text
+
+
+async def test_passages_asked_for_and_not_served_are_named_in_ignored_filters(clients, platform_on, monkeypatch):
+    """Exa fails: the next provider answers without passages, and the answer says it ignored `contents`."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(500, {"error": "down"})], "*": [(200, {"results": [{"url": "https://example.com", "title": "t"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": True})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    assert [p for p, *_ in seen][0] == "exa" and r.json()["_treg"]["ignored_filters"] == ["contents"]
+
+
+async def test_a_request_without_the_flag_samples_providers_as_before(clients, platform_on, monkeypatch):
+    """Through build_plan: with crawl4ai sampled at 50%, whether it is in the plan for a request that
+    never sends `contents` is decided on the identity the filter did not exist in."""
+    from treg.domain.catalog.routing.plan import sampled_provider_allowed
+
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"crawl4ai":50}')
+    get_settings.cache_clear()
+    seen = set()
+    for i in range(12):
+        q = f"example {i}"
+        want = sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=1, capability="web.search",
+                                        identity={"q": q, "limit": 10})
+        seen.add(want)
+        for body in ({"q": q}, {"q": q, "contents": False}):
+            assert ("crawl4ai" in await _first_providers("treg.web.search", body, n=9)) is want, body
+    get_settings.cache_clear()
+    assert seen == {True, False}, "the sample split the questions both ways"
