@@ -2084,8 +2084,8 @@ def _names_task(mk, call_ref: str) -> bool:
 
 async def _remember_task(mk, org_id: int, tags: dict | None, call_ref: str, answer: bytes) -> None:
     try:
-        await async_task_app.remember_call_task(
-            call_ref, org_id, mk.endpoint_id, mk.async_descriptor, submission=answer, tags=tags)
+        await async_task_app.remember_relayed_task(
+            call_ref, org_id, mk.endpoint_id, mk.async_descriptor, answer, tags)
     except Exception:
         logging.getLogger("treg.asynctasks").warning(
             "could not record the task of call %s on %s", call_ref, mk.endpoint_id, exc_info=True)

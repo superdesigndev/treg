@@ -30,8 +30,9 @@ descriptors"). `/tasks/{call_id}` lets a client follow that task by the call id 
 
 `CallTask` is written by the call runtime when it relays an async answer: a root call (a call ref
 with no `:`; a routed child's task is named by its parent) to a catalog endpoint with an async
-descriptor, status 2xx. One writer, `application.asynctasks.remember_call_task`, on its own short
-session after the answer is read whole, so no connection is held while the provider is talking.
+descriptor, status 2xx. One writer module, `application.asynctasks` (`remember_relayed_task` for an
+answer treg relayed, `remember_routed_task` for a routed pending one), on its own short session
+after the answer is read whole, so no connection is held while the provider is talking.
 
 - **treg's key.** The body settlement already read (overflow-served and spooled answers excepted).
 - **A team's own key.** The answer is read whole up to `_TASK_ANSWER_MAX` (gzip or deflate decoded

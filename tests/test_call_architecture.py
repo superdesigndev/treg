@@ -99,8 +99,8 @@ _DATAPLANE_DERIVED_WRITES = {
     # every tier: a team's own key has no hold and no AsyncTaskRecord, and a routed caller holds
     # the parent's id. One row per root async answer, written after the answer is read whole.
     "call_task_record": (
-        (service._remember_task, "async_task_app.remember_call_task"),
-        (route._remember_pending_task, "async_task_app.remember_call_task"),
+        (service._remember_task, "async_task_app.remember_relayed_task"),
+        (route._remember_pending_task, "async_task_app.remember_routed_task"),
     ),
     # Shared-key resource lifecycle state is part of the call's security boundary: create must
     # establish ownership before returning the upstream id, and update/delete change local state
@@ -194,12 +194,12 @@ _DERIVED_WRITE_FILES = {
         "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
-        "async_task_app.remember_call_task",
+        "async_task_app.remember_relayed_task",
         "provider_resources.register",
         "provider_resources.rename",
         "provider_resources.tombstone",
     },
-    _SRC / "application" / "call" / "route.py": {"async_task_app.remember_call_task"},
+    _SRC / "application" / "call" / "route.py": {"async_task_app.remember_routed_task"},
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
     _SRC / "domain" / "governance" / "publicdemo.py": {
         "ratestore.sweep", "ratestore.rate_check",
@@ -252,8 +252,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "async_task_app.observe_owned_poll"),
     ("application/call/service.py", "_execute_call",
      "async_task_app.remember_platform_resources"),
-    ("application/call/service.py", "_remember_task", "async_task_app.remember_call_task"),
-    ("application/call/route.py", "_remember_pending_task", "async_task_app.remember_call_task"),
+    ("application/call/service.py", "_remember_task", "async_task_app.remember_relayed_task"),
+    ("application/call/route.py", "_remember_pending_task", "async_task_app.remember_routed_task"),
     ("application/call/service.py", "_apply_managed_resource_result",
      "provider_resources.register"),
     ("application/call/service.py", "_apply_managed_resource_result",

@@ -96,20 +96,29 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
     return int(hold.amount_micro)
 
 
-async def remember_call_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict, *,
-                             submission: bytes | None = None, task_id: str | None = None,
-                             poll_url: str | None = None, tags: dict | None = None) -> None:
-    """Write the `CallTask` for an async answer treg relayed. From the `submission` bytes the task
-    is read with the descriptor (none when the answer names none); a routed pending answer passes
-    the task its child started instead."""
-    digest = None
-    if submission is not None:
-        digest = hashlib.sha256(submission).hexdigest()
-        try:
-            found = asynctasks.extract_submission(descriptor or {}, json.loads(submission))
-            task_id, poll_url = found.task_id, found.poll_url
-        except (ValueError, asynctasks.ExtractionError):
-            task_id = poll_url = None
+async def remember_relayed_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict,
+                                submission: bytes, tags: dict | None) -> None:
+    """Write the `CallTask` for an async answer treg relayed: the task it names, read with the
+    descriptor (none when it names none), and the answer's digest."""
+    try:
+        found = asynctasks.extract_submission(descriptor or {}, json.loads(submission))
+        task_id, poll_url = found.task_id, found.poll_url
+    except (ValueError, asynctasks.ExtractionError):
+        task_id = poll_url = None
+    await _write_call_task(call_id, org_id, endpoint_id, descriptor, task_id, poll_url,
+                           hashlib.sha256(submission).hexdigest(), tags)
+
+
+async def remember_routed_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict,
+                               task_id: str, poll_url: str | None, tags: dict | None) -> None:
+    """Write the `CallTask` for a routed pending answer: the task its child started, under the
+    parent's call id."""
+    await _write_call_task(call_id, org_id, endpoint_id, descriptor, task_id, poll_url, None, tags)
+
+
+async def _write_call_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict,
+                           task_id: str | None, poll_url: str | None, digest: str | None,
+                           tags: dict | None) -> None:
     async with session_maker() as db:
         db.add(CallTask(call_id=call_id, org_id=org_id, endpoint_id=endpoint_id,
                         descriptor=_json_value(descriptor or {}), task_id=task_id,

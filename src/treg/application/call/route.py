@@ -714,9 +714,9 @@ async def _remember_pending_task(parent: CallContext, endpoint_id: str, descript
     except ValueError:
         poll_url = None
     try:
-        await async_task_app.remember_call_task(
+        await async_task_app.remember_routed_task(
             parent.call_ref, parent.input.caller.org_id, endpoint_id, descriptor,
-            task_id=task_id, poll_url=poll_url, tags=parent.meta.tags)
+            task_id, poll_url, parent.meta.tags)
     except Exception:
         log.warning("could not record the pending task of routed call %s", parent.call_ref,
                     exc_info=True)
