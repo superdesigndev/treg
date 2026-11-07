@@ -2905,15 +2905,21 @@ async def test_google_organic_asks_crawl4ai_first_and_falls_back_when_it_is_empt
 
 
 def test_empty_output_uses_list_and_count_defaults_not_null():
-    """A routed miss must keep list-typed contract fields as [] (and count as 0), never null."""
+    """A routed miss must keep list-typed contract fields as [] (and count as 0), never null.
+
+    Other ints (followers, likes, …) stay null — a miss must not look like a measured zero.
+    """
     from treg.application.call.route import _empty_output
     from types import SimpleNamespace
     contract = SimpleNamespace(output={
         "results": {"type": "list", "required": True},
         "count": {"type": "int"},
         "email": {"type": "str"},
+        "followers": {"type": "int"},
     })
-    assert _empty_output(contract) == {"results": [], "count": 0, "email": None}
+    assert _empty_output(contract) == {
+        "results": [], "count": 0, "email": None, "followers": None,
+    }
 
 
 async def test_routed_web_search_miss_emits_empty_results_list_not_null(clients, monkeypatch):

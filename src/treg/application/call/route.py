@@ -432,14 +432,15 @@ def _empty_output(contract) -> dict:
 
     Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
     and callers (and the miss rule `results == []`) treat null as a broken response rather than an
-    empty one. Scalar fields stay `null`; `count` (int) is `0` next to an empty list answer.
+    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
     """
     out = {}
     for k, spec in contract.output.items():
         t = (spec or {}).get("type")
         if t == "list":
             out[k] = []
-        elif t == "int":
+        elif t == "int" and k == "count":
             out[k] = 0
         else:
             out[k] = None
