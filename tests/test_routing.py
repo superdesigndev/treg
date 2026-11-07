@@ -3585,3 +3585,16 @@ async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clien
     get_settings.cache_clear()
     names = [u["username"] for u in r.json()["output"]["users"]]
     assert sorted(names) == ["acct0", "acct1", "acct2", "new_one"], names
+
+    # a later provider that repeats its own rows does not displace an earlier account
+    seen.clear()
+    dup = {"data": {"data": {"items": [{"username": u} for u in ("acct1", "acct2") * 3]}}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios[:3]})], "exa": [(200, {"results": []})],
+         "tikhub": [(200, dup)] * 2}, seen))
+    get_settings.cache_clear()
+    for p in ("SCRAPECREATORS", "EXA", "TIKHUB"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Perth"})
+    get_settings.cache_clear()
+    assert [u["username"] for u in r.json()["output"]["users"]] == ["acct0", "acct1", "acct2"]

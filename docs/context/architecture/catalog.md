@@ -1015,9 +1015,9 @@ returned and never documented as stable. An output field may say where it lands 
   every provider asked is billed at its own price, so each request costs up to that many more
   calls. Use it only where providers see different slices of one population: `instagram.search.users`
   sets 25 with `prefer: [scrapecreators, exa]`, account bios first, then the accounts that creator
-  directory pages name (`instagram_handles`), then TikHub. The merged answer is the union in attempt
-  order, even when a later provider returned as many rows alone, so an earlier provider's row for an
-  account (with its follower count) leads. Rows from every child carry the account's profile `url`,
+  directory pages name (`instagram_handles`), then TikHub. Whenever two providers contribute rows,
+  the answer is their deduped union in attempt order, so an earlier provider's row for an account
+  (with its follower count) leads and a later provider's own repeats count once. Rows from every child carry the account's profile `url`,
   which the merge dedupes on.
 - `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
   people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
