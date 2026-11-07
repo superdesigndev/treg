@@ -95,6 +95,10 @@ class Contract:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
     # rows add up. A free-text `{q}` people search is a "find as many as fit" question.
     fill_limit_when: tuple[tuple[str, ...], ...] = ()
+    # Rows every request fills toward, merging providers, when the caller set no limit target and
+    # sent neither Min-Results nor Merge: a search whose providers each see a different slice of the
+    # same population (account bios, directory pages) answers best from their union. 0 = off.
+    fill_rows: int = 0
     # The per-call verdict word (`CallRecord.verdict`): `verdict_from` names the output field it is
     # read from, `verdict_words` the only words a call may be stored with, and `verdict_map` turns a
     # value of that field into one (`true` -> `verified`). Each adapter adds its provider's own
@@ -148,13 +152,14 @@ class Contract:
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
         when the identity keys it sent are exactly one of `fill_limit_when`, else None."""
-        if not self.fill_limit_when or not isinstance(given, dict):
+        if not isinstance(given, dict):
             return None
         limit = given.get("limit")
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
-            return None
-        sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
-        return limit if any(sent == set(keys) for keys in self.fill_limit_when) else None
+        if self.fill_limit_when and not isinstance(limit, bool) and isinstance(limit, int) and limit >= 2:
+            sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
+            if any(sent == set(keys) for keys in self.fill_limit_when):
+                return limit
+        return self.fill_rows or None
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -327,7 +332,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "prefer", "prefer_by_domain_suffix", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
     "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
@@ -398,6 +403,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
             prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), {**types, **(c.get("filters") or {})}),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
+            fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
@@ -446,6 +452,15 @@ def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
             or any(k not in types or not isinstance(v, str) or not v.strip() for k, v in raw.items())):
         raise ValueError(f"contract {cap}: identity_notes maps identity keys to a non-empty note, got {raw!r}")
     return {k: v.strip() for k, v in raw.items()}
+
+
+def _parse_fill_rows(cap: str, raw, c: dict) -> int:
+    if raw is None:
+        return 0
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 2 or not lists:
+        raise ValueError(f"contract {cap}: fill_rows is a row count of 2 or more on a contract with a list output, got {raw!r}")
+    return raw
 
 
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:

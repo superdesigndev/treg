@@ -3475,3 +3475,128 @@ async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(
     t = r.json()["_treg"]
     assert len(t.get("merged_from") or []) == 2, t
     assert t["ignored_filters"] == ["contents"] and r.headers.get("x-treg-ignored-filters") == "contents"
+
+
+async def test_a_search_contract_advice_rides_on_every_hit(clients, platform_on, monkeypatch):
+    """A search contract has no `verified` output, so its `advice_unverified` sentence reaches the
+    agent on every hit, where it chooses its next call."""
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "instagram.search.users", dataclasses.replace(
+        cat.contracts["instagram.search.users"], advice_unverified="Try the other search."))
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPECREATORS", "PLATFORM-SC-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"*": [(200, {"profiles": [{"username": "a", "url": "https://www.instagram.com/a/"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "productivity coach Brazil"})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["advice"] == "Try the other search."
+
+
+def test_instagram_handles_reads_the_accounts_a_page_names():
+    """Handles from `instagram.com/<handle>` anywhere and `@handle` on a page about Instagram; an
+    email address, Instagram's own paths and a repeat are no account."""
+    from treg.domain.catalog.routing import paths as P
+
+    results = [
+        {"url": "https://example.com/list", "highlights": [
+            "Follow @coffee.one (12K followers) and instagram.com/roaster_two/ on Instagram. Mail hi@example.com, see instagram.com/p/abc. Top 10 of @2024: instagram.com/433/"]},
+        {"url": "https://example.org/x", "highlights": ["Twitter: @someone_else"]},
+        {"url": "https://example.net/y", "highlights": ["Also instagram.com/coffee.one and @third on Instagram"]},
+    ]
+    rows = P.evaluate("instagram_handles(results)", {"results": results})
+    assert [r["username"] for r in rows] == ["coffee.one", "roaster_two", "433", "third"], "a linked all-digit handle is an account"
+    assert rows[0]["url"] == "https://www.instagram.com/coffee.one/" and "12K followers" in rows[0]["biography"]
+    assert rows[0]["matched_from"] == "example.com", "the site, not the page url: every row is read"
+    assert all(len(r["biography"]) <= 175 for r in rows)
+    assert P.evaluate("instagram_handles(results)", {"results": None}) is None
+
+
+def test_fill_rows_fills_every_request_and_needs_a_list_output():
+    from treg.domain.catalog.routing import contracts as C
+
+    doc = {"identity": [{"q": "str"}], "output": {"users": {"type": "list", "required": True}}, "miss": "users == []"}
+    c = C.parse_contracts({"contracts": {"y": {**doc, "fill_rows": 25}}})["y"]
+    assert c.fill_target({"q": "x"}) == 25
+    for bad in (1, True, "25", 0):
+        with pytest.raises(ValueError, match="fill_rows"):
+            C.parse_contracts({"contracts": {"y": {**doc, "fill_rows": bad}}})
+    with pytest.raises(ValueError, match="fill_rows"):
+        C.parse_contracts({"contracts": {"y": {**doc, "output": {"a": "str"}, "fill_rows": 25}}})
+
+
+@pytest.mark.parametrize("bio_rows, providers", [(10, ["scrapecreators", "exa"]), (25, ["scrapecreators"])])
+async def test_an_instagram_search_adds_directory_accounts_to_a_short_bio_answer(
+        clients, platform_on, monkeypatch, bio_rows, providers):
+    """Bio search first; under 25 accounts, the directory search adds the accounts its pages name,
+    a repeat counted once."""
+    for p in ("SCRAPECREATORS", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators,exa")
+    get_settings.cache_clear()
+    bios = [{"username": f"bio{i}", "url": f"https://www.instagram.com/bio{i}"} for i in range(bio_rows)]
+    page = {"results": [{"url": "https://example.com/list",
+                         "highlights": ["Instagram picks: @bio0, @dir_one and instagram.com/dir_two/"]}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios})], "exa": [(200, page)]}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "specialty coffee Melbourne"})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    assert [p for p, *_ in seen] == providers
+    users = r.json()["output"]["users"]
+    if bio_rows < 25:
+        assert len(users) == bio_rows + 2 and {"dir_one", "dir_two"} <= {u["username"] for u in users}
+        assert seen[1][3]["query"] == "specialty coffee Melbourne Instagram influencers"
+    else:
+        assert len(users) == 25
+
+
+async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clients, platform_on, monkeypatch):
+    """The directory search names all ten bio accounts and fifteen more, as many rows as the merge:
+    the union still leads with the bio rows, follower counts kept; a TikHub row for the same
+    account is the same account."""
+    for p in ("SCRAPECREATORS", "EXA", "TIKHUB"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators,exa,tikhub")
+    get_settings.cache_clear()
+    bios = [{"username": f"acct{i}", "url": f"https://www.instagram.com/acct{i}", "follower_count": 1000 + i}
+            for i in range(10)]
+    page = {"results": [{"url": "https://example.com/list", "highlights": [
+        "Instagram: " + " ".join(f"@acct{i}" for i in range(25))]}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios})], "exa": [(200, page)]}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Melbourne"})
+    assert r.status_code == 200, r.text
+    users = r.json()["output"]["users"]
+    assert len(users) == 25 and [u.get("follower_count") for u in users[:10]] == [1000 + i for i in range(10)]
+    assert r.json()["_treg"]["merged_from"] == ["scrapecreators.x.v1-instagram-search-profiles", "exa.instagram.search.users"]
+    assert [p for p, *_ in seen] == ["scrapecreators", "exa"], "25 accounts reached: no third provider is paid"
+
+    # bio search short, directory empty: TikHub fills, and an account it shares counts once
+    seen.clear()
+    tik = {"data": {"data": {"items": [{"username": "acct1", "full_name": "A"}, {"username": "new_one"}]}}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios[:3]})], "exa": [(200, {"results": []})],
+         "tikhub": [(200, tik)] * 2}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Sydney"})
+    get_settings.cache_clear()
+    names = [u["username"] for u in r.json()["output"]["users"]]
+    assert sorted(names) == ["acct0", "acct1", "acct2", "new_one"], names
+
+    # a later provider that repeats its own rows does not displace an earlier account
+    seen.clear()
+    dup = {"data": {"data": {"items": [{"username": u} for u in ("acct1", "acct2") * 3]}}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios[:3]})], "exa": [(200, {"results": []})],
+         "tikhub": [(200, dup)] * 2}, seen))
+    get_settings.cache_clear()
+    for p in ("SCRAPECREATORS", "EXA", "TIKHUB"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Perth"})
+    get_settings.cache_clear()
+    assert [u["username"] for u in r.json()["output"]["users"]] == ["acct0", "acct1", "acct2"]
