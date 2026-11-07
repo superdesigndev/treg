@@ -3503,12 +3503,12 @@ def test_instagram_handles_reads_the_accounts_a_page_names():
 
     results = [
         {"url": "https://example.com/list", "highlights": [
-            "Follow @coffee.one (12K followers) and instagram.com/roaster_two/ on Instagram. Mail hi@example.com, see instagram.com/p/abc."]},
+            "Follow @coffee.one (12K followers) and instagram.com/roaster_two/ on Instagram. Mail hi@example.com, see instagram.com/p/abc. Top 10 of @2024: instagram.com/433/"]},
         {"url": "https://example.org/x", "highlights": ["Twitter: @someone_else"]},
         {"url": "https://example.net/y", "highlights": ["Also instagram.com/coffee.one and @third on Instagram"]},
     ]
     rows = P.evaluate("instagram_handles(results)", {"results": results})
-    assert [r["username"] for r in rows] == ["coffee.one", "roaster_two", "third"]
+    assert [r["username"] for r in rows] == ["coffee.one", "roaster_two", "433", "third"], "a linked all-digit handle is an account"
     assert rows[0]["url"] == "https://www.instagram.com/coffee.one/" and "12K followers" in rows[0]["biography"]
     assert rows[0]["matched_from"] == "https://example.com/list"
     assert P.evaluate("instagram_handles(results)", {"results": None}) is None
@@ -3552,3 +3552,36 @@ async def test_an_instagram_search_adds_directory_accounts_to_a_short_bio_answer
         assert seen[1][3]["query"] == "specialty coffee Melbourne Instagram influencers"
     else:
         assert len(users) == 25
+
+
+async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clients, platform_on, monkeypatch):
+    """The directory search names all ten bio accounts and fifteen more, as many rows as the merge:
+    the union still leads with the bio rows, follower counts kept; a TikHub row for the same
+    account is the same account."""
+    for p in ("SCRAPECREATORS", "EXA", "TIKHUB"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators,exa,tikhub")
+    get_settings.cache_clear()
+    bios = [{"username": f"acct{i}", "url": f"https://www.instagram.com/acct{i}", "follower_count": 1000 + i}
+            for i in range(10)]
+    page = {"results": [{"url": "https://example.com/list", "highlights": [
+        "Instagram: " + " ".join(f"@acct{i}" for i in range(25))]}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios})], "exa": [(200, page)]}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Melbourne"})
+    assert r.status_code == 200, r.text
+    users = r.json()["output"]["users"]
+    assert len(users) == 25 and [u.get("follower_count") for u in users[:10]] == [1000 + i for i in range(10)]
+    assert r.json()["_treg"]["merged_from"] == ["scrapecreators.x.v1-instagram-search-profiles", "exa.instagram.search.users"]
+
+    # bio search short, directory empty: TikHub fills, and an account it shares counts once
+    seen.clear()
+    tik = {"data": {"data": {"items": [{"username": "acct1", "full_name": "A"}, {"username": "new_one"}]}}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"scrapecreators": [(200, {"profiles": bios[:3]})], "exa": [(200, {"results": []})],
+         "tikhub": [(200, tik)] * 2}, seen))
+    r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Sydney"})
+    get_settings.cache_clear()
+    names = [u["username"] for u in r.json()["output"]["users"]]
+    assert sorted(names) == ["acct0", "acct1", "acct2", "new_one"], names

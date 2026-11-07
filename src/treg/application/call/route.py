@@ -1261,11 +1261,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         field = _list_field(plan.contract)
         if field:
             rows = _merge_rows(field, answers, plan.identity.get("limit"))
-            if len(rows) > len(output.get(field) or []):
+            contributed = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
+            # The union in attempt order even when a later provider returned as many rows on its
+            # own: an earlier provider's row for the same person (with its details) leads.
+            if len(contributed) > 1 and len(rows) >= len(output.get(field) or []):
                 output = {**output, field: rows}
                 if "count" in plan.contract.output:
                     output["count"] = len(rows)
-                merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
+                merged_from = contributed
                 served = merged_from[0]
     # Every provider whose rows are in the answer: a merged row from one that ignored a filter
     # answers the looser question too.

@@ -424,7 +424,10 @@ def instagram_handles(results: Any) -> list | None:
             if not on_instagram and not _IG_LINK_ONLY.match(text, m.start()):
                 continue
             handle = m.group(1)
-            if handle.lower() in _IG_RESERVED or handle.lower() in seen or handle.isdigit():
+            # An all-digit handle is a real account (`instagram.com/433`) only in a link; after an @
+            # it is as likely a number in prose.
+            if (handle.lower() in _IG_RESERVED or handle.lower() in seen
+                    or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
                 continue
             seen.add(handle.lower())
             around = " ".join(text[max(0, m.start() - 120):m.end() + 180].split())

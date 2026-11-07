@@ -1704,10 +1704,18 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.data.items, count: data.data.count}
+    # The contract's row shape, with the profile url built from the handle: the router's merge
+    # recognises one account across providers by its url.
+    row: {id: id, username: username, full_name: full_name, url: "fmt('https://www.instagram.com/{}/', username)",
+          is_verified: is_verified, is_private: is_private}
   tikhub.x.instagram-v3-search-users:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {users: data.users, count: data.count}
+    # The contract's row shape, with the profile url built from the handle: the router's merge
+    # recognises one account across providers by its url.
+    row: {id: id, username: username, full_name: full_name, url: "fmt('https://www.instagram.com/{}/', username)",
+          is_verified: is_verified, is_private: is_private}
 
   dataforseo.x.serp-google-local-finder-live-advanced:
     accepts: [[q]]

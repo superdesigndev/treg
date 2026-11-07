@@ -1,22 +1,31 @@
 {
  "requestId": "routing-fixture",
+ "resolvedSearchType": "",
  "results": [
   {
-   "url": "https://example.com/top-coffee-creators",
-   "title": "Top specialty coffee creators in Melbourne",
+   "id": "https://directory1.example.com/coffee-creators",
+   "title": "Coffee creators to follow, list 1",
+   "url": "https://directory1.example.com/coffee-creators",
    "highlights": [
-    "Our picks for Instagram: @fixture.barista (12K followers) pours latte art daily; Roaster Two at instagram.com/fixture_roaster shares roasting notes."
-   ]
+    "Our Instagram picks: @fixture.barista (12K followers) pours latte art daily; roaster notes at instagram.com/fixture_roaster/."
+   ],
+   "image": null
   },
   {
-   "url": "https://example.org/coffee-list",
-   "title": "Coffee accounts to follow",
+   "id": "https://directory2.example.com/coffee-creators",
+   "title": "Coffee creators to follow, list 2",
+   "url": "https://directory2.example.com/coffee-creators",
    "highlights": [
-    "Email us at hello@example.org. Follow @fixture.barista and @third_cafe on Instagram."
-   ]
+    "Contact hello@example.org. Also on Instagram: @fixture.barista and instagram.com/433/."
+   ],
+   "image": null
   }
  ],
+ "searchTime": 307,
  "costDollars": {
-  "total": 0.007
+  "total": 0.007,
+  "search": {
+   "neural": 0.007
+  }
  }
 }
