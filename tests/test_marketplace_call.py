@@ -3318,6 +3318,12 @@ def _usd_to_micro_for_test(usd) -> int:
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"totalItems":0}', None),
+    # CompanyEnrich companies: 1 credit per company, 5 per lookalike, one company on an empty page.
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10},
+     b'{"items":[{},{}]}', 2),
     # Icypeas bulk: only FOUND rows bill, at the row's credits (10 per reverse-email hit).
     ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
      b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),
