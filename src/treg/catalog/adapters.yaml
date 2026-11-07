@@ -3377,6 +3377,15 @@ adapters:
     out: {platform: result.platform, username: result.username, url: result.url, full_name: result.fullname, followers: result.followers}
     miss: "result.platform == null"
 
+  # Judge-only: per_success settle zeros when every social URL is null (the documented miss body).
+  enrichlayer.contacts.reverse-phone:
+    route: false
+    accepts: [[phone]]
+    in: {phone: queryParams.phone_number}
+    out: {linkedin_url: linkedin_profile_url, twitter_url: twitter_profile_url,
+          facebook_url: facebook_profile_url}
+    miss: "coalesce(linkedin_profile_url, twitter_profile_url, facebook_profile_url) == null"
+
   # Enrichlayer's routed profiles use only the documented one-credit cache option.
   enrichlayer.person.profile:
     accepts: [[linkedin_url]]
