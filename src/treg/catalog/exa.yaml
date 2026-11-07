@@ -449,6 +449,40 @@ endpoints:
       note: "$0.007 per call for up to 10 results (OBSERVED 2026-08-27: includeDomains instagram.com, 15 results → costDollars.total 0.012 = base + 5 riders), plus $0.001 per result beyond 10. Highlights inside the call were not billed on top. Platform billing settles the exact costDollars.total."
     docs_url: https://docs.exa.ai/reference/search
 
+  - id: exa.instagram.search.users
+    domain: creators
+    capability: instagram.search.users
+    platform: instagram
+    scope: any_account
+    method: POST
+    path: /search
+    name: "Find Instagram accounts named on creator directories and list pages"
+    summary: "Search the web for pages that list Instagram creators in a niche (directories, rankings, articles), with the passages that name them."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "the niche, place or audience plus 'Instagram influencers' ('specialty coffee Melbourne Instagram influencers')", example: "specialty coffee Melbourne Instagram influencers"}
+        numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 10}
+        contents: {type: object, required: false, note: "{highlights: {query, maxCharacters}}: the passages that match, which carry the handles a page lists", example: {highlights: {query: "specialty coffee Melbourne Instagram influencers", maxCharacters: 2000}}}
+      note: "Exa does not index instagram.com profile pages, so this searches the pages that list creators. Each result is a web page; its highlights name the accounts (instagram.com/<handle> or @handle)."
+    test_request:
+      body: {query: "specialty coffee Melbourne Instagram influencers", numResults: 10, contents: {highlights: {query: "specialty coffee Melbourne Instagram influencers", maxCharacters: 2000}}}
+    verified: '2026-11-07'
+    added: '2026-11-07'
+    example_response: examples/exa.instagram.search.users.json
+    cost:
+      type: per_call
+      value: 7
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://exa.ai/pricing
+      checked: '2026-11-07'
+      confidence: verified
+      note: "$0.007 per call for up to 10 results (OBSERVED 2026-11-07: 10 results with highlights billed the search base), plus $0.001 per result beyond 10."
+    docs_url: https://docs.exa.ai/reference/search
+
   - id: exa.web.answer
     domain: answer
     capability: web.answer

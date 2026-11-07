@@ -1,0 +1,22 @@
+{
+ "requestId": "routing-fixture",
+ "results": [
+  {
+   "url": "https://example.com/top-coffee-creators",
+   "title": "Top specialty coffee creators in Melbourne",
+   "highlights": [
+    "Our picks for Instagram: @fixture.barista (12K followers) pours latte art daily; Roaster Two at instagram.com/fixture_roaster shares roasting notes."
+   ]
+  },
+  {
+   "url": "https://example.org/coffee-list",
+   "title": "Coffee accounts to follow",
+   "highlights": [
+    "Email us at hello@example.org. Follow @fixture.barista and @third_cafe on Instagram."
+   ]
+  }
+ ],
+ "costDollars": {
+  "total": 0.007
+ }
+}

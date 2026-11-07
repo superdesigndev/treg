@@ -1684,6 +1684,16 @@ adapters:
     out: {posts: data.searchResults.edges}
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
+  exa.instagram.search.users:
+    accepts: [[q]]
+    in: {q: body.query}
+    # The accounts are named in the pages' passages; the query asks for pages that list creators.
+    in_expr: {body.query: "join(q, 'Instagram influencers')", body.contents.highlights.query: "join(q, 'Instagram influencers')",
+              body.contents.highlights.maxCharacters: "2000", body.numResults: "10"}
+    test_identity: {q: "specialty coffee Melbourne"}
+    out: {users: "instagram_handles(results)", count: "len(instagram_handles(results))"}
+    miss: "coalesce(instagram_handles(results), []) == []"
+    row: {username: username, url: url, biography: biography, matched_from: matched_from}
   scrapecreators.x.v1-instagram-search-profiles:
     accepts: [[q]]
     in:  {q: queryParams.query}
