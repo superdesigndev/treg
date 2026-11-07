@@ -210,7 +210,10 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
 into the binary (`internal/minisign`), checks the archive's sum, extracts the binary and renames it
 over the running one (Windows renames the running file to `.old`; the next run removes it). `treg
 update [--channel stable|beta]` does it in the foreground; a Homebrew or npm install is told its
-package manager's command.
+package manager's command. Switching channels installs that channel's release even when it is
+older, so leaving the beta returns to stable. A channel with no release yet (stable, during the
+beta) is not a failure: the switch is kept, the binary stays as it is, and it takes the channel's
+first release newer than itself.
 
 A release build the installer placed also updates itself: at most once a day a command starts a
 detached `treg __update` and never waits for it. That process removes the Python CLI's uv or pipx

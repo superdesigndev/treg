@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,10 +50,15 @@ func updateCmd(env *Env) *cobra.Command {
 				}
 			}
 			m, err := update.Latest(context.Background(), env.Registry(), env.channel())
+			if _, none := errors.AsType[*update.NoRelease](err); none {
+				outf("The %s channel has no release yet, so this stays treg %s; it updates to the channel's "+
+					"first release newer than this one.\n", env.channel(), buildinfo.Version)
+				return nil
+			}
 			if err != nil {
 				return output.Fail("treg: could not check for an update: %v", err)
 			}
-			if !switched && !update.Newer(m.Version, buildinfo.Version) {
+			if m.Version == buildinfo.Version || (!switched && !update.Newer(m.Version, buildinfo.Version)) {
 				outf("treg %s is the newest release on the %s channel.\n", buildinfo.Version, env.channel())
 				return nil
 			}
@@ -83,6 +89,10 @@ func backgroundUpdateCmd(env *Env) *cobra.Command {
 			}
 			update.RemovePythonCLI(exe)
 			m, err := update.Latest(context.Background(), env.Registry(), env.channel())
+			if _, none := errors.AsType[*update.NoRelease](err); none {
+				update.RecordResult("no release on the " + env.channel() + " channel yet")
+				return nil
+			}
 			if err != nil {
 				update.RecordResult("check failed: " + err.Error())
 				return &output.Exit{Code: 1}

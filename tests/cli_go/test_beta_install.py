@@ -41,6 +41,8 @@ def _registry(tmp_path_factory, downloads, beta: str) -> LiveRegistry:
     return LiveRegistry(tmp_path_factory.mktemp(f"reg-{beta}"), extra_env={
         "TREG_CLI_BETA_VERSION": beta,
         "TREG_CLI_DOWNLOAD_BASE_URL": f"{downloads}/cli-v{{version}}",
+        # Stable has no release here: no setting, and a repository with no releases to fall back to.
+        "TREG_CLI_RELEASE_REPO": "superdesigndev/treg-no-releases-here",
     })
 
 
@@ -120,6 +122,18 @@ def test_update_and_background_update(tmp_path, registries):
     else:
         pytest.fail(f"no background update: {state.read_text()}")
     assert "updated 1.0.0 -> 1.0.1" in json.loads(state.read_text())["result"]
+
+
+def test_leaving_the_beta_before_stable_has_a_release(tmp_path, registries):
+    first, _ = registries
+    treg, env = _installed(tmp_path, first)
+    left = _sh(f"'{treg}' update --channel stable", env)
+    assert left.returncode == 0 and "stable channel has no release yet, so this stays treg 1.0.0" in left.stdout, left
+    assert json.loads((tmp_path / "home" / ".treg" / "config.json").read_text())["channel"] == "stable"
+    again = _sh(f"'{treg}' update", env)
+    assert again.returncode == 0 and "has no release yet" in again.stdout, again
+    back = _sh(f"'{treg}' update --channel beta", env)
+    assert back.returncode == 0 and "treg 1.0.0 is the newest release on the beta channel" in back.stdout, back
 
 
 def test_a_tampered_release_is_refused(tmp_path, registries, tmp_path_factory, downloads):

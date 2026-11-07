@@ -45,6 +45,13 @@ type Manifest struct {
 
 var client = &http.Client{Timeout: fetchTimeout}
 
+// NoRelease is a channel with no release for this platform yet: during the beta, stable has none.
+type NoRelease struct{ Channel string }
+
+func (e *NoRelease) Error() string {
+	return fmt.Sprintf("no treg release on the %s channel for %s/%s", e.Channel, runtime.GOOS, runtime.GOARCH)
+}
+
 // Latest asks the registry which release this channel runs on this platform, and GitHub when the
 // registry is older than /cli/latest.
 func Latest(ctx context.Context, registry, channel string) (*Manifest, error) {
@@ -62,7 +69,7 @@ func Latest(ctx context.Context, registry, channel string) (*Manifest, error) {
 				return &m, nil
 			}
 		case resp.StatusCode == http.StatusNotFound && !bytes.Contains(body, []byte(`"Not Found"`)):
-			return nil, fmt.Errorf("no treg release on the %s channel for %s/%s", channel, runtime.GOOS, runtime.GOARCH)
+			return nil, &NoRelease{Channel: channel}
 		}
 	}
 	return fromGitHub(ctx, channel)
@@ -95,7 +102,7 @@ func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
 		return &Manifest{Version: version, Channel: channel, Archive: archive, URL: base + "/" + archive,
 			ChecksumsURL: base + "/SHA256SUMS", SignatureURL: base + "/SHA256SUMS.minisig"}, nil
 	}
-	return nil, fmt.Errorf("no treg release on the %s channel", channel)
+	return nil, &NoRelease{Channel: channel}
 }
 
 func ArchiveName(version, goos, goarch string) string {
