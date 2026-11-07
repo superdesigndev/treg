@@ -509,13 +509,32 @@ def http_error(v: Any) -> bool:
         return False
 
 
+def linkedin_profile_is_shell(data: Any) -> bool:
+    """True when a LinkedIn profile result is an 'empty shell': the provider said found but returned
+    only a name with no substantive profile content. A legitimate sparse profile has at least one of:
+    experience, education, or about/headline text. An empty shell has none.
+
+    Handles field name variations across providers: experience/experiences, about/summary."""
+    if not isinstance(data, dict):
+        return False
+    experience = data.get("experience") or data.get("experiences")
+    education = data.get("education")
+    about = data.get("about") or data.get("summary")
+    headline = data.get("headline")
+    has_experience = isinstance(experience, list) and len(experience) > 0
+    has_education = isinstance(education, list) and len(education) > 0
+    has_about = isinstance(about, str) and about.strip()
+    has_headline = isinstance(headline, str) and headline.strip()
+    return not (has_experience or has_education or has_about or has_headline)
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
 TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
-              "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
+              "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url, "linkedin_profile_is_shell": linkedin_profile_is_shell,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
