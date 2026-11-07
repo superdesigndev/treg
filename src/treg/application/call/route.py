@@ -91,7 +91,7 @@ from . import route_rules as route_rules_app
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
-from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
+from .types import CallContext, CallFailure, GatewayFailed, ReservationFailed, ResolutionFailed, UpstreamResponse
 
 log = logging.getLogger("treg.route")
 _endpoint_observation_reader: endpoint_stats.EndpointObservationReader | None = None
@@ -872,6 +872,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     spent = 0
     errors = 0
     rejected_by: set[str] = set()  # providers that answered a vendor 4xx
+    # A priced child's insufficient_balance must not strand a later free/affordable sibling
+    # (search ranking can put a dearer, more-specific child first). Spend-cap / daily-cap
+    # refusals stay terminal via _GLOBAL_REFUSALS.
+    balance_refusal: CallFailure | None = None
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
     weak_hits = 0
@@ -958,6 +962,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "treg's account is at its rate limit"))
                 rate_waits.append(exc.retry_after_s or 1)
+                continue
+            if exc.kind == "insufficient_balance":
+                # Like max-cost: this child is unaffordable, a later free/cheaper one may not be.
+                # Raise only when every remaining attempt is also skipped (see winner-is-None).
+                balance_refusal = exc
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "insufficient balance"))
                 continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
@@ -1233,6 +1244,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
         if tried and all(t.outcome == "skipped" for t in tried):
+            if balance_refusal is not None:
+                # Prefer the team's balance 402 over route_max_cost when unaffordable children
+                # were the reason nothing ran (possibly mixed with max-cost skips).
+                detail = dict(balance_refusal.detail) if isinstance(balance_refusal.detail, dict) else {
+                    "error": "insufficient_balance", "message": str(balance_refusal.detail),
+                }
+                detail = {**detail, "tried": [t.view() for t in tried], "charged_micro": spent}
+                _summarize(parent, tried_count=len(tried))
+                _audit_parent(parent, ep, 402, 0, audit_client)
+                raise ReservationFailed("insufficient_balance", status_code=402, detail=detail)
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
                 "max_cost_micro": options.max_cost_micro, "charged_micro": spent,
