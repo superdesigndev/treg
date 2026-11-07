@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/spf13/cobra"
 
@@ -245,38 +244,12 @@ func callBody(f callFlags) ([]byte, error) {
 // withoutBOM: PowerShell's `>` and Out-File write UTF-16 (5.1) or a UTF-8 byte-order mark, and no
 // JSON API parses either. Only a body that is JSON once decoded is rewritten, and the caller is told.
 func withoutBOM(raw []byte, source string) []byte {
-	var text []byte
-	var name string
-	switch {
-	case bytes.HasPrefix(raw, []byte{0xEF, 0xBB, 0xBF}):
-		text, name = raw[3:], "utf-8"
-	case bytes.HasPrefix(raw, []byte{0xFF, 0xFE}):
-		text, name = utf16Decode(raw[2:], false), "utf-16"
-	case bytes.HasPrefix(raw, []byte{0xFE, 0xFF}):
-		text, name = utf16Decode(raw[2:], true), "utf-16"
-	default:
-		return raw
-	}
-	if text == nil || !ojson.Valid(text) {
+	text, name := decodeBOM(raw)
+	if name == "" || text == nil || !ojson.Valid(text) {
 		return raw
 	}
 	fmt.Fprintf(os.Stderr, "treg: %s starts with a %s byte-order mark; sending it as UTF-8 JSON\n", source, name)
 	return text
-}
-
-func utf16Decode(b []byte, bigEndian bool) []byte {
-	if len(b)%2 != 0 {
-		return nil
-	}
-	units := make([]uint16, len(b)/2)
-	for i := range units {
-		if bigEndian {
-			units[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
-		} else {
-			units[i] = uint16(b[2*i+1])<<8 | uint16(b[2*i])
-		}
-	}
-	return []byte(string(utf16.Decode(units)))
 }
 
 // multipartBody builds the form for --upload, encoded eagerly so the WAF retry can resend it.

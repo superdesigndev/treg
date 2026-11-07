@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -113,14 +115,46 @@ func osError(err error, path string) string {
 	return err.Error()
 }
 
-// readText is a UTF-8 text file with its line endings as "\n".
+// readText is a text file as UTF-8 with its line endings as "\n". A byte-order mark is dropped and
+// UTF-16 behind one converted: Windows PowerShell 5.1 writes `Set-Content -Encoding UTF8` with a
+// UTF-8 mark and `>` as UTF-16.
 func readText(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	if !utf8.Valid(raw) {
-		return "", &fs.PathError{Op: "read", Path: path, Err: errors.New("not UTF-8 text")}
+	text, _ := decodeBOM(raw)
+	if text == nil || !utf8.Valid(text) {
+		return "", &fs.PathError{Op: "read", Path: path, Err: errors.New("not UTF-8 text; save it as UTF-8")}
 	}
-	return strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\r", "\n"), nil
+	return strings.ReplaceAll(strings.ReplaceAll(string(text), "\r\n", "\n"), "\r", "\n"), nil
+}
+
+// decodeBOM is raw without its byte-order mark, UTF-16 converted to UTF-8, and the mark's encoding,
+// "" when there is none; the text is nil for UTF-16 of an odd length.
+func decodeBOM(raw []byte) ([]byte, string) {
+	switch {
+	case bytes.HasPrefix(raw, []byte{0xEF, 0xBB, 0xBF}):
+		return raw[3:], "utf-8"
+	case bytes.HasPrefix(raw, []byte{0xFF, 0xFE}):
+		return utf16Decode(raw[2:], false), "utf-16"
+	case bytes.HasPrefix(raw, []byte{0xFE, 0xFF}):
+		return utf16Decode(raw[2:], true), "utf-16"
+	}
+	return raw, ""
+}
+
+func utf16Decode(b []byte, bigEndian bool) []byte {
+	if len(b)%2 != 0 {
+		return nil
+	}
+	units := make([]uint16, len(b)/2)
+	for i := range units {
+		if bigEndian {
+			units[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
+		} else {
+			units[i] = uint16(b[2*i+1])<<8 | uint16(b[2*i])
+		}
+	}
+	return []byte(string(utf16.Decode(units)))
 }

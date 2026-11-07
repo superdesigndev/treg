@@ -42,8 +42,20 @@ func TestReadTextWantsUTF8AndUnixLineEndings(t *testing.T) {
 	if got, err := readText(good); err != nil || got != "a\nb\nc\n" {
 		t.Errorf("readText = %q, %v", got, err)
 	}
-	if _, err := readText(bad); err == nil || osError(err, "bad") != "bad: not UTF-8 text" {
+	if _, err := readText(bad); err == nil || osError(err, "bad") != "bad: not UTF-8 text; save it as UTF-8" {
 		t.Errorf("readText(bad) = %v", err)
+	}
+	// What Windows PowerShell 5.1 writes: a UTF-8 mark, or UTF-16 little- or big-endian behind one.
+	for name, raw := range map[string][]byte{
+		"utf8bom": []byte("\xef\xbb\xbfkey é\r\n"),
+		"utf16le": {0xFF, 0xFE, 'k', 0, 'e', 0, 'y', 0, ' ', 0, 0xE9, 0, '\r', 0, '\n', 0},
+		"utf16be": {0xFE, 0xFF, 0, 'k', 0, 'e', 0, 'y', 0, ' ', 0, 0xE9, 0, '\r', 0, '\n'},
+	} {
+		path := filepath.Join(dir, name)
+		os.WriteFile(path, raw, 0o600)
+		if got, err := readText(path); err != nil || got != "key é\n" {
+			t.Errorf("%s: readText = %q, %v", name, got, err)
+		}
 	}
 }
 

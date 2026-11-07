@@ -472,6 +472,22 @@ def test_host_names_the_path_as_given(tmp_path, go_bin):
     assert (go.code, go.err) == (1, "treg host: file not found: ./dir//missing.png\n"), go
 
 
+@pytest.mark.parametrize("argv", [["secret", "add", "K", "--file", "key-bom.txt"],
+                                  ["secret", "add", "K", "--file", "key-utf16.txt"],
+                                  ["secret", "add", "K", "--env-var", "STRIPE_KEY", "--env-file", "bom.env"]])
+def test_go_reads_the_text_files_windows_powershell_writes(fake, tmp_path, go_bin, argv):
+    """Windows PowerShell 5.1 writes `Set-Content -Encoding UTF8` with a UTF-8 byte-order mark and
+    `>` as UTF-16; the Go CLI reads either as the text it holds. The Python CLI kept the mark in the
+    secret, missed a .env's first variable behind it, and refused UTF-16."""
+    files = {"key-bom.txt": "\ufeffsk_live_abc\r\n".encode(),
+             "key-utf16.txt": "\ufeffsk_live_abc\r\n".encode("utf-16-le"),
+             "bom.env": "\ufeffSTRIPE_KEY=sk_live_abc\r\nOTHER=1\r\n".encode()}
+    fake.route("/secrets", Canned(200, {}, b'{"id": 5}'))
+    go = run([str(go_bin)] + argv, home=_home(tmp_path, "go", fake.url, Case(argv, files=files)), stdin=b"")
+    assert go.code == 0, go
+    assert json.loads(fake.seen[-1].body)["value"] == "sk_live_abc"
+
+
 @pytest.mark.parametrize("argv", [["secret", "ls"], ["org", "members"], ["audit"], ["feedback", "other", "hi"],
                                   ["review", "c1", "useful"]])
 def test_unreachable_registry(tmp_path, go_bin, argv):
