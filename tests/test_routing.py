@@ -3477,9 +3477,13 @@ async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(
     assert t["ignored_filters"] == ["contents"] and r.headers.get("x-treg-ignored-filters") == "contents"
 
 
-async def test_a_creator_search_answer_points_at_directory_pages(clients, platform_on, monkeypatch):
-    """An agent reads `_treg.advice` while it picks its next call: an Instagram account search names
-    the web search with passages, where directory and list pages give a niche's known creators."""
+async def test_a_search_contract_advice_rides_on_every_hit(clients, platform_on, monkeypatch):
+    """A search contract has no `verified` output, so its `advice_unverified` sentence reaches the
+    agent on every hit, where it chooses its next call."""
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "instagram.search.users", dataclasses.replace(
+        cat.contracts["instagram.search.users"], advice_unverified="Try the other search."))
     monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPECREATORS", "PLATFORM-SC-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators")
     get_settings.cache_clear()
@@ -3489,7 +3493,4 @@ async def test_a_creator_search_answer_points_at_directory_pages(clients, platfo
     r = await clients.post("/call/treg.instagram.search.users", json={"q": "productivity coach Brazil"})
     get_settings.cache_clear()
     assert r.status_code == 200, r.text
-    advice = r.json()["_treg"]["advice"]
-    assert "treg.web.search" in advice and "contents: true" in advice
-    for cap in ("instagram.search.users", "tiktok.search.users"):
-        assert "treg.web.search" in catalog_store.load().contracts[cap].advice_unverified
+    assert r.json()["_treg"]["advice"] == "Try the other search."

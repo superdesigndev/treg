@@ -701,7 +701,7 @@ contracts:
         google_description: {type: str}
     miss: "users == []"
     idempotent: true
-    # Shown on every answer (a search has no `verified`): an agent reads it while choosing its next call.
+    # Shown on every hit (a search has no `verified`): an agent reads it while choosing its next call.
     advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil Instagram') returns the names they list."
 
   google.serp.local:
@@ -756,7 +756,7 @@ contracts:
       has_more: {type: bool}
     miss: "users == []"
     idempotent: true
-    # Shown on every answer (a search has no `verified`): an agent reads it while choosing its next call.
+    # Shown on every hit (a search has no `verified`): an agent reads it while choosing its next call.
     advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil TikTok') returns the names they list."
 
   tiktok.search.videos:
