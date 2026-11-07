@@ -1008,6 +1008,17 @@ returned and never documented as stable. An output field may say where it lands 
   `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
   stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
   because scoping drops any that answer it by company alone (below).
+- `fill_rows: N` makes every request fill toward N rows, merging providers, when the caller set no
+  `fill_limit_when` target and sent neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`
+  (either header wins; `X-Treg-Route-Waterfall: 0` turns filling off). A short answer goes on to
+  the next provider in plan order, at most `MAX_WEAK_FALLBACKS` more and within the cost cap, and
+  every provider asked is billed at its own price, so each request costs up to that many more
+  calls. Use it only where providers see different slices of one population: `instagram.search.users`
+  sets 25 with `prefer: [scrapecreators, exa]`, account bios first, then the accounts that creator
+  directory pages name (`instagram_handles`), then TikHub. Whenever two providers contribute rows,
+  the answer is their deduped union in attempt order, so an earlier provider's row for an account
+  (with its follower count) leads and a later provider's own repeats count once. Rows from every child carry the account's profile `url`,
+  which the merge dedupes on.
 - `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
   people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost

@@ -398,6 +398,44 @@ def with_country_code(v: Any, country: Any) -> Any:
     return f"+{plan[0]}{digits}"
 
 
+# An Instagram handle in page text: `instagram.com/<handle>` anywhere, or `@<handle>` on a page that
+# mentions Instagram (elsewhere an @ is as likely an X or TikTok handle). Not after a word or a dot, so
+# an email address is no handle.
+_IG_HANDLE = re.compile(r"(?:instagram\.com/|(?<![\w.@])@)([A-Za-z0-9_](?:[A-Za-z0-9_.]{0,28}[A-Za-z0-9_])?)")
+_IG_LINK_ONLY = re.compile(r"instagram\.com/")
+# Instagram's own paths, which look like handles after `instagram.com/`.
+_IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "about", "developer", "legal",
+                "direct", "instagram", "web", "help", "privacy", "terms"}
+
+
+def instagram_handles(results: Any) -> list | None:
+    """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
+    directory or list page of creators), one row each in page order, first mention wins: username,
+    profile url, the passage around the mention as evidence, and the page it came from."""
+    if not isinstance(results, list):
+        return None
+    rows, seen = [], set()
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        text = " ".join(t for t in (r.get("highlights") or []) if isinstance(t, str))
+        on_instagram = "instagram" in (text + " " + str(r.get("url") or "")).lower()
+        for m in _IG_HANDLE.finditer(text):
+            if not on_instagram and not _IG_LINK_ONLY.match(text, m.start()):
+                continue
+            handle = m.group(1)
+            # An all-digit handle is a real account (`instagram.com/433`) only in a link; after an @
+            # it is as likely a number in prose.
+            if (handle.lower() in _IG_RESERVED or handle.lower() in seen
+                    or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
+                continue
+            seen.add(handle.lower())
+            around = " ".join(text[max(0, m.start() - 120):m.end() + 180].split())
+            rows.append({"username": handle, "url": f"https://www.instagram.com/{handle}/",
+                         "biography": around, "matched_from": r.get("url")})
+    return rows
+
+
 def count_with(items: Any, path: Any) -> int | None:
     """`count_with(people, 'email.value')` → how many rows carry a non-empty value at `path`."""
     if not isinstance(items, list) or not isinstance(path, str):
@@ -519,7 +557,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar}
+              "scalar": scalar, "instagram_handles": instagram_handles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")
