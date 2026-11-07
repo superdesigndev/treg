@@ -43,6 +43,10 @@ sources:
   - cli/internal/commands/topup.go
   - cli/internal/commands/update.go
   - cli/internal/commands/upload.go
+  - cli/internal/commands/upload_clis.go
+  - cli/internal/commands/upload_env.go
+  - cli/internal/commands/upload_llm.go
+  - cli/internal/commands/upload_skills.go
   - cli/internal/commands/usage.go
   - cli/internal/config/config.go
   - cli/internal/minisign/minisign.go

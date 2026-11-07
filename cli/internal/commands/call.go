@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/config"
 	"github.com/superdesigndev/treg/cli/internal/output"
 )
 
@@ -228,7 +229,7 @@ func callBody(f callFlags) ([]byte, error) {
 		}
 		return withoutBOM(raw, "--data @-"), nil
 	}
-	path := expandUser(source)
+	path := config.ExpandUser(source)
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 		return nil, output.Fail("--data %s: no such file. `@PATH` reads the body from a file, as curl "+
 			"does; to send a body that starts with '@', put it in a file and pass --file", f.data)
@@ -288,7 +289,7 @@ func multipartBody(parts []string) ([]byte, string, error) {
 		}
 		h := textproto.MIMEHeader{}
 		if strings.HasPrefix(val, "@") {
-			path := expandUser(val[1:])
+			path := config.ExpandUser(val[1:])
 			info, err := os.Stat(path)
 			if err != nil || !info.Mode().IsRegular() {
 				return nil, "", output.Fail("--upload file not found: %s", path)
@@ -326,13 +327,4 @@ func jsonError(body []byte) string {
 		return err.Error()
 	}
 	return "invalid JSON"
-}
-
-func expandUser(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[1:])
-		}
-	}
-	return p
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/config"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
@@ -22,7 +23,7 @@ func hostCmd(env *Env) *cobra.Command {
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.Flags().StringVar(&contentType, "content-type", "", "override the type guessed from the extension")
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		path := expandUser(args[0])
+		path := config.ExpandUser(args[0])
 		if !isRegularFile(path) {
 			return output.Fail("treg host: file not found: %s", path)
 		}

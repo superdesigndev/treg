@@ -39,7 +39,7 @@ type saved struct {
 // Path is TREG_CONFIG when set, else ~/.treg/config.json.
 func Path() string {
 	if p := os.Getenv("TREG_CONFIG"); p != "" {
-		return expandUser(p)
+		return ExpandUser(p)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -53,7 +53,8 @@ func Sibling(name string) string {
 	return filepath.Join(filepath.Dir(Path()), name)
 }
 
-func expandUser(p string) string {
+// ExpandUser is the path with a leading `~` as the home directory.
+func ExpandUser(p string) string {
 	if p != "~" && !strings.HasPrefix(p, "~/") && !strings.HasPrefix(p, "~"+string(filepath.Separator)) {
 		return p
 	}
