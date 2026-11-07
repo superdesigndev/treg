@@ -20,12 +20,14 @@ func TestUSDMatchesPython(t *testing.T) {
 		in   any
 		want string
 	}{
-		{json.Number("0"), "$0.0000"},
-		{json.Number("1"), "$0.0000"},
+		{json.Number("0"), "$0.00"},
+		{json.Number("1"), "$0.000001"},
 		{json.Number("600"), "$0.0006"},
 		{json.Number("-600"), "-$0.0006"},
-		{json.Number("999999"), "$1.0000"},
+		{json.Number("500000"), "$0.50"},
+		{json.Number("999999"), "$0.999999"},
 		{json.Number("1000000"), "$1.00"},
+		{json.Number("1005000"), "$1.01"},
 		{json.Number("1234567890"), "$1,234.57"},
 		{json.Number("-1234567890"), "-$1,234.57"},
 		{json.Number("1000000000000000"), "$1,000,000,000.00"},

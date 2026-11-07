@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -230,34 +229,13 @@ func confirmConsent() bool {
 	return err == nil && yes
 }
 
-// usd is a micro-USD amount as money, the sign outside the dollar mark. Under a dollar it keeps four
-// decimals: a catalog call costs fractions of a cent, and two decimals would print it as free.
+// usd is a decoded micro-USD amount as money, "-" when there is none.
 func usd(micro any) string {
 	n, ok := intOf(micro)
 	if !ok {
 		return "-"
 	}
-	v := float64(n) / 1_000_000
-	sign := ""
-	if v < 0 {
-		sign, v = "-", -v
-	}
-	if v >= 1 {
-		return sign + "$" + groupThousands(strconv.FormatFloat(v, 'f', 2, 64))
-	}
-	return sign + "$" + strconv.FormatFloat(v, 'f', 4, 64)
-}
-
-func groupThousands(s string) string {
-	whole, frac, _ := strings.Cut(s, ".")
-	var b strings.Builder
-	for i, c := range whole {
-		if i > 0 && (len(whole)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(c)
-	}
-	return b.String() + "." + frac
+	return output.USD(n)
 }
 
 // intOf is a whole number from a decoded registry answer, or one this CLI computed.

@@ -118,8 +118,8 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   parsed values are equal, the bytes are not. treg's own lines use a plain dash where the Python
   CLI wrote an em dash, quote a value as Go does (`"x"`, not Python's `'x'`), name a file it cannot
   read, or a request that got no answer, with the system's reason (`connection refused`, `timed
-  out`) rather than Python's errno text or httpx's exception name, write dollars
-  with cents, and print nothing (or `-`) where the Python CLI printed an absent value as `None`.
+  out`) rather than Python's errno text or httpx's exception name, write an amount
+  (`output.USD`) with cents from a dollar up and every micro-dollar under one, and print nothing (or `-`) where the Python CLI printed an absent value as `None`.
 - **Views.** Bare `treg`, `catalog`, `balance` and `feedback get` send `X-Treg-View: 1` and print
   the registry's `text`; `--json` prints its `data` ([api](api.md), "Views"). A registry without
   views gets its JSON printed and one stderr line saying so. The client prints only what the

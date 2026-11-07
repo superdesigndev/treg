@@ -42,9 +42,35 @@ func NewPrinter(json bool, org string) *Printer {
 	return &Printer{Out: os.Stdout, Err: os.Stderr, Stdout: os.Stdout, JSON: json, OrgOverride: org}
 }
 
-// USD is Python's f"${micro / 1_000_000:g}".
+// USD is a micro-USD amount as money, the sign outside the dollar mark: cents from a dollar up,
+// thousands grouped, and under a dollar every digit down to the micro-dollar (at least two), because
+// a catalog call can cost a fraction of a cent.
 func USD(micro int64) string {
-	return "$" + strconv.FormatFloat(float64(micro)/1_000_000, 'g', 6, 64)
+	sign := ""
+	if micro < 0 {
+		sign, micro = "-", -micro
+	}
+	if micro >= 1_000_000 {
+		cents := (micro + 5_000) / 10_000
+		return fmt.Sprintf("%s$%s.%02d", sign, groupThousands(cents/100), cents%100)
+	}
+	digits := strings.TrimRight(fmt.Sprintf("%06d", micro), "0")
+	for len(digits) < 2 {
+		digits += "0"
+	}
+	return sign + "$0." + digits
+}
+
+func groupThousands(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 // IndentJSON is the body as JSON indented by two spaces, or false when it is not JSON. A UTF-8

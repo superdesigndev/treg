@@ -130,8 +130,17 @@ _PY_JSON_ERROR = re.compile(r"(?:Expecting [^:\n]*|Extra data|Unterminated strin
                             r"|Illegal trailing comma[^:\n]*): line \d+ column \d+ \(char \d+\)")
 _GO_JSON_ERROR = re.compile(r"invalid character '.'[a-z ]*|unexpected end of JSON input|unexpected EOF"
                             r"|invalid JSON: [a-z ]+")
-_PY_DOLLARS = re.compile(r"\$(\d+)\.(\d)(?!\d)")
+_MONEY = re.compile(r"( *)\$(\d[\d,]*(?:\.\d+)?(?:e-\d+)?)")
 _NO_TEAM = ("You're not in a team yet: create one with `treg org create \"Your Team\"` or accept an invite.")
+
+
+def _money(m: re.Match) -> str:
+    """An amount to four decimals under a dollar and cents above, after one space: the Python CLI
+    wrote `%g` or four decimals, the Go CLI cents and every micro-dollar under a dollar, so a
+    column padded to the amount's width pads differently."""
+    value = float(m.group(2).replace(",", ""))
+    pad = " " if m.group(1) else ""
+    return pad + (f"${value:,.2f}" if value >= 1 else f"${value:.4f}")
 
 
 def normalize(text: str) -> str:
@@ -139,7 +148,7 @@ def normalize(text: str) -> str:
     Go CLI's intentional ones: a plain dash for an em dash, a value quoted as Go quotes it ("x",
     where Python wrote 'x' and a list as ['a', 'b']), the system's reason for a file it cannot read
     instead of Python's errno text and exception name, its own JSON parser's errors, dollars with
-    cents, and no "None" where the Python CLI printed an absent value."""
+    cents (every micro-dollar under a dollar), and no "None" where the Python CLI printed an absent value."""
     text = text.replace(" — ", " - ").replace("—", "-")
     text = _ERRNO.sub(lambda m: f"{m.group(2)}: {m.group(1).lower()}", text)
     text = _CRASH.sub("treg: cannot read ", text)
@@ -147,7 +156,7 @@ def normalize(text: str) -> str:
     text = _PY_JSON_ERROR.sub("<invalid JSON>", text)
     text = _GO_JSON_ERROR.sub("<invalid JSON>", text)
     text = _REPR.sub(lambda m: json.dumps(m.group(1), ensure_ascii=False), text)
-    text = _PY_DOLLARS.sub(lambda m: f"${m.group(1)}.{m.group(2)}0", text)
+    text = _MONEY.sub(_money, text)
     text = text.replace("Active org: None", _NO_TEAM).replace(" (None)", "")
     text = re.sub(r'"None (?=\S)', '"', text)
     return text
