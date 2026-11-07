@@ -132,6 +132,20 @@ class RequestBody(Protocol):
     async def read(self) -> bytes: ...
 
 
+class EmptyBody:
+    """The body of a call treg makes itself with nothing to send: a provider listing, a task poll."""
+
+    async def _nothing(self) -> AsyncIterator[bytes]:
+        return
+        yield b""
+
+    def stream(self) -> AsyncIterator[bytes]:
+        return self._nothing()
+
+    async def read(self) -> bytes:
+        return b""
+
+
 @dataclass(frozen=True)
 class UserSnapshot:
     id: int | None

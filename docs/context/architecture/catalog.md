@@ -193,9 +193,10 @@ conflict on. It is not `verified` and not `source.curated`.
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
-  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
+  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
-  provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
+  provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
+  once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
@@ -486,8 +487,9 @@ The `verified:` stamp is not required: a broken route fails unbilled under succe
 in-band reporters settle at 0, and caps bound the rest. Eligibility alone enables nothing: a
 normal platform call also needs a configured key and the provider allow-list (`platform_key_for`).
 A missing or unknown price reads as "refuse", never as free, so unpriced extended routes need no
-annotation. A row with only `observed_cost` gets a synthesized block from `_effective_cost`
-(`source: observed, confidence: verified`, `checked` = verify date). Whether a provider's plan
+annotation. A row in today's spelling with only `observed_cost` gets a synthesized block from
+`_effective_cost` (`source: observed, confidence: verified`, `checked` = verify date); in v2 the
+verifier writes that price as the row's `price` and `provenance`. Whether a provider's plan
 licence lets treg serve other teams decides whether it gets an `fx.yaml` rate at all; the provider
 file's header records that judgement.
 
@@ -587,10 +589,12 @@ fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `p
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
 the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
 An async endpoint must use `per_success` or `per_call`. Status values compare after string coercion;
-a missing or unknown value means still in progress in both the CLI awaiter and the worker (the CLI
-warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles usage
-instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before the
-response stream starts; it never inspects or buffers the upstream body.
+a missing or unknown value means still in progress in the CLI awaiter, `/tasks/` and the worker (a
+waiter warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles
+usage instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before
+the response stream starts; it never inspects or buffers the upstream body. The call runtime has
+already read a 2xx async answer to record the task it names, which `/tasks/{call_id}` follows for
+the caller ([tasks](tasks.md)).
 
 - **Poll mode.** Every listed provider polls a static catalog id, reachable through `/call/<id>` on
   any tier. The dynamic-URL mode (`poll.url_from` + `url_hosts`) stays in schema, validator and
@@ -603,7 +607,7 @@ response stream starts; it never inspects or buffers the upstream body.
   `example_response` stays the submission shown by the catalog.
 - `terminal_on_submission: true`: a submission whose own status is already a success word settles
   like a synchronous call (read through `domain.asynctasks.finished_on_submission` by the direct
-  path, routed bridge, Enrich Arena and `treg call --await`).
+  path, routed bridge, Enrich Arena, `/tasks/` and `treg call --await`).
 - `max_age` (seconds, at most a day) is the provider's polling window: the worker times the task out
   there and no waiter waits past it. `interval` also paces the CLI awaiter; treg does not count
   polls across pollers.
@@ -747,8 +751,9 @@ TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify_extended.py <s
 The run goes cheapest first and stops before a call that would pass `--budget`; results are written
 back after every run and verified rows are skipped, so an interrupted run resumes.
 
-- **A missing `cost` reads as free and silently disables `--budget`.** `observed_cost` (the charge the
-  provider states in its response, written at verify time) budgets the next run. `observed_time` is
+- **A missing price reads as free and silently disables `--budget`.** Where a provider states the
+  charge in its response (DataForSEO), a row no rate card prices is priced at it when verified
+  (`price` with `provenance: {source: observed}`), which budgets the next run. `observed_time` is
   measured wall-clock, never read from the body (a provider's `time` field may be a timestamp).
 - **Spend accounting assumes per-success billing.** On a per-call provider compare the printed
   balance delta with the estimate before trusting a large run.
@@ -987,10 +992,16 @@ returned and never documented as stable. An output field may say where it lands 
 - A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
   the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
   deploy and, like them, only reorders.
-- `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
+- `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
+  page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
+  Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
+  A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
+  left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
+  before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
@@ -999,6 +1010,17 @@ returned and never documented as stable. An output field may say where it lands 
   `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
   stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
   because scoping drops any that answer it by company alone (below).
+- `fill_rows: N` makes every request fill toward N rows, merging providers, when the caller set no
+  `fill_limit_when` target and sent neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`
+  (either header wins; `X-Treg-Route-Waterfall: 0` turns filling off). A short answer goes on to
+  the next provider in plan order, at most `MAX_WEAK_FALLBACKS` more and within the cost cap, and
+  every provider asked is billed at its own price, so each request costs up to that many more
+  calls. Use it only where providers see different slices of one population: `instagram.search.users`
+  sets 25 with `prefer: [scrapecreators, exa]`, account bios first, then the accounts that creator
+  directory pages name (`instagram_handles`), then TikHub. Whenever two providers contribute rows,
+  the answer is their deduped union in attempt order, so an earlier provider's row for an account
+  (with its follower count) leads and a later provider's own repeats count once. Rows from every child carry the account's profile `url`,
+  which the merge dedupes on.
 - `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
   people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
@@ -1053,12 +1075,20 @@ an invalid extra never disables the primary.
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
-  `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
+  `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
   request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
-  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
-  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child
+  bills no miss, so its cost per hit is its price either way, unless its cost bills one
+  (`plan.bills_miss`); the routed row's `miss_billed_by` uses the same rule. A per-result child is
+  free on a miss only when settlement reads the answer (a row count or the provider's reported
+  charge); one that settles an empty answer at a charge carries `cost.bills_miss`, and a test
+  replays every routed child's miss fixture to hold ranking's miss charge equal to settlement's. A
+  billed miss costs the whole request, `miss_units` rows of it (a minimum charge settlement floors
+  at), or an Apify `call_fee` alone, which `cost_at` also adds to the hit price. Through overflow, a
+  miss pays the route's price when it bills per call and nothing when it bills per result. An
+  unmeasured per-call child leads only below half a
   measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter

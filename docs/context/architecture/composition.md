@@ -46,7 +46,7 @@ intentional.
 
 `app.state.role_manifest` lists each role's routes, background tasks and startup checks;
 `tests/test_app_roles.py` pins them. `dataplane` serves the calling surfaces (`/call/`,
-`/catalog/call/`, [`/table/`](table.md)) and MCP; `control` serves everything else, including OAuth
+`/catalog/call/`, [`/table/`](table.md), [`/tasks/`](tasks.md)) and MCP; `control` serves everything else, including OAuth
 issuance; `all` serves both. Every `api.router` route belongs to exactly one of
 `_CONTROL_ROUTE_KEYS` or `_DATAPLANE_ROUTE_KEYS`, and app creation fails on an unclassified, stale,
 duplicate or doubly owned key, so a new route cannot silently widen the dataplane.
@@ -109,4 +109,6 @@ spellings must reach the V2 transport and OAuth audience.
 Each `create_app` call must produce an independent app whose dependency overrides belong to it.
 `_include_routes` shallow-clones every `APIRoute`, points its override provider at the new app and
 rebuilds its handler. FastAPI's `include_router()` is avoided because its `_IncludedRouter` wrapper
-would change route inspection and the surface snapshot.
+would change route inspection and the surface snapshot. A route with a server-rendered view gets
+its ASGI app wrapped there too (`routers.view.wrap`, [api](../interface/api.md) "Views"); the route
+object, and so the snapshot, is unchanged.

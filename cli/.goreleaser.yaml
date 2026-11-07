@@ -1,0 +1,61 @@
+# The binary CLI's release: every platform's archive, SHA256SUMS signed with the release key, and a
+# GitHub release for the tag (`v1.2.3`, or `v1.3.0-beta.1` for a pre-release on the beta channel).
+# CI runs it from .github/workflows/cli-release.yml; cli/scripts/check-beta.sh runs it as a snapshot.
+#
+# TREG_UPDATE_KEY (the minisign public key's base64 line) is built into each binary: it is the key
+# `treg update` verifies SHA256SUMS against, so a release without it is refused. MINISIGN_KEY_FILE
+# is the secret half, unencrypted (`minisign -G -W`).
+version: 2
+project_name: treg
+
+builds:
+  - id: treg
+    main: ./cmd/treg
+    binary: treg
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/superdesigndev/treg/cli/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/superdesigndev/treg/cli/internal/buildinfo.UpdateKey={{ .Env.TREG_UPDATE_KEY }}
+
+archives:
+  - id: treg
+    name_template: "treg_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [none*]
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+signs:
+  - id: minisign
+    artifacts: checksum
+    signature: "${artifact}.minisig"
+    cmd: sh
+    args:
+      - scripts/sign-release.sh
+      - "{{ .Env.MINISIGN_KEY_FILE }}"
+      - "{{ .Env.TREG_UPDATE_KEY }}"
+      - "${artifact}"
+      - "${signature}"
+      - "{{ .Version }}"
+
+snapshot:
+  version_template: '{{ envOrDefault "TREG_RELEASE_VERSION" "0.0.0-snapshot" }}'
+
+release:
+  github:
+    owner: superdesigndev
+    name: treg
+  prerelease: auto
+  name_template: "treg {{ .Version }}"
+
+changelog:
+  disable: true

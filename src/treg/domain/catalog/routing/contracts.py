@@ -95,6 +95,10 @@ class Contract:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
     # rows add up. A free-text `{q}` people search is a "find as many as fit" question.
     fill_limit_when: tuple[tuple[str, ...], ...] = ()
+    # Rows every request fills toward, merging providers, when the caller set no limit target and
+    # sent neither Min-Results nor Merge: a search whose providers each see a different slice of the
+    # same population (account bios, directory pages) answers best from their union. 0 = off.
+    fill_rows: int = 0
     # The per-call verdict word (`CallRecord.verdict`): `verdict_from` names the output field it is
     # read from, `verdict_words` the only words a call may be stored with, and `verdict_map` turns a
     # value of that field into one (`true` -> `verified`). Each adapter adds its provider's own
@@ -142,19 +146,20 @@ class Contract:
     identity_notes: dict[str, str] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
-        """The default provider order for a caller who sent the identity keys `given`."""
+        """The default provider order for a caller who sent the identity and filter keys `given`."""
         return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
 
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
         when the identity keys it sent are exactly one of `fill_limit_when`, else None."""
-        if not self.fill_limit_when or not isinstance(given, dict):
+        if not isinstance(given, dict):
             return None
         limit = given.get("limit")
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
-            return None
-        sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
-        return limit if any(sent == set(keys) for keys in self.fill_limit_when) else None
+        if self.fill_limit_when and not isinstance(limit, bool) and isinstance(limit, int) and limit >= 2:
+            sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
+            if any(sent == set(keys) for keys in self.fill_limit_when):
+                return limit
+        return self.fill_rows or None
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -327,7 +332,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "prefer", "prefer_by_domain_suffix", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
     "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
@@ -396,8 +401,9 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
-            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), types),
+            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), {**types, **(c.get("filters") or {})}),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
+            fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
@@ -423,7 +429,7 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
         # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
         if (not isinstance(rule, dict) or set(rule) != {"sent", "prefer"} or not names(rule["sent"])
                 or not names(rule["prefer"]) or any(k.strip() not in types for k in rule["sent"])):
-            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity keys], "
+            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
@@ -446,6 +452,15 @@ def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
             or any(k not in types or not isinstance(v, str) or not v.strip() for k, v in raw.items())):
         raise ValueError(f"contract {cap}: identity_notes maps identity keys to a non-empty note, got {raw!r}")
     return {k: v.strip() for k, v in raw.items()}
+
+
+def _parse_fill_rows(cap: str, raw, c: dict) -> int:
+    if raw is None:
+        return 0
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 2 or not lists:
+        raise ValueError(f"contract {cap}: fill_rows is a row count of 2 or more on a contract with a list output, got {raw!r}")
+    return raw
 
 
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:
@@ -689,15 +704,31 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's identity fields that are present but not of their declared type."""
+    """The caller's identity fields, and bool filters, that are present but not of their declared
+    type. A bool filter is checked before planning: `"false"` or `0` would otherwise read as asked
+    for. A bool identity key keeps its own rule (a blank value is not sent)."""
     bad = []
-    for k, t in contract.identity_types.items():
+    flags = [(k, "bool", True) for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool"]
+    for k, t, flag in [*((k, t, False) for k, t in contract.identity_types.items()), *flags]:
         v = given.get(k)
-        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+        if flag:
+            wrong = v is not None and not isinstance(v, bool)
+        else:
+            wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None
+        if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
             bad.append({"field": k, "type": t,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
+
+
+def flags_off(contract: Contract, identity: dict[str, Any]) -> dict[str, Any]:
+    """The identity without the bool filters that are off. An unsent or `false` flag asks for
+    nothing, so it is no part of the question: a provider sample keyed on it would move every
+    request that never sent the flag."""
+    off = {k for k, spec in (contract.filters or {}).items()
+           if (spec or {}).get("type") == "bool" and identity.get(k) is not True}
+    return {k: v for k, v in identity.items() if k not in off} if off else identity
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:

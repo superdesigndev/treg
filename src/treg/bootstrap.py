@@ -42,6 +42,7 @@ from .infra.catalog_observations import (
     PostgresEndpointObservationReader,
 )
 from .routers import call as call_routes
+from .routers import view as view_routes
 
 
 AppRole = Literal["all", "dataplane", "control"]
@@ -164,6 +165,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sitemap.xml', ('GET',), 'sitemap_xml'),
     ('/7c2e4a91b5d3f8e6treg2026.txt', ('GET',), 'indexnow_key'),
     ('/install.sh', ('GET',), 'install_sh'),
+    ('/install.ps1', ('GET',), 'install_ps1'),
+    ('/cli/latest', ('GET',), 'cli_latest'),
+    ('/cli/latest/{platform}', ('GET',), 'cli_latest_download'),
+    ('/cli/events', ('POST',), 'cli_events'),
     ('/i/{code}', ('GET',), 'install_sh_linked'),
     ('/i', ('POST',), 'ad_link_mint'),
     ('/selfhost.sh', ('GET',), 'selfhost_sh'),
@@ -437,6 +442,8 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
     ("/table/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "table_tool"),
+    ("/tasks/{call_id}", ("POST",), "task_submission"),
+    ("/tasks/{call_id}", ("GET",), "task_look"),
     # MCP is calling traffic, so its mount and its RFC 9728 resource metadata belong to the
     # dataplane. Token issuance (consent, /oauth/*) stays on control; the dataplane only validates.
     ('/.well-known/oauth-protected-resource/mcp', ('GET',), 'oauth_protected_resource'),
@@ -546,7 +553,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
     for route in routes:
         cloned = copy(route)
         cloned.dependency_overrides_provider = app
-        cloned.app = request_response(cloned.get_route_handler())
+        cloned.app = view_routes.wrap(cloned.endpoint, request_response(cloned.get_route_handler()))
         app.router.routes.append(cloned)
 
 
