@@ -1,11 +1,10 @@
 package commands
 
 import (
-	"bytes"
 	"cmp"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,10 +15,10 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/skillscan"
 )
 
@@ -273,7 +272,7 @@ func (e *Env) loadProviderCatalog() []providers.Entry {
 	version, bundled := providers.Bundled()
 	sum := sha1.Sum([]byte(e.Registry()))
 	cache := config.Sibling("providers-cache-" + hex.EncodeToString(sum[:])[:10] + ".json")
-	newer := func(root *pyjson.Object) bool {
+	newer := func(root *ojson.Object) bool {
 		n, ok := providers.IntOK(root, "version")
 		return ok && n >= version
 	}
@@ -281,8 +280,8 @@ func (e *Env) loadProviderCatalog() []providers.Entry {
 	r, err := e.AnonymousClient().Do(api.Request{Path: "/providers.json"})
 	stop()
 	if err == nil && r.Status == 200 {
-		if v, err := pyjson.Decode(r.Body); err == nil {
-			if root, ok := v.(*pyjson.Object); ok && providers.Truthy(root, "providers") {
+		if v, err := ojson.Decode(r.Body); err == nil {
+			if root, ok := v.(*ojson.Object); ok && providers.Truthy(root, "providers") {
 				if os.MkdirAll(filepath.Dir(cache), 0o777) == nil {
 					_ = os.WriteFile(cache, r.Body, 0o666)
 				}
@@ -293,8 +292,8 @@ func (e *Env) loadProviderCatalog() []providers.Entry {
 		}
 	}
 	if raw, err := os.ReadFile(cache); err == nil {
-		if v, err := pyjson.Decode(raw); err == nil {
-			if root, ok := v.(*pyjson.Object); ok && providers.Truthy(root, "providers") && newer(root) {
+		if v, err := ojson.Decode(raw); err == nil {
+			if root, ok := v.(*ojson.Object); ok && providers.Truthy(root, "providers") && newer(root) {
 				return providers.Entries(root)
 			}
 		}
@@ -386,18 +385,16 @@ func (e *Env) nameIDs(c *api.Client, path string) (map[string]any, error) {
 func idPath(prefix string, id any) string { return prefix + str(id) }
 
 func secretID(body []byte) any {
-	var v map[string]any
-	d := json.NewDecoder(bytes.NewReader(body))
-	d.UseNumber()
-	_ = d.Decode(&v)
-	if id, ok := v["id"]; ok && pyjson.Truthy(id) {
+	v, _ := ojson.Decode(body)
+	o, _ := v.(*ojson.Object)
+	if id := o.Value("id"); ojson.Truthy(id) {
 		return id
 	}
-	return v["secret_id"]
+	return o.Value("secret_id")
 }
 
 func (e *Env) post(c *api.Client, path string, body any) (*api.Response, error) {
-	return e.do(c, api.Request{Method: "POST", Path: path, Body: []byte(pyjson.Dumps(body, pyjson.Body)), Header: jsonHeader})
+	return e.do(c, api.Request{Method: "POST", Path: path, Body: ojson.Compact(body), Header: jsonHeader})
 }
 
 func (e *Env) remove(c *api.Client, path string) error {
@@ -405,7 +402,7 @@ func (e *Env) remove(c *api.Client, path string) error {
 	return err
 }
 
-func withMember(o *pyjson.Object, key string, value any) *pyjson.Object {
+func withMember(o *ojson.Object, key string, value any) *ojson.Object {
 	c := o.Copy()
 	c.Set(key, value)
 	return c

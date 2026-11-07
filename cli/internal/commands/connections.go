@@ -13,10 +13,10 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -58,7 +58,7 @@ func connectionsCmd(env *Env) *cobra.Command {
 			return err
 		}
 		return env.show(api.Request{Method: "POST", Path: "/connections/" + id + "/resource",
-			Body: jsonBody(pyjson.Ordered("resource_ref", args[1])), Header: jsonHeader})
+			Body: ojson.Compact(ojson.Ordered("resource_ref", args[1])), Header: jsonHeader})
 	}
 	rm := leaf("rm <id>", "Disconnect (bound tools stay, but stop working until reconnected).", "treg connections rm 12")
 	rm.Args = cobra.ExactArgs(1)
@@ -177,7 +177,7 @@ func looksLikeOption(s string) bool {
 var negativeNumber = regexp.MustCompile(`^-\d+$|^-\d*\.\d+$`)
 
 func (e *Env) connect(f connectFlags) error {
-	var b *pyjson.Object
+	var b *ojson.Object
 	switch {
 	case f.provider != "":
 		if pasted := e.pastedKeyProvider(f.provider); pasted != nil {
@@ -187,7 +187,7 @@ func (e *Env) connect(f connectFlags) error {
 			return output.Fail("--key-stdin is for providers connected with a pasted key; %s "+
 				"isn't one here (see `treg connections providers`)", f.provider)
 		}
-		b = pyjson.Ordered("provider", f.provider)
+		b = ojson.Ordered("provider", f.provider)
 		if f.name != "" {
 			b.Set("name", f.name)
 		}
@@ -204,7 +204,7 @@ func (e *Env) connect(f connectFlags) error {
 			"or --client-secret <file> to bring your own")
 	}
 	c := e.Client()
-	r, err := e.do(c, api.Request{Method: "POST", Path: "/oauth/start", Body: jsonBody(b), Header: jsonHeader})
+	r, err := e.do(c, api.Request{Method: "POST", Path: "/oauth/start", Body: ojson.Compact(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
@@ -212,32 +212,32 @@ func (e *Env) connect(f connectFlags) error {
 		return e.Out.Show(r)
 	}
 	d := responseObject(r)
-	if guidance := d.Value("connect_guidance"); pyjson.Truthy(guidance) {
-		outln("\n" + pyjson.Text(guidance))
+	if guidance := d.Value("connect_guidance"); ojson.Truthy(guidance) {
+		outln("\n" + ojson.Text(guidance))
 	}
-	outf("\n1. Ensure this redirect URI is allowed:\n   %s\n", pyjson.Text(d.Value("redirect_uri")))
-	outf("\n2. Open to authorize:\n   %s\n\nWaiting…\n", pyjson.Text(d.Value("consent_url")))
+	outf("\n1. Ensure this redirect URI is allowed:\n   %s\n", ojson.Text(d.Value("redirect_uri")))
+	outf("\n2. Open to authorize:\n   %s\n\nWaiting…\n", ojson.Text(d.Value("consent_url")))
 	for range 150 {
 		time.Sleep(2 * time.Second)
-		poll, err := c.Do(api.Request{Path: "/oauth/status/" + pyjson.Text(d.Value("state"))})
+		poll, err := c.Do(api.Request{Path: "/oauth/status/" + ojson.Text(d.Value("state"))})
 		if err != nil {
 			continue
 		}
-		v, err := pyjson.Decode(poll.Body)
-		s, ok := v.(*pyjson.Object)
+		v, err := ojson.Decode(poll.Body)
+		s, ok := v.(*ojson.Object)
 		if err != nil || !ok {
 			continue
 		}
 		switch s.Value("status") {
 		case "done":
-			line := "✅ Connected. New oauth secret id: " + pyjson.Text(s.Value("secret_id"))
-			if name := pyjson.Text(s.Value("name")); name != "" {
+			line := "✅ Connected. New oauth secret id: " + ojson.Text(s.Value("secret_id"))
+			if name := ojson.Text(s.Value("name")); name != "" {
 				line += " (" + name + ")"
 			}
 			outln(line)
 			return nil
 		case "error":
-			return output.Fail("❌ Failed: %s", pyjson.Text(s.Value("detail")))
+			return output.Fail("❌ Failed: %s", ojson.Text(s.Value("detail")))
 		}
 	}
 	return output.Fail("Timed out waiting for authorization.")
@@ -245,18 +245,18 @@ func (e *Env) connect(f connectFlags) error {
 
 // pastedKeyProvider is the registry's entry for a service connected by pasting a key, else nil;
 // an unreachable or unreadable listing is nil too, so /oauth/start gives the registry's answer.
-func (e *Env) pastedKeyProvider(service string) *pyjson.Object {
+func (e *Env) pastedKeyProvider(service string) *ojson.Object {
 	r, err := e.Client().Do(api.Request{Path: "/oauth/providers"})
 	if err != nil || r.Status != 200 {
 		return nil
 	}
-	v, err := pyjson.Decode(r.Body)
+	v, err := ojson.Decode(r.Body)
 	listing, ok := v.([]any)
 	if err != nil || !ok {
 		return nil
 	}
 	for _, p := range listing {
-		entry, ok := p.(*pyjson.Object)
+		entry, ok := p.(*ojson.Object)
 		if !ok || entry.Value("service") != service {
 			continue
 		}
@@ -271,13 +271,13 @@ func (e *Env) pastedKeyProvider(service string) *pyjson.Object {
 // connectPastedKey reads the key without echo, or from stdin with --key-stdin, so it never lands on
 // the command line; stdin is read only when asked, as an agent's idle pipe would hang the read. A
 // provider that signs with a pair reads both halves before sending either.
-func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
-	label := pyjson.Text(orDefault(provider.Value("token_label"), "API key"))
-	service := pyjson.Text(provider.Value("service"))
-	display := pyjson.Text(orDefault(provider.Value("display_name"), service))
+func (e *Env) connectPastedKey(f connectFlags, provider *ojson.Object) error {
+	label := ojson.Text(orDefault(provider.Value("token_label"), "API key"))
+	service := ojson.Text(provider.Value("service"))
+	display := ojson.Text(orDefault(provider.Value("display_name"), service))
 	extraLabel := ""
-	if pyjson.Truthy(provider.Value("needs_extra_credential")) && pyjson.Truthy(provider.Value("extra_credential_label")) {
-		extraLabel = pyjson.Text(provider.Value("extra_credential_label"))
+	if ojson.Truthy(provider.Value("needs_extra_credential")) && ojson.Truthy(provider.Value("extra_credential_label")) {
+		extraLabel = ojson.Text(provider.Value("extra_credential_label"))
 	}
 	if f.name != "" || f.capability != "" || f.clientSecret != "" || len(f.scopes) > 0 {
 		return output.Fail("%s is connected with a pasted %s; a name, --capability, "+
@@ -308,8 +308,8 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 			extra = lines[1]
 		}
 	case term.IsTerminal(os.Stdin):
-		if setup := provider.Value("setup_url"); pyjson.Truthy(setup) {
-			outf("Get your %s: %s\n", label, pyjson.Text(setup))
+		if setup := provider.Value("setup_url"); ojson.Truthy(setup) {
+			outf("Get your %s: %s\n", label, ojson.Text(setup))
 		}
 		var err error
 		if key, err = prompt.Hidden(fmt.Sprintf("Paste your %s %s (input hidden): ", display, label)); err == nil && extraLabel != "" {
@@ -334,14 +334,14 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 	}
 	c := e.Client()
 	r, err := e.do(c, api.Request{Method: "POST", Path: "/connections/token",
-		Body: jsonBody(pyjson.Ordered("provider", service, "token", providers.Strip(key))), Header: jsonHeader})
+		Body: ojson.Compact(ojson.Ordered("provider", service, "token", providers.Strip(key))), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
 	if r.Status == 200 && extraLabel != "" {
-		secretID := pyjson.Text(responseObject(r).Value("id"))
+		secretID := ojson.Text(responseObject(r).Value("id"))
 		r, err = e.do(c, api.Request{Method: "POST", Path: "/connections/" + secretID + "/extra-credential",
-			Body: jsonBody(pyjson.Ordered("value", providers.Strip(extra))), Header: jsonHeader})
+			Body: ojson.Compact(ojson.Ordered("value", providers.Strip(extra))), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -354,12 +354,12 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 		return &output.Exit{Code: 1}
 	}
 	d := responseObject(r)
-	outf("✅ Connected %s. Connection id: %s (%s)\n", display, pyjson.Text(d.Value("id")), pyjson.Text(d.Value("name")))
+	outf("✅ Connected %s. Connection id: %s (%s)\n", display, ojson.Text(d.Value("id")), ojson.Text(d.Value("name")))
 	return nil
 }
 
 // byoBody is a bring-your-own-app start request from the provider's OAuth client JSON on disk.
-func byoBody(f connectFlags) (*pyjson.Object, error) {
+func byoBody(f connectFlags) (*ojson.Object, error) {
 	if f.name == "" {
 		return nil, output.Fail("a name is required when bringing your own client secret")
 	}
@@ -370,19 +370,19 @@ func byoBody(f connectFlags) (*pyjson.Object, error) {
 		}
 		return nil, output.Fail("could not read client-secret JSON %s: %s", quote(f.clientSecret), err)
 	}
-	parsed, err := pyjson.Loads(text)
+	parsed, err := ojson.Loads(text)
 	if err != nil {
 		return nil, output.Fail("could not read client-secret JSON %s: %s", quote(f.clientSecret), err)
 	}
-	cs, _ := parsed.(*pyjson.Object)
+	cs, _ := parsed.(*ojson.Object)
 	var block any = cs
-	if v := cs.Value("installed"); pyjson.Truthy(v) {
+	if v := cs.Value("installed"); ojson.Truthy(v) {
 		block = v
-	} else if v := cs.Value("web"); pyjson.Truthy(v) {
+	} else if v := cs.Value("web"); ojson.Truthy(v) {
 		block = v
 	}
-	o, ok := block.(*pyjson.Object)
-	if !ok || !pyjson.Truthy(o.Value("client_id")) || !pyjson.Truthy(o.Value("client_secret")) {
+	o, ok := block.(*ojson.Object)
+	if !ok || !ojson.Truthy(o.Value("client_id")) || !ojson.Truthy(o.Value("client_secret")) {
 		return nil, output.Fail("client-secret JSON is missing client_id / client_secret (expected a Google OAuth client file)")
 	}
 	get := func(key, fallback string) any {
@@ -395,14 +395,14 @@ func byoBody(f connectFlags) (*pyjson.Object, error) {
 	for i, s := range f.scopes {
 		scopes[i] = s
 	}
-	return pyjson.Ordered("name", f.name, "client_id", o.Value("client_id"), "client_secret", o.Value("client_secret"),
+	return ojson.Ordered("name", f.name, "client_id", o.Value("client_id"), "client_secret", o.Value("client_secret"),
 		"auth_uri", get("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
 		"token_uri", get("token_uri", "https://oauth2.googleapis.com/token"), "scopes", scopes), nil
 }
 
 // orDefault is Python's `value or fallback`.
 func orDefault(v any, fallback string) any {
-	if pyjson.Truthy(v) {
+	if ojson.Truthy(v) {
 		return v
 	}
 	return fallback

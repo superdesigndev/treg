@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"slices"
@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -32,21 +32,21 @@ func orgCreateCmd(env *Env) *cobra.Command {
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
 		c := env.Client()
-		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: jsonBody(pyjson.Ordered("name", args[0])), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: ojson.Compact(ojson.Ordered("name", args[0])), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
 		if r.Status == 200 {
 			d := responseObject(r)
 			cfg := env.Cfg
-			cfg.Token, cfg.ActiveOrg, cfg.Identity = pyjson.Text(d.Value("token")), pyjson.Text(d.Value("org")), true
+			cfg.Token, cfg.ActiveOrg, cfg.Identity = ojson.Text(d.Value("token")), ojson.Text(d.Value("org")), true
 			if err := env.Save(); err != nil {
 				return err
 			}
 			if !env.JSON {
 				p := env.Colors()
 				fmt.Fprintf(os.Stderr, "  %sactive team is now%s %s   %s(switch back: treg org use <slug>)%s\n",
-					p.Muted, p.Reset, pyjson.Text(d.Value("org")), p.Muted, p.Reset)
+					p.Muted, p.Reset, ojson.Text(d.Value("org")), p.Muted, p.Reset)
 			}
 		}
 		return env.Out.Show(r)
@@ -67,13 +67,13 @@ func orgLsCmd(env *Env) *cobra.Command {
 		}
 		active := env.EffectiveOrg()
 		for _, o := range responseList(r) {
-			row, _ := o.(*pyjson.Object)
-			slug := pyjson.Text(row.Value("slug"))
+			row, _ := o.(*ojson.Object)
+			slug := ojson.Text(row.Value("slug"))
 			mark, tail := " ", ""
 			if slug == active {
 				mark, tail = "*", "  (active)"
 			}
-			outf("%s %-22s %-22s %-7s%s\n", mark, slug, pyjson.Text(row.Value("name")), pyjson.Text(row.Value("role")), tail)
+			outf("%s %-22s %-22s %-7s%s\n", mark, slug, ojson.Text(row.Value("name")), ojson.Text(row.Value("role")), tail)
 		}
 		return nil
 	}
@@ -93,9 +93,9 @@ func orgUseCmd(env *Env) *cobra.Command {
 		if r, err := env.Client().Do(api.Request{Path: "/orgs"}); err == nil && r.Status == 200 {
 			verified = true
 			for _, o := range responseList(r) {
-				row, _ := o.(*pyjson.Object)
+				row, _ := o.(*ojson.Object)
 				if v, ok := row.Get("slug"); ok {
-					slugs = append(slugs, pyjson.Text(v))
+					slugs = append(slugs, ojson.Text(v))
 				} else {
 					slugs = append(slugs, "")
 				}
@@ -215,7 +215,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return api.Request{}, err
 			}
-			b := pyjson.Ordered("name", args[0], "role", f.role, "daily_call_cap", dailyCap,
+			b := ojson.Ordered("name", args[0], "role", f.role, "daily_call_cap", dailyCap,
 				"tool_access", access, "local_run_enabled", f.localRun != "off")
 			// Scope is sent only when asked for, so a rotate never widens it or unpins the token.
 			if f.allProjects {
@@ -224,7 +224,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 				b.Set("project_access", splitList(f.projects))
 			}
 			if len(f.pins) > 0 {
-				pins := pyjson.NewObject()
+				pins := ojson.NewObject()
 				for _, item := range f.pins {
 					dim, val, ok := strings.Cut(item, "=")
 					if !ok || providers.Strip(dim) == "" || providers.Strip(val) == "" {
@@ -234,7 +234,7 @@ func orgAgentNewCmd(env *Env) *cobra.Command {
 				}
 				b.Set("pinned_tags", pins)
 			}
-			return api.Request{Method: "POST", Path: fmt.Sprintf("/orgs/%d/agents", orgID), Body: jsonBody(b), Header: jsonHeader}, nil
+			return api.Request{Method: "POST", Path: fmt.Sprintf("/orgs/%d/agents", orgID), Body: ojson.Compact(b), Header: jsonHeader}, nil
 		})
 	}
 	return cmd
@@ -268,8 +268,8 @@ func (e *Env) resolveToolAccess(c *api.Client, allTools bool, tools string) (any
 		return nil, err
 	} else if r.Status == 200 {
 		for _, t := range responseList(r) {
-			row, _ := t.(*pyjson.Object)
-			names = append(names, pyjson.Text(row.Value("name")))
+			row, _ := t.(*ojson.Object)
+			names = append(names, ojson.Text(row.Value("name")))
 		}
 		slices.Sort(names)
 	}
@@ -377,17 +377,17 @@ func (e *Env) inActiveOrg(missing string, build func(*api.Client, int64) (api.Re
 }
 
 // responseObject is a response's JSON object in key order, empty when it is not one.
-func responseObject(r *api.Response) *pyjson.Object {
-	v, _ := pyjson.Decode(r.Body)
-	if o, ok := v.(*pyjson.Object); ok {
+func responseObject(r *api.Response) *ojson.Object {
+	v, _ := ojson.Decode(r.Body)
+	if o, ok := v.(*ojson.Object); ok {
 		return o
 	}
-	return pyjson.NewObject()
+	return ojson.NewObject()
 }
 
 // responseList is a list-returning endpoint's rows, empty when the body is not a list.
 func responseList(r *api.Response) []any {
-	v, _ := pyjson.Decode(r.Body)
+	v, _ := ojson.Decode(r.Body)
 	if l, ok := v.([]any); ok {
 		return l
 	}

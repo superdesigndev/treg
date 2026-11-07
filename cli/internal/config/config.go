@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 const ProductionBaseURL = "https://treg.to"
 
-// Config is one machine's CLI state. Empty strings are written as JSON null, as Python writes None.
+// Config is one machine's CLI state. Empty strings are written as JSON null.
 type Config struct {
 	BaseURL    string
 	Token      string
@@ -27,7 +27,7 @@ type Config struct {
 
 	// file is the config as read, so a save keeps the fields this version does not know, where
 	// they were, and a newer writer's additions survive.
-	file *pyjson.Object
+	file *ojson.Object
 	// A one-command `--org` exchange: Save writes these instead of the temporary token and team.
 	once *saved
 }
@@ -68,13 +68,13 @@ func ExpandUser(p string) string {
 // Load never fails: a missing, corrupt or half-written file reads as a fresh config, so it cannot
 // brick every command, login and logout included.
 func Load() *Config {
-	cfg := &Config{BaseURL: ProductionBaseURL, file: pyjson.NewObject()}
+	cfg := &Config{BaseURL: ProductionBaseURL, file: ojson.NewObject()}
 	raw, err := os.ReadFile(Path())
 	if err != nil {
 		return cfg
 	}
-	v, err := pyjson.Decode(raw)
-	file, ok := v.(*pyjson.Object)
+	v, err := ojson.Decode(raw)
+	file, ok := v.(*ojson.Object)
 	if err != nil || !ok {
 		return cfg
 	}
@@ -87,9 +87,9 @@ func Load() *Config {
 	cfg.AdminToken = file.String("admin_token")
 	cfg.Channel = file.String("channel")
 	cfg.NoAutoUpdate = file.Value("auto_update") == false
-	if orgs, ok := file.Value("orgs").(*pyjson.Object); ok {
+	if orgs, ok := file.Value("orgs").(*ojson.Object); ok {
 		// The legacy multi-org format: the active org's token becomes the one bearer.
-		active, _ := orgs.Value(cfg.ActiveOrg).(*pyjson.Object)
+		active, _ := orgs.Value(cfg.ActiveOrg).(*ojson.Object)
 		cfg.Token = active.String("token")
 		file.Delete("orgs")
 		return cfg
@@ -107,8 +107,7 @@ func (c *Config) UseOnce(token, activeOrg string) {
 	c.Token, c.ActiveOrg = token, activeOrg
 }
 
-// Save writes atomically (write, then rename) with mode 0600 in a 0700 directory, in the layout
-// of Python's json.dumps(indent=2).
+// Save writes atomically (write, then rename) with mode 0600 in a 0700 directory.
 func (c *Config) Save() error {
 	path := Path()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -134,7 +133,7 @@ func (c *Config) Save() error {
 		file.Set("auto_update", false)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(pyjson.Dumps(file, pyjson.Pretty)), 0o600); err != nil {
+	if err := os.WriteFile(tmp, []byte(ojson.Pretty(file)), 0o600); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0o600); err != nil {

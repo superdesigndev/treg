@@ -128,10 +128,22 @@ _LIST = re.compile(r"\[('(?:[^'\n]*)'(?:, '(?:[^'\n]*)')*)\]")
 _REPR = re.compile(r"(?<![\w])'([^'\n]*)'(?![\w])")
 _PY_JSON_ERROR = re.compile(r"(?:Expecting [^:\n]*|Extra data|Unterminated string starting at|Invalid [^:\n]*"
                             r"|Illegal trailing comma[^:\n]*): line \d+ column \d+ \(char \d+\)")
-_GO_JSON_ERROR = re.compile(r"invalid character '.'[a-z ]*|unexpected end of JSON input|unexpected EOF"
-                            r"|invalid JSON: [a-z ]+")
+_GO_JSON_ERROR = re.compile(r"jsontext: [^\n]*? after offset \d+|jsontext: [^\n]*|invalid JSON: [a-z ]+")
 _MONEY = re.compile(r"( *)\$(\d[\d,]*(?:\.\d+)?(?:e-\d+)?)")
 _NO_TEAM = ("You're not in a team yet: create one with `treg org create \"Your Team\"` or accept an invite.")
+
+
+_JSON_LINE = re.compile(r"^(\s*)([\[{].*[\]}])[ \t]*$", re.M)
+
+
+def _json_line(m: re.Match) -> str:
+    """A line holding one JSON value, in one spelling: the Python CLI wrote ", " and ": " and
+    escaped non-ASCII, the Go CLI writes it compact."""
+    try:
+        value = json.loads(m.group(2))
+    except ValueError:
+        return m.group(0)
+    return m.group(1) + json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _money(m: re.Match) -> str:
@@ -148,7 +160,8 @@ def normalize(text: str) -> str:
     Go CLI's intentional ones: a plain dash for an em dash, a value quoted as Go quotes it ("x",
     where Python wrote 'x' and a list as ['a', 'b']), the system's reason for a file it cannot read
     instead of Python's errno text and exception name, its own JSON parser's errors, dollars with
-    cents (every micro-dollar under a dollar), and no "None" where the Python CLI printed an absent value."""
+    cents (every micro-dollar under a dollar), JSON in its own spelling (a line holding one value is
+    compared as that value), and no "None" where the Python CLI printed an absent value."""
     text = text.replace(" — ", " - ").replace("—", "-")
     text = _ERRNO.sub(lambda m: f"{m.group(2)}: {m.group(1).lower()}", text)
     text = _CRASH.sub("treg: cannot read ", text)
@@ -159,7 +172,16 @@ def normalize(text: str) -> str:
     text = _MONEY.sub(_money, text)
     text = text.replace("Active org: None", _NO_TEAM).replace(" (None)", "")
     text = re.sub(r'"None (?=\S)', '"', text)
-    return text
+    return _JSON_LINE.sub(_json_line, text)
+
+
+def as_json(data: bytes):
+    """A body or file as the value it holds, so two spellings of one JSON value compare equal: the
+    Go CLI writes JSON without Python's spacing, escapes and number spelling."""
+    try:
+        return json.loads(data)
+    except ValueError:
+        return data
 
 
 def same_stdout(py: Run, go: Run) -> bool:
@@ -170,7 +192,8 @@ def same_stdout(py: Run, go: Run) -> bool:
             return True
     except ValueError:
         pass
-    return normalize(py.text) == normalize(go.text)
+    py_text, go_text = normalize(py.text), normalize(go.text)
+    return py_text == go_text or as_json(py_text.encode()) == as_json(go_text.encode())
 
 
 def write_config(home: Path, **fields) -> None:

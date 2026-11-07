@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 var reviewUsefulness = []string{"useful", "partly", "not_useful", "not_sure"}
@@ -35,7 +35,7 @@ func reviewCmd(env *Env) *cobra.Command {
 		if !callIDShape.MatchString(callID) {
 			return feedbackError("invalid_call_id", "Use the call ID from the catalog call response.", nil)
 		}
-		b := pyjson.Ordered("call_id", callID, "usefulness", args[1])
+		b := ojson.Ordered("call_id", callID, "usefulness", args[1])
 		if cmd.Flags().Changed("reason") {
 			reason = providers.Strip(reason)
 			if n := utf8.RuneCountInString(reason); n < 1 || n > 200 {
@@ -44,7 +44,7 @@ func reviewCmd(env *Env) *cobra.Command {
 			b.Set("reason", reason)
 		}
 		uncertain := "Could not confirm whether the review was saved. Retry with the same call ID to confirm."
-		r, err := env.Client().Do(api.Request{Method: "POST", Path: "/reviews", Body: jsonBody(b), Header: jsonHeader})
+		r, err := env.Client().Do(api.Request{Method: "POST", Path: "/reviews", Body: ojson.Compact(b), Header: jsonHeader})
 		if err != nil {
 			return feedbackError("submission_unconfirmed", uncertain, nil)
 		}
@@ -62,13 +62,13 @@ func reviewCmd(env *Env) *cobra.Command {
 			case 422:
 				code, message = "invalid_review", "Check the fields with `treg review --help`. Omit private data."
 			}
-			return feedbackError(code, message, pyjson.Ordered("http_status", r.Status))
+			return feedbackError(code, message, ojson.Ordered("http_status", r.Status))
 		}
-		receipt, err := pyjson.Decode(r.Body)
+		receipt, err := ojson.Decode(r.Body)
 		if err != nil {
 			return feedbackError("invalid_response", uncertain, nil)
 		}
-		outln(pyjson.Dumps(receipt, pyjson.Pretty))
+		outln(ojson.Pretty(receipt))
 		return nil
 	}
 	return cmd

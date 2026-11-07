@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 // testdata/scan_skills.json is the Python CLI's skills.scan_skills over this tree, with
@@ -76,7 +76,7 @@ func view(d *Detection) any {
 	if d.CLI != nil {
 		cli = d.CLI
 	}
-	return pyjson.Ordered("name", d.Name, "kind", d.Kind, "base_url", orNil(d.BaseURL), "secrets", secrets,
+	return ojson.Ordered("name", d.Name, "kind", d.Kind, "base_url", orNil(d.BaseURL), "secrets", secrets,
 		"bindings", bindings, "gaps", gaps, "note", orNil(d.Note), "cli", cli)
 }
 
@@ -91,21 +91,21 @@ func TestScanSkillsMatchesPython(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantV, _ := pyjson.Decode(raw)
+	wantV, _ := ojson.Decode(raw)
 	want := wantV.([]any)
 	if len(dets) != len(want) {
 		t.Fatalf("%d skills, want %d", len(dets), len(want))
 	}
 	for i, d := range dets {
-		w := want[i].(*pyjson.Object)
+		w := want[i].(*ojson.Object)
 		if d.Kind == "skip" {
 			if d.Name != w.String("name") || w.String("kind") != "skip" {
 				t.Errorf("skill %d: %s/%s, want a skipped %s", i, d.Name, d.Kind, w.String("name"))
 			}
 			continue
 		}
-		got := pyjson.Dumps(view(d), pyjson.Options{Indent: -1})
-		if exp := pyjson.Dumps(w, pyjson.Options{Indent: -1}); got != exp {
+		got := string(ojson.Compact(view(d)))
+		if exp := string(ojson.Compact(w)); got != exp {
 			t.Errorf("skill %s:\n got %s\nwant %s", d.Name, got, exp)
 		}
 	}
@@ -114,7 +114,7 @@ func TestScanSkillsMatchesPython(t *testing.T) {
 func TestCollectFiles(t *testing.T) {
 	root := build(t)
 	files := CollectFiles(filepath.Join(root, "notes"))
-	if got := pyjson.Dumps(files, pyjson.Options{Indent: -1}); got != `{"sub/x.txt": "a\nb"}` {
+	if got := string(ojson.Compact(files)); got != `{"sub/x.txt":"a\nb"}` {
 		t.Fatalf("got %s", got)
 	}
 }
@@ -159,7 +159,7 @@ func TestCLIProfileValidation(t *testing.T) {
 		`{"detect": {"config_paths": ["~/.x", ""]}}`:                                  false,
 		`{"errors": [{"pattern": "a", "verdict": "maybe"}]}`:                          false,
 	} {
-		v, err := pyjson.Decode([]byte(text))
+		v, err := ojson.Decode([]byte(text))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,8 +182,8 @@ func TestBuildPayloadReadsSecretsAtUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	secrets, _ := p.Get("secrets")
-	if got := pyjson.Dumps(secrets, pyjson.Options{Indent: -1}); got !=
-		`[{"local_name": "developer_token", "value": "dev", "kind": "env"}, {"local_name": "token", "value": "{\"token\": \"t\", \"refresh_token\": \"r\"}", "kind": "oauth"}]` {
+	if got := string(ojson.Compact(secrets)); got !=
+		`[{"local_name":"developer_token","value":"dev","kind":"env"},{"local_name":"token","value":"{\"token\": \"t\", \"refresh_token\": \"r\"}","kind":"oauth"}]` {
 		t.Fatalf("secrets %s", got)
 	}
 	if _, err := BuildPayload(byName["envy"], map[string]string{}); err == nil || err.Error() != "missing env value for OPENAI_API_KEY" {

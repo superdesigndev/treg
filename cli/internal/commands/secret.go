@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/skillscan"
 )
 
@@ -91,7 +91,7 @@ func secretAddCmd(env *Env) *cobra.Command {
 		}
 		c := env.Client()
 		r, err := env.do(c, api.Request{Method: "POST", Path: "/secrets",
-			Body: jsonBody(pyjson.Ordered("name", name, "value", value, "kind", f.kind)), Header: jsonHeader})
+			Body: ojson.Compact(ojson.Ordered("name", name, "value", value, "kind", f.kind)), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func secretUpdateCmd(env *Env) *cobra.Command {
 				return err
 			}
 		}
-		b := pyjson.NewObject()
+		b := ojson.NewObject()
 		for _, field := range []struct{ key, value string }{{"name", name}, {"value", value}, {"kind", kind}} {
 			if changed(field.key) {
 				b.Set(field.key, field.value)
@@ -158,7 +158,7 @@ func secretUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --name / --value / --kind)")
 		}
-		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + id, Body: jsonBody(b), Header: jsonHeader})
+		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + id, Body: ojson.Compact(b), Header: jsonHeader})
 	}
 	return cmd
 }
@@ -218,8 +218,8 @@ func matchesKind(path, kind string) bool {
 	if err != nil {
 		return false
 	}
-	data, _ := pyjson.Loads(text)
-	o, ok := data.(*pyjson.Object)
+	data, _ := ojson.Loads(text)
+	o, ok := data.(*ojson.Object)
 	if !ok {
 		return false
 	}
@@ -253,11 +253,11 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 		}
 		return err
 	}
-	parsed, err := pyjson.Loads(text)
+	parsed, err := ojson.Loads(text)
 	if err != nil {
 		return err
 	}
-	contract, ok := parsed.(*pyjson.Object)
+	contract, ok := parsed.(*ojson.Object)
 	if !ok {
 		return fmt.Errorf("%s is not a JSON object", contractFile)
 	}
@@ -272,9 +272,9 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 	if !ok {
 		return errors.New("its secrets is not a list")
 	}
-	var entry *pyjson.Object
+	var entry *ojson.Object
 	for _, s := range secrets {
-		o, ok := s.(*pyjson.Object)
+		o, ok := s.(*ojson.Object)
 		if !ok {
 			return errors.New("a secrets entry is not an object")
 		}
@@ -284,12 +284,12 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 		}
 	}
 	if entry == nil {
-		contract.Set("secrets", append(secrets, pyjson.Ordered("file", rel, "name", name, "kind", kind)))
+		contract.Set("secrets", append(secrets, ojson.Ordered("file", rel, "name", name, "kind", kind)))
 	} else {
 		entry.Set("name", name)
 		entry.Set("kind", kind)
 	}
-	if err := os.WriteFile(path, []byte(pyjson.Dumps(contract, pyjson.Pretty)), 0o666); err != nil {
+	if err := os.WriteFile(path, []byte(ojson.Pretty(contract)), 0o666); err != nil {
 		return errors.New(osError(err, path))
 	}
 	return nil

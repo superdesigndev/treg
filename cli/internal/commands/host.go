@@ -8,8 +8,8 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func hostCmd(env *Env) *cobra.Command {
@@ -50,12 +50,12 @@ func hostCmd(env *Env) *cobra.Command {
 		}
 		b := responseObject(r)
 		if env.JSON {
-			outln(pyjson.Dumps(b, pyjson.Pretty))
+			outln(ojson.Pretty(b))
 			return nil
 		}
-		outln(pyjson.Text(b.Value("url")))
-		errln("  " + pyjson.Text(b.Value("content_type")) + ", " + pyjson.Text(b.Value("size")) +
-			" bytes, expires " + pyjson.Text(b.Value("expires_at")))
+		outln(ojson.Text(b.Value("url")))
+		errln("  " + ojson.Text(b.Value("content_type")) + ", " + ojson.Text(b.Value("size")) +
+			" bytes, expires " + ojson.Text(b.Value("expires_at")))
 		return nil
 	}
 	return cmd

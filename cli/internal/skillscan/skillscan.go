@@ -16,8 +16,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 const ContractFile = "treg.json"
@@ -48,13 +48,13 @@ type Detection struct {
 	Name, Path string
 	Kind       string // contract | generated | recipe_only | skip
 	BaseURL    string
-	Secrets    []*pyjson.Object // each {source: file|env, file?|env?, name, kind}
+	Secrets    []*ojson.Object // each {source: file|env, file?|env?, name, kind}
 	Bindings   []any
 	Health     any
 	Examples   []any
 	Gaps       []string
 	Note       string
-	CLI        *pyjson.Object
+	CLI        *ojson.Object
 }
 
 func exists(p string) bool {
@@ -198,7 +198,7 @@ func ScanSkills(dir string, catalog []providers.Entry, envNames map[string]bool)
 
 // LoadContract is the skill's treg.json, nil when there is none; an error when it is not valid
 // JSON or its cli block would be refused at registration.
-func LoadContract(dir string) (*pyjson.Object, error) {
+func LoadContract(dir string) (*ojson.Object, error) {
 	f := filepath.Join(dir, ContractFile)
 	if !exists(f) {
 		return nil, nil
@@ -207,11 +207,11 @@ func LoadContract(dir string) (*pyjson.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	v, err := pyjson.Decode([]byte(text))
+	v, err := ojson.Decode([]byte(text))
 	if err != nil {
 		return nil, fmt.Errorf("%s is not valid JSON: %v", ContractFile, err)
 	}
-	contract, ok := v.(*pyjson.Object)
+	contract, ok := v.(*ojson.Object)
 	if !ok {
 		return nil, fmt.Errorf("%s is not a JSON object", ContractFile)
 	}
@@ -221,7 +221,7 @@ func LoadContract(dir string) (*pyjson.Object, error) {
 	return contract, nil
 }
 
-func contractCLI(contract *pyjson.Object) *pyjson.Object {
+func contractCLI(contract *ojson.Object) *ojson.Object {
 	cli := providers.Obj(contract, "cli")
 	if cli == nil {
 		return nil
@@ -249,11 +249,11 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 			CLI: contractCLI(contract)}
 		secretsV, _ := contract.Get("secrets")
 		for _, item := range list(secretsV) {
-			s, ok := item.(*pyjson.Object)
+			s, ok := item.(*ojson.Object)
 			if !ok {
 				continue
 			}
-			src := pyjson.Ordered("source", "file")
+			src := ojson.Ordered("source", "file")
 			for _, k := range s.Keys() {
 				v, _ := s.Get(k)
 				src.Set(k, v)
@@ -331,7 +331,7 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 	case len(files) > 0:
 		secrets, bindings := AutoBindings(d, files)
 		for _, s := range secrets {
-			src := pyjson.Ordered("source", "file")
+			src := ojson.Ordered("source", "file")
 			for _, k := range s.Keys() {
 				v, _ := s.Get(k)
 				src.Set(k, v)
@@ -350,15 +350,15 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 		if p != nil && baseURL == "" {
 			baseURL = p.String("base_url")
 		}
-		var binding *pyjson.Object
+		var binding *ojson.Object
 		if p != nil {
 			binding = providers.BuildBinding(providers.Obj(p, "auth"))
 		}
 		if binding == nil {
-			binding = pyjson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Bearer {secret}")
+			binding = ojson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Bearer {secret}")
 		}
-		det.Secrets = append(det.Secrets, pyjson.Ordered("source", "env", "env", v, "name", name, "kind", "env"))
-		b := pyjson.Ordered("secret", name)
+		det.Secrets = append(det.Secrets, ojson.Ordered("source", "env", "env", v, "name", name, "kind", "env"))
+		b := ojson.Ordered("secret", name)
 		for _, k := range binding.Keys() {
 			bv, _ := binding.Get(k)
 			b.Set(k, bv)
@@ -392,7 +392,7 @@ func containsAny(s string, subs []string) bool {
 // each env credential sourced from the machine at upload.
 func catalogCLIDetection(name, d string, entry providers.Entry, envNames map[string]bool) *Detection {
 	src := providers.Obj(entry, "cli")
-	cli := pyjson.NewObject()
+	cli := ojson.NewObject()
 	for _, k := range src.Keys() {
 		if k != "verified" {
 			v, _ := src.Get(k)
@@ -405,7 +405,7 @@ func catalogCLIDetection(name, d string, entry providers.Entry, envNames map[str
 	var inject []any
 	seen := map[string]bool{}
 	for _, item := range list(injectV) {
-		e, ok := item.(*pyjson.Object)
+		e, ok := item.(*ojson.Object)
 		if !ok {
 			inject = append(inject, item)
 			continue
@@ -429,7 +429,7 @@ func catalogCLIDetection(name, d string, entry providers.Entry, envNames map[str
 		}
 		seen[local] = true
 		e.Set("secret", local)
-		det.Secrets = append(det.Secrets, pyjson.Ordered("source", "env", "env", envVar, "name", local, "kind", "env"))
+		det.Secrets = append(det.Secrets, ojson.Ordered("source", "env", "env", envVar, "name", local, "kind", "env"))
 		if !envNames[envVar] {
 			det.Gaps = append(det.Gaps, "needs credential "+envVar+" (not found in your environment)")
 		}
@@ -447,7 +447,7 @@ func flagHeaderCollisions(det *Detection) {
 	count := map[string]int{}
 	var order []string
 	for _, item := range det.Bindings {
-		b, ok := item.(*pyjson.Object)
+		b, ok := item.(*ojson.Object)
 		if !ok {
 			continue
 		}
@@ -570,11 +570,11 @@ func guessKind(name, text string) string {
 	if !strings.HasSuffix(name, ".json") {
 		return "env"
 	}
-	v, err := pyjson.Decode([]byte(text))
+	v, err := ojson.Decode([]byte(text))
 	if err != nil {
 		return "secret_file"
 	}
-	if o, ok := v.(*pyjson.Object); ok {
+	if o, ok := v.(*ojson.Object); ok {
 		if _, ok := o.Get("refresh_token"); ok {
 			return "oauth"
 		}
@@ -587,11 +587,11 @@ func oauthSecretField(f string) string {
 	if err != nil {
 		return "access_token"
 	}
-	v, err := pyjson.Decode([]byte(text))
+	v, err := ojson.Decode([]byte(text))
 	if err != nil {
 		return "access_token"
 	}
-	if o, ok := v.(*pyjson.Object); ok {
+	if o, ok := v.(*ojson.Object); ok {
 		_, hasAccess := o.Get("access_token")
 		_, hasToken := o.Get("token")
 		if !hasAccess && hasToken {
@@ -620,7 +620,7 @@ func headerFromStem(s string) string {
 // AutoBindings gives each credential file a secret and its own header: the primary token (the
 // OAuth one, else the first) on `Authorization: Bearer`, every other on a header named from its
 // file. OAuth app config mints tokens and is never sent, so it is skipped.
-func AutoBindings(base string, files []string) ([]*pyjson.Object, []any) {
+func AutoBindings(base string, files []string) ([]*ojson.Object, []any) {
 	var creds []string
 	for _, f := range files {
 		if !appConfigRE.MatchString(filepath.Base(f)) {
@@ -643,7 +643,7 @@ func AutoBindings(base string, files []string) ([]*pyjson.Object, []any) {
 		}
 	}
 	single := len(creds) == 1
-	var secrets []*pyjson.Object
+	var secrets []*ojson.Object
 	var bindings []any
 	seen := map[string]bool{}
 	for _, f := range creds {
@@ -657,16 +657,16 @@ func AutoBindings(base string, files []string) ([]*pyjson.Object, []any) {
 		}
 		seen[name] = true
 		rel, _ := filepath.Rel(base, f)
-		secrets = append(secrets, pyjson.Ordered("file", filepath.ToSlash(rel), "name", name, "kind", kind))
+		secrets = append(secrets, ojson.Ordered("file", filepath.ToSlash(rel), "name", name, "kind", kind))
 		if f == primary {
 			field := "access_token"
 			if kind == "oauth" {
 				field = oauthSecretField(f)
 			}
-			bindings = append(bindings, pyjson.Ordered("secret", name, "injector", kind, "location", "header",
+			bindings = append(bindings, ojson.Ordered("secret", name, "injector", kind, "location", "header",
 				"name", "Authorization", "format", "Bearer {secret}", "secret_field", field))
 		} else {
-			bindings = append(bindings, pyjson.Ordered("secret", name, "injector", kind, "location", "header",
+			bindings = append(bindings, ojson.Ordered("secret", name, "injector", kind, "location", "header",
 				"name", headerFromStem(stem(filepath.Base(f))), "format", "{secret}", "secret_field", "access_token"))
 		}
 	}
@@ -674,14 +674,14 @@ func AutoBindings(base string, files []string) ([]*pyjson.Object, []any) {
 }
 
 // ToContract is the treg.json for a tool skill, without the internal source marker.
-func ToContract(det *Detection) *pyjson.Object {
+func ToContract(det *Detection) *ojson.Object {
 	var secrets []any
 	for _, s := range det.Secrets {
 		c := s.Copy()
 		c.Delete("source")
 		secrets = append(secrets, c)
 	}
-	c := pyjson.Ordered("name", det.Name, "base_url", det.BaseURL, "secrets", orEmpty(secrets),
+	c := ojson.Ordered("name", det.Name, "base_url", det.BaseURL, "secrets", orEmpty(secrets),
 		"bindings", orEmpty(det.Bindings), "examples", orEmpty(det.Examples))
 	if truthy(det.Health) {
 		c.Set("health", det.Health)
@@ -700,7 +700,7 @@ func orEmpty(items []any) []any {
 }
 
 func truthy(v any) bool {
-	o := pyjson.Ordered("v", v)
+	o := ojson.Ordered("v", v)
 	return providers.Truthy(o, "v")
 }
 
@@ -713,7 +713,7 @@ func WriteContract(det *Detection) (string, error) {
 	if exists(path) {
 		return "", nil
 	}
-	text := pyjson.Dumps(ToContract(det), pyjson.Pretty)
+	text := ojson.Pretty(ToContract(det))
 	if err := os.WriteFile(path, []byte(text), 0o666); err != nil {
 		return "", err
 	}
@@ -737,8 +737,8 @@ func EnvNeeds(dets []*Detection) []string {
 
 // CollectFiles is every text file of the skill folder by relative path, minus the recipe, the
 // contract, secrets, junk and binaries, within the size limits.
-func CollectFiles(dir string) *pyjson.Object {
-	out := pyjson.NewObject()
+func CollectFiles(dir string) *ojson.Object {
+	out := ojson.NewObject()
 	total := 0
 	for _, rel := range walk(dir) {
 		p := filepath.Join(dir, rel)
@@ -773,11 +773,11 @@ func CollectFiles(dir string) *pyjson.Object {
 
 // BuildPayload is the POST /skills body. File secrets are read from disk and env secrets from
 // values; a recipe-only skill ships its recipe and files alone.
-func BuildPayload(det *Detection, values map[string]string) (*pyjson.Object, error) {
+func BuildPayload(det *Detection, values map[string]string) (*ojson.Object, error) {
 	recipe := readRecipe(det.Path)
 	files := CollectFiles(det.Path)
 	if det.Kind == "recipe_only" {
-		return pyjson.Ordered("name", det.Name, "recipe", recipe, "files", files, "secrets", []any{}, "tools", []any{}), nil
+		return ojson.Ordered("name", det.Name, "recipe", recipe, "files", files, "secrets", []any{}, "tools", []any{}), nil
 	}
 	secrets := []any{}
 	for _, s := range det.Secrets {
@@ -802,9 +802,9 @@ func BuildPayload(det *Detection, values map[string]string) (*pyjson.Object, err
 		if v, ok := s.Get("kind"); ok {
 			kind, _ = v.(string)
 		}
-		secrets = append(secrets, pyjson.Ordered("local_name", s.String("name"), "value", val, "kind", kind))
+		secrets = append(secrets, ojson.Ordered("local_name", s.String("name"), "value", val, "kind", kind))
 	}
-	tool := pyjson.Ordered("name", det.Name, "base_url", det.BaseURL, "bindings", orEmpty(det.Bindings))
+	tool := ojson.Ordered("name", det.Name, "base_url", det.BaseURL, "bindings", orEmpty(det.Bindings))
 	if truthy(det.Health) {
 		tool.Set("health_check", det.Health)
 	}
@@ -814,5 +814,5 @@ func BuildPayload(det *Detection, values map[string]string) (*pyjson.Object, err
 	if det.CLI.Len() > 0 {
 		tool.Set("cli", det.CLI)
 	}
-	return pyjson.Ordered("name", det.Name, "recipe", recipe, "files", files, "secrets", secrets, "tools", []any{tool}), nil
+	return ojson.Ordered("name", det.Name, "recipe", recipe, "files", files, "secrets", secrets, "tools", []any{tool}), nil
 }

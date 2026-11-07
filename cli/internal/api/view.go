@@ -1,7 +1,8 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"time"
 )
 
@@ -13,8 +14,8 @@ const ViewHeader = "X-Treg-View"
 var WithView = [2]string{ViewHeader, "1"}
 
 type View struct {
-	Data json.RawMessage `json:"data"`
-	Text string          `json:"text"`
+	Data jsontext.Value `json:"data"`
+	Text string         `json:"text"`
 }
 
 // View is the response's view, or false when the registry answered without one.

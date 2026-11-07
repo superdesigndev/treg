@@ -3,6 +3,7 @@ package agents
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -15,7 +16,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 // MCP status values.
@@ -62,20 +63,20 @@ func mcpAgents() []mcpAgent {
 	return []mcpAgent{
 		{"Claude Code", func() bool { return exists(filepath.Join(h, ".claude")) || onPath("claude") }, writeClaude},
 		{"Cursor", func() bool { return exists(filepath.Join(h, ".cursor")) }, func(name, url, token string, oauth bool) (string, string) {
-			return writeJSONAgent(cursor, "mcpServers", name, pyjson.Ordered("url", url, "headers", bearer(token)), oauth)
+			return writeJSONAgent(cursor, "mcpServers", name, ojson.Ordered("url", url, "headers", bearer(token)), oauth)
 		}},
 		{"Codex", func() bool { return exists(filepath.Join(h, ".codex")) || onPath("codex") }, func(name, url, token string, oauth bool) (string, string) {
 			return writeCodex(codex, name, url, token, oauth)
 		}},
 		{"opencode", func() bool { return exists(filepath.Join(configHome(), "opencode")) }, func(name, url, token string, oauth bool) (string, string) {
-			entry := pyjson.Ordered("type", "remote", "url", url, "enabled", true, "headers", bearer(token))
+			entry := ojson.Ordered("type", "remote", "url", url, "enabled", true, "headers", bearer(token))
 			return writeJSONAgent(opencode, "mcp", name, entry, oauth)
 		}},
 	}
 }
 
-func bearer(token string) *pyjson.Object {
-	return pyjson.Ordered("Authorization", "Bearer "+token)
+func bearer(token string) *ojson.Object {
+	return ojson.Ordered("Authorization", "Bearer "+token)
 }
 
 var manualAgents = []struct {
@@ -184,26 +185,26 @@ func clip(s string, n int) string {
 }
 
 // writeJSONAgent merges one server entry into a JSON config, keeping everything else as it was.
-func writeJSONAgent(path, root, name string, entry *pyjson.Object, oauth bool) (string, string) {
-	data := pyjson.NewObject()
+func writeJSONAgent(path, root, name string, entry *ojson.Object, oauth bool) (string, string) {
+	data := ojson.NewObject()
 	if exists(path) {
 		raw, err := ReadText(path)
 		if err != nil {
 			return Failed, fmt.Sprintf("%s: %v", path, err)
 		}
-		v, err := pyjson.Decode([]byte(raw))
+		v, err := ojson.Decode([]byte(raw))
 		if err != nil {
 			return Failed, fmt.Sprintf("%s: %v", path, err)
 		}
-		obj, ok := v.(*pyjson.Object)
+		obj, ok := v.(*ojson.Object)
 		if !ok {
 			return Failed, fmt.Sprintf("%s is not a JSON object", path)
 		}
 		data = obj
 	}
-	servers := pyjson.NewObject()
+	servers := ojson.NewObject()
 	if v, ok := data.Get(root); ok {
-		if obj, ok := v.(*pyjson.Object); ok {
+		if obj, ok := v.(*ojson.Object); ok {
 			servers = obj
 		}
 	}
@@ -212,7 +213,7 @@ func writeJSONAgent(path, root, name string, entry *pyjson.Object, oauth bool) (
 	}
 	servers.Set(name, entry)
 	data.Set(root, servers)
-	text := pyjson.Dumps(data, pyjson.Pretty) + "\n"
+	text := ojson.Pretty(data) + "\n"
 	if err := WritePrivate(path, text); err != nil {
 		return Failed, fmt.Sprintf("%s: %v", path, err)
 	}
@@ -255,10 +256,10 @@ func writeCodex(path, name, url, token string, oauth bool) (string, string) {
 	}
 	kept = strings.TrimRightFunc(kept, isPySpace)
 	header := "[mcp_servers." + name + "]"
-	block := header + "\nurl = " + pyjson.Quote(url, true) + "\n"
+	block := header + "\nurl = " + tomlString(url) + "\n"
 	expected := map[string]any{"url": url}
 	if !oauth {
-		block += "http_headers = { \"Authorization\" = " + pyjson.Quote("Bearer "+token, true) + " }\n"
+		block += "http_headers = { \"Authorization\" = " + tomlString("Bearer "+token) + " }\n"
 		expected["http_headers"] = map[string]any{"Authorization": "Bearer " + token}
 	}
 	text := block
@@ -409,4 +410,10 @@ func Wrap(text string, width int) []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// tomlString is a TOML basic string: JSON's string escapes are a subset of TOML's.
+func tomlString(s string) string {
+	quoted, _ := jsontext.AppendQuote(nil, s)
+	return string(quoted)
 }

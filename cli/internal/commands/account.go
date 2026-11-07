@@ -5,7 +5,7 @@ import (
 	"cmp"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -20,8 +20,8 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func versionCmd(env *Env) *cobra.Command {
@@ -60,7 +60,7 @@ func configCmd(env *Env) *cobra.Command {
 					return err
 				}
 			}
-			view := pyjson.Ordered("base_url", cfg.BaseURL, "email", nullable(cfg.Email),
+			view := ojson.Ordered("base_url", cfg.BaseURL, "email", nullable(cfg.Email),
 				"active_org", nullable(cfg.ActiveOrg), "logged_in", cfg.Token != "")
 			if cfg.Channel != "" {
 				view.Set("channel", cfg.Channel)
@@ -120,7 +120,7 @@ func whoamiCmd(env *Env) *cobra.Command {
 				if active != nil {
 					team, role = active.Slug, nullable(active.Role)
 				}
-				env.Out.ShowJSON(pyjson.Ordered("email", nullable(email), "team", team, "role", role, "registry", env.Registry()))
+				env.Out.ShowJSON(ojson.Ordered("email", nullable(email), "team", team, "role", role, "registry", env.Registry()))
 				return nil
 			}
 			team := cmp.Or(env.EffectiveOrg(), "-")
@@ -213,7 +213,7 @@ func (e *Env) loginWithToken(token string) error {
 func (e *Env) loginWithEmail(email string) (bool, error) {
 	c := e.AnonymousClient()
 	start, err := e.do(c, api.Request{Method: "POST", Path: "/auth/email/start",
-		Body: jsonBody(map[string]string{"email": email}), Header: jsonHeader})
+		Body: ojson.Compact(map[string]string{"email": email}), Header: jsonHeader})
 	if err != nil {
 		return true, err
 	}
@@ -234,7 +234,7 @@ func (e *Env) loginWithEmail(email string) (bool, error) {
 	outf("Enter code: ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	verify, err := e.do(c, api.Request{Method: "POST", Path: "/auth/email/verify",
-		Body: jsonBody(map[string]string{"email": email, "code": strings.TrimSpace(line)}), Header: jsonHeader})
+		Body: ojson.Compact(map[string]string{"email": email, "code": strings.TrimSpace(line)}), Header: jsonHeader})
 	if err != nil {
 		return true, err
 	}

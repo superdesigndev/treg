@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 // testdata/scan_env.json is the Python CLI's providers module run over sampleEnv: var_names,
@@ -35,20 +35,20 @@ noequals
  SPACED_TOKEN = " v "
 `
 
-func fixture(t *testing.T) *pyjson.Object {
+func fixture(t *testing.T) *ojson.Object {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/scan_env.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := pyjson.Decode(raw)
+	v, err := ojson.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return v.(*pyjson.Object)
+	return v.(*ojson.Object)
 }
 
-func dump(v any) string { return pyjson.Dumps(v, pyjson.Options{Indent: -1}) }
+func dump(v any) string { return string(ojson.Compact(v)) }
 
 func nullable(s string) any {
 	if s == "" {
@@ -68,7 +68,7 @@ func strs(items []string) any {
 	return out
 }
 
-func objOrNil(o *pyjson.Object) any {
+func objOrNil(o *ojson.Object) any {
 	if o == nil {
 		return nil
 	}
@@ -98,7 +98,7 @@ func TestScanEnvMatchesPython(t *testing.T) {
 		if d.Kind == "matched" {
 			headers = d.RequiredHeaders
 		} else {
-			headers = pyjson.NewObject()
+			headers = ojson.NewObject()
 		}
 		gotDets = append(gotDets, []any{d.Kind, strs(d.Vars), nullable(d.Provider), nullable(d.BaseURL),
 			objOrNil(d.Auth), nullable(d.Probe), headers, nullable(d.Note)})
@@ -115,9 +115,9 @@ func TestScanEnvMatchesPython(t *testing.T) {
 	compareRows(t, "action", gotActs, wantActs.([]any))
 }
 
-func headersOrEmpty(o *pyjson.Object) any {
+func headersOrEmpty(o *ojson.Object) any {
 	if o == nil {
-		return pyjson.NewObject()
+		return ojson.NewObject()
 	}
 	return o
 }

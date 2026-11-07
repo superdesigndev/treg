@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func toolCmd(env *Env) *cobra.Command {
@@ -54,7 +54,7 @@ func toolAddCmd(env *Env) *cobra.Command {
 			}
 			secretID = id
 		}
-		b := pyjson.Ordered("name", args[0], "base_url", f.baseURL)
+		b := ojson.Ordered("name", args[0], "base_url", f.baseURL)
 		switch {
 		case len(f.bind) > 0:
 			bindings, err := parseBinds(f.bind)
@@ -83,7 +83,7 @@ func toolAddCmd(env *Env) *cobra.Command {
 			}
 			b.Set("health_check", health)
 		}
-		return env.show(api.Request{Method: "POST", Path: "/tools", Body: jsonBody(b), Header: jsonHeader})
+		return env.show(api.Request{Method: "POST", Path: "/tools", Body: ojson.Compact(b), Header: jsonHeader})
 	}
 	return cmd
 }
@@ -133,7 +133,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 				return err
 			}
 		}
-		b := pyjson.NewObject()
+		b := ojson.NewObject()
 		if changed("base-url") {
 			b.Set("base_url", f.baseURL)
 		}
@@ -171,9 +171,9 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 					return err
 				}
 			}
-			var current *pyjson.Object
+			var current *ojson.Object
 			for _, t := range responseList(r) {
-				if o, ok := t.(*pyjson.Object); ok && pyjson.Text(o.Value("id")) == id {
+				if o, ok := t.(*ojson.Object); ok && ojson.Text(o.Value("id")) == id {
 					current = o
 					break
 				}
@@ -181,8 +181,8 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 			if current == nil {
 				return output.Fail("tool id %s not found in this org", id)
 			}
-			cli := pyjson.NewObject()
-			if existing, ok := current.Value("cli").(*pyjson.Object); ok {
+			cli := ojson.NewObject()
+			if existing, ok := current.Value("cli").(*ojson.Object); ok {
 				for _, k := range existing.Keys() {
 					cli.Set(k, existing.Value(k))
 				}
@@ -193,7 +193,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --base-url / --bind / --binding / --health / --local-run)")
 		}
-		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + id, Body: jsonBody(b), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + id, Body: ojson.Compact(b), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -207,7 +207,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 func parseBinds(specs []string) ([]any, error) {
 	out := make([]any, 0, len(specs))
 	for _, spec := range specs {
-		b := pyjson.Ordered("injector", "env", "location", "header", "name", "Authorization",
+		b := ojson.Ordered("injector", "env", "location", "header", "name", "Authorization",
 			"format", "Bearer {secret}", "secret_field", "access_token")
 		for part := range strings.SplitSeq(spec, ",") {
 			k, v, _ := strings.Cut(part, "=")
@@ -235,7 +235,7 @@ func parseBinds(specs []string) ([]any, error) {
 
 // jsonArg parses an inline-JSON argument, refusing bad JSON with the parser's own message.
 func jsonArg(s, label string) (any, error) {
-	v, err := pyjson.Loads(s)
+	v, err := ojson.Loads(s)
 	if err != nil {
 		return nil, output.Fail("--%s is not valid JSON: %s", label, err)
 	}

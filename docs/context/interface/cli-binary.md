@@ -61,7 +61,7 @@ sources:
   - cli/internal/prompt/termios_linux.go
   - cli/internal/providers/catalog.json
   - cli/internal/providers/providers.go
-  - cli/internal/pyjson/pyjson.go
+  - cli/internal/ojson/ojson.go
   - cli/internal/session/proc_darwin.go
   - cli/internal/session/proc_linux.go
   - cli/internal/session/proc_other.go
@@ -127,10 +127,12 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   registry cannot know: the `treg:` line (version and path) and a `registry:` line off treg.to.
 - **`call --await`** follows the registry's task (`/tasks/{call_id}`, [tasks](../architecture/tasks.md))
   and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it and the registry release that has it.
-- **Bodies and files.** `internal/pyjson` decodes JSON with Go's decoder, keeping key order and
-  number spelling, and encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8
-  kept), the `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON
-  argument that does not parse is refused in the decoder's words. A number argument is what Go's
+- **Bodies and files.** JSON is `encoding/json/v2`, and `internal/ojson` the values whose member
+  order matters, numbers kept as written: a request body is compact, a file the CLI writes or a
+  value it prints is indented by two spaces, both UTF-8 with nothing escaped for HTML. They are not
+  the Python CLI's bytes (its `", "` and `": "`, `\uXXXX` escapes and float `repr`); the parity
+  suite compares the parsed values. `call --data` is sent as written, so its archive key does not
+  depend on either CLI. A JSON argument that does not parse is refused in the decoder's words. A number argument is what Go's
   `strconv` reads: no surrounding spaces, no underscores in an integer, no negative count, where the
   Python CLI took whatever `int()` and `float()` take. A path is named as it was given, not
   normalized.
@@ -145,8 +147,8 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
   and body) and a live one (`python -m treg` on a fresh sqlite database, a signed-up team, an echo
-  upstream registered as its own tool) and compares exit status, stdout (JSON parsed), stderr,
-  config writes and the request each sent; prompts run on a pseudo-terminal that is each CLI's
+  upstream registered as its own tool) and compares exit status, stdout, stderr, config writes and
+  the request each sent, JSON as parsed values; prompts run on a pseudo-terminal that is each CLI's
   controlling terminal, answered key by key. It runs with `TREG_GO_BIN` (or `TREG_GO_BUILD=1`); the
   `cli-go` CI job runs it, and Go's vet and unit tests on Linux, macOS and Windows, and the
   `modernize` analyzer, so code is written in the idioms `go.mod`'s Go version allows.
@@ -158,11 +160,11 @@ same files. It is not the default install yet: `/install.sh` installs the Python
 `tests/cli_go/agent_sandbox.py` runs both CLIs in a fresh HOME with fake agent installs and a PATH
 whose `claude` records its arguments, and compares every file left in HOME, modes included.
 
-- **Same bytes.** `internal/pyjson` reads JSON keeping member order (a repeated key keeps its first
-  place and last value), so a file the CLI edits keeps its owner's order, and writes it as Python's
-  `json.dumps` does (`ensure_ascii`, float `repr`), and files are read with Python's universal
-  newlines, so an agent's MCP config, `skills.json` or a skill's `treg.json` is the same whichever
-  CLI wrote it. The Python-exact writing goes when the Python CLI does; the order stays.
+- **Same content.** `internal/ojson` reads JSON keeping member order (a repeated key keeps its
+  first place and last value, a string that is not UTF-8 is read with replacement characters), so
+  a file the CLI edits, an agent's MCP config, `skills.json` or a skill's `treg.json`, keeps its
+  owner's order and holds the same values whichever CLI wrote it; files are read with universal
+  newlines.
 - **Where agents live.** `internal/agents` holds both tables: each agent's skill directories
   (honouring `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`) and the MCP writers. Every path
   is under the home directory, which is `%USERPROFILE%` on Windows.

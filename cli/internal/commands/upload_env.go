@@ -3,7 +3,7 @@ package commands
 import (
 	"cmp"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
@@ -139,7 +139,7 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 					return err
 				}
 			}
-			rs, err := e.post(c, "/secrets", pyjson.Ordered("name", a.SecretName, "value", val, "kind", "env"))
+			rs, err := e.post(c, "/secrets", ojson.Ordered("name", a.SecretName, "value", val, "kind", "env"))
 			if err != nil {
 				return err
 			}
@@ -151,10 +151,10 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 			bindings := []any{withMember(a.Binding, "secret_id", sid)}
 			for _, name := range a.RequiredHeaders.Keys() {
 				value, _ := a.RequiredHeaders.Get(name)
-				bindings = append(bindings, pyjson.Ordered("secret_id", sid, "injector", "env", "location", "header",
+				bindings = append(bindings, ojson.Ordered("secret_id", sid, "injector", "env", "location", "header",
 					"name", name, "format", value))
 			}
-			body := pyjson.Ordered("name", a.ToolName, "base_url", a.BaseURL, "bindings", bindings)
+			body := ojson.Ordered("name", a.ToolName, "base_url", a.BaseURL, "bindings", bindings)
 			if a.Health != nil {
 				body.Set("health_check", a.Health)
 			}
@@ -252,7 +252,7 @@ func (e *Env) oauthConnect(c *api.Client, d providers.Detection, vals map[string
 		}
 		return nil
 	}
-	body := pyjson.Ordered("name", providers.Slug(d.Provider), "client_id", value(cid), "client_secret", value(csec),
+	body := ojson.Ordered("name", providers.Slug(d.Provider), "client_id", value(cid), "client_secret", value(csec),
 		"auth_uri", d.Auth.String("auth_uri"), "token_uri", d.Auth.String("token_uri"), "scopes", scopes)
 	r, err := e.post(c, "/oauth/start", body)
 	if err != nil {

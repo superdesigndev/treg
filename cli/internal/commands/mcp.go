@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/agents"
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
@@ -217,7 +218,7 @@ func (e *Env) mcpGrants() error {
 
 func (e *Env) mcpUseTeam(grant, team string) error {
 	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/oauth/grants/" + grant + "/team",
-		Body: jsonBody(map[string]string{"team": team}), Header: jsonHeader})
+		Body: ojson.Compact(map[string]string{"team": team}), Header: jsonHeader})
 	if err != nil {
 		return err
 	}

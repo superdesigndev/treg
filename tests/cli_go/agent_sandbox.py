@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cli_go_harness import PYTHON_CLI, Run, normalize, write_config
+from .cli_go_harness import PYTHON_CLI, Run, as_json, normalize, write_config
 
 SYSTEM_PATH = os.pathsep.join(p for p in ("/usr/bin", "/bin") if os.path.isdir(p))
 
@@ -123,7 +123,8 @@ def snapshot(m: Machine) -> dict[str, tuple[str, str]]:
         elif p.is_dir():
             out[rel + "/"] = (mode, "")
         else:
-            out[rel] = (mode, scrub(p.read_bytes().decode("utf-8", "replace"), m))
+            text = scrub(p.read_bytes().decode("utf-8", "replace"), m)
+            out[rel] = (mode, as_json(text.encode()))
     return out
 
 

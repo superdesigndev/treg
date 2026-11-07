@@ -3,7 +3,8 @@ package output
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -29,7 +30,7 @@ func (p *Printer) ShowCall(r *api.Response) error {
 		p.largeAnswerHint(r)
 	}
 	if p.JSON {
-		data, _ := marshal(envelope(r, ctype))
+		data, _ := json.Marshal(envelope(r, ctype), jsontext.AllowInvalidUTF8(true))
 		p.Out.Write(data)
 		fmt.Fprintln(p.Out)
 		if r.Status >= 400 {
@@ -60,8 +61,8 @@ func isJSONType(t string) bool {
 }
 
 type callEnvelope struct {
-	Result any            `json:"result"`
-	Treg   *pyjson.Object `json:"_treg"`
+	Result any           `json:"result"`
+	Treg   *ojson.Object `json:"_treg"`
 }
 
 // envelope is `treg --json call`: the provider body under `result` (JSON, text, or base64 for
@@ -71,8 +72,8 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	switch {
 	case ctype == "" || isJSONType(ctype):
 		body := bytes.TrimPrefix(r.Body, []byte("\xef\xbb\xbf"))
-		if trimmed := bytes.TrimSpace(body); json.Valid(trimmed) && len(trimmed) > 0 {
-			result = json.RawMessage(trimmed)
+		if trimmed := bytes.TrimSpace(body); ojson.Valid(trimmed) && len(trimmed) > 0 {
+			result = jsontext.Value(trimmed)
 		} else {
 			result = text(r.Body)
 		}
@@ -82,7 +83,7 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 		result = map[string]string{"base64": base64.StdEncoding.EncodeToString(r.Body), "content_type": ctype}
 	}
 	h := r.Header
-	m := pyjson.NewObject()
+	m := ojson.NewObject()
 	m.Set("http_status", r.Status)
 	if saturated(r) {
 		m.Set("treg_saturated", true)
@@ -140,17 +141,6 @@ func text(body []byte) string {
 		return string(body)
 	}
 	return strings.ToValidUTF8(string(body), "�")
-}
-
-// marshal is json.Marshal without HTML escaping, which Python never applies.
-func marshal(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // largeAnswerHint: a large answer printed to a terminal or a pipe gets one stderr line before the

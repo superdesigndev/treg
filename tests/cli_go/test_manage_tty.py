@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from .cli_go_harness import PYTHON_CLI, Canned, normalize, write_config
+from .cli_go_harness import Canned, PYTHON_CLI, as_json, normalize, write_config
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX pseudo-terminals")
 
@@ -84,7 +84,7 @@ def _both(fake, tmp_path, go_bin, argv, routes, steps):
         fake.routes = copy.deepcopy(routes)
         start = len(fake.seen)
         code, screen = _drive(cli, argv, home, steps)
-        sent = [(s.method, s.path, s.body) for s in fake.seen[start:]]
+        sent = [(s.method, s.path, as_json(s.body)) for s in fake.seen[start:]]
         results.append((code, screen, sent))
     (py_code, py_screen, py_sent), (go_code, go_screen, go_sent) = results
     assert py_code == go_code, (py_screen, go_screen)

@@ -8,7 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"maps"
 	"net/http"
 	"os"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/session"
 )
 
@@ -194,7 +195,7 @@ func readLines(path string) [][]byte {
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 64*1024), maxQueue)
 	for sc.Scan() {
-		if line := bytes.TrimSpace(sc.Bytes()); len(line) > 0 && json.Valid(line) {
+		if line := bytes.TrimSpace(sc.Bytes()); len(line) > 0 && ojson.Valid(line) {
 			lines = append(lines, append([]byte(nil), line...))
 		}
 	}

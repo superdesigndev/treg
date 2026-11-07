@@ -2,7 +2,6 @@ package commands
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -11,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -82,11 +81,11 @@ func topupCmd(env *Env) *cobra.Command {
 // topup prints a Stripe Checkout link. Payment happens on Stripe's page and the balance moves when
 // Stripe tells the registry, so there is nothing to poll here.
 func (e *Env) topup(amount *float64) error {
-	b := pyjson.NewObject()
+	b := ojson.NewObject()
 	if amount != nil {
 		b.Set("amount_usd", float64(*amount))
 	}
-	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/topup", Body: jsonBody(b), Header: jsonHeader})
+	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/topup", Body: ojson.Compact(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
@@ -117,7 +116,7 @@ func (e *Env) topup(amount *float64) error {
 			}
 		}
 	}
-	outf("\n  Pay on Stripe's secure page:\n\n    %s%s%s\n", p.Teal, pyjson.Text(out.Value("url")), p.Reset)
+	outf("\n  Pay on Stripe's secure page:\n\n    %s%s%s\n", p.Teal, ojson.Text(out.Value("url")), p.Reset)
 	outf("\n  %sYour balance updates as soon as Stripe confirms the payment "+
 		"(seconds). Check it with `treg balance`.%s\n\n", p.Muted, p.Reset)
 	return nil
@@ -130,8 +129,8 @@ func (e *Env) bonusTiers() [][2]int64 {
 	if err != nil || r.Status >= 400 {
 		return nil
 	}
-	topup, _ := responseObject(r).Value("topup").(*pyjson.Object)
-	raw, _ := topup.Value("bonus_tiers").(*pyjson.Object)
+	topup, _ := responseObject(r).Value("topup").(*ojson.Object)
+	raw, _ := topup.Value("bonus_tiers").(*ojson.Object)
 	var tiers [][2]int64
 	for _, k := range raw.Keys() {
 		min, err := strconv.ParseInt(k, 10, 64)
@@ -153,7 +152,7 @@ type topupAuto struct {
 // threshold and amount, so turning it on asks the person at the terminal first, and a run with no
 // terminal counts as no.
 func (e *Env) topupAuto(on bool, a topupAuto) error {
-	b := pyjson.Ordered("enabled", on, "consent", false)
+	b := ojson.Ordered("enabled", on, "consent", false)
 	for _, x := range []struct {
 		key string
 		v   *float64
@@ -186,7 +185,7 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 		}
 		b.Set("consent", true)
 	}
-	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/autotopup", Body: jsonBody(b), Header: jsonHeader})
+	r, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/billing/autotopup", Body: ojson.Compact(b), Header: jsonHeader})
 	if err != nil {
 		return err
 	}
@@ -194,27 +193,27 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 		return e.Out.Show(r)
 	}
 	state := responseObject(r)
-	auto, _ := state.Value("autotopup").(*pyjson.Object)
+	auto, _ := state.Value("autotopup").(*ojson.Object)
 	if !on {
 		outf("\n  %sAuto top-up is off.%s Add funds by hand with `treg topup`.\n\n", p.Green, p.Reset)
 		return nil
 	}
-	if setup := state.Value("setup_url"); pyjson.Truthy(setup) {
+	if setup := state.Value("setup_url"); ojson.Truthy(setup) {
 		// Consent is recorded before any card exists, which is the record a dispute turns on.
 		outf("\n  %sOne step left: save a card.%s\n", p.Accent, p.Reset)
-		outf("\n    %s%s%s\n", p.Teal, pyjson.Text(setup), p.Reset)
+		outf("\n    %s%s%s\n", p.Teal, ojson.Text(setup), p.Reset)
 		outf("\n  %sAuto top-up switches on by itself once the card is saved.%s\n\n", p.Muted, p.Reset)
 		return nil
 	}
 	outf("\n  %sAuto top-up is on.%s Add %s whenever the balance drops below %s, at most %s times per hour.\n",
 		p.Green, p.Reset, usd(orZero(auto.Value("amount_micro"))), usd(orZero(auto.Value("threshold_micro"))),
-		pyjson.Text(orDefault(auto.Value("per_hour"), "5")))
+		ojson.Text(orDefault(auto.Value("per_hour"), "5")))
 	outf("  %sMonthly ceiling %s - we stop there, whatever happens.%s\n\n", p.Muted, usd(orZero(auto.Value("monthly_cap_micro"))), p.Reset)
 	return nil
 }
 
 func orZero(v any) any {
-	if pyjson.Truthy(v) {
+	if ojson.Truthy(v) {
 		return v
 	}
 	return int64(0)
@@ -244,7 +243,7 @@ func intOf(v any) (int64, bool) {
 	switch t := v.(type) {
 	case int64:
 		return t, true
-	case json.Number:
+	case ojson.Number:
 		n, err := t.Int64()
 		return n, err == nil
 	}

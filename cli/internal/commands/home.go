@@ -12,7 +12,7 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 const homeAbout = "The tool catalog for your agent. Search and call its tools"
@@ -79,8 +79,8 @@ func (e *Env) homeProblem(kind, problem string) error {
 	}
 	help := append([]string{first}, homeNextSteps...)
 	if e.JSON {
-		outln(pyjson.Dumps(pyjson.Ordered("bin", executable(), "version", buildinfo.Version, "description", homeAbout,
-			"registry", e.Registry(), kind, problem, "help", help), pyjson.Options{Indent: -1}))
+		outln(string(ojson.Compact(ojson.Ordered("bin", executable(), "version", buildinfo.Version, "description", homeAbout,
+			"registry", e.Registry(), kind, problem, "help", help))))
 		return nil
 	}
 	outln(e.homeLines(problem))

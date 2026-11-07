@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 const catalogUsage = `Browse the library of endpoints & tools for data access and integrations.
@@ -258,7 +258,7 @@ func (e *Env) catalogRequest(text string) error {
 		return output.Fail(`request what? e.g. treg catalog request "Ahrefs backlinks"`)
 	}
 	resp, err := e.do(e.Client(), api.Request{Method: "POST", Path: "/tool-requests",
-		Body:   jsonBody(pyjson.Ordered("capability", capability, "source", "cli")),
+		Body:   ojson.Compact(ojson.Ordered("capability", capability, "source", "cli")),
 		Header: [][2]string{{"Content-Type", "application/json"}, api.WithView}})
 	if err != nil {
 		return err

@@ -1,12 +1,11 @@
 package skillscan
 
 import (
-	"encoding/json"
 	"regexp"
 	"slices"
 	"strings"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 var (
@@ -68,7 +67,7 @@ func isInt(v any) bool {
 	switch t := v.(type) {
 	case bool:
 		return true
-	case json.Number:
+	case ojson.Number:
 		return !strings.ContainsAny(string(t), ".eE")
 	}
 	return false
@@ -77,7 +76,7 @@ func isInt(v any) bool {
 // validCLIProfile is the registry's own check of a skill's local-run `cli` block, so a contract the
 // registry would refuse is not offered for upload.
 func validCLIProfile(v any) bool {
-	cli, ok := v.(*pyjson.Object)
+	cli, ok := v.(*ojson.Object)
 	if !ok {
 		return false
 	}
@@ -95,7 +94,7 @@ func validCLIProfile(v any) bool {
 		}
 	}
 	if det, ok := cli.Get("detect"); ok && det != nil {
-		d, ok := det.(*pyjson.Object)
+		d, ok := det.(*ojson.Object)
 		if !ok {
 			return false
 		}
@@ -141,7 +140,7 @@ func validCLIProfile(v any) bool {
 			return false
 		}
 		for _, item := range items {
-			e, ok := item.(*pyjson.Object)
+			e, ok := item.(*ojson.Object)
 			if !ok {
 				return false
 			}
@@ -166,7 +165,7 @@ func validCLIProfile(v any) bool {
 		return false
 	}
 	for _, item := range items {
-		e, ok := item.(*pyjson.Object)
+		e, ok := item.(*ojson.Object)
 		if !ok {
 			return false
 		}

@@ -3,7 +3,7 @@ package commands
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"maps"
@@ -22,9 +22,9 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 // missingSubcommand: a command group alone is a usage error, as in the Python CLI.
@@ -156,8 +156,8 @@ func (e *Env) skillInstall(name string, f installFlags) error {
 			outf("  ✗ %s: %d\n", b.Name, d.Status)
 			continue
 		}
-		parsed, _ := pyjson.Decode(d.Body)
-		bundle, _ := parsed.(*pyjson.Object)
+		parsed, _ := ojson.Decode(d.Body)
+		bundle, _ := parsed.(*ojson.Object)
 		recipe := bundle.String("recipe")
 		if strings.TrimSpace(recipe) == "" {
 			outf("  · %s: no recipe - skipped\n", b.Name)
@@ -183,8 +183,8 @@ func (e *Env) skillInstall(name string, f installFlags) error {
 		}
 		var toolNames []string
 		toolsV, _ := bundle.Get("tools")
-		for _, t := range pyjson.List(toolsV) {
-			if obj, ok := t.(*pyjson.Object); ok {
+		for _, t := range ojson.List(toolsV) {
+			if obj, ok := t.(*ojson.Object); ok {
 				toolNames = append(toolNames, obj.String("name"))
 			}
 		}
@@ -259,7 +259,7 @@ func (e *Env) installPublicSkill(name string, bases []string, force bool) error 
 // writeBundleFiles rebuilds a skill's companion files under dest. Each must stay inside dest: a
 // bundle cannot write anywhere else, whatever its paths say.
 func writeBundleFiles(dest string, files any) int {
-	obj, ok := files.(*pyjson.Object)
+	obj, ok := files.(*ojson.Object)
 	if !ok {
 		return 0
 	}
@@ -344,33 +344,33 @@ func optionalSkills(base string) []optionalSkill {
 	if err != nil {
 		return nil
 	}
-	v, err := pyjson.Decode(body)
+	v, err := ojson.Decode(body)
 	if err != nil {
 		return nil
 	}
-	idx, ok := v.(*pyjson.Object)
+	idx, ok := v.(*ojson.Object)
 	if !ok {
 		return nil
 	}
 	out := []optionalSkill{}
 	skillsV, _ := idx.Get("skills")
-	for _, item := range pyjson.List(skillsV) {
-		entry, ok := item.(*pyjson.Object)
+	for _, item := range ojson.List(skillsV) {
+		entry, ok := item.(*ojson.Object)
 		if !ok {
 			continue
 		}
 		nameV, _ := entry.Get("name")
-		name := pyjson.Text(nameV)
+		name := ojson.Text(nameV)
 		if name == "treg" || !skillSlug.MatchString(name) {
 			continue
 		}
 		var blurb string
-		if sv, _ := entry.Get("summary"); pyjson.Truthy(sv) {
-			blurb = pyjson.Text(sv)
+		if sv, _ := entry.Get("summary"); ojson.Truthy(sv) {
+			blurb = ojson.Text(sv)
 		} else {
 			description := ""
 			if dv, ok := entry.Get("description"); ok {
-				description = pyjson.Text(dv)
+				description = ojson.Text(dv)
 			}
 			blurb = shortenSummary(description, 100)
 		}
@@ -417,17 +417,17 @@ func loadSkillLedger() map[string]string {
 	if err != nil {
 		return ledger
 	}
-	v, err := pyjson.Decode(raw)
+	v, err := ojson.Decode(raw)
 	if err != nil {
 		return ledger
 	}
-	obj, ok := v.(*pyjson.Object)
+	obj, ok := v.(*ojson.Object)
 	if !ok {
 		return ledger
 	}
 	for _, k := range obj.Keys() {
 		val, _ := obj.Get(k)
-		ledger[k] = pyjson.Text(val)
+		ledger[k] = ojson.Text(val)
 	}
 	return ledger
 }
@@ -437,11 +437,11 @@ func saveSkillLedger(ledger map[string]string) {
 	if err := agents.MkdirLeaf(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	obj := pyjson.NewObject()
+	obj := ojson.NewObject()
 	for _, k := range slices.Sorted(maps.Keys(ledger)) {
 		obj.Set(k, ledger[k])
 	}
-	text := pyjson.Dumps(obj, pyjson.Options{Indent: 2, EnsureASCII: true, SortKeys: true}) + "\n"
+	text := ojson.Pretty(obj) + "\n"
 	_ = os.WriteFile(path, []byte(text), 0o666)
 }
 
@@ -622,14 +622,14 @@ func (e *Env) skillBootstrap(allAgents, project bool, skillsArg string) error {
 		}
 		avail := []any{}
 		for _, o := range available {
-			avail = append(avail, pyjson.Ordered("name", o.name, "summary", o.summary))
+			avail = append(avail, ojson.Ordered("name", o.name, "summary", o.summary))
 		}
-		body := pyjson.Ordered("installed", done, "locations", n, "unknown", unknown, "failed", failed,
+		body := ojson.Ordered("installed", done, "locations", n, "unknown", unknown, "failed", failed,
 			"skipped", append([]string{}, skipped...), "available", avail)
 		if optional == nil {
 			body.Set("error", "could not read the skill list from "+base)
 		}
-		outln(pyjson.Dumps(body, pyjson.Pretty))
+		outln(ojson.Pretty(body))
 		return nil
 	}
 	detected := agents.Detected()

@@ -2,7 +2,7 @@ package commands
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"mime"
@@ -18,6 +18,7 @@ import (
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 )
 
@@ -82,7 +83,7 @@ func (e *Env) call(target, path string, f callFlags) error {
 		}
 	}
 	if ctype == "" && body != nil && len(body) > 0 {
-		if json.Valid(bytes.TrimSpace(body)) {
+		if ojson.Valid(bytes.TrimSpace(body)) {
 			ctype = "application/json"
 		} else if lead := bytes.TrimLeft(body, " \t\r\n\f\v"); len(lead) > 0 && (lead[0] == '{' || lead[0] == '[') {
 			// PowerShell strips the quotes inside a quoted argument, so '[{"k":"v"}]' arrives as
@@ -256,7 +257,7 @@ func withoutBOM(raw []byte, source string) []byte {
 	default:
 		return raw
 	}
-	if text == nil || !json.Valid(text) {
+	if text == nil || !ojson.Valid(text) {
 		return raw
 	}
 	fmt.Fprintf(os.Stderr, "treg: %s starts with a %s byte-order mark; sending it as UTF-8 JSON\n", source, name)

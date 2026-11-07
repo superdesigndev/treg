@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 	"github.com/superdesigndev/treg/cli/internal/term"
 )
 
@@ -108,9 +108,9 @@ func feedbackSubmitCmd(env *Env) *cobra.Command {
 		length := utf8.RuneCountInString(providers.Strip(message))
 		if length < 1 || length > 2000 {
 			return feedbackError("invalid_message", "Message must contain 1-2000 characters after trimming. "+
-				"Edit the description and submit again.", pyjson.Ordered("actual_length", length, "max_length", 2000))
+				"Edit the description and submit again.", ojson.Ordered("actual_length", length, "max_length", 2000))
 		}
-		b := pyjson.Ordered("category", args[0], "message", message)
+		b := ojson.Ordered("category", args[0], "message", message)
 		if len(callIDs) > 0 {
 			b.Set("call_ids", callIDs)
 		}
@@ -123,20 +123,20 @@ func feedbackSubmitCmd(env *Env) *cobra.Command {
 }
 
 // feedbackError is a refusal an agent can parse: one JSON line on stdout, then status 1.
-func feedbackError(code, message string, details *pyjson.Object) error {
-	o := pyjson.Ordered("error", code, "message", message)
+func feedbackError(code, message string, details *ojson.Object) error {
+	o := ojson.Ordered("error", code, "message", message)
 	for _, k := range details.Keys() {
 		o.Set(k, details.Value(k))
 	}
-	outln(pyjson.Dumps(o, pyjson.Line))
+	outln(string(ojson.Compact(o)))
 	return &output.Exit{Code: 1}
 }
 
 // submitFeedback sends a feedback submission and prints the receipt. A refusal is mapped to a fixed
 // message by status, because a validation answer can echo the rejected input.
-func (e *Env) submitFeedback(b *pyjson.Object) error {
+func (e *Env) submitFeedback(b *ojson.Object) error {
 	uncertain := "Could not confirm whether feedback was saved. Check connectivity before submitting again."
-	r, err := e.Client().Do(api.Request{Method: "POST", Path: "/feedback", Body: jsonBody(b), Header: jsonHeader})
+	r, err := e.Client().Do(api.Request{Method: "POST", Path: "/feedback", Body: ojson.Compact(b), Header: jsonHeader})
 	if err != nil {
 		return feedbackError("submission_unconfirmed", uncertain, nil)
 	}
@@ -155,12 +155,12 @@ func (e *Env) submitFeedback(b *pyjson.Object) error {
 		case 429:
 			code, message = "rate_limited", "This team has reached its feedback submission limit. Try again later."
 		}
-		return feedbackError(code, message, pyjson.Ordered("http_status", r.Status))
+		return feedbackError(code, message, ojson.Ordered("http_status", r.Status))
 	}
-	receipt, err := pyjson.Decode(r.Body)
+	receipt, err := ojson.Decode(r.Body)
 	if err != nil {
 		return feedbackError("invalid_response", uncertain, nil)
 	}
-	outln(pyjson.Dumps(receipt, pyjson.Pretty))
+	outln(ojson.Pretty(receipt))
 	return nil
 }

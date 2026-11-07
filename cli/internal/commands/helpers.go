@@ -1,20 +1,19 @@
 package commands
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 // quote names a value inside a message, quoted and escaped.
 func quote(s string) string { return strconv.Quote(s) }
 
-// nullable is JSON null for an empty string, as Python writes None.
+// nullable is JSON null for an empty string.
 func nullable(s string) any {
 	if s == "" {
 		return nil
@@ -43,9 +42,6 @@ func clip(s string, n int) string {
 	}
 	return string([]rune(s)[:n])
 }
-
-// jsonBody is a request body as httpx encodes `json=`.
-func jsonBody(v any) []byte { return []byte(pyjson.Dumps(v, pyjson.Body)) }
 
 var jsonHeader = [][2]string{{"Content-Type", "application/json"}}
 

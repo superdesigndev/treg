@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,8 +10,8 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func TestUSDMatchesPython(t *testing.T) {
@@ -20,21 +19,21 @@ func TestUSDMatchesPython(t *testing.T) {
 		in   any
 		want string
 	}{
-		{json.Number("0"), "$0.00"},
-		{json.Number("1"), "$0.000001"},
-		{json.Number("600"), "$0.0006"},
-		{json.Number("-600"), "-$0.0006"},
-		{json.Number("500000"), "$0.50"},
-		{json.Number("999999"), "$0.999999"},
-		{json.Number("1000000"), "$1.00"},
-		{json.Number("1005000"), "$1.01"},
-		{json.Number("1234567890"), "$1,234.57"},
-		{json.Number("-1234567890"), "-$1,234.57"},
-		{json.Number("1000000000000000"), "$1,000,000,000.00"},
+		{ojson.Number("0"), "$0.00"},
+		{ojson.Number("1"), "$0.000001"},
+		{ojson.Number("600"), "$0.0006"},
+		{ojson.Number("-600"), "-$0.0006"},
+		{ojson.Number("500000"), "$0.50"},
+		{ojson.Number("999999"), "$0.999999"},
+		{ojson.Number("1000000"), "$1.00"},
+		{ojson.Number("1005000"), "$1.01"},
+		{ojson.Number("1234567890"), "$1,234.57"},
+		{ojson.Number("-1234567890"), "-$1,234.57"},
+		{ojson.Number("1000000000000000"), "$1,000,000,000.00"},
 		{int64(7_000_000), "$7.00"},
 		{nil, "-"},
 		{"12", "-"},
-		{json.Number("1500000.5"), "-"},
+		{ojson.Number("1500000.5"), "-"},
 	} {
 		if got := usd(c.in); got != c.want {
 			t.Errorf("usd(%#v) = %q, want %q", c.in, got, c.want)
@@ -97,7 +96,7 @@ func TestContractSync(t *testing.T) {
 	}
 	got, _ := os.ReadFile(contract)
 	want := "{\n  \"name\": \"s\",\n  \"secrets\": [\n    {\n      \"file\": \"" + rel + "\",\n" +
-		"      \"name\": \"NEW\",\n      \"kind\": \"secret_file\",\n      \"n\": 1.0\n    }\n  ],\n  \"\\u00fc\": \"\\u00e9\"\n}"
+		"      \"name\": \"NEW\",\n      \"kind\": \"secret_file\",\n      \"n\": 1.0\n    }\n  ],\n  \"ü\": \"é\"\n}"
 	if string(got) != want {
 		t.Errorf("treg.json =\n%s\nwant\n%s", got, want)
 	}
@@ -121,7 +120,7 @@ func TestParseBinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := pyjson.Dumps(got, pyjson.Body); body != `[{"injector":"env","location":"header","name":"Authorization",`+
+	if body := string(ojson.Compact(got)); body != `[{"injector":"env","location":"header","name":"Authorization",`+
 		`"format":"Bearer {secret}","secret_field":"access_token","secret_id":1},{"injector":"env","location":"header",`+
 		`"name":"developer-token","format":"{secret}","secret_field":"access_token","secret_id":2}]` {
 		t.Errorf("bindings = %s", body)

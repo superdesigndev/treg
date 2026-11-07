@@ -6,14 +6,13 @@ package providers
 
 import (
 	_ "embed"
-	"encoding/json"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 // catalog.json is the Python CLI's providers.CATALOG at CatalogVersion, the floor when the
@@ -23,25 +22,25 @@ import (
 var bundled []byte
 
 // Entry is one catalog provider, its members in catalog order.
-type Entry = *pyjson.Object
+type Entry = *ojson.Object
 
 // Bundled is the catalog this build carries and its version.
 func Bundled() (int, []Entry) {
-	v, err := pyjson.Decode(bundled)
+	v, err := ojson.Decode(bundled)
 	if err != nil {
 		panic(err)
 	}
-	root := v.(*pyjson.Object)
+	root := v.(*ojson.Object)
 	return Int(root, "version"), Entries(root)
 }
 
 // Entries is the providers list of a /providers.json body.
-func Entries(root *pyjson.Object) []Entry {
+func Entries(root *ojson.Object) []Entry {
 	list, _ := root.Get("providers")
 	items, _ := list.([]any)
 	var out []Entry
 	for _, item := range items {
-		if e, ok := item.(*pyjson.Object); ok {
+		if e, ok := item.(*ojson.Object); ok {
 			out = append(out, e)
 		}
 	}
@@ -49,7 +48,7 @@ func Entries(root *pyjson.Object) []Entry {
 }
 
 // Int is a member read as Python's int(x or 0) reads it; ok is false where that would raise.
-func IntOK(o *pyjson.Object, key string) (int, bool) {
+func IntOK(o *ojson.Object, key string) (int, bool) {
 	v, _ := o.Get(key)
 	switch t := v.(type) {
 	case nil:
@@ -59,7 +58,7 @@ func IntOK(o *pyjson.Object, key string) (int, bool) {
 			return 1, true
 		}
 		return 0, true
-	case json.Number:
+	case ojson.Number:
 		if n, err := strconv.Atoi(string(t)); err == nil {
 			return n, true
 		}
@@ -77,23 +76,23 @@ func IntOK(o *pyjson.Object, key string) (int, bool) {
 	return 0, false
 }
 
-func Int(o *pyjson.Object, key string) int {
+func Int(o *ojson.Object, key string) int {
 	n, _ := IntOK(o, key)
 	return n
 }
 
 // Obj is a member that is an object, or nil.
-func Obj(o *pyjson.Object, key string) *pyjson.Object {
+func Obj(o *ojson.Object, key string) *ojson.Object {
 	if o == nil {
 		return nil
 	}
 	v, _ := o.Get(key)
-	obj, _ := v.(*pyjson.Object)
+	obj, _ := v.(*ojson.Object)
 	return obj
 }
 
 // Strings is a member that is a list, its string items.
-func Strings(o *pyjson.Object, key string) []string {
+func Strings(o *ojson.Object, key string) []string {
 	if o == nil {
 		return nil
 	}
@@ -109,7 +108,7 @@ func Strings(o *pyjson.Object, key string) []string {
 }
 
 // Truthy is Python's bool() of a decoded member.
-func Truthy(o *pyjson.Object, key string) bool {
+func Truthy(o *ojson.Object, key string) bool {
 	if o == nil {
 		return false
 	}
@@ -125,12 +124,12 @@ func truthy(v any) bool {
 		return t
 	case string:
 		return t != ""
-	case json.Number:
+	case ojson.Number:
 		f, _ := t.Float64()
 		return f != 0
 	case []any:
 		return len(t) > 0
-	case *pyjson.Object:
+	case *ojson.Object:
 		return t.Len() > 0
 	}
 	return true
@@ -247,11 +246,11 @@ func MatchSkill(name string, catalog []Entry) Entry {
 
 // CLIEnvVar is the variable a CLI reads its credential from: the first env inject's name, or an
 // argv inject's env_from.
-func CLIEnvVar(cli *pyjson.Object) string {
+func CLIEnvVar(cli *ojson.Object) string {
 	v, _ := cli.Get("inject")
 	items, _ := v.([]any)
 	for _, item := range items {
-		e, ok := item.(*pyjson.Object)
+		e, ok := item.(*ojson.Object)
 		if !ok {
 			continue
 		}
@@ -279,7 +278,7 @@ type Decision struct {
 func ClassifyCLI(entry Entry, installed, secretPresent, loggedIn bool) Decision {
 	cli := Obj(entry, "cli")
 	if cli == nil {
-		cli = pyjson.NewObject()
+		cli = ojson.NewObject()
 	}
 	mech := "env"
 	if v, ok := cli.Get("auth_mechanism"); ok {
@@ -327,9 +326,9 @@ type Detection struct {
 	Vars            []string
 	Provider        string
 	BaseURL         string
-	Auth            *pyjson.Object
+	Auth            *ojson.Object
 	Probe           string
-	RequiredHeaders *pyjson.Object
+	RequiredHeaders *ojson.Object
 	Note            string
 }
 
@@ -449,7 +448,7 @@ func ScanEnv(text string, catalog []Entry) []Detection {
 			used[j] = true
 			vars = append(vars, raw[j].name)
 		}
-		auth := pyjson.Ordered("shape", r.pf.form)
+		auth := ojson.Ordered("shape", r.pf.form)
 		kind, note := "basic_pair", "id + secret → Basic auth"
 		if r.pf.form == "oauth2" {
 			kind, note = "oauth_pair", "OAuth app pair → connect flow, not a Bearer key"
@@ -479,7 +478,7 @@ func ScanEnv(text string, catalog []Entry) []Detection {
 					kind = "oauth_pair"
 				}
 				dets = append(dets, Detection{Kind: kind, Vars: []string{r.name}, Provider: name,
-					BaseURL: r.provider.String("base_url"), Auth: pyjson.Ordered("shape", r.pf.form),
+					BaseURL: r.provider.String("base_url"), Auth: ojson.Ordered("shape", r.pf.form),
 					Note: "incomplete pair - only the " + r.pf.part + " half found"})
 			case containsAny(upper, alwaysInternal):
 				dets = append(dets, Detection{Kind: "app_internal", Vars: []string{r.name},
@@ -488,13 +487,13 @@ func ScanEnv(text string, catalog []Entry) []Detection {
 				dets = append(dets, Detection{Kind: "config", Vars: []string{r.name},
 					Note: name + " config (not a credential)"})
 			default:
-				headers := pyjson.NewObject()
+				headers := ojson.NewObject()
 				if h := Obj(r.provider, "required_headers"); h != nil {
 					headers = h.Copy()
 				}
 				auth := Obj(r.provider, "auth")
 				if auth == nil {
-					auth = pyjson.NewObject()
+					auth = ojson.NewObject()
 				}
 				dets = append(dets, Detection{Kind: "matched", Vars: []string{r.name}, Provider: name,
 					BaseURL: r.provider.String("base_url"), Auth: auth.Copy(), Probe: r.provider.String("probe"),
@@ -517,13 +516,13 @@ func Slug(provider string) string {
 
 // BuildBinding turns an auth shape into a tool binding, or nil when it has none (oauth2, a query
 // credential without a parameter name).
-func BuildBinding(auth *pyjson.Object) *pyjson.Object {
+func BuildBinding(auth *ojson.Object) *ojson.Object {
 	if auth == nil {
 		return nil
 	}
 	switch auth.String("shape") {
 	case "bearer":
-		return pyjson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Bearer {secret}")
+		return ojson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Bearer {secret}")
 	case "api_key_header":
 		header, fmtv := "Authorization", "{secret}"
 		if v, ok := auth.Get("header"); ok {
@@ -532,15 +531,15 @@ func BuildBinding(auth *pyjson.Object) *pyjson.Object {
 		if v, ok := auth.Get("format"); ok {
 			fmtv, _ = v.(string)
 		}
-		return pyjson.Ordered("injector", "env", "location", "header", "name", header, "format", fmtv)
+		return ojson.Ordered("injector", "env", "location", "header", "name", header, "format", fmtv)
 	case "query":
 		param := auth.String("param")
 		if param == "" {
 			return nil
 		}
-		return pyjson.Ordered("injector", "env", "location", "query", "name", param, "format", "{secret}")
+		return ojson.Ordered("injector", "env", "location", "query", "name", param, "format", "{secret}")
 	case "basic":
-		return pyjson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Basic {secret}")
+		return ojson.Ordered("injector", "env", "location", "header", "name", "Authorization", "format", "Basic {secret}")
 	}
 	return nil
 }
@@ -583,10 +582,10 @@ type Action struct {
 	SecretName      string
 	ToolName        string
 	BaseURL         string
-	Binding         *pyjson.Object
-	RequiredHeaders *pyjson.Object
+	Binding         *ojson.Object
+	RequiredHeaders *ojson.Object
 	Combine         []string
-	Health          *pyjson.Object
+	Health          *ojson.Object
 	Reason          string
 }
 
@@ -601,7 +600,7 @@ func PlanActions(dets []Detection) []*Action {
 				ToolName: Slug(firstNonEmpty(d.Provider, d.Vars[0])), BaseURL: d.BaseURL, Binding: binding,
 				RequiredHeaders: d.RequiredHeaders.Copy()}
 			if d.Probe != "" {
-				a.Health = pyjson.Ordered("path", d.Probe, "expect_status", 200)
+				a.Health = ojson.Ordered("path", d.Probe, "expect_status", 200)
 			}
 			if binding == nil {
 				shape := "?"
@@ -622,7 +621,7 @@ func PlanActions(dets []Detection) []*Action {
 			if user != "" && pass != "" {
 				actions = append(actions, &Action{Detection: d, Supported: true, BaseURL: d.BaseURL, ToolName: Slug(d.Provider),
 					SecretName: strings.ToUpper(strings.ReplaceAll(Slug(d.Provider), "-", "_")) + "_BASIC",
-					Binding:    BuildBinding(pyjson.Ordered("shape", "basic")), Combine: []string{user, pass}})
+					Binding:    BuildBinding(ojson.Ordered("shape", "basic")), Combine: []string{user, pass}})
 			} else {
 				actions = append(actions, &Action{Detection: d, BaseURL: d.BaseURL, ToolName: Slug(d.Provider), Reason: "incomplete Basic pair"})
 			}
@@ -673,30 +672,30 @@ func LLMPrompt(names []string) (string, string) {
 
 // LLMParse keeps the model's well-formed suggestions: a var, a safe https base_url and a known auth
 // shape, each var once. Reasoning a model writes inline before `</think>` is dropped first.
-func LLMParse(text string) []*pyjson.Object {
+func LLMParse(text string) []*ojson.Object {
 	if _, after, found := strings.CutLast(text, "</think>"); found {
 		text = after
 	}
-	data, err := pyjson.Decode([]byte(text))
+	data, err := ojson.Decode([]byte(text))
 	if err != nil {
 		i, j := strings.Index(text, "{"), strings.LastIndex(text, "}")
 		if i < 0 || j <= i {
 			return nil
 		}
-		if data, err = pyjson.Decode([]byte(text[i : j+1])); err != nil {
+		if data, err = ojson.Decode([]byte(text[i : j+1])); err != nil {
 			return nil
 		}
 	}
-	root, ok := data.(*pyjson.Object)
+	root, ok := data.(*ojson.Object)
 	if !ok {
 		return nil
 	}
 	v, _ := root.Get("resolved")
 	items, _ := v.([]any)
-	var out []*pyjson.Object
+	var out []*ojson.Object
 	seen := map[string]bool{}
 	for _, item := range items {
-		e, ok := item.(*pyjson.Object)
+		e, ok := item.(*ojson.Object)
 		if !ok {
 			continue
 		}

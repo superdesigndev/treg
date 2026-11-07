@@ -11,7 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -92,7 +92,7 @@ func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
 		Draft      bool   `json:"draft"`
 		Prerelease bool   `json:"prerelease"`
 	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&releases) != nil {
+	if resp.StatusCode != http.StatusOK || json.UnmarshalRead(resp.Body, &releases) != nil {
 		return nil, fmt.Errorf("GitHub releases answered %d", resp.StatusCode)
 	}
 	for _, r := range releases {

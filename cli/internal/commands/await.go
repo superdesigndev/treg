@@ -2,7 +2,8 @@ package commands
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"net/url"
@@ -299,7 +300,7 @@ func (w *taskWaiter) sleep(seconds float64) error {
 // decodeTask reads a task answer; false when the body is not one, as from a registry without the
 // task endpoint.
 func decodeTask(resp *api.Response) (*awaitedTask, bool) {
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if json.Unmarshal(bytes.TrimSpace(resp.Body), &raw) != nil {
 		return nil, false
 	}

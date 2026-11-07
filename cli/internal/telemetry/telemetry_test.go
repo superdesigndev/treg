@@ -1,7 +1,7 @@
 package telemetry
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,7 +40,9 @@ func newRelay(t *testing.T) *relay {
 			w.WriteHeader(code)
 			return
 		}
-		var batch struct{ Events []map[string]any }
+		var batch struct {
+			Events []map[string]any `json:"events"`
+		}
 		_ = json.Unmarshal(body, &batch)
 		r.events = append(r.events, batch.Events...)
 		w.WriteHeader(204)

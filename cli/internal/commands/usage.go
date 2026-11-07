@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func usageCmd(env *Env) *cobra.Command {
@@ -50,22 +50,22 @@ func usageCmd(env *Env) *cobra.Command {
 		d := responseObject(r)
 		p := env.Colors()
 		key := d.Value("key")
-		outf("\n  %sUsage by %s%s  %slast %s days%s\n", p.Accent, pyjson.Text(key), p.Reset, p.Muted, pyjson.Text(d.Value("days")), p.Reset)
+		outf("\n  %sUsage by %s%s  %slast %s days%s\n", p.Accent, ojson.Text(key), p.Reset, p.Muted, ojson.Text(d.Value("days")), p.Reset)
 		rows, _ := d.Value("rows").([]any)
 		for _, item := range rows {
-			row, _ := item.(*pyjson.Object)
+			row, _ := item.(*ojson.Object)
 			calls := row.Value("calls")
 			plural := "s"
-			if pyjson.Text(calls) == "1" {
+			if ojson.Text(calls) == "1" {
 				plural = ""
 			}
-			outf("    %-28s %10s  %s%s call%s%s\n", pyjson.Text(row.Value("value")), usd(row.Value("charged_micro")),
-				p.Muted, pyjson.Text(calls), plural, p.Reset)
+			outf("    %-28s %10s  %s%s call%s%s\n", ojson.Text(row.Value("value")), usd(row.Value("charged_micro")),
+				p.Muted, ojson.Text(calls), plural, p.Reset)
 		}
 		if len(rows) == 0 {
-			outf("    %snothing tagged %s in this window.%s\n", p.Muted, quote(pyjson.Text(key)), p.Reset)
+			outf("    %snothing tagged %s in this window.%s\n", p.Muted, quote(ojson.Text(key)), p.Reset)
 		}
-		if pyjson.Truthy(d.Value("unattributed_micro")) {
+		if ojson.Truthy(d.Value("unattributed_micro")) {
 			outf("    %s%-28s %10s%s\n", p.Muted, "(unattributed)", usd(d.Value("unattributed_micro")), p.Reset)
 		}
 		outf("\n    %-28s %s%10s%s\n\n", "total", p.Green, usd(d.Value("total_micro")), p.Reset)

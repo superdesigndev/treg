@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 // The expected files are what the Python CLI's mcp_install writes for the same input.
@@ -30,15 +30,15 @@ func read(t *testing.T, path string) string {
 	return string(b)
 }
 
-func cursorEntry(url, token string) *pyjson.Object {
-	return pyjson.Ordered("url", url, "headers", bearer(token))
+func cursorEntry(url, token string) *ojson.Object {
+	return ojson.Ordered("url", url, "headers", bearer(token))
 }
 
 func TestJSONMergeKeepsEverythingElse(t *testing.T) {
 	path := writeCase(t, `{"mcpServers": {"other": {"url": "x"}, "treg": {"old": 1}}, "theme": "dark", "n": 1.50, "u": "é"}`)
 	status, _ := writeJSONAgent(path, "mcpServers", "treg", cursorEntry("https://treg.to/mcp/", "tok-ü"), false)
 	want := "{\n  \"mcpServers\": {\n    \"other\": {\n      \"url\": \"x\"\n    },\n    \"treg\": {\n      \"url\": \"https://treg.to/mcp/\",\n" +
-		"      \"headers\": {\n        \"Authorization\": \"Bearer tok-\\u00fc\"\n      }\n    }\n  },\n  \"theme\": \"dark\",\n  \"n\": 1.5,\n  \"u\": \"\\u00e9\"\n}\n"
+		"      \"headers\": {\n        \"Authorization\": \"Bearer tok-ü\"\n      }\n    }\n  },\n  \"theme\": \"dark\",\n  \"n\": 1.50,\n  \"u\": \"é\"\n}\n"
 	if status != OK || read(t, path) != want {
 		t.Fatalf("status %s, got:\n%s", status, read(t, path))
 	}
@@ -53,7 +53,7 @@ func TestJSONMergeReplacesANonObjectServerList(t *testing.T) {
 	path := writeCase(t, `{"mcpServers": [1, 2], "a": true}`)
 	writeJSONAgent(path, "mcpServers", "treg", cursorEntry("https://treg.to/mcp/", "tok-ü"), false)
 	want := "{\n  \"mcpServers\": {\n    \"treg\": {\n      \"url\": \"https://treg.to/mcp/\",\n      \"headers\": {\n" +
-		"        \"Authorization\": \"Bearer tok-\\u00fc\"\n      }\n    }\n  },\n  \"a\": true\n}\n"
+		"        \"Authorization\": \"Bearer tok-ü\"\n      }\n    }\n  },\n  \"a\": true\n}\n"
 	if got := read(t, path); got != want {
 		t.Fatalf("got:\n%s", got)
 	}

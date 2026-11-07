@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from .cli_go_harness import PYTHON_CLI, Canned, FakeRegistry, normalize, run, write_config
+from .cli_go_harness import PYTHON_CLI, Canned, FakeRegistry, normalize, run, same_stdout, write_config
 
 NO_PROXY = {"NO_PROXY": "*", "no_proxy": "*"}
 
@@ -258,8 +258,8 @@ def test_feedback_get(tmp_path, live, team, go_bin):
     for argv in (["feedback", "get", fid], ["--json", "feedback", "get", fid], ["feedback", "get", "999999"],
                  ["--json", "feedback", "get", "999999"], ["feedback", "get", "0"]):
         py, go = _pair(tmp_path, live.url, go_bin, argv, config=_signed_in(team))
-        assert py.out == go.out and py.code == go.code, (argv, py, go)
+        assert same_stdout(py, go) and py.code == go.code, (argv, py, go)
     py, go = _pair(tmp_path, live.url, go_bin, ["feedback", "get", fid], config={"token": "not-a-key"})
-    assert py.out == go.out and py.code == go.code == 1
+    assert same_stdout(py, go) and py.code == go.code == 1
     py, go = _pair(tmp_path, live.url, go_bin, ["feedback", "get", "abc"], config=_signed_in(team))
     assert py.code == go.code == 2

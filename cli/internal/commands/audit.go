@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 func auditCmd(env *Env) *cobra.Command {
@@ -66,7 +66,7 @@ func (e *Env) runs(limit int) error {
 	// A local run reports back only on failure, so a null exit_code is a completed run.
 	if r.Status == 200 {
 		for _, row := range responseList(r) {
-			o, _ := row.(*pyjson.Object)
+			o, _ := row.(*ojson.Object)
 			if o.Value("where") == "local" && o.Value("exit_code") == nil {
 				errln("note: local runs report back only on failure - exit_code null = completed, no report")
 				break
@@ -94,18 +94,18 @@ func (e *Env) audit(limit int) error {
 			return e.Out.Show(r)
 		}
 	}
-	var rows []*pyjson.Object
+	var rows []*ojson.Object
 	for _, item := range responseList(rc) {
-		x, _ := item.(*pyjson.Object)
+		x, _ := item.(*ojson.Object)
 		if x.Value("kind") == "local_run" {
 			continue
 		}
-		row := pyjson.Ordered("kind", "call", "id", "c"+pyjson.Text(x.Value("id")), "user_email", x.Value("user_email"),
+		row := ojson.Ordered("kind", "call", "id", "c"+ojson.Text(x.Value("id")), "user_email", x.Value("user_email"),
 			"tool", x.Value("tool_name"),
-			"detail", providers.Strip(pyjson.Text(getOr(x, "method", ""))+" "+pyjson.Text(getOr(x, "path", ""))),
+			"detail", providers.Strip(ojson.Text(getOr(x, "method", ""))+" "+ojson.Text(getOr(x, "path", ""))),
 			"result", x.Value("status_code"), "where", "proxy", "created_at", x.Value("created_at"))
-		if task, ok := x.Value("async_task").(*pyjson.Object); ok && task.Len() > 0 {
-			t := pyjson.NewObject()
+		if task, ok := x.Value("async_task").(*ojson.Object); ok && task.Len() > 0 {
+			t := ojson.NewObject()
 			for _, k := range []string{"status", "settled_micro", "result_url", "fetch_command", "ttl_note"} {
 				t.Set(k, task.Value(k))
 			}
@@ -114,32 +114,32 @@ func (e *Env) audit(limit int) error {
 		rows = append(rows, row)
 	}
 	for _, item := range responseList(rr) {
-		x, _ := item.(*pyjson.Object)
+		x, _ := item.(*ojson.Object)
 		var argv []string
 		if list, ok := x.Value("argv").([]any); ok {
 			for _, a := range list {
-				argv = append(argv, pyjson.Text(a))
+				argv = append(argv, ojson.Text(a))
 			}
 		}
-		rows = append(rows, pyjson.Ordered("kind", "run", "id", x.Value("id"), "user_email", x.Value("user_email"),
+		rows = append(rows, ojson.Ordered("kind", "run", "id", x.Value("id"), "user_email", x.Value("user_email"),
 			"tool", x.Value("tool"), "detail", strings.Join(argv, " "), "result", x.Value("exit_code"),
 			"where", x.Value("where"), "created_at", x.Value("created_at")))
 	}
-	createdAt := func(o *pyjson.Object) string {
+	createdAt := func(o *ojson.Object) string {
 		s, _ := o.Value("created_at").(string)
 		return s
 	}
-	slices.SortStableFunc(rows, func(a, b *pyjson.Object) int { return strings.Compare(createdAt(b), createdAt(a)) })
+	slices.SortStableFunc(rows, func(a, b *ojson.Object) int { return strings.Compare(createdAt(b), createdAt(a)) })
 	out := make([]any, 0, len(rows))
 	for _, row := range rows[:min(limit, len(rows))] {
 		out = append(out, row)
 	}
-	outln(pyjson.Dumps(out, pyjson.Pretty))
+	outln(ojson.Pretty(out))
 	return nil
 }
 
 // getOr is Python's dict.get(key, fallback): the fallback only when the key is absent.
-func getOr(o *pyjson.Object, key string, fallback any) any {
+func getOr(o *ojson.Object, key string, fallback any) any {
 	if v, ok := o.Get(key); ok {
 		return v
 	}

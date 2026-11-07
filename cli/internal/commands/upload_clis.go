@@ -12,15 +12,15 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/agents"
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/config"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/output"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 type scannedCLI struct {
 	entry    providers.Entry
-	cli      *pyjson.Object
+	cli      *ojson.Object
 	decision providers.Decision
 	envVar   string
 }
@@ -112,7 +112,7 @@ func (e *Env) uploadCLIs(f uploadFlags, envPath string) error {
 
 func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) string) (string, error) {
 	name := strings.ReplaceAll(s.cli.String("bin"), "_", "-")
-	profile := pyjson.NewObject()
+	profile := ojson.NewObject()
 	for _, k := range s.cli.Keys() {
 		if k != "verified" {
 			v, _ := s.cli.Get(k)
@@ -126,7 +126,7 @@ func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) st
 		if val == "" {
 			return "no value for " + cmp.Or(s.envVar, "-"), nil
 		}
-		rs, err := e.post(c, "/secrets", pyjson.Ordered("name", name+"-key", "value", val, "kind", "env"))
+		rs, err := e.post(c, "/secrets", ojson.Ordered("name", name+"-key", "value", val, "kind", "env"))
 		if err != nil {
 			return "", err
 		}
@@ -139,8 +139,8 @@ func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) st
 		} else {
 			inject, _ := profile.Get("inject")
 			var out []any
-			for _, item := range pyjson.List(inject) {
-				if o, ok := item.(*pyjson.Object); ok {
+			for _, item := range ojson.List(inject) {
+				if o, ok := item.(*ojson.Object); ok {
 					out = append(out, withMember(o, "secret_id", sid))
 				}
 			}
@@ -154,7 +154,7 @@ func (e *Env) registerCLITool(c *api.Client, s scannedCLI, value func(string) st
 		// would let the catalog's inject return.
 		profile.Set("inject", []any{})
 	}
-	rt, err := e.post(c, "/tools", pyjson.Ordered("name", name, "base_url", s.entry.String("base_url"), "bindings", bindings, "cli", profile))
+	rt, err := e.post(c, "/tools", ojson.Ordered("name", name, "base_url", s.entry.String("base_url"), "bindings", bindings, "cli", profile))
 	if err != nil {
 		return "", err
 	}
@@ -325,7 +325,7 @@ func (e *Env) addCLI(f uploadFlags) error {
 	if envVar != "" {
 		mech = "env"
 	}
-	profile := pyjson.Ordered("bin", bin, "enabled", true, "auth_mechanism", mech)
+	profile := ojson.Ordered("bin", bin, "enabled", true, "auth_mechanism", mech)
 	c := e.Client()
 	existing, err := e.nameIDs(c, "/tools")
 	if err != nil {
@@ -342,7 +342,7 @@ func (e *Env) addCLI(f uploadFlags) error {
 	bindings := []any{}
 	if envVar != "" {
 		if val := os.Getenv(envVar); val != "" {
-			rs, err := e.post(c, "/secrets", pyjson.Ordered("name", name+"-key", "value", val, "kind", "env"))
+			rs, err := e.post(c, "/secrets", ojson.Ordered("name", name+"-key", "value", val, "kind", "env"))
 			if err != nil {
 				return err
 			}
@@ -350,14 +350,14 @@ func (e *Env) addCLI(f uploadFlags) error {
 				return output.Fail("secret failed (%d) %s", rs.Status, clip(string(rs.Body), 100))
 			}
 			sid := secretID(rs.Body)
-			profile.Set("inject", []any{pyjson.Ordered("via", "env", "name", envVar, "secret_id", sid)})
-			bindings = []any{pyjson.Ordered("via", "header", "name", "Authorization", "format", "Bearer {secret}", "secret_id", sid)}
+			profile.Set("inject", []any{ojson.Ordered("via", "env", "name", envVar, "secret_id", sid)})
+			bindings = []any{ojson.Ordered("via", "header", "name", "Authorization", "format", "Bearer {secret}", "secret_id", sid)}
 		} else {
-			profile.Set("inject", []any{pyjson.Ordered("via", "env", "name", envVar)})
+			profile.Set("inject", []any{ojson.Ordered("via", "env", "name", envVar)})
 			outf("  note: %s isn't set - the tool is registered; set it before running server-side.\n", envVar)
 		}
 	}
-	rt, err := e.post(c, "/tools", pyjson.Ordered("name", name, "base_url", baseURL, "bindings", bindings, "cli", profile))
+	rt, err := e.post(c, "/tools", ojson.Ordered("name", name, "base_url", baseURL, "bindings", bindings, "cli", profile))
 	if err != nil {
 		return err
 	}
@@ -370,13 +370,13 @@ func (e *Env) addCLI(f uploadFlags) error {
 		outf("  (key stored - also a callable API tool; to run '%s' on the SERVER too, an admin adds it to TREG_RUN_ALLOWED_BINS.)\n", bin)
 	}
 	tokens := []any{}
-	cli := pyjson.Ordered("bin", bin, "auth_mechanism", mech)
+	cli := ojson.Ordered("bin", bin, "auth_mechanism", mech)
 	if envVar != "" {
 		tokens = []any{strings.Split(envVar, "_")[0]}
-		cli.Set("inject", []any{pyjson.Ordered("via", "env", "name", envVar)})
+		cli.Set("inject", []any{ojson.Ordered("via", "env", "name", envVar)})
 	}
-	entry := pyjson.Ordered("provider", titleCase(name), "tokens", tokens, "base_url", baseURL,
-		"auth", pyjson.Ordered("shape", "bearer"), "cli", cli)
-	outln("\nShare this to add it to the catalog for everyone:\n  " + pyjson.Dumps(entry, pyjson.Options{Indent: -1, EnsureASCII: true}))
+	entry := ojson.Ordered("provider", titleCase(name), "tokens", tokens, "base_url", baseURL,
+		"auth", ojson.Ordered("shape", "bearer"), "cli", cli)
+	outln("\nShare this to add it to the catalog for everyone:\n  " + string(ojson.Compact(entry)))
 	return nil
 }

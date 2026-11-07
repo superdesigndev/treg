@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from .cli_go_harness import PYTHON_CLI, Canned, normalize, run, same_stdout, write_config
+from .cli_go_harness import PYTHON_CLI, Canned, as_json, normalize, run, same_stdout, write_config
 
 ORGS = json.dumps([
     {"org_id": 7, "slug": "acme", "name": "Acme", "role": "owner", "active": True},
@@ -416,16 +416,17 @@ def _run(fake, tmp_path, label: str, cli: list[str], case: Case):
     start = len(fake.seen)
     home = _home(tmp_path, label, fake.url, case)
     result = run(cli + case.argv, home=home, env=case.env, stdin=case.stdin)
-    files = {rel: (home / rel).read_bytes() for rel in case.written}
+    files = {rel: as_json((home / rel).read_bytes()) for rel in case.written}
     config = json.loads((home / ".treg" / "config.json").read_text())
     return result, fake.seen[start:], config, files
 
 
-IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-session", "x-treg-agent"}
+IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-session", "x-treg-agent",
+           "content-length"}
 
 
 def _requests(seen):
-    return [(s.method, s.path, {k: v for k, v in s.headers.items() if k not in IGNORED}, s.body) for s in seen]
+    return [(s.method, s.path, {k: v for k, v in s.headers.items() if k not in IGNORED}, as_json(s.body)) for s in seen]
 
 
 def _err(text: str) -> str:
@@ -484,4 +485,4 @@ def test_unreachable_registry(tmp_path, go_bin, argv):
         assert "ConnectError" in py.err and go.text == ""
         assert go.err.startswith("treg: could not reach http://127.0.0.1:9: "), go.err
     else:
-        assert (py.out, py.err) == (go.out, go.err)
+        assert (as_json(py.out), py.err) == (as_json(go.out), go.err)

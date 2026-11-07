@@ -1,8 +1,9 @@
 package commands
 
 import (
+	"bytes"
 	"cmp"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,19 +11,19 @@ import (
 	"time"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 	"github.com/superdesigndev/treg/cli/internal/prompt"
 	"github.com/superdesigndev/treg/cli/internal/providers"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
 )
 
 var llmHTTP = &http.Client{Timeout: 60 * time.Second}
 
 // llmChat is one OpenAI-compatible chat completion, the provider's own key as the bearer.
 func llmChat(base, token, model, system, user string) (string, error) {
-	body := pyjson.Ordered("model", model, "temperature", 0, "messages", []any{
-		pyjson.Ordered("role", "system", "content", system), pyjson.Ordered("role", "user", "content", user)})
+	body := ojson.Ordered("model", model, "temperature", 0, "messages", []any{
+		ojson.Ordered("role", "system", "content", system), ojson.Ordered("role", "user", "content", user)})
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(base, "/")+"/chat/completions",
-		strings.NewReader(pyjson.Dumps(body, pyjson.Body)))
+		bytes.NewReader(ojson.Compact(body)))
 	if err != nil {
 		return "", err
 	}
@@ -43,7 +44,7 @@ func llmChat(base, token, model, system, user string) (string, error) {
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		return "", err
 	}
 	if len(out.Choices) == 0 {
@@ -128,7 +129,7 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 			n++
 		}
 		if sid, ok := secrets[v]; f.replace && ok {
-			if id, ok := tools[toolName]; ok && pyjson.Truthy(id) {
+			if id, ok := tools[toolName]; ok && ojson.Truthy(id) {
 				if err := e.remove(c, idPath("/tools/", id)); err != nil {
 					return err
 				}
@@ -140,7 +141,7 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 			outf("  · %s: already registered (use --replace)\n", v)
 			continue
 		}
-		rs, err := e.post(c, "/secrets", pyjson.Ordered("name", v, "value", val, "kind", "env"))
+		rs, err := e.post(c, "/secrets", ojson.Ordered("name", v, "value", val, "kind", "env"))
 		if err != nil {
 			return err
 		}
@@ -149,7 +150,7 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 			continue
 		}
 		sid := secretID(rs.Body)
-		rt, err := e.post(c, "/tools", pyjson.Ordered("name", toolName, "base_url", base, "bindings", []any{withMember(binding, "secret_id", sid)}))
+		rt, err := e.post(c, "/tools", ojson.Ordered("name", toolName, "base_url", base, "bindings", []any{withMember(binding, "secret_id", sid)}))
 		if err != nil {
 			return err
 		}

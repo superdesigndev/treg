@@ -4,7 +4,8 @@ package output
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
-	"github.com/superdesigndev/treg/cli/internal/pyjson"
+	"github.com/superdesigndev/treg/cli/internal/ojson"
 )
 
 // Exit stops the command with a status after its output is written.
@@ -74,18 +75,17 @@ func groupThousands(n int64) string {
 }
 
 // IndentJSON is the body as JSON indented by two spaces, or false when it is not JSON. A UTF-8
-// byte-order mark is allowed, as Python's json.loads allows it. Strings and numbers keep the
-// upstream's spelling.
+// byte-order mark is allowed. Strings and numbers keep the upstream's spelling.
 func IndentJSON(body []byte) ([]byte, bool) {
 	trimmed := bytes.TrimSpace(bytes.TrimPrefix(body, []byte("\xef\xbb\xbf")))
-	if len(trimmed) == 0 || !json.Valid(trimmed) {
+	if len(trimmed) == 0 || !ojson.Valid(trimmed) {
 		return nil, false
 	}
-	var buf bytes.Buffer
-	if err := json.Indent(&buf, trimmed, "", "  "); err != nil {
+	v := jsontext.Value(bytes.Clone(trimmed))
+	if err := v.Indent(jsontext.WithIndent("  ")); err != nil {
 		return nil, false
 	}
-	return buf.Bytes(), true
+	return v, true
 }
 
 // Show prints a registry answer: indented JSON, or the text as it came. A success also gets the
@@ -122,9 +122,9 @@ func (p *Printer) refused(r *api.Response) error {
 	return &Exit{Code: 1}
 }
 
-// ShowJSON prints a value the way Python's json.dumps(value, indent=2) lays it out, UTF-8 kept.
+// ShowJSON prints a value indented by two spaces.
 func (p *Printer) ShowJSON(v any) {
-	fmt.Fprintln(p.Out, pyjson.Dumps(v, pyjson.Options{Indent: 2}))
+	fmt.Fprintln(p.Out, ojson.Pretty(v))
 }
 
 func jsonObject(body []byte) map[string]any {
