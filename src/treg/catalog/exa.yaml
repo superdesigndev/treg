@@ -365,6 +365,7 @@ endpoints:
       currency: USD
       per: 1
       unit: page
+      bills_miss: true
       source: observed
       source_url: https://exa.ai/pricing
       checked: '2026-08-27'

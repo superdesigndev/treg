@@ -49,12 +49,6 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # charge covers for each cost type, so `cost_view` can divide by `per` and a reader knows whether
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
-    # Prices from the provider's own machine-readable rate card → verified.
-    "dataforseo": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.dataforseo.com/v3/appendix/user_data",
-        "units": {"*": "call", "per_result": "page"},
-    },
     # Credit counts come from `credits_charged` in the provider's own OpenAPI response examples —
     # first-party, machine-readable and re-fetchable, so the COUNT is verified. (What is merely
     # inferred is the credits→USD rate, and that lives in fx.yaml with its own basis.)

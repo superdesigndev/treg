@@ -142,7 +142,7 @@ class Contract:
     identity_notes: dict[str, str] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
-        """The default provider order for a caller who sent the identity keys `given`."""
+        """The default provider order for a caller who sent the identity and filter keys `given`."""
         return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
 
     def fill_target(self, given) -> int | None:
@@ -396,7 +396,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
-            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), types),
+            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), {**types, **(c.get("filters") or {})}),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
@@ -423,7 +423,7 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
         # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
         if (not isinstance(rule, dict) or set(rule) != {"sent", "prefer"} or not names(rule["sent"])
                 or not names(rule["prefer"]) or any(k.strip() not in types for k in rule["sent"])):
-            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity keys], "
+            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
@@ -689,15 +689,31 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's identity fields that are present but not of their declared type."""
+    """The caller's identity fields, and bool filters, that are present but not of their declared
+    type. A bool filter is checked before planning: `"false"` or `0` would otherwise read as asked
+    for. A bool identity key keeps its own rule (a blank value is not sent)."""
     bad = []
-    for k, t in contract.identity_types.items():
+    flags = [(k, "bool", True) for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool"]
+    for k, t, flag in [*((k, t, False) for k, t in contract.identity_types.items()), *flags]:
         v = given.get(k)
-        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+        if flag:
+            wrong = v is not None and not isinstance(v, bool)
+        else:
+            wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None
+        if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
             bad.append({"field": k, "type": t,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
+
+
+def flags_off(contract: Contract, identity: dict[str, Any]) -> dict[str, Any]:
+    """The identity without the bool filters that are off. An unsent or `false` flag asks for
+    nothing, so it is no part of the question: a provider sample keyed on it would move every
+    request that never sent the flag."""
+    off = {k for k, spec in (contract.filters or {}).items()
+           if (spec or {}).get("type") == "bool" and identity.get(k) is not True}
+    return {k: v for k, v in identity.items() if k not in off} if off else identity
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:

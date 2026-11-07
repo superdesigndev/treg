@@ -873,6 +873,37 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
     assert tomba.hit_rate == pytest.approx(2 / 3, abs=1e-3)
 
 
+async def test_an_overflow_candidate_prices_a_miss_by_its_route_unit(clients: AsyncClient, monkeypatch):
+    """Overflow replaces a direct per-result child's price with the aggregator's. An aggregator
+    priced per call bills that price for an empty answer too, so unmeasured it costs twice its
+    price per hit; one priced per result charges nothing for an empty answer."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
+                        lambda provider, endpoint_id=None, slot=None, **_: provider == "icypeas")
+    route = SimpleNamespace(aggregator="orthogonal", agg_price_micro=10_000, agg_unit="call")
+    monkeypatch.setattr(call_route.overflow_routes_view, "for_endpoint",
+                        lambda endpoint_id: [route] if endpoint_id == "icypeas.people.search" else [])
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"title": "CTO", "limit": 1}, caller,
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    icypeas = next(c for c in plan.candidates if c.endpoint["id"] == "icypeas.people.search")
+    assert icypeas.hit_rate is None and icypeas.ok_rate is None
+    assert icypeas.price_micro == icypeas.miss_micro == 10_000
+    assert icypeas.expected_cost_per_hit == 20_000
+
+    # A route priced per result reports no rows on a miss and charges nothing for it.
+    route.agg_unit = "result"
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"title": "CTO", "limit": 1}, caller,
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    icypeas = next(c for c in plan.candidates if c.endpoint["id"] == "icypeas.people.search")
+    assert icypeas.miss_micro == 0 and icypeas.expected_cost_per_hit == 10_000
+
+
 async def test_routed_plan_keeps_an_exhausted_provider_when_its_overflow_route_is_enabled(
     clients: AsyncClient, monkeypatch,
 ):
@@ -3042,6 +3073,175 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 
+def test_a_per_result_child_is_ranked_free_on_a_miss_unless_its_cost_bills_one():
+    """A per-result price bills the rows a provider returns, so an empty answer is free and the
+    expected cost per hit is the hit price, as for per-success. A `call_fee` bills every run, hit
+    or miss; `bills_miss` bills the whole request on a miss, or `miss_units` rows of it."""
+    from treg.domain.catalog.routing import contracts as C, plan as RP
+
+    def view(cost):
+        return {"usd": 0.001, "per": 1, **cost}
+
+    def cand(cost, limit=1):
+        cv, req = view(cost), {"limit": limit}
+        price = RP.cost_at(cv, req)
+        return RP.Candidate(endpoint={"id": "x.find", "provider": "x", "cost": cost},
+                            adapter=C.Adapter("x.find", (("q",),), {"q": "body.q"}, {}, "rows == []"),
+                            variant=("q",), tier="platform", price_micro=price, hit_rate=0.25,
+                            ok_rate=None, p50_ms=None, last_ok_days=None,
+                            miss_micro=RP.miss_charge_micro(cv, req, None, price))
+
+    assert cand({"type": "per_result"}).expected_cost_per_hit == 1_000
+    assert cand({"type": "per_success"}).expected_cost_per_hit == 1_000
+    assert cand({"type": "per_result", "bills_miss": True}).expected_cost_per_hit == 4_000
+    assert cand({"type": "per_call"}).expected_cost_per_hit == 4_000
+    # The start fee is in the hit price too: 1,000 + 200 a hit, 200 for each of three misses.
+    fee = cand({"type": "per_result", "call_fee": 0.0002})
+    assert fee.price_micro == 1_200 and fee.miss_micro == 200 and fee.expected_cost_per_hit == 1_800
+    # A one-row minimum on an empty page bills one row, not the twenty asked for.
+    floor = cand({"type": "per_result", "bills_miss": True, "miss_units": 1}, limit=20)
+    assert floor.price_micro == 20_000 and floor.miss_micro == 1_000
+    assert floor.expected_cost_per_hit == 23_000
+    # A per-success partial miss charge is settled from the provider's report and ranked free.
+    assert cand({"type": "per_success", "bills_miss": True}).expected_cost_per_hit == 1_000
+    assert RP.bills_miss({"type": "per_success", "bills_miss": True})
+    assert not RP.bills_miss({"type": "per_result"})
+
+
+def _with_page_size(record: dict, n: int) -> dict:
+    """A replay record whose request body asks for `n` rows wherever it names a page size."""
+    import base64
+
+    request = dict(record["request"])
+    body = json.loads(base64.b64decode(request["body_b64"]))
+    for key in ("pageSize", "limit", "size", "count", "per_page"):
+        if key in body:
+            body[key] = n
+    request["body_b64"] = base64.b64encode(json.dumps(body).encode()).decode()
+    return {**record, "request": request}
+
+
+def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
+    """Each routed per-result child's synthetic miss is replayed through settlement. A child ranked
+    free on a miss must settle it at zero; one that bills a miss must settle it at the charge
+    ranking prices (`miss_units` rows, else the whole hold). A synthetic miss keeps the hit
+    example's reported charge, so a child that settles on the provider's own report cannot show
+    its zero here: those are listed with the evidence that an empty answer reports zero."""
+    from treg.application.replay import engine, fixtures
+    from treg.domain.catalog.routing.plan import bills_miss, cost_at
+
+    reported_zero = {
+        "blitzapi.companies.search": "fair_usage.records_used; empty pages use zero records",
+        "blitzapi.people.search": "fair_usage.records_used; empty pages use zero records",
+        "crustdata.companies.jobs.search": "X-Credits-Used header; empty results consume none",
+        "crustdata.companies.search": "X-Credits-Used header; charged per company returned",
+        "crustdata.people.search": "X-Credits-Used header; charged per profile returned",
+        "dropleads.companies.enrich": "credits.creditsDeducted; charged per returned company",
+        "dropleads.companies.search": "credits.creditsDeducted; empty results are free",
+        "fiber-ai.companies.search": "chargeInfo.creditsCharged; charged per company returned",
+        "fiber-ai.people.search": "chargeInfo.creditsCharged; charged per profile returned",
+        "leadmagic.x.companies-search-v3": "credits_consumed; free if zero matches",
+        "leadmagic.x.employee-finder": "credits_consumed; free if no results",
+        "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
+        "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
+        "oceanio.companies.lookalike": "creditsUsed; charged per result",
+        "oceanio.companies.search": "creditsUsed; charged per result",
+        "oceanio.people.search": "creditsUsed; charged per result",
+        "quickenrich.companies.search": "meta.credits_used; empty results free",
+        "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
+        "sumble.organizations": "credits_used; unmatched inputs free",
+    }
+    cat = catalog_store.load()
+    kids = {c for r in cat.by_id.values() if r.get("kind") == "routed" for c in r["routed_children"]}
+    wrong = []
+    for rec in fixtures.generate():
+        eid = rec["endpoint_id"]
+        cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
+        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
+            continue
+        line = engine.replay(rec)
+        if (line.get("routing") or {}).get("kind") != "miss":
+            continue
+        charged = (line["settle"] or {}).get("charged_micro")
+        cv = cat.cost_view(cost, cat.by_id[eid]["provider"])
+        if not bills_miss(cost):
+            expected = 0
+        elif cost.get("bills_miss") is not True:
+            continue  # a call_fee alone: the fee, checked where the run body is a dataset list
+        elif cost.get("miss_units"):
+            # The floor holds at any page size: ask for twenty rows and still pay `miss_units`.
+            line = engine.replay(_with_page_size(rec, 20))
+            charged = (line["settle"] or {}).get("charged_micro")
+            expected = cost_at(cv, {"limit": cost["miss_units"]})
+        else:
+            expected = line["reserve"]["hold_micro"]
+        if charged != expected:
+            wrong.append((eid, charged, expected))
+    assert wrong == []
+
+
+@pytest.mark.parametrize("limit", [1, 3])
+def test_a_whole_request_miss_is_ranked_at_the_hold_the_routed_request_reserves(limit):
+    """A per-result child that settles a miss at its whole hold must be ranked at that hold for
+    the request its adapter actually sends: a fixed page size (`const`) or a list the caller sent
+    sets the units, not the contract's `limit` alone. Two keywords, a fixed ten-row page and a
+    limit of 1 or 3 all have to agree with what `/call` reserves and settles."""
+    from treg.application.call.resolve import QueryValues, price_call
+    from treg.domain.catalog.routing.contracts import canonical_identity
+    from treg.domain.catalog.routing.plan import miss_charge_micro
+
+    cat = catalog_store.load()
+    examples = {"domain": "stripe.com", "company_domain": "stripe.com", "url": "https://stripe.com"}
+    wrong = []
+    for row in (r for r in cat.by_id.values() if r.get("kind") == "routed"):
+        contract = cat.contracts[row["capability"]]
+        for eid in row["routed_children"]:
+            ep = cat.by_id[eid]
+            cost = ep.get("cost") or {}
+            if cost.get("type") != "per_result" or cost.get("bills_miss") is not True or cost.get("miss_units"):
+                continue
+            adapter = cat.adapters[eid]
+            ident = {k: (["alpha", "beta"] if contract.identity_types.get(k) == "list" else examples.get(k, "alpha"))
+                     for k in adapter.accepts[0]}
+            if "limit" in (contract.filters or {}):
+                ident["limit"] = limit
+            ident, _ = canonical_identity(contract, ident)
+            query, body = adapter.to_upstream(ident)
+            hold = price_call(ep, QueryValues(tuple((str(k), str(v)) for k, v in (query or {}).items())),
+                              json.dumps(body).encode() if body else b"", set()).estimate_micro
+            ranked = miss_charge_micro(cat.cost_view(cost, ep["provider"]), ident, adapter)
+            if ranked != hold:
+                wrong.append((eid, ranked, hold))
+    assert wrong == []
+
+
+@pytest.fixture
+def findymail_and_prospeo_on(monkeypatch, platform_on):
+    for p in ("FINDYMAIL", "PROSPEO"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "findymail,prospeo")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_a_company_scoped_people_search_tries_findymail_before_prospeo(clients, findymail_and_prospeo_on):
+    """findymail.search.employees bills per contact found and nothing when none: unmeasured, its
+    expected cost per hit is its hit price, not twice that, so it goes ahead of prospeo's dearer
+    per-success page for a one-person {company_domain, title} search."""
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"company_domain": "stripe.com", "title": "CTO", "limit": 1}, caller, options)
+    by = {c.endpoint["provider"]: c for c in plan.candidates}
+    assert [c.endpoint["provider"] for c in plan.candidates][:2] == ["findymail", "prospeo"]
+    findymail = by["findymail"]
+    assert findymail.endpoint["id"] == "findymail.search.employees" and findymail.hit_rate is None
+    # Price decides once both use the title and the domain: it must not double findymail's price.
+    assert findymail.expected_cost_per_hit == findymail.price_micro
+    assert findymail.expected_cost_per_hit < by["prospeo"].expected_cost_per_hit
+
+
 def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     """A per-success child is free on a miss unless cost.bills_miss is true; the routed row counts
     those children in miss_billed_by and never claims misses are free while one of them bills."""
@@ -3154,3 +3354,124 @@ async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_
                            headers={"X-Treg-Route-Prefer": header} if header else {})
     assert r.status_code == 200, r.text
     assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"
+
+
+@pytest.mark.parametrize("contents, first", [(True, "exa"), (False, "crawl4ai"), (None, "crawl4ai")])
+async def test_a_web_search_that_asks_for_passages_goes_to_the_provider_that_returns_them(
+        clients, platform_on, monkeypatch, contents, first):
+    """`contents: true` puts exa ahead of the snippet-only default and asks it for the passages that
+    match q, at its search price; `false` or no flag leaves the plan and Exa's request unchanged."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    body = {"q": "top B2B sales influencers on Instagram", **({} if contents is None else {"contents": contents})}
+    got = await _first_providers("treg.web.search", body, n=1)
+    get_settings.cache_clear()
+    assert got == [first]
+    cat = catalog_store.load()
+    ident, _ = canonical_identity(cat.contracts["web.search"], body)
+    sent = cat.adapters["exa.web.search"].to_upstream(ident, ("q",))[1]
+    if contents:
+        assert sent["contents"] == {"highlights": {"query": body["q"], "maxCharacters": 2000}}
+    else:
+        assert "contents" not in sent
+
+
+def test_a_flag_that_is_off_leaves_the_provider_sample_where_it_was():
+    """An unsent or `false` flag asks for nothing: the sample hash sees the identity it saw before the
+    filter existed, so a request that never sends `contents` keeps its provider."""
+    from treg.domain.catalog.routing.contracts import flags_off
+    from treg.domain.catalog.routing.plan import sampled_provider_allowed
+
+    contract = catalog_store.load().contracts["web.search"]
+    before = {"q": "example", "limit": 10}
+    for body in ({"q": "example"}, {"q": "example", "contents": False}):
+        ident, _ = canonical_identity(contract, body)
+        assert flags_off(contract, ident) == before
+    asked, _ = canonical_identity(contract, {"q": "example", "contents": True})
+    assert flags_off(contract, asked)["contents"] is True
+    picks = [sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=o, capability="web.search", identity=before)
+             for o in range(40)]
+    assert picks == [sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=o, capability="web.search",
+                                              identity=flags_off(contract, canonical_identity(contract, {"q": "example"})[0]))
+                     for o in range(40)]
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1, "true", [True]])
+async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients, platform_on, monkeypatch, value):
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": value})
+    get_settings.cache_clear()
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == [], r.text
+
+
+async def test_passages_asked_for_and_not_served_are_named_in_ignored_filters(clients, platform_on, monkeypatch):
+    """Exa fails: the next provider answers without passages, and the answer says it ignored `contents`."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(500, {"error": "down"})], "*": [(200, {"results": [{"url": "https://example.com", "title": "t"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": True})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    assert [p for p, *_ in seen][0] == "exa" and r.json()["_treg"]["ignored_filters"] == ["contents"]
+
+
+async def test_a_request_without_the_flag_samples_providers_as_before(clients, platform_on, monkeypatch):
+    """Through build_plan: with crawl4ai sampled at 50%, whether it is in the plan for a request that
+    never sends `contents` is decided on the identity the filter did not exist in."""
+    from treg.domain.catalog.routing.plan import sampled_provider_allowed
+
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"crawl4ai":50}')
+    get_settings.cache_clear()
+    seen = set()
+    for i in range(12):
+        q = f"example {i}"
+        want = sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=1, capability="web.search",
+                                        identity={"q": q, "limit": 10})
+        seen.add(want)
+        for body in ({"q": q}, {"q": q, "contents": False}):
+            assert ("crawl4ai" in await _first_providers("treg.web.search", body, n=9)) is want, body
+    get_settings.cache_clear()
+    assert seen == {True, False}, "the sample split the questions both ways"
+
+
+def test_only_bool_filters_get_the_strict_flag_check():
+    """`ai_overview` is a bool identity key of google.serp.organic: a blank one is still not sent, as before."""
+    from treg.domain.catalog.routing.contracts import invalid_identity
+
+    cat = catalog_store.load()
+    assert invalid_identity(cat.contracts["google.serp.organic"], {"q": "example", "ai_overview": ""}) == []
+    assert invalid_identity(cat.contracts["web.search"], {"q": "example", "contents": ""})[0]["type"] == "bool"
+
+
+async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(clients, platform_on, monkeypatch):
+    """contents asked, rows merged from exa (passages) and crawl4ai (snippets): the answer says contents
+    was ignored for some rows, on the body and the header, not only in tried[]."""
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(200, {"results": [{"url": "https://a.example", "title": "a", "highlights": ["x"]}]})],
+         "*": [(200, {"results": [{"url": "https://b.example", "title": "b"}]})] * 2}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": True},
+                           headers={"X-Treg-Route-Merge": "1", "X-Treg-Route-Min-Results": "3"})
+    get_settings.cache_clear()
+    assert r.status_code == 200, r.text
+    t = r.json()["_treg"]
+    assert len(t.get("merged_from") or []) == 2, t
+    assert t["ignored_filters"] == ["contents"] and r.headers.get("x-treg-ignored-filters") == "contents"

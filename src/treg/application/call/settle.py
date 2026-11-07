@@ -184,12 +184,15 @@ def _tavily_result_count(endpoint_id: str, doc: object) -> int | None:
 
 
 def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
-    """People returned by CompanyEnrich's search, floored at one: a person is 2 credits, and an
-    empty page still costs the 2-credit minimum (catalog note, verified live). The reserve is the
-    requested `pageSize`, so without counting an empty `{"items": []}` settled a whole page."""
+    """Rows returned by a CompanyEnrich search, floored at one. The provider bills each person or
+    company returned at the row's credits (2 a person, 1 a company, 5 a lookalike) and an empty
+    page at one row (catalog notes, verified live). The reserve is the requested `pageSize`, so
+    without counting an empty `{"items": []}` settled a whole page."""
     if endpoint_id not in (
         "companyenrich.people.search",
         "companyenrich.people.search.scroll",
+        "companyenrich.companies.search",
+        "companyenrich.companies.similar",
     ):
         return None
     if not isinstance(doc, dict):
@@ -197,7 +200,7 @@ def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
     items = doc.get("items")
     if not isinstance(items, list):
         return None
-    # 2 credits per person, minimum 1 unit charged (the 2-credit minimum on empty)
+    # An empty page still bills one row's credits.
     return max(len(items), 1)
 
 
@@ -438,10 +441,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     the reserved estimate's row assumption only implicitly (a bigger-than-asked response charges
     more, which `ledger.settle` handles as an overrun).
 
-    Three providers volunteer the number, in two different denominations:
-      - dataforseo: a top-level `cost` in USD — including 0 when it decided not to charge (a free
-        route, or a request it rejected before metering). That zero is real information and settles the
-        call at zero, which is why the test is `>= 0` and not truthiness.
+    Providers that volunteer the number, in two different denominations:
       - scrapecreators (`credits_charged`), akta and leadmagic (`credits_consumed`): provider
         credits, converted through the provider's credit rate (fx.yaml) — the same conversion
         `cost_view` uses, so a settle can't disagree with the catalog's price. Akta is the one that
@@ -472,8 +472,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         explicit -1 multiplier converts that convention to a nonnegative charge. cloro's
         ChatGPT/Google routes price their include flags and US state targeting per request, so the
         catalog value is an upper bound and the header is the bill.
-      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
-        dataforseo's `cost`) — the only place the per-result and per-content riders exist.
+      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body — the only place the
+        per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
@@ -482,8 +482,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
-    Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
-    harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
+    Everyone else settles at the estimate. A v2 row reads its own `settle.reported` instead."""
     if mk.cost_terms is not None:
         return call_cost.reported(mk.cost_terms, call_cost.document(body), headers)
     provider = mk.provider
@@ -728,11 +727,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
-    if provider == "dataforseo":
-        cost = doc.get("cost")
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
-            return int(cost * 1_000_000 + 0.5)
-        return None
     if provider == "contactout" and cost:
         from . import contactout
         return contactout.observed(cost, mk.request_data, doc)
