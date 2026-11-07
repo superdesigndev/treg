@@ -4795,17 +4795,80 @@ def cmd_home(args, cfg) -> None:
            "own_tools": state.get("own_tools")}, help_lines)
 
 
+# The installer's interpreter range and package; keep in sync with `src/treg/web/install.sh`.
+_UPDATE_PYREQ = ">=3.12,<3.14"
+_UPDATE_SRC = "tools-registry[proxy]"
+_UPDATE_RECOVERY = f'uv tool install --force --python "{_UPDATE_PYREQ}" "{_UPDATE_SRC}"'
+
+
 def cmd_update(args, cfg) -> None:
-    """Re-run the server's install.sh to upgrade the CLI in place (uv/pipx/pip, from the git repo)."""
-    import subprocess
+    """Upgrade the CLI. The installer replaces the very install this process runs from, so no Python
+    code may run after it: on POSIX the process ends with `os._exit` as soon as `install.sh` returns;
+    on Windows, where a running treg holds its own files, a detached installer starts after exit."""
     base = (cfg.get("base_url") or "https://treg.to").rstrip("/")
+    if _windows():
+        _update_windows_handoff()
+    sh = shutil.which("sh")
+    if not sh:
+        sys.exit("`treg update` needs `sh` to run the installer, and none is on PATH.\n"
+                 f"Update directly instead:  {_UPDATE_RECOVERY}")
     print(f"Updating treg from {base}/install.sh …")
     with _client(cfg, auth=False) as c:
         r = c.get("/install.sh")
     if r.status_code >= 400:
         sys.exit(f"could not fetch the installer ({r.status_code}) from {base}/install.sh")
-    rc = subprocess.run(["sh", "-c", r.text]).returncode  # the installer prints its own progress
-    sys.exit(rc)
+    rc = subprocess.run([sh, "-c", r.text]).returncode  # the installer prints its own progress
+    if rc:
+        print(f"The update did not finish. If `treg` no longer starts, reinstall with:\n  {_UPDATE_RECOVERY}",
+              file=sys.stderr)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(rc)  # the modules this process would still import may be gone or replaced now
+
+
+def _windows() -> bool:
+    return os.name == "nt"
+
+
+def _update_windows_handoff() -> NoReturn:
+    """Start the upgrade in a new console that waits until no treg process runs from this install,
+    then exit 0 so the files are free and `treg update && …` keeps going."""
+    if shutil.which("uv"):
+        install = f"uv tool install --force --python '{_UPDATE_PYREQ}' '{_UPDATE_SRC}'"
+    elif shutil.which("pipx"):
+        install = f"pipx install --force '{_UPDATE_SRC}'"
+    else:
+        sys.exit(f"`treg update` on Windows needs uv or pipx on PATH. Update directly instead:\n  {_UPDATE_RECOVERY}")
+    prefix = str(Path(sys.prefix).resolve()).replace("'", "''")
+    log = str(Path(tempfile.gettempdir()) / "treg-update.log")
+    script = "\n".join([
+        f"Start-Transcript -Path '{log.replace(chr(39), chr(39) * 2)}' | Out-Null",
+        f"$prefix = '{prefix}'",
+        "$deadline = (Get-Date).AddMinutes(2)",
+        "Write-Host 'Waiting for treg to exit...'",
+        "while ((Get-Date) -lt $deadline) {",
+        "  $busy = Get-Process -ErrorAction SilentlyContinue | Where-Object {",
+        "    $_.Name -in 'treg','treg-worker' -or ($_.Path -and $_.Path.StartsWith($prefix, 'OrdinalIgnoreCase')) }",
+        "  if (-not $busy) { break }",
+        "  Start-Sleep -Milliseconds 500",
+        "}",
+        install,
+        "$rc = $LASTEXITCODE",
+        "if ($rc -eq 0) { treg skill bootstrap; Write-Host 'treg is updated.'; Start-Sleep -Seconds 5 }",
+        "else { Write-Host 'The update failed. Reinstall with:'; "
+        f"Write-Host '  {_UPDATE_RECOVERY.replace(chr(39), chr(39) * 2)}'; Read-Host 'Press Enter to close' }}",
+        "Stop-Transcript | Out-Null",
+        "exit $rc",
+    ])
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+    subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+                     creationflags=flags, close_fds=True)
+    print("Updating treg in a new window once this command exits "
+          f"(log: {log}). If `treg` no longer starts afterwards, reinstall with:\n  {_UPDATE_RECOVERY}")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 def cmd_org_create(args, cfg) -> None:
@@ -6982,7 +7045,7 @@ def build_parser() -> argparse.ArgumentParser:
     mk(sub, "logout", "Clear the stored credentials for this machine.",
        "treg logout").set_defaults(fn=cmd_logout)
 
-    mk(sub, "update", "Upgrade the treg CLI in place (re-runs the registry's installer).",
+    mk(sub, "update", "Upgrade the treg CLI (re-runs the registry's installer; on Windows, after this command exits).",
        "treg update").set_defaults(fn=cmd_update)
     mk(sub, "version", "Print the installed treg version.", "treg version").set_defaults(fn=cmd_version)
 
