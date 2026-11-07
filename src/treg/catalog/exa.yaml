@@ -456,7 +456,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /search
-    name: "Find Instagram accounts named on creator directories and list pages"
+    name: "Instagram accounts named on creator directory pages"
     summary: "Search the web for pages that list Instagram creators in a niche (directories, rankings, articles), with the passages that name them."
     input:
       bodyType: json
