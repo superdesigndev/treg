@@ -226,7 +226,8 @@ so parallel runs and side-by-side runs never share one.
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
 - **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
   a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
-  proved by `tests/cli_go`. See `docs/context/interface/cli-binary.md`.
+  proved by `tests/cli_go`, except the differences `cli-binary.md` names ("Compatibility with the
+  Python CLI") and the harness's `normalize` spells out. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
