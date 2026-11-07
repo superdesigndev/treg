@@ -49,7 +49,8 @@ import httpx
 from . import agents as _agents
 from . import cli_analytics, cli_session, cli_view, client_notice
 from . import jsontext
-from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
+from .capacity_notice import (CAPACITY_HEADER, EXHAUSTED, STOP_REFUSALS, account_out_notice,
+                              is_balance_refusal, stop_refusal)
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
 # One source of truth for the proxy's default port (help text below). Importing the module is cheap —
 # it pulls only stdlib plus httpx, which the CLI already has; `cryptography` stays lazy inside it.
@@ -2705,6 +2706,8 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
         meta["routed_tool"] = routed
+    if kind := _stop_kind(response):
+        meta |= {"error": kind, "stop": True}
     return {"result": result, "_treg": meta}
 
 
@@ -2728,6 +2731,34 @@ def _large_answer_hint(response: httpx.Response) -> None:
         pass
 
 
+# POSIX xargs stops reading input when a command exits 255, so `xargs -P8 treg call ...` ends a
+# batch on its own once every remaining call would be refused the same way.
+STOP_EXIT = 255
+
+
+def _stop_kind(response: httpx.Response) -> str | None:
+    if response.status_code < 400:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    return stop_refusal(getattr(response, "headers", {}) or {}, body)
+
+
+def _failure_exit(response: httpx.Response) -> int:
+    """1 for a failed call, STOP_EXIT when treg refused it for the team's money.
+    Outside --json it also says so on stderr, after the failure lines."""
+    kind = _stop_kind(response)
+    if kind is None:
+        return 1
+    _note(error=kind)
+    if not _JSON_OVERRIDE:
+        print(f"treg: {STOP_REFUSALS[kind]}. Stop the batch and tell the person rather than moving "
+              f"on to the next item (exit {STOP_EXIT})", file=sys.stderr)
+    return STOP_EXIT
+
+
 def _show_call_response(response: httpx.Response) -> None:
     content_type = getattr(response, "headers", {}).get("content-type", "").partition(";")[0].strip().lower()
     if response.status_code < 400:
@@ -2736,7 +2767,7 @@ def _show_call_response(response: httpx.Response) -> None:
         print(jsontext.dumps(_call_envelope(response, content_type), separators=(",", ":")))
         sys.stdout.flush()
         if response.status_code >= 400:
-            raise SystemExit(1)
+            raise SystemExit(_failure_exit(response))
         return
     if content_type and content_type != "application/json" and not content_type.endswith("+json") \
             and not content_type.startswith("text/"):
@@ -2744,11 +2775,16 @@ def _show_call_response(response: httpx.Response) -> None:
         sys.stdout.buffer.flush()
         if response.status_code >= 400:
             _show_failure_diagnostics(response)
-            raise SystemExit(1)
+            raise SystemExit(_failure_exit(response))
         _show_charge_line(response)
         _show_hint_line(response)
         return
-    _show(response)
+    try:
+        _show(response)
+    except SystemExit as exc:
+        if exc.code == 1:
+            raise SystemExit(_failure_exit(response)) from None
+        raise
 
 
 _TEXT_BOMS = ((codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"),
@@ -2880,7 +2916,7 @@ def cmd_call(args, cfg) -> None:
             _show_call_response(submission)
             return
         if submission.status_code >= 400:
-            _show(submission)
+            _show_call_response(submission)
             return
         try:
             descriptor = json.loads(submission.headers["X-Treg-Async"])
@@ -6456,7 +6492,8 @@ def _params_view(inp: dict) -> dict:
                          "required": bool(spec.get("required")), "_prose": (spec.get("note") or "").strip(),
                          "_spec": spec})
 
-    for where, key in (("path", "pathParams"), ("query", "queryParams"), ("body", "body")):
+    # `in` is how the CLI sends it: a catalog id's path parameters go in --query like the rest.
+    for where, key in (("query", "pathParams"), ("query", "queryParams"), ("body", "body")):
         if isinstance(inp.get(key), dict):
             walk(inp[key], where, "")
     rows.sort(key=lambda r: not r["required"])
@@ -7812,6 +7849,7 @@ def _main(argv: list[str]) -> None:
             parser.error(argparse._("unrecognized arguments: %s") % " ".join(unrecognized))
     except SystemExit as exc:
         if exc.code == 2:
+            _usage_hint(argv, unrecognized)
             cli_analytics.track_command(
                 command="usage_error", exit_code=2,
                 duration_ms=round((time.monotonic() - parsing) * 1000),
@@ -7852,6 +7890,27 @@ def _main(argv: list[str]) -> None:
             exit_code=exit_code, duration_ms=round((time.monotonic() - started) * 1000),
             base_url=cfg.get("base_url", PRODUCTION_BASE_URL), config_path=CONFIG_PATH,
             detail=detail)
+
+
+# Options agents reach for on `treg call` that it spells differently. Path parameters of a catalog
+# id travel as --query too: the server folds them into the path.
+_CALL_OPTION_HINTS = {
+    **dict.fromkeys(("--path", "--path-param", "--path-params", "--param", "--params"),
+                    "path and query parameters both go in --query K=V (repeatable), e.g. --query id=123"),
+    **dict.fromkeys(("--body", "--json-body", "--payload", "-d"),
+                    "the request body goes in --data '<json>' (or --data @file.json)"),
+    **dict.fromkeys(("-o", "--output", "--out"),
+                    "there is no output flag; redirect stdout instead: treg call ... > answer.json"),
+}
+
+
+def _usage_hint(argv: list[str], unrecognized: list[str]) -> None:
+    """After argparse's own error, one line per unknown `treg call` option naming its real spelling."""
+    if not argv or argv[0] != "call":
+        return
+    for hint in dict.fromkeys(_CALL_OPTION_HINTS[n] for n in _option_names(unrecognized)
+                              if n in _CALL_OPTION_HINTS):
+        print(f"treg: {hint}", file=sys.stderr)
 
 
 def _option_names(unrecognized: list[str]) -> list[str]:
