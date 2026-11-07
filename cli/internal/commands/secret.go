@@ -121,11 +121,11 @@ func secretRmCmd(env *Env) *cobra.Command {
 	cmd := leaf("rm <id>", "Delete a secret by id.", "treg secret rm 4")
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Method: "DELETE", Path: "/secrets/" + string(id)})
+		return env.show(api.Request{Method: "DELETE", Path: "/secrets/" + id})
 	}
 	return cmd
 }
@@ -139,7 +139,7 @@ func secretUpdateCmd(env *Env) *cobra.Command {
 	fl.StringVar(&value, "value", "", "new value")
 	fl.StringVar(&kind, "kind", "", "new kind: env, oauth, secret_file or cli_auth")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,7 @@ func secretUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --name / --value / --kind)")
 		}
-		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + string(id), Body: jsonBody(b), Header: jsonHeader})
+		return env.show(api.Request{Method: "PATCH", Path: "/secrets/" + id, Body: jsonBody(b), Header: jsonHeader})
 	}
 	return cmd
 }
@@ -178,10 +178,9 @@ const contractFile = "treg.json"
 // findSecretFile is the one secret file of a kind in a skill dir's .secret/.secrets: none or
 // several is an error naming what was found.
 func findSecretFile(dir, kind string) (string, error) {
-	p := pyPath(dir)
-	candidates := skillscan.SecretFiles(p)
+	candidates := skillscan.SecretFiles(dir)
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("no .secret/.secrets files under %s", p)
+		return "", fmt.Errorf("no .secret/.secrets files under %s", dir)
 	}
 	var matches []string
 	for _, f := range candidates {
@@ -190,10 +189,10 @@ func findSecretFile(dir, kind string) (string, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no %s secret in %s (found: %s)", quote(kind), p, strings.Join(baseNames(candidates), ", "))
+		return "", fmt.Errorf("no %s secret in %s (found: %s)", quote(kind), dir, strings.Join(baseNames(candidates), ", "))
 	}
 	if len(matches) > 1 {
-		return "", fmt.Errorf("ambiguous %s secret in %s: %s - use --file", quote(kind), p, strings.Join(baseNames(matches), ", "))
+		return "", fmt.Errorf("ambiguous %s secret in %s: %s - use --file", quote(kind), dir, strings.Join(baseNames(matches), ", "))
 	}
 	return matches[0], nil
 }
@@ -201,7 +200,7 @@ func findSecretFile(dir, kind string) (string, error) {
 func baseNames(paths []string) []string {
 	out := make([]string, len(paths))
 	for i, p := range paths {
-		out[i] = pyName(p)
+		out[i] = filepath.Base(p)
 	}
 	return out
 }
@@ -235,7 +234,7 @@ func matchesKind(path, kind string) bool {
 // syncContractSecret records the secret in the skill's treg.json, so the contract follows what the
 // CLI registered. It runs after the secret exists server-side, so a failure is only a warning.
 func syncContractSecret(dir, srcFile, name, kind string) {
-	path := pyJoin(dir, contractFile)
+	path := filepath.Join(dir, contractFile)
 	if !exists(path) || srcFile == "" {
 		return
 	}
@@ -296,7 +295,8 @@ func updateContract(path, dir, srcFile, name, kind string) error {
 	return nil
 }
 
-// relativeTo is str(Path(path).resolve().relative_to(Path(base).resolve())).
+// relativeTo is path relative to base, both with every symlink followed; a path outside base is an
+// error.
 func relativeTo(path, base string) (string, error) {
 	p, err := resolve(path)
 	if err != nil {
@@ -306,18 +306,14 @@ func relativeTo(path, base string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if p == b {
-		return ".", nil
+	rel, err := filepath.Rel(b, p)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is not inside %s", quote(p), quote(b))
 	}
-	sep := string(filepath.Separator)
-	prefix := strings.TrimSuffix(b, sep) + sep
-	if !strings.HasPrefix(p, prefix) {
-		return "", fmt.Errorf("%s is not in the subpath of %s", quote(p), quote(b))
-	}
-	return p[len(prefix):], nil
+	return rel, nil
 }
 
-// resolve is Path.resolve(): absolute, with every symlink followed.
+// resolve is the absolute path with every symlink followed.
 func resolve(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

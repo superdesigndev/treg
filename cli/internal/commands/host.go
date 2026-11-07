@@ -2,6 +2,7 @@ package commands
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -21,11 +22,11 @@ func hostCmd(env *Env) *cobra.Command {
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.Flags().StringVar(&contentType, "content-type", "", "override the type guessed from the extension")
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		path := pyPath(expandUser(args[0]))
+		path := expandUser(args[0])
 		if !isRegularFile(path) {
 			return output.Fail("treg host: file not found: %s", path)
 		}
-		name := pyName(path)
+		name := filepath.Base(path)
 		ctype := contentType
 		if ctype == "" {
 			ctype = guessMediaType(name)

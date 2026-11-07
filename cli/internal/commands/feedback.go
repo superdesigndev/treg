@@ -102,7 +102,7 @@ func feedbackSubmitCmd(env *Env) *cobra.Command {
 				return feedbackError("stdin_required", "Pipe sanitized text or redirect a file into stdin when using '-'.", nil)
 			}
 			raw, _ := io.ReadAll(os.Stdin)
-			message = stdinText(raw)
+			message = string(raw)
 		}
 		length := utf8.RuneCountInString(providers.Strip(message))
 		if length < 1 || length > 2000 {

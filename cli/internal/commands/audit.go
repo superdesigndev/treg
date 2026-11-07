@@ -1,8 +1,8 @@
 package commands
 
 import (
-	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,13 +26,13 @@ func auditCmd(env *Env) *cobra.Command {
 	fl.BoolVar(&runs, "runs", false, "only CLI runs, both tiers (what `treg runs` showed)")
 	cmd.MarkFlagsMutuallyExclusive("calls", "runs")
 	cmd.RunE = func(*cobra.Command, []string) error {
-		n, err := intArg("--limit", limit)
+		n, err := countArg("--limit", limit)
 		if err != nil {
 			return err
 		}
 		switch {
 		case calls:
-			return env.show(api.Request{Path: "/calls", Query: [][2]string{{"limit", string(n)}}})
+			return env.show(api.Request{Path: "/calls", Query: [][2]string{{"limit", strconv.Itoa(n)}}})
 		case runs:
 			return env.runs(n)
 		}
@@ -49,17 +49,17 @@ func callsCmd(env *Env) *cobra.Command {
 	cmd.Args = cobra.NoArgs
 	cmd.Flags().StringVar(&limit, "limit", "50", "how many recent calls")
 	cmd.RunE = func(*cobra.Command, []string) error {
-		n, err := intArg("--limit", limit)
+		n, err := countArg("--limit", limit)
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Path: "/calls", Query: [][2]string{{"limit", string(n)}}})
+		return env.show(api.Request{Path: "/calls", Query: [][2]string{{"limit", strconv.Itoa(n)}}})
 	}
 	return cmd
 }
 
-func (e *Env) runs(limit json.Number) error {
-	r, err := e.do(e.Client(), api.Request{Path: "/runs", Query: [][2]string{{"limit", string(limit)}}})
+func (e *Env) runs(limit int) error {
+	r, err := e.do(e.Client(), api.Request{Path: "/runs", Query: [][2]string{{"limit", strconv.Itoa(limit)}}})
 	if err != nil {
 		return err
 	}
@@ -78,9 +78,9 @@ func (e *Env) runs(limit json.Number) error {
 
 // audit merges /calls and /runs, newest first. /runs already lists local runs, so the call
 // records of kind local_run are dropped rather than shown twice.
-func (e *Env) audit(limit json.Number) error {
+func (e *Env) audit(limit int) error {
 	c := e.Client()
-	query := [][2]string{{"limit", string(limit)}}
+	query := [][2]string{{"limit", strconv.Itoa(limit)}}
 	rc, err := e.do(c, api.Request{Path: "/calls", Query: query})
 	if err != nil {
 		return err
@@ -131,8 +131,7 @@ func (e *Env) audit(limit json.Number) error {
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return createdAt(rows[i]) > createdAt(rows[j]) })
 	out := make([]any, 0, len(rows))
-	n, _ := pyIntValue(limit)
-	for _, row := range pySlice(rows, n) {
+	for _, row := range rows[:min(limit, len(rows))] {
 		out = append(out, row)
 	}
 	outln(pyjson.Dumps(out, pyjson.Pretty))

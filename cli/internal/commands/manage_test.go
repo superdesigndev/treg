@@ -29,13 +29,10 @@ func TestUSDMatchesPython(t *testing.T) {
 		{json.Number("1234567890"), "$1,234.57"},
 		{json.Number("-1234567890"), "-$1,234.57"},
 		{json.Number("1000000000000000"), "$1,000,000,000.00"},
-		{"12", "$0.0000"},
-		{" 7_000_000 ", "$7.00"},
+		{int64(7_000_000), "$7.00"},
 		{nil, "-"},
-		{true, "$0.0000"},
-		{json.Number("1500000.0"), "$1.50"},
-		{json.Number("2900000.0"), "$2.90"},
-		{"x", "-"},
+		{"12", "-"},
+		{json.Number("1500000.5"), "-"},
 	} {
 		if got := usd(c.in); got != c.want {
 			t.Errorf("usd(%#v) = %q, want %q", c.in, got, c.want)
@@ -75,7 +72,7 @@ func TestFindSecretFile(t *testing.T) {
 		}
 	}
 	writeFiles(t, dir, map[string]string{".secret/second": "x"})
-	_, err := findSecretFile(dir+"/", "env")
+	_, err := findSecretFile(dir, "env")
 	if want := `ambiguous "env" secret in ` + dir + ": second, token - use --file"; err == nil || err.Error() != want {
 		t.Errorf("ambiguous: %v, want %s", err, want)
 	}
@@ -87,7 +84,7 @@ func TestFindSecretFile(t *testing.T) {
 
 func TestContractSync(t *testing.T) {
 	dir := t.TempDir()
-	// The entry's file is the relative path as Python prints it on this OS.
+	// The entry's file is the relative path in this OS's spelling.
 	rel := strings.ReplaceAll(filepath.FromSlash(".secret/token.json"), `\`, `\\`)
 	writeFiles(t, dir, map[string]string{
 		".secret/token.json": `{"token": "t"}`,

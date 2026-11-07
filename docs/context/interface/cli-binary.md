@@ -16,6 +16,7 @@ sources:
   - cli/internal/app/app.go
   - cli/internal/buildinfo/buildinfo.go
   - cli/internal/commands/account.go
+  - cli/internal/commands/args.go
   - cli/internal/commands/audit.go
   - cli/internal/commands/await.go
   - cli/internal/commands/balance.go
@@ -33,7 +34,6 @@ sources:
   - cli/internal/commands/mcp.go
   - cli/internal/commands/mediatype.go
   - cli/internal/commands/org.go
-  - cli/internal/commands/pyargs.go
   - cli/internal/commands/resources.go
   - cli/internal/commands/review.go
   - cli/internal/commands/root.go
@@ -123,8 +123,10 @@ same files. It is not the default install yet: `/install.sh` installs the Python
 - **Bodies and files.** `internal/pyjson` decodes JSON with Go's decoder, keeping key order and
   number spelling, and encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8
   kept), the `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON
-  argument that does not parse is refused in the decoder's words. Arguments are typed as argparse
-  types them (`int()`, `float()`, `choices`), so the same command line sends the same bytes.
+  argument that does not parse is refused in the decoder's words. A number argument is what Go's
+  `strconv` reads: no surrounding spaces, no underscores in an integer, no negative count, where the
+  Python CLI took whatever `int()` and `float()` take. A path is named as it was given, not
+  normalized.
   `treg host` takes the media type from the extension: its own table for the image, audio and video
   formats vendors fetch, else the system's (`mime.TypeByExtension`).
 - **Prompts.** A command asks only where the Python CLI asks, and only a person at a terminal

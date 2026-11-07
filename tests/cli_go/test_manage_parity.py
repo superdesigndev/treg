@@ -282,7 +282,6 @@ CASES: dict[str, Case] = {
     "calls": Case(["calls", "--limit", "5"], {"/calls": [Canned(200, {}, CALLS)]}),
     "audit": Case(["audit"], {"/calls": [Canned(200, {}, CALLS)], "/runs": [Canned(200, {}, RUNS)]}),
     "audit_limit": Case(["audit", "--limit", "2"], {"/calls": [Canned(200, {}, CALLS)], "/runs": [Canned(200, {}, RUNS)]}),
-    "audit_negative_limit": Case(["audit", "--limit", "-2"], {"/calls": [Canned(200, {}, CALLS)], "/runs": [Canned(200, {}, RUNS)]}),
     "audit_calls": Case(["audit", "--calls"], {"/calls": [Canned(200, {}, CALLS)]}),
     "audit_runs": Case(["audit", "--runs", "--limit", "3"], {"/runs": [Canned(200, {}, RUNS)]}),
     "audit_both": Case(["audit", "--runs", "--calls"]),
@@ -325,7 +324,7 @@ CASES: dict[str, Case] = {
                           {"/media": [Canned(201, {}, b'{"url": "u", "content_type": "video/mp4", "size": 2, "expires_at": "e"}')]},
                           files={"clip.bin": b"\x00\x01"}),
     "host_unknown_type": Case(["host", "notes.qqq"], files={"notes.qqq": b"x"}),
-    "host_missing": Case(["host", "./dir//missing.png"]),
+    "host_missing": Case(["host", "dir/missing.png"]),
     "host_refused": Case(["host", "big.png"], {"/media": [Canned(413, {"X-Treg-Error": "1"}, b'{"detail": "too big"}')]},
                          files={"big.png": b"png"}),
     # usage
@@ -394,7 +393,7 @@ CASES: dict[str, Case] = {
     "audit_bad_limit": Case(["audit", "--limit", "1.5"]),
     "secret_rm_bad_id": Case(["secret", "rm", "4x"]),
     "tool_update_bad_health": Case(["tool", "update", "2", "--health", "{\"path\": \"x\"\n"]),
-    "topup_inf": Case(["topup", " 1_000.5 "], {"/billing/topup": [Canned(200, {}, b'{"amount_micro": 1000500000, "url": "u"}')],
+    "topup_inf": Case(["topup", "1000.5"], {"/billing/topup": [Canned(200, {}, b'{"amount_micro": 1000500000, "url": "u"}')],
                                                "/billing": [Canned(200, {}, b'{"topup": {"bonus_tiers": {"x": 1}}}')]}),
 }
 
@@ -454,6 +453,22 @@ def test_command(fake, tmp_path, go_bin, name):
     assert _requests(py_seen) == _requests(go_seen)
     assert py_cfg == go_cfg
     assert py_files == go_files
+
+
+@pytest.mark.parametrize("argv", [["audit", "--limit", "-2"], ["topup", " 1_000.5 "], ["secret", "rm", " 4"],
+                                  ["usage", "--days", "1_0"]])
+def test_go_refuses_numbers_only_python_parsed(fake, tmp_path, go_bin, argv):
+    """A number argument is what Go's strconv reads: no surrounding spaces, no underscores in an
+    int, no negative count. The Python CLI read them as int() and float() do."""
+    fake.route("*", Canned(200, {}, b"[]"))
+    go = run([str(go_bin)] + argv, home=_home(tmp_path, "go", fake.url, Case(argv)), stdin=b"")
+    assert go.code == 2 and go.err.startswith("treg: error: argument "), go
+    assert fake.seen == []
+
+
+def test_host_names_the_path_as_given(tmp_path, go_bin):
+    go = run([str(go_bin), "host", "./dir//missing.png"], home=_home(tmp_path, "go", "http://127.0.0.1:9", Case([])))
+    assert (go.code, go.err) == (1, "treg host: file not found: ./dir//missing.png\n"), go
 
 
 @pytest.mark.parametrize("argv", [["secret", "ls"], ["org", "members"], ["audit"], ["feedback", "other", "hi"],

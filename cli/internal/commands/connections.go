@@ -43,31 +43,31 @@ func connectionsCmd(env *Env) *cobra.Command {
 		"treg connections resources 12")
 	resources.Args = cobra.ExactArgs(1)
 	resources.RunE = func(_ *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Path: "/connections/" + string(id) + "/resources"})
+		return env.show(api.Request{Path: "/connections/" + id + "/resources"})
 	}
 	use := leaf("use <id> <resource>", "Select which resource this connection acts on.",
 		"treg connections use 12 sc-domain:example.com")
 	use.Args = cobra.ExactArgs(2)
 	use.RunE = func(_ *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Method: "POST", Path: "/connections/" + string(id) + "/resource",
+		return env.show(api.Request{Method: "POST", Path: "/connections/" + id + "/resource",
 			Body: jsonBody(pyjson.Ordered("resource_ref", args[1])), Header: jsonHeader})
 	}
 	rm := leaf("rm <id>", "Disconnect (bound tools stay, but stop working until reconnected).", "treg connections rm 12")
 	rm.Args = cobra.ExactArgs(1)
 	rm.RunE = func(_ *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Method: "DELETE", Path: "/connections/" + string(id)})
+		return env.show(api.Request{Method: "DELETE", Path: "/connections/" + id})
 	}
 	cmd.AddCommand(ls,
 		connectCmd(env, "treg connections", leaf("connect [name]",
@@ -290,13 +290,13 @@ func (e *Env) connectPastedKey(f connectFlags, provider *pyjson.Object) error {
 			return output.Fail("--key-stdin reads a piped %s; at a terminal, drop it to get a hidden prompt", label)
 		}
 		raw, _ := io.ReadAll(os.Stdin)
-		piped := stdinText(raw)
+		piped := string(raw)
 		if extraLabel == "" {
 			key = piped
 			break
 		}
 		var lines []string
-		for _, line := range pySplitLines(piped) {
+		for _, line := range strings.Split(piped, "\n") {
 			if l := providers.Strip(line); l != "" {
 				lines = append(lines, l)
 			}
@@ -406,31 +406,4 @@ func orDefault(v any, fallback string) any {
 		return v
 	}
 	return fallback
-}
-
-// pySplitLines is Python's str.splitlines().
-func pySplitLines(s string) []string {
-	var out []string
-	start := 0
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		switch runes[i] {
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', '\u2028', '\u2029':
-		case '\r':
-			if i+1 < len(runes) && runes[i+1] == '\n' {
-				out = append(out, string(runes[start:i]))
-				i++
-				start = i + 1
-				continue
-			}
-		default:
-			continue
-		}
-		out = append(out, string(runes[start:i]))
-		start = i + 1
-	}
-	if start < len(runes) {
-		out = append(out, string(runes[start:]))
-	}
-	return out
 }

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -35,7 +36,7 @@ func usageCmd(env *Env) *cobra.Command {
 		if orgID == 0 {
 			return output.Fail("no active org")
 		}
-		query := [][2]string{{"days", string(n)}}
+		query := [][2]string{{"days", strconv.Itoa(n)}}
 		if by != "" {
 			query = append(query, [2]string{"key", by})
 		}

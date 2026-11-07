@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -46,7 +46,7 @@ func toolAddCmd(env *Env) *cobra.Command {
 		if err := choice("--injector", f.injector, secretKinds...); err != nil {
 			return err
 		}
-		var secretID json.Number
+		var secretID any
 		if cmd.Flags().Changed("secret") {
 			id, err := intArg("--secret", f.secret)
 			if err != nil {
@@ -68,7 +68,7 @@ func toolAddCmd(env *Env) *cobra.Command {
 				return err
 			}
 			b.Set("bindings", bindings)
-		case secretID != "":
+		case secretID != nil:
 			b.Set("secret_id", secretID)
 			b.Set("injector", f.injector)
 			b.Set("auth_in", f.authIn)
@@ -101,11 +101,11 @@ func toolRmCmd(env *Env) *cobra.Command {
 	cmd := leaf("rm <id>", "Delete a tool by id.", "treg tool rm 2")
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
-		return env.show(api.Request{Method: "DELETE", Path: "/tools/" + string(id)})
+		return env.show(api.Request{Method: "DELETE", Path: "/tools/" + id})
 	}
 	return cmd
 }
@@ -123,7 +123,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 	fl.StringVar(&f.health, "health", "", "new health-check JSON")
 	fl.StringVar(&localRun, "local-run", "", "allow/forbid `treg run` (local tier) for this tool (owner opt-in): on or off")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		id, err := intArg("id", args[0])
+		id, err := idArg("id", args[0])
 		if err != nil {
 			return err
 		}
@@ -173,7 +173,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 			}
 			var current *pyjson.Object
 			for _, t := range responseList(r) {
-				if o, ok := t.(*pyjson.Object); ok && pyjson.Text(o.Value("id")) == string(id) {
+				if o, ok := t.(*pyjson.Object); ok && pyjson.Text(o.Value("id")) == id {
 					current = o
 					break
 				}
@@ -193,7 +193,7 @@ func toolUpdateCmd(env *Env) *cobra.Command {
 		if b.Len() == 0 {
 			return output.Fail("nothing to update (use --base-url / --bind / --binding / --health / --local-run)")
 		}
-		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + string(id), Body: jsonBody(b), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "PATCH", Path: "/tools/" + id, Body: jsonBody(b), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
@@ -214,8 +214,8 @@ func parseBinds(specs []string) ([]any, error) {
 			k, v = providers.Strip(k), providers.Strip(v)
 			switch _, known := b.Get(k); {
 			case k == "secret" || k == "secret_id":
-				id, ok := pyInt(v)
-				if !ok {
+				id, err := strconv.Atoi(v)
+				if err != nil {
 					return nil, output.Fail("--bind secret= must be an integer id, got %s", quote(v))
 				}
 				b.Set("secret_id", id)

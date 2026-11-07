@@ -162,7 +162,7 @@ func orgAgentRmCmd(env *Env) *cobra.Command {
 	cmd := leaf("agent-rm <user_id>", "Revoke an agent - its token stops working immediately.", "treg org agent-rm 7")
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		userID, err := intArg("user_id", args[0])
+		userID, err := idArg("user_id", args[0])
 		if err != nil {
 			return err
 		}

@@ -3,7 +3,6 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -70,7 +69,7 @@ func topupCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			auto.perHour = n
+			auto.perHour = &n
 		}
 		if f.auto != "" {
 			return env.topupAuto(f.auto == "on", auto)
@@ -99,7 +98,7 @@ func (e *Env) topup(amount *float64) error {
 	micro := out.Value("amount_micro")
 	outf("\n  %sAdd %s to your balance%s\n", p.Accent, usd(micro), p.Reset)
 	if tiers := e.bonusTiers(); len(tiers) > 0 {
-		amountMicro, _ := pyIntOf(micro)
+		amountMicro, _ := intOf(micro)
 		dollars := floorDiv(amountMicro, 1_000_000)
 		pct, found := int64(0), false
 		for _, t := range tiers {
@@ -135,9 +134,9 @@ func (e *Env) bonusTiers() [][2]int64 {
 	raw, _ := topup.Value("bonus_tiers").(*pyjson.Object)
 	var tiers [][2]int64
 	for _, k := range raw.Keys() {
-		min, ok1 := pyIntOf(k)
-		pct, ok2 := pyIntOf(raw.Value(k))
-		if !ok1 || !ok2 {
+		min, err := strconv.ParseInt(k, 10, 64)
+		pct, ok := intOf(raw.Value(k))
+		if err != nil || !ok {
 			return nil
 		}
 		tiers = append(tiers, [2]int64{min, pct})
@@ -147,7 +146,7 @@ func (e *Env) bonusTiers() [][2]int64 {
 
 type topupAuto struct {
 	threshold, amount, cap *float64
-	perHour                json.Number
+	perHour                *int
 }
 
 // topupAuto sets automatic top-ups. An off-session charge needs the cardholder's agreement to the
@@ -163,8 +162,8 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 			b.Set(x.key, float64(*x.v))
 		}
 	}
-	if a.perHour != "" {
-		b.Set("per_hour", a.perHour)
+	if a.perHour != nil {
+		b.Set("per_hour", *a.perHour)
 	}
 	p := e.Colors()
 	if on {
@@ -176,8 +175,8 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 			amount = fmt.Sprintf("$%.2f", *a.amount)
 		}
 		perHour := "up to 5"
-		if a.perHour != "" && a.perHour != "0" {
-			perHour = string(a.perHour)
+		if a.perHour != nil && *a.perHour != 0 {
+			perHour = strconv.Itoa(*a.perHour)
 		}
 		outf("\n  %sAuto top-up charges your saved card when nobody is at the keyboard.%s\n", p.Amber, p.Reset)
 		outf("  %sWhenever your balance drops below %s, we charge %s to the card on file, "+
@@ -234,7 +233,7 @@ func confirmConsent() bool {
 // usd is a micro-USD amount as money, the sign outside the dollar mark. Under a dollar it keeps four
 // decimals: a catalog call costs fractions of a cent, and two decimals would print it as free.
 func usd(micro any) string {
-	n, ok := pyIntOf(micro)
+	n, ok := intOf(micro)
 	if !ok {
 		return "-"
 	}
@@ -261,44 +260,16 @@ func groupThousands(s string) string {
 	return b.String() + "." + frac
 }
 
-// pyIntOf is Python's int() of a decoded JSON value: an int, a float truncated, a bool, or a
-// string of digits.
-func pyIntOf(v any) (int64, bool) {
+// intOf is a whole number from a decoded registry answer, or one this CLI computed.
+func intOf(v any) (int64, bool) {
 	switch t := v.(type) {
 	case int64:
 		return t, true
-	case int:
-		return int64(t), true
-	case bool:
-		if t {
-			return 1, true
-		}
-		return 0, true
 	case json.Number:
-		if !strings.ContainsAny(string(t), ".eE") {
-			n, err := strconv.ParseInt(string(t), 10, 64)
-			return n, err == nil
-		}
-		f, _ := strconv.ParseFloat(string(t), 64)
-		return truncate(f)
-	case float64:
-		return truncate(t)
-	case string:
-		n, ok := pyInt(t)
-		if !ok {
-			return 0, false
-		}
-		v, err := strconv.ParseInt(string(n), 10, 64)
-		return v, err == nil
+		n, err := t.Int64()
+		return n, err == nil
 	}
 	return 0, false
-}
-
-func truncate(f float64) (int64, bool) {
-	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return 0, false
-	}
-	return int64(f), true
 }
 
 // floorDiv is Python's a // b.
