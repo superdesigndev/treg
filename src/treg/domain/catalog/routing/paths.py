@@ -408,12 +408,14 @@ _IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "a
                 "direct", "instagram", "web", "help", "privacy", "terms"}
 
 
-def instagram_handles(results: Any) -> list | None:
-    """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
-    directory or list page of creators), one row each in page order, first mention wins: username,
-    profile url, the passage around the mention as evidence, and the page it came from."""
+def instagram_handles(results: Any, most: Any = None) -> list | None:
+    """`instagram_handles(results, 20)` — the Instagram accounts that search results' passages name
+    (a directory or list page of creators), one row each in page order, first mention wins, at most
+    `most`: username, profile url, the words around the mention as evidence (short: the agent reads
+    every row), and the site it came from."""
     if not isinstance(results, list):
         return None
+    most = most if isinstance(most, int) and not isinstance(most, bool) and most > 0 else None
     rows, seen = [], set()
     for r in results:
         if not isinstance(r, dict):
@@ -430,9 +432,11 @@ def instagram_handles(results: Any) -> list | None:
                     or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
                 continue
             seen.add(handle.lower())
-            around = " ".join(text[max(0, m.start() - 120):m.end() + 180].split())
+            around = " ".join(text[max(0, m.start() - 40):m.end() + 100].split())
             rows.append({"username": handle, "url": f"https://www.instagram.com/{handle}/",
-                         "biography": around, "matched_from": r.get("url")})
+                         "biography": around, "matched_from": host(r.get("url"))})
+            if most and len(rows) >= most:
+                return rows
     return rows
 
 
