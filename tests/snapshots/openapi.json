@@ -7021,6 +7021,56 @@
         "summary": "Cli Latest"
       }
     },
+    "/cli/latest/{platform}": {
+      "get": {
+        "description": "A link that stays put, `/cli/latest/darwin-arm64`: a redirect to that platform's archive of\nthe channel's release.",
+        "operationId": "cli_latest_download_cli_latest__platform__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z]{1,16}-[a-z0-9]{1,16}$",
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "default": "stable",
+              "pattern": "^(stable|beta)$",
+              "title": "Channel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cli Latest Download"
+      }
+    },
     "/connections": {
       "get": {
         "description": "Every OAuth credential in the org, with health AND expiry. Metadata only — no token material.",

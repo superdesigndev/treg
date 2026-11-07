@@ -376,6 +376,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest_download",
+    "path": "/cli/latest/{platform}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "publish_hub_tool",
