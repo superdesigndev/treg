@@ -30,7 +30,20 @@ def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | No
     payload: dict = {"api": route.agg_slug, "path": path}
     items = list(query.items()) if isinstance(query, dict) else list(query)
     if items:
-        payload["query"] = {k: str(v) for k, v in items}  # Orthogonal rejects numbers here
+        # Orthogonal rejects numbers, so all values are stringified. Repeated keys are collected
+        # into arrays (evidence: ContactOut verification fixture 2026-09-08 with `"include": [...]`).
+        query_dict: dict = {}
+        for k, v in items:
+            sv = str(v)
+            if k in query_dict:
+                existing = query_dict[k]
+                if isinstance(existing, list):
+                    existing.append(sv)
+                else:
+                    query_dict[k] = [existing, sv]
+            else:
+                query_dict[k] = sv
+        payload["query"] = query_dict
     if body:
         try:
             payload["body"] = json.loads(body)
