@@ -387,7 +387,7 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
   advertises itself. `/.well-known/skills/index.json` reads its `description` from the skill's
   frontmatter at request time, never a second copy ([skill](skill.md)).
 - `/install.sh?channel=beta` and `/install.ps1` install the binary CLI; `/cli/latest` names its
-  release per channel and platform and `/cli/events` relays its anonymous usage events
+  release per channel and platform, `/cli/latest/<os>-<arch>` redirects to that archive, and `/cli/events` relays its anonymous usage events
   ([cli-binary](cli-binary.md)).
 - `/privacy` is the URL given to OAuth providers at app verification; never rename it.
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,

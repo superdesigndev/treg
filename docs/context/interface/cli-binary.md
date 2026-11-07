@@ -194,7 +194,8 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   (beta falls back to stable), else the newest matching GitHub release of `cli_release_repo`. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
   `TREG_CLI_DOWNLOAD_BASE_URL`. Publishing a release moves no one; the operator's variable does,
-  so a bad release is held back without a new one.
+  so a bad release is held back without a new one. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
+  the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
   shell has no signature tool; the binary verifies signatures on update), installs into

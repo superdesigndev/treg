@@ -144,6 +144,17 @@ async def test_latest_refuses_unknown_platforms_and_missing_releases(clients, re
     assert (await clients.get("/cli/latest", params={"channel": "nightly", "os": "linux", "arch": "amd64"})).status_code == 422
 
 
+async def test_latest_download_redirects_to_the_platforms_archive(clients, release_settings, monkeypatch):
+    release_settings.cli_latest_version = "1.2.0"
+    release_settings.cli_beta_version = "1.3.0"
+    r = await clients.get("/cli/latest/darwin-arm64", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "https://dl.example/cli-v1.2.0/treg_1.2.0_darwin_arm64.tar.gz"
+    r = await clients.get("/cli/latest/windows-amd64", params={"channel": "beta"}, follow_redirects=False)
+    assert r.headers["location"] == "https://dl.example/cli-v1.3.0/treg_1.3.0_windows_amd64.zip"
+    assert (await clients.get("/cli/latest/aix-ppc64", follow_redirects=False)).status_code == 404
+    assert (await clients.get("/cli/latest/darwin", follow_redirects=False)).status_code in (404, 422)
+
+
 async def test_github_lookup_skips_drafts_other_tags_and_stable_pre_releases(monkeypatch):
     releases = [{"tag_name": "cli-v1.3.0", "draft": True}, {"tag_name": "v0.31.0"},
                 {"tag_name": "cli-v1.2.0-beta.1", "prerelease": True}, {"tag_name": "cli-v1.1.0"}]

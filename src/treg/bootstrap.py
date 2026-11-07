@@ -167,6 +167,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/install.sh', ('GET',), 'install_sh'),
     ('/install.ps1', ('GET',), 'install_ps1'),
     ('/cli/latest', ('GET',), 'cli_latest'),
+    ('/cli/latest/{platform}', ('GET',), 'cli_latest_download'),
     ('/cli/events', ('POST',), 'cli_events'),
     ('/i/{code}', ('GET',), 'install_sh_linked'),
     ('/i', ('POST',), 'ad_link_mint'),

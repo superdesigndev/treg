@@ -15,7 +15,8 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
+from fastapi.responses import RedirectResponse
 
 from .. import analytics, client_ip
 from ..application import cli_releases
@@ -168,3 +169,14 @@ async def cli_latest(
     if not version:
         raise HTTPException(status_code=404, detail=f"no treg release on the {channel} channel")
     return cli_releases.manifest(version, channel, os, arch)
+
+
+@app.get("/cli/latest/{platform}")
+async def cli_latest_download(
+    platform: str = Path(..., pattern="^[a-z]{1,16}-[a-z0-9]{1,16}$"),
+    channel: str = Query("stable", pattern="^(stable|beta)$"),
+) -> RedirectResponse:
+    """A link that stays put, `/cli/latest/darwin-arm64`: a redirect to that platform's archive of
+    the channel's release."""
+    os, arch = platform.split("-", 1)
+    return RedirectResponse(str((await cli_latest(channel=channel, os=os, arch=arch))["url"]), status_code=302)
