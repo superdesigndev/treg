@@ -47,7 +47,7 @@ from urllib.parse import parse_qsl, quote, urlsplit
 import httpx
 
 from . import agents as _agents
-from . import cli_analytics, cli_session, cli_view
+from . import cli_analytics, cli_session, cli_view, client_notice
 from . import jsontext
 from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
@@ -218,6 +218,32 @@ def _is_loopback_url(url: str) -> bool:
     return host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")
 
 
+_client_notice_seen = False
+
+
+def _print_client_notice(resp: httpx.Response) -> None:
+    """The registry's word on this CLI's version (client_notice.py): on stderr, once a day per
+    notice, never under `--json`."""
+    global _client_notice_seen
+    text = resp.headers.get(client_notice.NOTICE_HEADER)
+    if not text or _client_notice_seen or _JSON_OVERRIDE:
+        return
+    _client_notice_seen = True
+    stamp = CONFIG_PATH.with_name("client-notice")
+    shown = f"{time.strftime('%Y-%m-%d')} {text}"
+    try:
+        if stamp.read_text(encoding="utf-8") == shown:
+            return
+    except OSError:
+        pass
+    print(f"  {_M}{text}{_R}", file=sys.stderr)
+    try:
+        stamp.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stamp.write_text(shown, encoding="utf-8")
+    except OSError:
+        pass
+
+
 class _RegistryClient(httpx.Client):
     """An httpx client that survives an upstream WAF. Some edges (Cloudflare, incl. Render's) 403 a
     request whose body matches an injection signature -- e.g. a skill recipe or a proxied `call` that
@@ -228,6 +254,7 @@ class _RegistryClient(httpx.Client):
 
     def send(self, request: httpx.Request, **kwargs) -> httpx.Response:
         resp = super().send(request, **kwargs)
+        _print_client_notice(resp)
         body = request.content or b""
         if (resp.status_code != 403 or not body
                 or "html" not in resp.headers.get("content-type", "").lower()

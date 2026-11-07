@@ -284,7 +284,9 @@ database (web and scheduled workers) must build the same way. Render's bundled `
 so a wheel operator pins versions in their own requirements.
 
 **Release order.** The served installer installs the CLI from PyPI, so a server change that needs a
-new CLI ships only after that CLI is released.
+new CLI ships only after that CLI is released. After a release is on PyPI, set `TREG_CLI_LATEST_VERSION` to it so
+older CLIs are told to update; set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
+from working.
 
 ## Audit, archive and spool back-pressure
 

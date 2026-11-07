@@ -28,6 +28,7 @@ from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
+    _ClientNoticeMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -892,6 +893,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     # Registration order is part of the compatibility surface. add_middleware prepends entries.
     app.add_middleware(_LegacyHostRedirectMiddleware)
     app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_ClientNoticeMiddleware)
     app.add_middleware(_BodyDecodeMiddleware)
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
