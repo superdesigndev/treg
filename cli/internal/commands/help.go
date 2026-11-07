@@ -51,7 +51,7 @@ var globalOptions = [][2]string{
 	{"-h, --help", "Show this help and exit."},
 	{"--version", "Print the treg version and exit."},
 	{"--org <slug>", "Run any command in that team instead of the active one."},
-	{"--json", "Table commands print raw JSON; `call` prints one {result, _treg} line, nothing on stderr."},
+	{"--json", "Table commands print raw JSON; `call` prints one {result, _treg} line on stdout."},
 }
 
 const rootExamples = "Examples:\n" +

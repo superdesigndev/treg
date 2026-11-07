@@ -22,8 +22,7 @@ const (
 	largeAnswerBytes = 30_000
 )
 
-// ShowCall prints a `/call/` answer: the body on stdout exactly, or under --json one envelope with
-// nothing on stderr.
+// ShowCall prints a `/call/` answer: the body on stdout exactly, or under --json one envelope.
 func (p *Printer) ShowCall(r *api.Response) error {
 	ctype := mediaType(r.Header.Get("Content-Type"))
 	if r.Status < 400 {

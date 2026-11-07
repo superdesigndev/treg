@@ -113,7 +113,10 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   request, the login, MCP and telemetry ones included. The proxy is httpx's: the `*_proxy`
   environment variables when any is set, else the macOS or Windows system proxy with its
   exceptions (`api/proxy.go`); a loopback host is never proxied.
-- **Output.** stdout carries the answer and treg's lines go to stderr, as in [cli](cli.md). A JSON
+- **Output.** stdout carries the answer and treg's lines go to stderr, as in [cli](cli.md). Under
+  `--json` stdout is exactly one JSON value and stderr only a note for a person (the large-answer
+  hint, a byte-order mark taken off `--data`) or a failure with no answer to wrap, so a caller
+  reads stdout and the exit status, never whether stderr is empty. A JSON
   body is re-indented by two spaces like the Python CLI's, but strings and numbers keep the
   upstream's spelling (the Python CLI escapes non-ASCII as `\uXXXX` and normalizes numbers): the
   parsed values are equal, the bytes are not. treg's own lines use a plain dash where the Python
@@ -132,7 +135,9 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   value it prints is indented by two spaces, both UTF-8 with nothing escaped for HTML. They are not
   the Python CLI's bytes (its `", "` and `": "`, `\uXXXX` escapes and float `repr`); the parity
   suite compares the parsed values. `call --data` is sent as written, so its archive key does not
-  depend on either CLI. A JSON argument that does not parse is refused in the decoder's words. A number argument is what Go's
+  depend on either CLI. A text file the CLI reads (`secret add --file`, `--env-file`, a skill's
+  secret file) loses a byte-order mark and is converted from UTF-16 behind one, as Windows
+  PowerShell 5.1 writes them; any other text that is not UTF-8 is refused. A JSON argument that does not parse is refused in the decoder's words. A number argument is what Go's
   `strconv` reads: no surrounding spaces, no underscores in an integer, no negative count, where the
   Python CLI took whatever `int()` and `float()` take. A path is named as it was given, not
   normalized.
