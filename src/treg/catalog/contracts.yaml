@@ -346,7 +346,7 @@ contracts:
       - {title: str}
       - {full_name: str}
     identity_notes:
-      q: "describe the people in words, as a profile would: role, seniority, industry, place, audience ('B2B sales coaches on Instagram with a mostly US audience'). A semantic search over profiles answers it, so creators and influencers too, not only employees"
+      q: "describe the people in words, as a profile would: role, seniority, industry, place, audience ('B2B sales coaches on Instagram with a mostly US audience'). A semantic search over profiles answers it, so creators and influencers too, not only employees. For a niche's best-known creators, also find list articles with treg.web.search"
       company_domain: "the employer's website domain ('stripe.com'): everyone treg's providers list there; with q, the people q describes there (q 'executives')"
       title: "a job title ('Head of Tax'); with company_domain, that role at that company"
       full_name: "one person's name, to find their profile"
@@ -669,7 +669,7 @@ contracts:
     identity:
       - {q: str}
     identity_notes:
-      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better"
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. For a niche's best-known creators: find list articles with treg.web.search ('top B2B sales influencers on Instagram'), read one with treg.web.extract, then check each handle with treg.instagram.user.profile"
     filters: {}
     output:
       users: {type: list, required: true}
@@ -746,7 +746,7 @@ contracts:
     identity:
       - {q: str}
     identity_notes:
-      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better"
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. For a niche's best-known creators: find list articles with treg.web.search ('top B2B sales influencers on TikTok'), read one with treg.web.extract, then check each handle with treg.tiktok.user.profile"
     filters: {}
     output:
       users: {type: list, required: true}
