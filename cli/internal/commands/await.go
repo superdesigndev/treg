@@ -47,7 +47,8 @@ const (
 	awaitDefaultWait    = 10.0
 	awaitBackoffCeilS   = 60.0
 	awaitTimedOut       = "timed out while waiting for the async task"
-	awaitNoTaskEndpoint = "treg: this registry has no task endpoint, which --await needs; ask its operator to update it"
+	awaitNoTaskEndpoint = "treg: this registry has no /tasks/ endpoint, which --await needs (a registry newer " +
+		"than treg 0.30.0 has it); ask its operator to update it"
 )
 
 // taskWaiter follows one task until it is terminal, the wait runs out or the user interrupts it.

@@ -249,8 +249,8 @@ def test_an_older_registry_without_the_task_endpoint(fake, tmp_path, go_bin):
     fake.route("/tasks/c1", Canned(404, {}, b'{"detail":"Not Found"}'))
     go = _go_alone(fake, tmp_path, go_bin, ["call", "x.submit", "--await"])
     assert go.code == 1 and go.out == b""
-    assert go.err == ("treg: this registry has no task endpoint, which --await needs; "
-                      "ask its operator to update it\n")
+    assert go.err == ("treg: this registry has no /tasks/ endpoint, which --await needs (a registry newer "
+                      "than treg 0.30.0 has it); ask its operator to update it\n")
 
 
 def test_a_routed_pending_answer_is_followed_to_its_end(fake, tmp_path, go_bin):

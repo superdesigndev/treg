@@ -125,7 +125,7 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   views gets its JSON printed and one stderr line saying so. The client prints only what the
   registry cannot know: the `treg:` line (version and path) and a `registry:` line off treg.to.
 - **`call --await`** follows the registry's task (`/tasks/{call_id}`, [tasks](../architecture/tasks.md))
-  and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it.
+  and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it and the registry release that has it.
 - **Bodies and files.** `internal/pyjson` decodes JSON with Go's decoder, keeping key order and
   number spelling, and encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8
   kept), the `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON
