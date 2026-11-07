@@ -127,6 +127,13 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
   (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
   `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
+- **`treg update`.** The installer replaces the install the running CLI was loaded from, so no
+  Python code runs after it. On POSIX `cmd_update` runs `install.sh` with `sh` and ends with
+  `os._exit(<installer exit code>)`. On Windows a running treg holds its own files, so it starts a
+  PowerShell console that waits until no treg process runs from that install, then runs
+  `uv tool install --force` (or `pipx install --force`), and exits 0 at once. With no `sh` (POSIX)
+  or no uv/pipx (Windows) it refuses and prints the direct reinstall, which is also the recovery for
+  a broken install: `uv tool install --force --python ">=3.12,<3.14" "tools-registry[proxy]"`.
 
 ## Calls
 
