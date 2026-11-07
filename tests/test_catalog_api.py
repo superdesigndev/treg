@@ -1295,6 +1295,27 @@ def test_moz_lists_priced_per_returned_row_show_per_result():
         assert _price_label(viewed).endswith("/call") and _cost_usd(viewed).endswith("/call"), eid
 
 
+def test_platform_access_estimate_matches_the_run_it_example_not_a_page_default():
+    """catalog get's access line estimates the runnable example. An empty body used to fall through
+    to the page-size default (20), so Moz quota_rows showed ~20× the unit price next to a 1-target
+    or 1-limit RUN IT line even though settle charged per target/row."""
+    from treg.application.call.access import _platform_access_estimate
+
+    cat = cs.load()
+    # One target, no modifiers: value 1 → one unit, not 20.
+    url = cat.by_id["moz.web.url.metrics"]
+    url_cost = cat.cost_view(url["cost"], "moz")
+    assert _platform_access_estimate(url, "moz", url_cost) == 6_667
+    # Weighted example already baked into cost.value (2): still one "call" for that shape, not 20.
+    summary = cat.by_id["moz.web.backlinks.summary"]
+    summary_cost = cat.cost_view(summary["cost"], "moz")
+    assert _platform_access_estimate(summary, "moz", summary_cost) == 13_334
+    # List example carries limit:1 → one returned row, not the page default.
+    listing = cat.by_id["moz.web.linking_domains.list"]
+    listing_cost = cat.cost_view(listing["cost"], "moz")
+    assert _platform_access_estimate(listing, "moz", listing_cost) == 6_667
+
+
 async def test_every_comparison_page_in_the_sitemap_serves(clients):
     """A capability several providers serve on a shelf has a public comparison page
     (/catalog/<slug>/<key>), listed in the sitemap by the same rule the shelf uses for its comparison
