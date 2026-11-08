@@ -362,6 +362,25 @@ class TestOwnKeyErrorBodyIsScannedWhole:
         assert r.status_code == 400
         assert r.json() == {"got": "***", "message": "Unsupported get request"}
 
+    async def test_a_utf16le_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        body = json.dumps({"got": self.KEY, "message": "Unsupported get request"}).encode("utf-16-le")
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "utf-16le"}))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.status_code == 400
+        assert self.KEY not in r.text
+        assert r.json() == {"got": "***", "message": "Unsupported get request"}
+
+    async def test_gzip_unscanned_trailing_bytes_are_replaced(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        raw = gzip.compress(b'{"error":"refused"}') + self.KEY.encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "gzip"}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "gzip"})
+        assert r.content == call_evidence.UNSCANNABLE_ERROR_BODY
+        assert self.KEY.encode() not in r.content
+
     def test_benign_key_shaped_fields_are_not_rewritten(self):
         body = b'{"key":"uniqueId","message":"auth: required"}'
         assert call_evidence._redact_caller_response(body, [self.KEY]) == (body, False)
@@ -442,3 +461,22 @@ class TestEvidenceModuleDirectly:
         assert call_evidence._decompress_for_scan(brotli.compress(plain), "br") == plain
         padded = gzip.compress(plain) + bytes([0, 0])
         assert call_evidence._decompress_for_scan(padded, "gzip") == plain
+
+    def test_decompress_gzip_rejects_unscanned_trailing_bytes(self):
+        plain = b'{"error":"refused"}'
+        sneaky = gzip.compress(plain) + b"secret_token_123456"
+        assert call_evidence._decompress_for_scan(sneaky, "gzip") is None
+        second = gzip.compress(plain) + gzip.compress(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(second, "gzip") is None
+
+    def test_decompress_utf16_is_decoded_for_scan(self):
+        plain = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-le"), "utf-16le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-be"), "utf-16be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16"), "utf-16") == plain
+        assert call_evidence._decompress_for_scan(b"\x00", "utf-16le") is None
+
+    def test_decompress_brotli_output_is_bounded(self):
+        brotli = pytest.importorskip("brotli")
+        raw = brotli.compress(b"A" * (call_evidence._ERROR_SCAN_MAX + 1))
+        assert call_evidence._decompress_for_scan(raw, "br") is None

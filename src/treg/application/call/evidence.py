@@ -295,17 +295,33 @@ _REDACTED_BODY = (b'{"error":"response_redacted",'
 UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
-# Not transfer encodings. Some Graph and CDN stacks put a charset on Content-Encoding; the bytes
-# are already the plaintext the scanner needs.
+# Not transfer encodings. Some Graph and CDN stacks put a charset on Content-Encoding.
+# UTF-8 / ASCII / Latin-1 bytes are already searchable. UTF-16 must be decoded first:
+# an ASCII credential encoded as UTF-16 is split by NULs and would miss the UTF-8 scan.
+_UTF16_CODECS = {
+    "utf-16": "utf-16",
+    "utf-16le": "utf-16-le",
+    "utf-16be": "utf-16-be",
+}
 _CHARSET_ENCODINGS = frozenset({
-    "utf-8", "utf8", "utf-16", "utf-16le", "utf-16be",
-    "us-ascii", "ascii", "iso-8859-1", "latin-1", "latin1",
-})
+    "utf-8", "utf8", "us-ascii", "ascii", "iso-8859-1", "latin-1", "latin1",
+}) | frozenset(_UTF16_CODECS)
 
 
 def _looks_like_plaintext_error(raw: bytes) -> bool:
     """True when `raw` is already text a scanner can search, despite a lying Content-Encoding."""
     return raw.lstrip()[:1] in (b"{", b"[", b"<")
+
+
+def _decode_charset_for_scan(raw: bytes, enc: str) -> bytes | None:
+    """Identity bytes for a charset-labeled body, or None when UTF-16 cannot be decoded."""
+    codec = _UTF16_CODECS.get(enc)
+    if codec is None:
+        return raw
+    try:
+        return raw.decode(codec).encode("utf-8")
+    except UnicodeError:
+        return None
 
 
 def _gzip_deflate_for_scan(raw: bytes) -> bytes | None:
@@ -317,11 +333,12 @@ def _gzip_deflate_for_scan(raw: bytes) -> bytes | None:
             out = d.decompress(raw, _ERROR_SCAN_MAX + 1)
         except zlib.error:
             continue
-        # Bounded output (a bomb stops here). A second gzip member would start with the gzip
-        # magic and cannot be scanned; trailing padding after one complete member is common.
+        # Bounded output (a bomb stops here). Trailing NUL padding after one complete
+        # member is common; any other unused bytes (including a second gzip member) were
+        # not scanned, so the original body must not be relayed.
         if len(out) > _ERROR_SCAN_MAX or d.unconsumed_tail or not d.eof:
             continue
-        if d.unused_data.startswith(b"\x1f\x8b"):
+        if d.unused_data.strip(b"\x00"):
             return None
         return out
     return None
@@ -335,8 +352,23 @@ def _brotli_for_scan(raw: bytes) -> bytes | None:
     dec = brotli.Decompressor()
     out = bytearray()
     try:
-        for i in range(0, len(raw), 4096):
-            out.extend(dec.process(raw[i:i + 4096]))
+        i = 0
+        n = len(raw)
+        while True:
+            remaining = _ERROR_SCAN_MAX + 1 - len(out)
+            if remaining <= 0:
+                return None
+            if dec.can_accept_more_data():
+                if i >= n:
+                    break
+                chunk = raw[i:i + 4096]
+                i += len(chunk)
+                piece = dec.process(chunk, output_buffer_limit=remaining)
+            else:
+                piece = dec.process(b"", output_buffer_limit=remaining)
+                if not piece:
+                    return None
+            out.extend(piece)
             if len(out) > _ERROR_SCAN_MAX:
                 return None
         if not dec.is_finished():
@@ -361,8 +393,10 @@ def _zstd_for_scan(raw: bytes) -> bytes | None:
 
 
 def _decompress_one(raw: bytes, enc: str) -> bytes | None:
-    if enc in ("", "identity") or enc in _CHARSET_ENCODINGS:
+    if enc in ("", "identity"):
         return raw
+    if enc in _CHARSET_ENCODINGS:
+        return _decode_charset_for_scan(raw, enc)
     if enc in ("gzip", "x-gzip", "deflate"):
         out = _gzip_deflate_for_scan(raw)
         if out is not None:

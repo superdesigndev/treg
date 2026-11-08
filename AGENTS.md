@@ -60,7 +60,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    Never add upstream-specific modeling.
    One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
    back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
-   row sees it. The error body is read whole (gzip, deflate, brotli or zstd decoded; charset labels such as utf-8 treated as identity) up to 8 MiB; on a credentialed
+   row sees it. The error body is read whole (gzip, deflate, brotli or zstd decoded with bounded output; charset labels such as utf-8 treated as identity, utf-16 decoded before the scan; unused gzip bytes other than NUL padding cannot be scanned) up to 8 MiB; on a credentialed
    call one that cannot be scanned is replaced whole, never relayed as a prefix.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
