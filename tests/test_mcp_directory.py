@@ -194,6 +194,13 @@ async def test_v2_declares_exact_directory_contract():
     for tool in tools.values():
         assert tool.output_schema and tool.output_schema.get("properties")
         assert not tool.output_schema.get("required")
+    assert tools["balance"].description == (
+        "Returns the connected team's Treg balance, in-flight holds, team and identity."
+    )
+    assert set(tools["balance"].output_schema["properties"]) == {
+        "team", "team_name", "identity", "balance_usd", "balance_micro", "holds_micro",
+        "error", "detail", "teams", "hint",
+    }
     blob = " ".join(tool.description.lower() for tool in tools.values())
     for disallowed in ("use treg first", "official", "anthropic verified", "best provider"):
         assert disallowed not in blob
@@ -345,7 +352,13 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_endpoint == directory_endpoint
     assert team_endpoint["endpoint"]["id"] == endpoint_args["endpoint_id"]
     assert team_endpoint["endpoint"]["cost"] == directory_endpoint["endpoint"]["cost"]
-    assert team_balance == directory_balance
+    planning = {
+        "daily_cap_micro", "daily_cap_set_by_team", "platform_default_micro",
+        "spent_today_micro", "remaining_today_micro", "resets_at",
+    }
+    assert planning.isdisjoint(directory_balance)
+    assert planning.issubset(team_balance)
+    assert {k: v for k, v in team_balance.items() if k not in planning} == directory_balance
 
 
 async def test_only_the_team_surface_shows_a_rows_note(clients):
