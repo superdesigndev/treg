@@ -68,7 +68,7 @@ async def org_balance(
     # is worse than omitting the planning fields. Reserve stays fail-closed.
     try:
         spent: int | None = await ledger.spent_today(db, org_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - hiding the wallet is worse than omitting the planning fields
         logging.getLogger("treg.ledger").warning(
             "balance daily-cap spent_today failed for org %s: %s", org_id, exc)
         spent = None
