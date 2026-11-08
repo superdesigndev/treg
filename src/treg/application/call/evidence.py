@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import re
@@ -296,26 +297,39 @@ UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
 # Not transfer encodings. Some Graph and CDN stacks put a charset on Content-Encoding.
-# UTF-8 / ASCII / Latin-1 bytes are already searchable. UTF-16 must be decoded first:
-# an ASCII credential encoded as UTF-16 is split by NULs and would miss the UTF-8 scan.
-_UTF16_CODECS = {
-    "utf-16": "utf-16",
-    "utf-16le": "utf-16-le",
-    "utf-16be": "utf-16-be",
+# UTF-8 / ASCII / Latin-1 bytes are already searchable. UTF-16 and UTF-32 must be
+# decoded first: an ASCII credential in those encodings is split by NULs and would
+# miss the UTF-8 scan. Labels are matched after stripping hyphens and underscores
+# so utf-16-le / utf_16_le alias utf-16le.
+def _charset_token(enc: str) -> str:
+    return enc.replace("-", "").replace("_", "")
+
+
+_IDENTITY_CHARSETS = frozenset({
+    "utf8", "usascii", "ascii", "iso88591", "latin1",
+})
+_WIDE_CHARSET_CODECS = {
+    "utf16": "utf-16",
+    "utf16le": "utf-16-le",
+    "utf16be": "utf-16-be",
+    "utf32": "utf-32",
+    "utf32le": "utf-32-le",
+    "utf32be": "utf-32-be",
 }
-_CHARSET_ENCODINGS = frozenset({
-    "utf-8", "utf8", "us-ascii", "ascii", "iso-8859-1", "latin-1", "latin1",
-}) | frozenset(_UTF16_CODECS)
 
 
 def _looks_like_plaintext_error(raw: bytes) -> bool:
     """True when `raw` is already text a scanner can search, despite a lying Content-Encoding."""
+    # A UTF-16LE/UTF-32LE JSON body starts with `{`/`[`/`<` but inserts a NUL after
+    # every ASCII byte, so the UTF-8 credential scan would miss it. Fail closed.
+    if b"\x00" in raw:
+        return False
     return raw.lstrip()[:1] in (b"{", b"[", b"<")
 
 
 def _decode_charset_for_scan(raw: bytes, enc: str) -> bytes | None:
-    """Identity bytes for a charset-labeled body, or None when UTF-16 cannot be decoded."""
-    codec = _UTF16_CODECS.get(enc)
+    """Identity bytes for a charset-labeled body, or None when a wide charset cannot be decoded."""
+    codec = _WIDE_CHARSET_CODECS.get(_charset_token(enc))
     if codec is None:
         return raw
     try:
@@ -384,18 +398,58 @@ def _zstd_for_scan(raw: bytes) -> bytes | None:
     except ImportError:
         return None
     try:
-        out = zstandard.ZstdDecompressor().decompress(raw, max_output_size=_ERROR_SCAN_MAX + 1)
+        params = zstandard.get_frame_parameters(raw)
     except zstandard.ZstdError:
         return None
-    if len(out) > _ERROR_SCAN_MAX:
+    if params.content_size == zstandard.CONTENTSIZE_ERROR:
         return None
-    return out
+    known = params.content_size != zstandard.CONTENTSIZE_UNKNOWN
+    if known and params.content_size > _ERROR_SCAN_MAX:
+        return None
+    if known:
+        try:
+            out = zstandard.ZstdDecompressor().decompress(raw, allow_extra_data=False)
+        except zstandard.ZstdError:
+            return None
+        return None if len(out) > _ERROR_SCAN_MAX else out
+    # Unknown declared size: stream so a highly compressible frame cannot allocate
+    # past the scan cap, and leftover input after the first frame is not scanned.
+    try:
+        reader = zstandard.ZstdDecompressor().stream_reader(
+            io.BytesIO(raw), read_across_frames=False)
+        try:
+            out = bytearray()
+            while True:
+                remaining = _ERROR_SCAN_MAX + 1 - len(out)
+                if remaining <= 0:
+                    return None
+                want = min(65536, remaining)
+                piece = reader.read(want)
+                if not piece:
+                    break
+                out.extend(piece)
+                if len(out) > _ERROR_SCAN_MAX:
+                    return None
+                if len(piece) < want:
+                    try:
+                        extra = reader.read(1)
+                    except zstandard.ZstdError:
+                        return None
+                    if extra:
+                        return None
+                    break
+        finally:
+            reader.close()
+    except zstandard.ZstdError:
+        return None
+    return bytes(out)
 
 
 def _decompress_one(raw: bytes, enc: str) -> bytes | None:
     if enc in ("", "identity"):
         return raw
-    if enc in _CHARSET_ENCODINGS:
+    token = _charset_token(enc)
+    if token in _IDENTITY_CHARSETS or token in _WIDE_CHARSET_CODECS:
         return _decode_charset_for_scan(raw, enc)
     if enc in ("gzip", "x-gzip", "deflate"):
         out = _gzip_deflate_for_scan(raw)

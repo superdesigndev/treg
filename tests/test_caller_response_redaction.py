@@ -480,3 +480,41 @@ class TestEvidenceModuleDirectly:
         brotli = pytest.importorskip("brotli")
         raw = brotli.compress(b"A" * (call_evidence._ERROR_SCAN_MAX + 1))
         assert call_evidence._decompress_for_scan(raw, "br") is None
+
+    def test_decompress_zstd_rejects_unscanned_trailing_bytes(self):
+        zstandard = pytest.importorskip("zstandard")
+        plain = b'{"error":"refused"}'
+        compress = zstandard.ZstdCompressor().compress
+        assert call_evidence._decompress_for_scan(compress(plain), "zstd") == plain
+        sneaky = compress(plain) + b"secret_token_123456"
+        assert call_evidence._decompress_for_scan(sneaky, "zstd") is None
+        second = compress(plain) + compress(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(second, "zstd") is None
+        unknown = zstandard.ZstdCompressor(write_content_size=False).compress
+        assert call_evidence._decompress_for_scan(unknown(plain), "zstd") == plain
+        unknown_second = unknown(plain) + unknown(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(unknown_second, "zstd") is None
+
+    def test_decompress_zstd_output_is_bounded(self):
+        zstandard = pytest.importorskip("zstandard")
+        oversized = b"A" * (call_evidence._ERROR_SCAN_MAX + 1)
+        raw = zstandard.ZstdCompressor().compress(oversized)
+        assert call_evidence._decompress_for_scan(raw, "zstd") is None
+        unknown = zstandard.ZstdCompressor(write_content_size=False).compress(oversized)
+        assert call_evidence._decompress_for_scan(unknown, "zstd") is None
+
+    def test_decompress_hyphenated_utf16_and_utf32_are_decoded(self):
+        plain = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-le"), "utf-16-le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-be"), "utf-16-be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "utf-32le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "utf-32-le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-be"), "utf-32be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32"), "utf-32") == plain
+
+    def test_decompress_plaintext_fallback_rejects_wide_text(self):
+        plain = b'{"error":"refused","token":"secret_token_123456"}'
+        wide = plain.decode().encode("utf-16-le")
+        assert wide.lstrip()[:1] == b"{"
+        assert call_evidence._decompress_for_scan(wide, "not-a-codec") is None
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "mystery") is None
