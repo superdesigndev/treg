@@ -182,7 +182,7 @@ reaches `relay()`; see [ads-conversions](ads-conversions.md).
 ### Error bodies and evidence
 
 Before a 4xx/5xx body reaches the caller, an idempotent replay or the evidence row,
-`evidence.redact_error_response` decodes it (gzip/deflate, bounded; own-key calls mirror the
+`evidence.redact_error_response` decodes it (gzip, deflate, brotli or zstd, bounded; charset labels such as utf-8 are treated as identity; own-key calls mirror the
 caller's `Accept-Encoding`) and replaces every spelling of every injected credential
 (`_secret_renderings`, every account's value of a platform setting) with `***`. Masking is exact
 only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uniqueId"`. A
