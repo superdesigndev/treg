@@ -192,7 +192,9 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   or, for an unverified user this proof verifies first (an invitation-code member), withdraws its claim
   (`find_or_create_user`, shared with the email door's outage case). Verified users sign in
   without the check. Each first social proof logs `event=social_signup` with the outcome and, for
-  GitHub, the account age in days.
+  GitHub, the account age in days. `TREG_TURNSTILE_SOCIAL=false` skips the check on both social doors
+  (a new address signs in at once with credit, its log line reads `captcha=-`) while the email door
+  keeps its own.
 
 ## Membership and team lifecycle
 
