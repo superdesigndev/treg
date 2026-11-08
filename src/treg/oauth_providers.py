@@ -4256,6 +4256,34 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+SHIPMAIL = OAuthProvider(
+    service="shipmail",
+    display_name="Shipmail",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sm_live_… or sm_test_…",
+    # Bearer header only. The key prefix sets the mode: sm_test_ keys never deliver real email.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://shipmail.to/developer/api-keys",
+    setup_action_label="Get your Shipmail API key",
+    setup_steps=(
+        "Sign in to Shipmail and open Developer → API keys.",
+        "Create a key with the scopes your agent needs (mailboxes:read, messages:read, messages:send, drafts:compose, calendar:read, calendar:write).",
+        "Choose Test to try it without sending real email, then copy the key. It is shown once.",
+    ),
+    setup_note="API calls are included in your Shipmail plan; sends count toward the plan's monthly send limit.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Community",
+    summary="Send, read and reply to email from your own business mailboxes, and book meetings on their calendars.",
+    base_url="https://shipmail.to/api/v1",
+    docs_url="https://shipmail.to/docs/api",
+    probe_path="/capabilities",  # free, needs no scope; a bad key gets 401 authentication_error
+)
+
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4263,7 +4291,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SHIPMAIL, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

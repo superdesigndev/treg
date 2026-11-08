@@ -106,6 +106,8 @@ platforms:
 
   # --- Community -------------------------------------------------------------------------------
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}
+  email: {label: "Email", category: "Community", summary: "Send, read and reply to email from your own mailboxes, with threads, drafts and search."}
+  calendar: {label: "Calendar", category: "Community", summary: "Read open slots and create events on your own calendars."}
   telegram: {label: "Telegram", category: "Community", featured: 2, summary: "Channel and chat data from Telegram."}
 
   # --- Advertising: own-account ad platforms ---------------------------------------------------
