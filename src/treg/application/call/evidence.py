@@ -297,18 +297,21 @@ UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
 # Not transfer encodings. Some Graph and CDN stacks put a charset on Content-Encoding.
-# UTF-8 / ASCII / Latin-1 bytes are already searchable. UTF-16 and UTF-32 must be
-# decoded first: an ASCII credential in those encodings is split by NULs and would
-# miss the UTF-8 scan. Labels are matched after stripping hyphens and underscores
-# so utf-16-le / utf_16_le alias utf-16le.
+# UTF-8 / ASCII bytes are already searchable. Latin-1 must be transcoded to UTF-8:
+# a non-ASCII credential is a single high byte that UTF-8 surrogateescape will not
+# match. UTF-16 and UTF-32 must be decoded first: an ASCII credential in those
+# encodings is split by NULs and would miss the UTF-8 scan. Labels are matched
+# after stripping hyphens and underscores so utf-16-le / utf_16_le alias utf-16le.
 def _charset_token(enc: str) -> str:
     return enc.replace("-", "").replace("_", "")
 
 
 _IDENTITY_CHARSETS = frozenset({
-    "utf8", "usascii", "ascii", "iso88591", "latin1",
+    "utf8", "usascii", "ascii",
 })
-_WIDE_CHARSET_CODECS = {
+_TEXT_CHARSET_CODECS = {
+    "iso88591": "latin-1",
+    "latin1": "latin-1",
     "utf16": "utf-16",
     "utf16le": "utf-16-le",
     "utf16be": "utf-16-be",
@@ -328,8 +331,8 @@ def _looks_like_plaintext_error(raw: bytes) -> bool:
 
 
 def _decode_charset_for_scan(raw: bytes, enc: str) -> bytes | None:
-    """Identity bytes for a charset-labeled body, or None when a wide charset cannot be decoded."""
-    codec = _WIDE_CHARSET_CODECS.get(_charset_token(enc))
+    """Identity bytes for a charset-labeled body, or None when a labeled charset cannot be decoded."""
+    codec = _TEXT_CHARSET_CODECS.get(_charset_token(enc))
     if codec is None:
         return raw
     try:
@@ -449,7 +452,7 @@ def _decompress_one(raw: bytes, enc: str) -> bytes | None:
     if enc in ("", "identity"):
         return raw
     token = _charset_token(enc)
-    if token in _IDENTITY_CHARSETS or token in _WIDE_CHARSET_CODECS:
+    if token in _IDENTITY_CHARSETS or token in _TEXT_CHARSET_CODECS:
         return _decode_charset_for_scan(raw, enc)
     if enc in ("gzip", "x-gzip", "deflate"):
         out = _gzip_deflate_for_scan(raw)

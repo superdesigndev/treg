@@ -372,6 +372,25 @@ class TestOwnKeyErrorBodyIsScannedWhole:
         assert self.KEY not in r.text
         assert r.json() == {"got": "***", "message": "Unsupported get request"}
 
+    async def test_a_latin1_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        password = "pässword1234"
+        secret = (await clients.post("/secrets", json={"name": "latin1-key", "value": password})).json()
+        await clients.post("/tools", json={
+            "name": "latin1-tool", "base_url": "https://api.latin1.test",
+            "bindings": [{"secret_id": secret["id"], "injector": "env", "location": "header",
+                          "name": "Authorization", "format": "Bearer {secret}"}],
+        })
+        body = json.dumps(
+            {"received_password": password, "message": "refused"}, ensure_ascii=False,
+        ).encode("latin-1")
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "iso-8859-1"}))
+        r = await clients.get("/call/latin1-tool/x")
+        assert r.status_code == 400
+        assert password not in r.text
+        assert password.encode("latin-1") not in r.content
+        assert r.json() == {"received_password": "***", "message": "refused"}
+
     async def test_gzip_unscanned_trailing_bytes_are_replaced(self, clients: AsyncClient, monkeypatch):
         await self._tool(clients)
         raw = gzip.compress(b'{"error":"refused"}') + self.KEY.encode()
@@ -475,6 +494,32 @@ class TestEvidenceModuleDirectly:
         assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-be"), "utf-16be") == plain
         assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16"), "utf-16") == plain
         assert call_evidence._decompress_for_scan(b"\x00", "utf-16le") is None
+
+    def test_decompress_latin1_is_decoded_for_scan(self):
+        text = '{"received_password":"pässword1234"}'
+        raw = text.encode("latin-1")
+        plain = text.encode()
+        assert raw != plain
+        assert call_evidence._decompress_for_scan(raw, "latin-1") == plain
+        assert call_evidence._decompress_for_scan(raw, "iso-8859-1") == plain
+        assert call_evidence._decompress_for_scan(raw, "ISO-8859-1") == plain
+
+    def test_redact_error_response_masks_latin1_echoed_password(self, monkeypatch):
+        from types import SimpleNamespace
+
+        password = "pässword1234"
+        monkeypatch.setattr(call_evidence, "_safe_secret_renderings", lambda tool, secrets: [password])
+        body = json.dumps(
+            {"received_password": password, "message": "refused"}, ensure_ascii=False,
+        ).encode("latin-1")
+        assert password.encode("latin-1") in body
+        assert password.encode() not in body
+        redacted, was_redacted = call_evidence.redact_error_response(
+            body, SimpleNamespace(bindings=[]), {}, content_encoding="iso-8859-1")
+        assert was_redacted
+        assert password.encode("latin-1") not in redacted
+        assert password.encode() not in redacted
+        assert json.loads(redacted) == {"received_password": "***", "message": "refused"}
 
     def test_decompress_brotli_output_is_bounded(self):
         brotli = pytest.importorskip("brotli")
