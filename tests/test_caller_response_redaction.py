@@ -330,6 +330,38 @@ class TestOwnKeyErrorBodyIsScannedWhole:
         r = await clients.get("/call/whole-tool/x")
         assert r.content == call_evidence.UNSCANNABLE_ERROR_BODY
 
+    async def test_a_brotli_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        brotli = pytest.importorskip("brotli")
+        await self._tool(clients)
+        raw = brotli.compress(json.dumps({"got": f"Bearer {self.KEY}", "msg": "ad set refused"}).encode())
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "br", "content-length": str(len(raw))}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "br"})
+        assert r.status_code == 400
+        assert "content-encoding" not in r.headers
+        assert r.json() == {"got": "***", "msg": "ad set refused"}
+
+    async def test_a_zstd_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        zstandard = pytest.importorskip("zstandard")
+        await self._tool(clients)
+        raw = zstandard.ZstdCompressor().compress(
+            json.dumps({"got": f"Bearer {self.KEY}", "msg": "ad set refused"}).encode())
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "zstd", "content-length": str(len(raw))}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "zstd"})
+        assert r.status_code == 400
+        assert "content-encoding" not in r.headers
+        assert r.json() == {"got": "***", "msg": "ad set refused"}
+
+    async def test_a_charset_content_encoding_is_scanned(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        body = json.dumps({"got": self.KEY, "message": "Unsupported get request"}).encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "utf-8"}))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.status_code == 400
+        assert r.json() == {"got": "***", "message": "Unsupported get request"}
+
     def test_benign_key_shaped_fields_are_not_rewritten(self):
         body = b'{"key":"uniqueId","message":"auth: required"}'
         assert call_evidence._redact_caller_response(body, [self.KEY]) == (body, False)
@@ -396,3 +428,17 @@ class TestEvidenceModuleDirectly:
         body, was_redacted = call_evidence._redact_caller_response(original, [])
         assert body == original
         assert not was_redacted
+
+    def test_decompress_charset_and_plaintext_mislabels(self):
+        body = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(body, "utf-8") == body
+        assert call_evidence._decompress_for_scan(body, "UTF-8") == body
+        assert call_evidence._decompress_for_scan(body, "not-a-codec") == body
+        assert call_evidence._decompress_for_scan(bytes([0x1b, 0x00]) + b"opaque", "not-a-codec") is None
+
+    def test_decompress_brotli_and_gzip_trailing_padding(self):
+        brotli = pytest.importorskip("brotli")
+        plain = b'{"error":{"message":"ad set refused","code":100}}'
+        assert call_evidence._decompress_for_scan(brotli.compress(plain), "br") == plain
+        padded = gzip.compress(plain) + bytes([0, 0])
+        assert call_evidence._decompress_for_scan(padded, "gzip") == plain
