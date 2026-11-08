@@ -996,6 +996,11 @@ returned and never documented as stable. An output field may say where it lands 
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
+  stable sha256 bucket of capability and team id; a call with no team is never in it), and the
+  other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
+  with no company or name (`{title}`, `{q, title}`) for half the teams, so the two orders are
+  compared on live calls before every team gets it.
   `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
   page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.

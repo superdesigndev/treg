@@ -938,8 +938,10 @@ adapters:
     # `summary` length, enough to check a brief and short of a full page.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
-    in_expr: {body.query: "join(q, company_domain, csv(keywords))", body.numResults: limit,
-              body.contents.highlights.query: "join(q, csv(keywords))"}
+    # A title the caller sent beside `q` rides in the text too (`phrase` skips it when q already
+    # says it, or when q was built from it), so a {q, title} request is not dropped for title.
+    in_expr: {body.query: "join(phrase(q, title), company_domain, csv(keywords))", body.numResults: limit,
+              body.contents.highlights.query: "join(phrase(q, title), csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
     out: {people: results, count: "len(results)"}
     miss: "results == []"

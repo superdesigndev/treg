@@ -338,10 +338,11 @@ def people_search_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-async def _first_providers(ep_id: str, identity: dict, header: str | None = None, n: int = 2) -> list[str]:
+async def _first_providers(ep_id: str, identity: dict, header: str | None = None, n: int = 2,
+                           org_id: int = 1) -> list[str]:
     options = call_route.RouteOptions.from_headers(
         lambda key: header if header and key == call_route.PREFER_HEADER else None)
-    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    caller = SimpleNamespace(org_id=org_id, org=SimpleNamespace(id=org_id, platform_overflow_disabled=False))
     plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
     return [c.endpoint["provider"] for c in plan.candidates][:n]
 
@@ -361,7 +362,68 @@ async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
         prefer_when=((("q",), ("parallel", "exa")), (("q",), ("exa",)))))
     assert (await _first_providers("treg.people.search", identity, header, len(first))) == first
     scoped = await _first_providers("treg.people.search", {"q": "head of tax", "title": "Head of Tax"}, n=99)
-    assert not {"parallel", "exa"} & set(scoped), "a {q} rule never reaches past scoping"
+    assert "parallel" not in scoped, "a {q} rule never reaches past scoping"
+    assert "exa" in scoped, "exa writes the title into its text, so {q, title} keeps it"
+
+
+def test_phrase_leaves_out_what_the_text_already_says():
+    from treg.domain.catalog.routing import paths as P
+    assert P.evaluate("phrase(q, title)", {"q": "head of tax in phoenix", "title": "Head of Tax"}) == "head of tax in phoenix"
+    assert P.evaluate("phrase(q, title)", {"q": "speaks Japanese", "title": "CTO"}) == "speaks Japanese CTO"
+    assert P.evaluate("phrase(q, title)", {"title": "CTO"}) == "CTO"
+    assert P.evaluate("phrase(q, title)", {"q": " ", "title": None}) is None
+
+
+def test_exa_carries_a_title_sent_beside_q_without_repeating_it():
+    """{q, title} keeps exa: the title rides in its text, once. A title-only request, whose q is
+    built from that title, does not get the title twice."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    from treg.domain.catalog.routing.plan import unscoped
+
+    cat = catalog_store.load()
+    contract, exa = cat.contracts["people.search"], cat.adapters["exa.people.search"]
+    both, _ = canonical_identity(contract, {"q": "tax leaders in phoenix", "title": "Head of Tax"})
+    assert adapter_accepts(exa, both) == ("q",) and not unscoped(exa, contract, both)
+    assert exa.to_upstream(both, ("q",))[1]["query"] == "tax leaders in phoenix Head of Tax"
+    titled, _ = canonical_identity(contract, {"title": "Head of Tax", "location": "Phoenix"})
+    assert exa.to_upstream(titled, ("q",))[1]["query"] == "Head of Tax Phoenix"
+    scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
+    assert unscoped(exa, contract, scoped) == ("company_domain",), "a company lookup still skips exa"
+
+
+def test_in_rollout_is_stable_per_team_and_never_without_one():
+    from treg.domain.catalog.routing.contracts import in_rollout
+    picked = [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
+    assert 400 < len(picked) < 600
+    assert picked == [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
+    assert not in_rollout("people.search", None, 99)
+    assert set(picked) <= {o for o in range(1, 1001) if in_rollout("people.search", o, 99)}
+
+
+# org 2 is in the people.search 50% rollout, org 1 is not (in_rollout, a sha256 of capability and team)
+@pytest.mark.parametrize("identity, in_first, out_first", [
+    ({"title": "Head of Tax", "location": "Phoenix"}, "exa", "crawl4ai"),
+    ({"q": "tax leaders in phoenix", "title": "Head of Tax"}, "exa", "crawl4ai"),
+    ({"q": "head of tax in phoenix"}, "exa", "exa"),                                 # unchanged
+    ({"company_domain": "stripe.com", "title": "CTO"}, "crawl4ai", "crawl4ai"),      # unchanged
+    ({"q": "cto", "title": "CTO", "company_domain": "stripe.com"}, "crawl4ai", "crawl4ai"),
+    ({"full_name": "Alice Cooper", "title": "CTO"}, "crawl4ai", "crawl4ai"),
+])
+async def test_half_the_teams_ask_exa_first_for_a_role_without_a_company(
+        clients, people_search_on, identity, in_first, out_first):
+    from treg.domain.catalog.routing.contracts import in_rollout
+    assert in_rollout("people.search", 2, 50) and not in_rollout("people.search", 1, 50)
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=2)) == [in_first]
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=1)) == [out_first]
+
+
+@pytest.mark.parametrize("percent", [0, 100, 50.5, True, "50", None])
+def test_a_prefer_when_percent_outside_1_to_99_fails_the_load(percent):
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                               "prefer_when": [{"sent": ["q"], "prefer": ["exa"], "percent": percent}]}}}
+    with pytest.raises(ValueError, match="prefer_when"):
+        parse_contracts(doc)
 
 
 @pytest.mark.parametrize("domain, first", [
