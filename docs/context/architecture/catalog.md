@@ -1068,7 +1068,9 @@ an invalid extra never disables the primary.
 
 - **The row** (`routing/synthetic.py`): every capability with at least two verified children gets
   `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
-  contract, `cost` = the children's range, `routed_children`). `miss_billed_by` lists children that
+  contract's identity and filters, plus any of `fields`, `max_items`, `summary`, `jq` that at
+  least one child declares as `queryParams` (response-budget controls; they trim that child's
+  response, not the charge), `cost` = the children's range, `routed_children`). `miss_billed_by` lists children that
   bill an answer treg judges a miss; when non-empty the cost carries `varies: true` and
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
@@ -1098,6 +1100,10 @@ an invalid extra never disables the primary.
   deployment, it is dropped and named in `dropped`.
 - **Execution** (`application/call/route.py`): each attempt is a full child `execute_call` with
   `call_ref` `{parent}:r{n}` and the ordinary hold, ladder, relay, settle, audit and cancellation.
+  After `to_upstream` builds the child's identity query, parent query keys among `fields`,
+  `max_items`, `summary` and `jq` that the selected child declares are copied onto that request;
+  adapter-built query wins on a name clash. The child applies them; the parent still wraps the
+  child's answer unaltered.
   - Vendor 4xx (not 402/405/408/410/429) is usually the caller's fault, but scrapers answer 400 for
     their own outages, so the waterfall continues ONLY to candidates that bill nothing for a
     rejection (per_success, free, the team's own key, or per_call at most `CHEAP_RETRY_MICRO`),

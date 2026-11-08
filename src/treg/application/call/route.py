@@ -81,6 +81,7 @@ from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  flags_off, invalid_identity, miss_status)
+from ...domain.catalog.routing.synthetic import RESPONSE_BUDGET_QUERY
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
@@ -676,6 +677,24 @@ def _endpoints(cands) -> list[str]:
     return [c.endpoint["id"] for c in cands]
 
 
+def _with_parent_response_budget_query(parent, ep: dict, query: dict[str, str]) -> dict[str, str]:
+    """Forward parent query keys a child declares as response-budget controls.
+
+    Adapter-built query from `to_upstream` wins on a name clash so a caller cannot
+    overwrite what the adapter sent. Names the child does not declare stay off the
+    child request. The parent still wraps the child's answer unaltered.
+    """
+    declared = ((ep.get("input") or {}).get("queryParams") or {})
+    if not declared:
+        return query
+    forwarded = dict(query)
+    for key, value in parent.input.query_items:
+        if (key in RESPONSE_BUDGET_QUERY and key in declared
+                and key not in forwarded and value is not None):
+            forwarded[key] = value
+    return forwarded
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
@@ -921,6 +940,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             continue
         try:
             query, body = cand.adapter.to_upstream(plan.identity, cand.variant)
+            query = _with_parent_response_budget_query(parent, cand.endpoint, query)
         except Exception as exc:  # noqa: BLE001 — adapter threw; record error and try next candidate
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", None, 0,

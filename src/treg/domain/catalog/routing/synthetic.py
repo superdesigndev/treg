@@ -6,6 +6,10 @@ from .contracts import Adapter, Contract
 from .plan import bills_miss
 
 ROUTED_KIND = "routed"
+# Response-budget query params a child may declare (AnyAPI's header `queryParams`). Copied onto
+# the generated parent so callers can follow a large_result hint without pinning that child.
+# Execution forwards each name only to a child that declares it.
+RESPONSE_BUDGET_QUERY = ("fields", "max_items", "summary", "jq")
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
                    "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
@@ -21,6 +25,18 @@ def _best_variant(contract: Contract, kids: list[dict], adapters: dict[str, Adap
         keys = set(variant)
         return sum(1 for e in kids for v in (adapters[e["id"]].accepts or ()) if set(v) == keys)
     return max(contract.identity, key=lambda v: (_n(v), -len(v)))
+
+
+def _response_budget_query_params(kids: list[dict]) -> dict:
+    """Query params at least one child declares for trimming its response, not the charge."""
+    merged: dict = {}
+    for endpoint in kids:
+        declared = ((endpoint.get("input") or {}).get("queryParams") or {})
+        for name in RESPONSE_BUDGET_QUERY:
+            spec = declared.get(name)
+            if name not in merged and isinstance(spec, dict):
+                merged[name] = dict(spec)
+    return merged
 
 
 def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str, Adapter], cost_view) -> dict | None:
@@ -49,6 +65,11 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                                               + ([f"default {spec['default']!r}"] if (spec or {}).get("default") is not None else [])
                                               + ([spec["note"]] if (spec or {}).get("note") else []))})
     cap = contract.capability
+    budget = _response_budget_query_params(kids)
+    budget_note = (
+        " Query " + ", ".join(f"`{name}`" for name in budget)
+        + " reach a serving child that accepts them and trim the response, not the charge."
+    ) if budget else ""
     # The section its providers file under, so the platform page shows the row beside theirs.
     domains = [e["domain"] for e in children if e.get("domain")]
     return {
@@ -64,13 +85,16 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         "name": f"{cap} — routed: best of {len(kids)} providers, own keys first",
         "summary": contract.summary,
         "input": {"bodyType": "json", "body": body,
+                  **({"queryParams": budget} if budget else {}),
                   "note": ("Send what you know; treg sends each provider only the fields it accepts "
                            f"({variants})"
                            + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
                            + (". Omit a field you don't have: a url field holding something else, such as N/A, "
                               "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "
-                           "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
+                           "X-Treg-Route-* headers, never body fields."
+                           + budget_note
+                           + " The answer is {output, raw, _treg}; "
                            "X-Treg-Served-By names the provider."
                            + (" When you sent a domain, _treg.domain_match says whether the hit's mailbox domain "
                               "matches it." if contract.advice_domain_mismatch else "")

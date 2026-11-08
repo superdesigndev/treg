@@ -153,7 +153,72 @@ def test_a_route_false_adapter_is_never_routed():
     assert [ep["id"] for ep, _, _ in routed] == ["a.find", "b.find"]
     row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: None)
     assert row["routed_children"] == ["a.find", "b.find"]
+    assert "queryParams" not in row["input"]
     assert C.parse_adapters({"adapters": {"c.find": {"route": False}}})["c.find"].route is False
+
+
+def test_routed_row_exposes_child_response_budget_query_params():
+    """A generated parent lists fields/max_items/summary/jq when a child declares them, and no
+    other child query names (those stay on the child)."""
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+                          derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
+    adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                               verified=True) for eid in ("a.find", "b.find")}
+    budget = {
+        "fields": {"type": "string", "required": False, "note": "keep keys"},
+        "max_items": {"type": "integer", "required": False, "min": 0},
+        "summary": {"type": "boolean", "required": False},
+        "jq": {"type": "string", "required": False},
+        "other": {"type": "string", "required": False},
+    }
+    endpoints = [
+        {"id": "a.find", "provider": "a", "input": {"queryParams": budget}},
+        {"id": "b.find", "provider": "b", "input": {"body": {"q": {"type": "str"}}}},
+    ]
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: None)
+    qp = row["input"]["queryParams"]
+    assert set(qp) == {"fields", "max_items", "summary", "jq"}
+    assert qp["fields"]["note"] == "keep keys"
+    assert "Query `fields`, `max_items`, `summary`, `jq`" in row["input"]["note"]
+
+
+def test_routed_x_posts_catalog_lists_response_budget_query_params():
+    """The two reported routed X tools inherit AnyAPI's response-budget query params."""
+    from treg.domain.catalog import store as catalog_store
+
+    cat = catalog_store.load()
+    for eid in ("treg.x.user.posts", "treg.x.search.posts"):
+        qp = ((cat.by_id[eid].get("input") or {}).get("queryParams") or {})
+        assert set(qp) >= {"fields", "max_items", "summary", "jq"}, (eid, sorted(qp))
+
+
+def test_parent_response_budget_query_is_forwarded_only_when_the_child_declares_it():
+    """max_items/summary on the parent reach an AnyAPI-shaped child and not a child without
+    those query params; adapter-built query is not overwritten."""
+    from types import SimpleNamespace
+    from treg.application.call.route import _with_parent_response_budget_query
+
+    parent = SimpleNamespace(input=SimpleNamespace(query_items=(
+        ("max_items", "1"),
+        ("summary", "true"),
+        ("fields", "id"),
+        ("jq", ".posts"),
+        ("other", "x"),
+        ("limit", "5"),
+    )))
+    child = {"input": {"queryParams": {
+        "fields": {}, "max_items": {}, "summary": {}, "jq": {}, "limit": {},
+    }}}
+    out = _with_parent_response_budget_query(parent, child, {"handle": "public", "limit": "20"})
+    assert out["handle"] == "public"
+    assert out["limit"] == "20", "to_upstream query wins on a clash"
+    assert out["max_items"] == "1" and out["summary"] == "true"
+    assert out["fields"] == "id" and out["jq"] == ".posts"
+    assert "other" not in out
+    bare = _with_parent_response_budget_query(parent, {"input": {"body": {"q": {}}}}, {"handle": "public"})
+    assert bare == {"handle": "public"}
 
 
 def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
