@@ -861,6 +861,9 @@ class Settings(BaseSettings):
     # in production.
     turnstile_hostnames: str = ""
     turnstile_mode: Literal["observe", "enforce"] = "observe"
+    # Off: a new GitHub/Google address signs in at once with signup credit, as with no widget; the
+    # email door keeps its check.
+    turnstile_social: bool = True
     # Registry OAuth apps for the non-Google providers (oauth_providers.py). Empty = that provider
     # is listed as unconfigured rather than failing part-way through a consent.
     # treg's own Google Ads developer token, from OUR approved manager account. Ads needs it on
