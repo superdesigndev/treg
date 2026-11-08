@@ -14,7 +14,7 @@ func balanceCmd(env *Env) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "balance",
-		Short: "Your team's prepaid balance: credit left, calls in flight, recent spend.",
+		Short: "Your team's prepaid balance: credit left, calls in flight, recent spend, and the daily cap on treg's keys.",
 		Example: "  treg balance\n" +
 			"  treg balance --limit 50\n" +
 			"  treg balance --json    # micro-USD integers",

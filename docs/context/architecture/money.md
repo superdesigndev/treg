@@ -567,9 +567,11 @@ cumulative target per block (the bonus target is `bonus * refunded // paid`).
 ### Who sees what, history and portal
 
 `_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
-invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
-holds (a machine identity must read the balance it spends, and every 402 already carries
-`balance_micro`); credit blocks and the ledger stay admin+.
+invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure, in-flight
+holds, and the platform-key daily cap (`daily_cap_micro`, `spent_today_micro`,
+`remaining_today_micro` when a cap applies, `resets_at`) — a machine identity must read the
+balance it spends, and every 402 already carries `balance_micro`; credit blocks and the ledger
+stay admin+.
 
 `get_payment_history` builds top-up rows from our own `CreditBlock` rows, so history can never show a
 payment the balance disagrees with. Stripe is asked only for links, in two list calls (`Charge.list`
@@ -620,7 +622,11 @@ computable `usd`, see [catalog](catalog.md)).
 `budget_policy._effective_daily_cap` is the team's `Org.daily_cap_micro` when set, else the
 deployment's `platform_daily_cap_usd` (0 = no limit, the shipped default). The team sets any figure
 through `PATCH /orgs/{id}/settings` (0 = follow the default) and reads it with `GET`
-(`platform_default_micro` beside it). Nothing is clamped.
+(`platform_default_micro` beside it). Nothing is clamped. `GET /orgs/{id}/balance` reports the
+same effective cap to any member, together with `spent_today_micro`, `remaining_today_micro`
+(null when no cap applies) and `resets_at` (the next 00:00 UTC), so `treg balance` and the MCP
+`balance` tool can show today's headroom before a caller hits the ceiling. `treg org daily-cap`
+shows or sets the figure through that same settings contract.
 
 `ledger.spent_today` runs on every metered call inside the reserve transaction, fail-closed, so it is
 ONE primary-key read of `Org.spent_today_micro` / `spent_today_day`. `domain/money` keeps that counter

@@ -158,7 +158,9 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
             "error": "platform_daily_cap_reached",
             "message": (f"this team has reached its daily limit for calls on treg's keys "
                         f"(${ledger.usd(spent):g} of ${ledger.usd(cap):g} today). It resets at 00:00 UTC. "
-                        f"To keep going now, connect your own key: "
+                        f"Inspect or change the cap with `treg org daily-cap` "
+                        f"(today's spend is on `treg balance`). "
+                        f"To keep going now without raising it, connect your own key: "
                         f"treg connections connect --provider <provider>"),
             "spent_today_micro": spent, "daily_cap_micro": cap, "estimated_cost_micro": add_micro,
         })

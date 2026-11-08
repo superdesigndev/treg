@@ -1430,6 +1430,8 @@ async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeyp
         assert d["error"] == "platform_daily_cap_reached"
         assert d["spent_today_micro"] == EP_MICRO and d["daily_cap_micro"] == 1_500
         assert "connect your own key" in d["message"]
+        assert "treg org daily-cap" in d["message"]
+        assert "treg balance" in d["message"]
         assert await _balance(clients) == 1_000_000 - EP_MICRO, "the refused call cost nothing"
     finally:
         get_settings.cache_clear()

@@ -484,6 +484,12 @@ class BalanceOut(TypedDict, total=False):
     balance_usd: float | None
     balance_micro: int | None
     holds_micro: int | None
+    daily_cap_micro: int | None
+    daily_cap_set_by_team: int | None
+    platform_default_micro: int | None
+    spent_today_micro: int | None
+    remaining_today_micro: int | None
+    resets_at: str | None
     error: str | None
     detail: str | None
     teams: list[str] | None         # when a person is in several and none is active
@@ -1809,8 +1815,9 @@ async def resources_list(
 
 @mcp.tool(
     description=(
-        "The team's prepaid balance in USD, and any spend currently in flight. Check it when a call "
-        "is refused for funds, or before a job that will make many calls."
+        "The team's prepaid balance in USD, any spend currently in flight, and today's platform-key "
+        "daily cap (spent, remaining, reset). Check it when a call is refused for funds or for "
+        "platform_daily_cap_reached, or before a job that will make many calls."
     ),
     annotations=_READS,
     structured_output=True
@@ -1839,6 +1846,12 @@ async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
         "balance_usd": round((body.get("balance_micro") or 0) / 1_000_000, 6),
         "balance_micro": body.get("balance_micro"),
         "holds_micro": body.get("holds_micro"),
+        "daily_cap_micro": body.get("daily_cap_micro"),
+        "daily_cap_set_by_team": body.get("daily_cap_set_by_team"),
+        "platform_default_micro": body.get("platform_default_micro"),
+        "spent_today_micro": body.get("spent_today_micro"),
+        "remaining_today_micro": body.get("remaining_today_micro"),
+        "resets_at": body.get("resets_at"),
     }
 
 
@@ -2033,7 +2046,7 @@ async def directory_catalog_call_write(
 @directory_mcp.tool(
     name="balance",
     title="Check Treg Balance",
-    description="Returns the connected team's Treg balance, in-flight holds, team and identity.",
+    description="Returns the connected team's Treg balance, in-flight holds, platform-key daily cap (spent, remaining, reset), team and identity.",
     annotations=_DIRECTORY_BALANCE,
     structured_output=True,
 )

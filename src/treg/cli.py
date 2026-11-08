@@ -57,7 +57,7 @@ from .localproxy import DEFAULT_PORT as _PROXY_DEFAULT_PORT
 from .routers.views import account as account_views
 from .routers.views import catalog as catalog_views
 from .routers.views import toon
-from .routers.views.account import usd as _usd
+from .routers.views.account import daily_cap_line, usd as _usd
 from .routers.views.catalog import clip as _clip, cost_usd as _cost_usd
 
 # TREG_CONFIG points the CLI at an alternate config file (CI, agents, tests — anywhere isolating
@@ -4433,8 +4433,9 @@ def cmd_whoami(args, cfg) -> None:
 
 
 def cmd_balance(args, cfg) -> None:
-    """The team's prepaid balance, what it's made of, and the recent ledger. Amounts are shown in USD;
-    the API's `*_micro` integers are the real values (`--json` for those)."""
+    """The team's prepaid balance, what it's made of, the daily cap on treg-key spend, and the
+    recent ledger. Amounts are shown in USD; the API's `*_micro` integers are the real values
+    (`--json` for those)."""
     with _client(cfg) as c:
         org = _active_org(cfg, c)
         if org is None:
@@ -4476,6 +4477,9 @@ def cmd_balance(args, cfg) -> None:
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
               f"fixing your card.{_R}")
+    cap_line = daily_cap_line(b)
+    if cap_line:
+        print(cap_line.replace("  daily cap", f"  {_M}daily cap{_R}", 1))
     items = (b.get("entries") or {}).get("items") or []
     if not items:
         print(f"\n  {_M}no ledger activity yet — nothing has been spent.{_R}\n")
@@ -4987,6 +4991,43 @@ def cmd_org_budgets(args, cfg) -> None:
             print(f"      {_M}{b['note']}{_R}")
     print(f"\n  {_M}caps are advisory: concurrent calls can overshoot slightly. Your balance is the "
           f"hard limit.{_R}\n")
+
+
+def cmd_org_daily_cap(args, cfg) -> None:
+    """Show or set this team's daily ceiling on spend against treg's keys. 0 follows the
+    deployment default (no limit, by default). Any positive figure is stored as sent; nothing
+    is clamped. Admin+ to set."""
+    with _client(cfg) as c:
+        org_id = _active_org_id(cfg, c)
+        if org_id is None:
+            sys.exit("no active org")
+        if args.usd is None:
+            r = c.get(f"/orgs/{org_id}/settings")
+        else:
+            if args.usd < 0:
+                sys.exit("daily cap must be 0 or more (0 follows the platform default)")
+            r = c.patch(f"/orgs/{org_id}/settings",
+                        json={"daily_cap_micro": int(round(args.usd * 1_000_000))})
+    if _JSON_OVERRIDE or r.status_code >= 400:
+        _show(r)
+        return
+    settings = r.json()
+    cap = int(settings.get("daily_cap_micro") or 0)
+    own = settings.get("daily_cap_set_by_team")
+    default = int(settings.get("platform_default_micro") or 0)
+    if cap <= 0:
+        state = "no limit"
+        note = "following the platform default"
+    else:
+        state = _usd(cap)
+        if own:
+            default_txt = "no limit" if default <= 0 else _usd(default)
+            note = f"set by the team; platform default is {default_txt}"
+        else:
+            note = "platform default"
+    print(f"\n  daily cap: {_A}{state}{_R}  {_M}({note}){_R}")
+    print(f"  {_M}today's spend and remaining headroom are on `treg balance`. "
+          f"Set a figure with `treg org daily-cap <usd>`; 0 follows the platform default.{_R}\n")
 
 
 def cmd_org_overflow(args, cfg) -> None:
@@ -6440,6 +6481,12 @@ def build_parser() -> argparse.ArgumentParser:
     orv = mk(og, "revoke", "Revoke a pending invite before it's used.", "treg org revoke 3")
     orv.add_argument("invite_id", type=int, help="the invite id (from `org invites`)"); orv.set_defaults(fn=cmd_org_revoke)
     mk(og, "members", "List the active team's members and their roles.", "treg org members").set_defaults(fn=cmd_org_members)
+    odc = mk(og, "daily-cap", "Show or set this team's daily ceiling on spend against treg's keys "
+                              "(admin+ to set). 0 follows the platform default.",
+             "treg org daily-cap", "treg org daily-cap 15", "treg org daily-cap 0")
+    odc.add_argument("usd", nargs="?", type=float,
+                     help="daily cap in USD; omit to show; 0 follows the platform default")
+    odc.set_defaults(fn=cmd_org_daily_cap)
     oov = mk(og, "overflow", "Show or set whether a metered call may be served through treg's overflow "
                              "relay when treg's own account is out (admin+).",
              "treg org overflow", "treg org overflow off")
@@ -6979,7 +7026,8 @@ def build_parser() -> argparse.ArgumentParser:
     who = mk(sub, "whoami", "Who this CLI acts as: your account, the active team and your role, the server.",
              "treg whoami", "treg whoami --json")
     who.set_defaults(fn=cmd_whoami)
-    bal = mk(sub, "balance", "Your team's prepaid balance: credit left, calls in flight, recent spend.",
+    bal = mk(sub, "balance", "Your team's prepaid balance: credit left, calls in flight, recent spend, "
+                             "and the daily cap on treg's keys.",
              "treg balance", "treg balance --limit 50", "treg balance --json    # micro-USD integers")
     bal.add_argument("--limit", type=int, default=20, help="how many recent ledger rows (default: 20)")
     bal.set_defaults(fn=cmd_balance)

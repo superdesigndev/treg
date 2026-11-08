@@ -789,6 +789,50 @@ async def test_balance_endpoint_reports_blocks_holds_and_entries(c: AsyncClient)
     assert [e["kind"] for e in body["entries"]["items"]] == ["reserve", "grant"]
 
 
+async def test_balance_endpoint_reports_the_platform_daily_cap(c: AsyncClient):
+    """A limit nobody can see turns into a support ticket the first time a call hits it. The
+    wallet already belongs to every member; the cap, today's spend, remaining headroom and the
+    UTC reset travel with it. 0 means no limit, and remaining is then omitted rather than
+    pretending the team has $0 left."""
+    from datetime import datetime, timedelta, timezone
+
+    org_id, token = await _org(c)
+    empty = (await c.get(f"/orgs/{org_id}/balance", headers=_h(token))).json()
+    assert empty["daily_cap_micro"] == 0
+    assert empty["daily_cap_set_by_team"] is None
+    assert empty["platform_default_micro"] == 0
+    assert empty["spent_today_micro"] == 0
+    assert empty["remaining_today_micro"] is None
+    expected_reset = (
+        datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        + timedelta(days=1)
+    ).strftime("%Y-%m-%dT00:00:00Z")
+    assert empty["resets_at"] == expected_reset
+
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "tikhub.x.y", 12_000)
+    reserved = (await c.get(f"/orgs/{org_id}/balance", headers=_h(token))).json()
+    assert reserved["spent_today_micro"] == 12_000
+    assert reserved["remaining_today_micro"] is None  # still no cap
+
+    raised = await c.patch(f"/orgs/{org_id}/settings",
+                           json={"daily_cap_micro": 5_000_000}, headers=_h(token))
+    assert raised.status_code == 200, raised.text
+    capped = (await c.get(f"/orgs/{org_id}/balance", headers=_h(token))).json()
+    assert capped["daily_cap_micro"] == 5_000_000
+    assert capped["daily_cap_set_by_team"] == 5_000_000
+    assert capped["spent_today_micro"] == 12_000
+    assert capped["remaining_today_micro"] == 5_000_000 - 12_000
+
+    follow = await c.patch(f"/orgs/{org_id}/settings",
+                           json={"daily_cap_micro": 0}, headers=_h(token))
+    assert follow.status_code == 200, follow.text
+    unset = (await c.get(f"/orgs/{org_id}/balance", headers=_h(token))).json()
+    assert unset["daily_cap_micro"] == 0
+    assert unset["daily_cap_set_by_team"] is None
+    assert unset["remaining_today_micro"] is None
+
+
 async def test_balance_endpoint_paginates_entries(c: AsyncClient):
     org_id, token = await _org(c)
     for i in range(4):
@@ -875,6 +919,95 @@ def test_cli_balance_renders_credit_holds_and_ledger(monkeypatch, capsys):
     assert "$0.0120" in out                    # the hold, sub-cent precision preserved
     assert "settle" in out and "-$0.0006" in out and "tikhub.x.y" in out  # sign outside the $
     assert "grant" in out and "$1.00" in out
+
+
+def test_cli_balance_renders_the_daily_cap(monkeypatch, capsys):
+    """When the server includes cap planning fields, `treg balance` prints cap, spent today,
+    remaining and the UTC reset. An older server without those keys stays silent on the line."""
+    from treg import cli
+    from treg.routers.views import account as account_views
+
+    body = {
+        "org_id": 1, "balance_micro": 987_400, "balance_usd": 0.9874,
+        "daily_cap_micro": 5_000_000, "spent_today_micro": 1_230_000,
+        "remaining_today_micro": 3_770_000, "resets_at": "2026-11-09T00:00:00Z",
+        "blocks": [], "holds": [], "entries": {"items": []},
+    }
+
+    class _Resp:
+        status_code = 200
+        text = ""
+        def json(self): return body
+
+    class _C:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, path, **kw): return _Resp()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, **kw: _C())
+    monkeypatch.setattr(cli, "_active_org", lambda cfg, c: {"org_id": 1, "slug": "acme"})
+    cli.cmd_balance(cli.build_parser().parse_args(["balance"]), {})
+    out = capsys.readouterr().out.replace(" — ", " - ")
+    assert "daily cap    $5.00" in out
+    assert "$1.23 used today" in out
+    assert "$3.77 left" in out
+    assert "resets 00:00 UTC" in out
+    assert out == account_views.balance(body, team="acme", autotopup=None)
+
+    body.pop("daily_cap_micro")
+    cli.cmd_balance(cli.build_parser().parse_args(["balance"]), {})
+    silent = capsys.readouterr().out
+    assert "daily cap" not in silent
+
+
+def test_cli_org_daily_cap_shows_and_sets_through_settings(monkeypatch, capsys):
+    """`treg org daily-cap` is the existing GET/PATCH /orgs/{id}/settings contract, not a
+    second way to store the figure. 0 follows the platform default."""
+    from treg import cli
+
+    settings = {
+        "daily_cap_micro": 0, "daily_cap_set_by_team": None, "platform_default_micro": 0,
+        "platform_overflow": True, "archive": True,
+    }
+    patched = []
+
+    class _Resp:
+        def __init__(self, data):
+            self.status_code, self.text, self._data = 200, "", data
+        def json(self): return self._data
+
+    class _C:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, path, **kw):
+            assert path.endswith("/settings")
+            return _Resp(settings)
+        def patch(self, path, **kw):
+            assert path.endswith("/settings")
+            patched.append(kw["json"])
+            settings.update({
+                "daily_cap_micro": kw["json"]["daily_cap_micro"],
+                "daily_cap_set_by_team": kw["json"]["daily_cap_micro"] or None,
+            })
+            return _Resp(settings)
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, **kw: _C())
+    monkeypatch.setattr(cli, "_active_org_id", lambda cfg, c: 1)
+    cli.cmd_org_daily_cap(cli.build_parser().parse_args(["org", "daily-cap"]), {})
+    shown = capsys.readouterr().out
+    assert "no limit" in shown
+    assert "following the platform default" in shown
+
+    cli.cmd_org_daily_cap(cli.build_parser().parse_args(["org", "daily-cap", "15"]), {})
+    set_out = capsys.readouterr().out
+    assert patched == [{"daily_cap_micro": 15_000_000}]
+    assert "$15.00" in set_out
+    assert "set by the team" in set_out
+
+    cli.cmd_org_daily_cap(cli.build_parser().parse_args(["org", "daily-cap", "0"]), {})
+    capsys.readouterr()
+    assert patched[-1] == {"daily_cap_micro": 0}
+    assert settings["daily_cap_micro"] == 0
 
 
 async def test_demo_orgs_get_no_promo_credit(c: AsyncClient):

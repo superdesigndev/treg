@@ -17,7 +17,7 @@ var helpGroups = []struct {
 		{"catalog", "Find a tool by what you want to DO. Every endpoint shows its price."},
 		{"call", "Call a tool: a catalog endpoint by id, or one of your own by URL."},
 		{"host", "Host a reference image / audio / video at a public URL for a vendor to fetch."},
-		{"balance", "Prepaid balance: credit left, calls in flight, recent spend."},
+		{"balance", "Prepaid balance: credit left, calls in flight, recent spend, daily cap."},
 		{"topup", "Add funds, or set up automatic top-ups."},
 		{"feedback", "Share a problem or suggestion about treg."},
 		{"review", "Rate a catalog call after using its result."},
