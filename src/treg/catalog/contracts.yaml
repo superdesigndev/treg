@@ -377,8 +377,10 @@ contracts:
       needs: [name, profile_url, email]
       fields:
         name: {type: str}
-        title: {type: str, note: "current job title, or the provider's headline when it has no title"}
-        company: {type: str, note: "current employer's name"}
+        title: {type: str, note: "current job title, or the provider's headline when it has no title; when `title_until` is set, the person's last dated title, not a current one"}
+        company: {type: str, note: "current employer's name; when `title_until` is set, the employer of that last title"}
+        title_since: {type: str, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
+        title_until: {type: str, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
         company_domain: {type: str}
         location: {type: str}
         profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}

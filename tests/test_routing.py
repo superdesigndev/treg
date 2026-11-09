@@ -375,6 +375,18 @@ def test_phrase_leaves_out_what_the_text_already_says():
     assert P.evaluate("phrase(q, title)", {"q": " ", "title": None}) is None
 
 
+def test_current_role_is_the_open_role_not_the_first_listed():
+    from treg.domain.catalog.routing import paths as P
+    ended = {"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}}
+    now = {"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}}
+    advisor = {"title": "Advisor", "dates": {"from": "2019-05-01", "to": None}}
+    assert P.current_role([ended, now, advisor]) is now, "the latest-started role with no end date"
+    assert P.current_role([ended, {"title": "Intern", "dates": {"from": "2012", "to": "2013"}}]) is ended
+    assert P.current_role([{"title": "A"}, {"title": "B"}])["title"] == "A", "no dates keeps list order"
+    assert P.current_role([{"title": "A"}, {"title": "B", "dates": {"from": "2010"}}])["title"] == "B", "a dated start wins"
+    assert P.current_role([]) is None and P.current_role(None) is None
+
+
 def test_in_rollout_is_stable_per_team_and_never_without_one():
     from treg.domain.catalog.routing.contracts import in_rollout
     picked = [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
