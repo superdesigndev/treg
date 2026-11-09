@@ -327,7 +327,7 @@ endpoints:
     test_request:
       queryParams: {url: "https://www.linkedin.com/in/parrsam/"}
     price: {value: '1', currency: credit, per: 1, unit: call}
-    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, {path: response.name, op: absent}]}}
     miss:
       status: [404]
       means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
