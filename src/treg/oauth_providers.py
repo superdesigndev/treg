@@ -4256,6 +4256,31 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+AUTOM = OAuthProvider(
+    service="autom",
+    display_name="Autom",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Autom API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.autom.dev",
+    setup_action_label="Get your Autom API key",
+    setup_steps=(
+        "Sign in to Autom and open Settings → API → Keys.",
+        "Copy your API key.",
+    ),
+    setup_note="Each search spends credits (1 per call, 3 for Google AI Mode); the usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Google, Bing, Brave, DuckDuckGo and Yahoo search results as JSON: web, news, maps, shopping, images, jobs and AI Mode.",
+    base_url="https://api.autom.dev",
+    docs_url="https://docs.autom.dev",
+    probe_path="/v1/usage",  # free; an invalid key gets 401 {"error": "Invalid API Key"}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4274,6 +4299,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        AUTOM,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,

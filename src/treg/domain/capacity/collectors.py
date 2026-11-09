@@ -1072,6 +1072,15 @@ async def _piapi(c, key):
             "note": "equivalent_in_usd from account info"}
 
 
+async def _autom(c, key):
+    d = await _get(c, "https://api.autom.dev/v1/usage", headers={"x-api-key": key})
+    remaining = _finite(d.get("remaining")) if isinstance(d, dict) else None
+    if remaining is None or remaining < 0:
+        raise ValueError("Autom returned no valid remaining-credit balance")
+    return {"value": remaining, "unit": "credits",
+            "note": f"used {d.get('total_used', '?')} this period, renews {d.get('renewal_date') or '?'}"}
+
+
 BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
@@ -1150,6 +1159,7 @@ BALANCE_ROUTES = {
     "apify": _apify,
     "serpstat": _serpstat,
     "thecompaniesapi": _thecompaniesapi,
+    "autom": _autom,
 }
 
 # Verified to publish NO free standalone balance/credits API. Some are dashboard-only; Scrubby

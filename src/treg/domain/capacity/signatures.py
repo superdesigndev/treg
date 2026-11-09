@@ -53,6 +53,15 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    # Autom: an empty balance is a 402 {"error": "Payment required"}; a call costing more than the
+    # balance left is a 402 {"error": "Insufficient credits: N required, M available"}; an account with
+    # unpaid invoices is a 402 {"error": "You have open invoices: ..."}. Read from the vendor's API code.
+    Signature("autom", 402, r"payment required|insufficient credits|open invoices", "balance"),
+    # Autom: its rate limits answer 401, not 429: {"error": "Rate limit exceeded for the API key: quota
+    # daily"} (or total, weekly, monthly) for a per-key quota, {"error": "Rate limit exceeded: ..."} past the
+    # plan's requests per second. Read from the vendor's API code; the per-second one was observed live.
+    Signature("autom", 401, r"rate limit exceeded for the api key: quota", "quota"),
+    Signature("autom", 401, r"rate limit exceeded", "burst"),
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("corpoapi", 402, r"free_tier_exhausted", "balance", tripwire=True),
