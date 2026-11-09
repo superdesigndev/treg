@@ -934,15 +934,16 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     # The passages that match the brief come back with each row (not billed on top of the search):
-    # an agent checks the brief against them instead of fetching every profile. Capped at the row's
-    # `summary` length, enough to check a brief and short of a full page.
+    # an agent checks the brief against them instead of fetching every profile. 2000 characters carry
+    # the current role, its dates and the place; at 1000 an agent kept people it could not check
+    # (a past title, an unstated funding stage). The place rides in the passage query too.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
     # A title and place the caller sent beside `q` ride in the text too (`phrase` skips what q
     # already says, or what q was built from), so the search keeps the caller's role and place.
     in_expr: {body.query: "join(phrase(q, title, location, country_name(country)), company_domain, csv(keywords))", body.numResults: limit,
-              body.contents.highlights.query: "join(phrase(q, title), csv(keywords))"}
-    const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
+              body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
+    const: {body.category: people, body.contents.highlights.maxCharacters: 2000}
     out: {people: results, count: "len(results)"}
     miss: "results == []"
     row: {name: "coalesce(entities[0].properties.name, title)", title: "entities[0].properties.workHistory[0].title", company: "entities[0].properties.workHistory[0].company.name", location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}

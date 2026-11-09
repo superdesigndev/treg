@@ -1899,7 +1899,8 @@ async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_wh
     cat = catalog_store.load()
     exa = cat.adapters["exa.people.search"]
     monkeypatch.setitem(cat.adapters, "exa.people.search", dataclasses.replace(
-        exa, in_expr={**exa.in_expr, "body.query": "join(q, company_domain, csv(keywords))"}))
+        exa, in_expr={**exa.in_expr, "body.query": "join(q, company_domain, csv(keywords))",
+                      "body.contents.highlights.query": "join(q, csv(keywords))"}))
     seen2 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"*": [(200, {"results": [{"name": "Ada L", "url": "https://linkedin.com/in/al"}]})] * 12}, seen2))
