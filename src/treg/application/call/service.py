@@ -41,7 +41,7 @@ from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import keyslots
+from . import admission, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1260,6 +1260,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         ), request, call_ref)
         request.context.endpoint_id = mk.endpoint_id
 
+    if mk is not None and mk.metered:
+        # Before anything reaches the provider on treg's account: the public-resource check below,
+        # the direct reserve and an overflow-only attempt all spend it.
+        try:
+            await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
+        except CallFailure as exc:
+            # treg wrote this refusal and it holds no credential, so it is recorded as it stands.
+            _audit(exc.status_code, charged_micro=0, refused_by=_refusal_kind(exc.status_code),
+                   answered=False, error_response=f"treg: {exc.detail}"[:_ERROR_RESPONSE_MAX])
+            raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
     if mk is not None and mk.tier == "platform" and mk.public_resource_ids:

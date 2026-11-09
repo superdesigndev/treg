@@ -1002,6 +1002,38 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     assert "not enough for this call" in blob, "the diagnosis must survive"
 
 
+async def test_a_402_THROUGH_CALL_MEDIA_carries_no_link_either(clients, monkeypatch):
+    """`call_media` relays its own error body; a balance refusal there must not link out either."""
+    from sqlmodel import select
+
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "PLATKEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
+    get_settings.cache_clear()
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    token = clients.headers["X-Treg-Token"]
+    async with session_maker() as db:
+        org = (await db.execute(select(Org).where(Org.id == org_id))).scalar_one()
+        org.balance_micro = 0
+        db.add(org)
+        await db.commit()
+    try:
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "call_media", {
+                "endpoint_id": "minimax.voice-gen.speech-2-8-turbo",
+                "body": {"model": "speech-2.8-turbo", "text": "hello", "stream": False,
+                         "output_format": "url", "voice_setting": {"voice_id": "English_expressive_narrator"}}},
+                token=token)
+    finally:
+        get_settings.cache_clear()
+    assert out.get("status") == 402, out
+    blob = json.dumps(out)
+    assert "http://" not in blob and "https://" not in blob and "topup_url" not in blob, blob
+
+
 # ---- the expired-token challenge: what makes silent refresh possible -------------------------
 
 async def test_an_EXPIRED_access_token_gets_401_invalid_token(clients):
