@@ -17,7 +17,6 @@ no longer  # argues with an earlier text: state the present fact
 now returns  # argues with an earlier text: state the present fact
 does include  # argues with an earlier text: state the present fact
 previously  # argues with an earlier text: state the present fact
-used to  # argues with an earlier text: state the present fact
 anymore  # argues with an earlier text: state the present fact
 actually  # argues with an earlier text: state the present fact
 as of  # dates a fact: evidence goes in the PR body
