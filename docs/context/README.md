@@ -32,7 +32,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
 | [Org admission - published pause, rate and concurrency limits](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
-| [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, promotions.py, … |
+| [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, admission.py, … |
 | [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, jsontext.py, ssrf.py, api.py, … |
 | [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | shipped | __init__.py, __main__.py, records.py, engine.py, … |
 | [Route rules - a published provider order per segment of a routed capability](architecture/route-rules.md) | building | rules.py, route_rules.py, route.py, call_events.py, … |
