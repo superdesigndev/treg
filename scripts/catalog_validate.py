@@ -27,7 +27,8 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
     (scripts/catalog_text_reflect.txt) in a row's summary and notes, on every row, or with
     `--base REF` on the rows added or changed against REF (catalog-schema.md, "Summary and note")
   - with `--base REF`, a row keeps the spelling (today's `cost` or v2) it has on REF, unless
-    `--allow-respelling` (the `catalog-migration` label)
+    `--allow-respelling`; catalog-added.yml runs `--base` on every pull request and passes
+    `--allow-respelling` when the pull request carries the `catalog-migration` label
   - a `verified` endpoint must have an existing example_response file, and every example file
     parses and stays under EXAMPLE_MAX_BYTES
   - an extended endpoint a verification run has touched claims exactly one non-empty state
@@ -41,19 +42,6 @@ scripts/catalog_ingest.py: those entries need only id/platform/method/path/summa
 capability (nothing has been mapped to the taxonomy yet). Id-prefix, id-uniqueness, platform
 integrity and the leak scan apply to BOTH — an extended entry that does declare a capability is
 held to the core referential rules.
-
-Caller-facing text. The writing rules are catalog-schema.md "Summary and note"; this script only
-warns, and the author decides. Length is the token limits and only them: SUMMARY_TOKENS for a
-summary and NOTE_TOKENS for a note. No tokenizer is a dependency, so a token is a run of letters
-and digits or one CJK character, and punctuation is not counted. Every entry of
-scripts/catalog_text_reflect.txt (its header gives the format) found in a row's summary, note,
-parameter notes or charge notes warns with the entry and its reason.
-
-A plain run warns on every row. `--base REF` warns only on the rows added or changed against REF,
-so an author sees the rows they touched; `catalog-added.yml` runs it on every pull request against
-the base branch. The one error under `--base` is the spelling: a row written in today's `cost` on
-REF and in v2 `price` on the head, or back, fails unless `--allow-respelling` is passed, which the
-workflow does when the pull request carries the `catalog-migration` label.
 
 The evidence rule is deliberately tier-blind, and needed no loosening when the extended tier gained
 generated `test_request`s and live verification (scripts/catalog_verify_extended.py): `verified`
@@ -224,7 +212,8 @@ def check_added(ep: dict, where: str, errors: list[str]) -> None:
         fail(errors, where, f"`added: {added}` is in the future; it is the UTC day the tool reached main")
 
 
-# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character.
+# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character;
+# punctuation is not counted.
 SUMMARY_TOKENS = 50
 NOTE_TOKENS = 75
 _CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"

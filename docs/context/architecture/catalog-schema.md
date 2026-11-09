@@ -171,13 +171,12 @@ The writing rules no check can judge:
 - **Both.** State the present fact; never argue with an earlier version. Do not contradict another
   field. Say each thing once.
 
-A note in that shape: "When an organic item's domain is google.com, its url is a google.com/goto
-wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination
-host; any other breadcrumb means the answer does not hold it."
+A note in that shape: "Answers for a private account are empty: check `is_private` before paging."
 
-The validator warns when a summary or note is long or contains a word from the reflection list;
-each warning names the word and why, and the author decides. Its only error is a row respelled
-between `cost:` and `price:` without the `catalog-migration` label. Run
+The validator warns when a summary runs over about 50 tokens or a note over about 75, and when
+either contains a word from the reflection list; each warning names the word and why, and the
+author decides. With `--base` it adds one error: a row respelled between `cost:` and `price:`
+without the `catalog-migration` label. Run
 `uv run python scripts/catalog_validate.py --base origin/main` locally to see the warnings for the
 rows you touched.
 
