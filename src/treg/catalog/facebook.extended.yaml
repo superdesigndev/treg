@@ -163,7 +163,7 @@ endpoints:
   method: GET
   path: /{page_id}/feed
   name: "Your Facebook Page feed — own posts plus visitor posts"
-  summary: 'The Page''s feed: its own posts plus visitor posts, with message, created_time and attachments'
+  summary: 'The Page''s feed: its own posts plus visitor posts, with message, created_time and attachments. Visitor posts require pages_read_user_content (manage tier); without it only the Page''s own posts appear'
   scope: own_account
   cost:
     type: free
@@ -172,6 +172,7 @@ endpoints:
     unit: call
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
+  scope_gap: 'treg''s OAuth app does not request pages_read_user_content on read/post tiers; without it Meta returns only the Page''s own posts. Reconnect with manage tier to see visitor posts (requires Meta Advanced Access approval)'
   capability: facebook.page.feed
 - id: facebook.x.page-leadgen-forms
   added: '2026-07-28'
