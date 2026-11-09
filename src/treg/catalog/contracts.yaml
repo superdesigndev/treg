@@ -381,6 +381,8 @@ contracts:
         company: {type: str, note: "current employer's name; when `title_until` is set, the employer of that last title"}
         title_since: {type: str, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
         title_until: {type: str, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
+        past_titles: {type: list, note: "titles of roles the person has left, latest first, at most five, where the provider lists a work history: a profile can match a search on one of these"}
+        title_match: {type: str, note: "set by treg when you sent `title`: `current` when `title` holds that role now, `past` when the person held it only in the past or holds no role now. Rows are ordered current, then unmarked, then past"}
         company_domain: {type: str}
         location: {type: str}
         profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
@@ -389,6 +391,9 @@ contracts:
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
         summary: {type: str, max: 2000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 2000 characters: what to check the brief against"}
+      # A semantic search matches the whole work history: a former holder of the asked role ranks
+      # with the current ones unless the rows are ordered by the role held now.
+      rank_by_role: {asked: title, now: title, past: past_titles, ended: title_until, flag: title_match}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]

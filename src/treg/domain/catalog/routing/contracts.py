@@ -140,6 +140,12 @@ class Contract:
     row_of: str = ""
     row_fields: dict[str, dict] = field(default_factory=dict)
     row_needs: tuple[str, ...] = ()
+    # `row.rank_by_role`: when the caller sent the role it wants (`asked`, an identity key), rows
+    # whose current title (`now`) holds it lead, rows that held it only in the past (`past`) or hold
+    # no role now (`ended` set) go last, and `flag` says which: `current` or `past`. A semantic
+    # search matches the whole history, so without it a former holder of the role ranks with the
+    # current ones. Empty = rows keep the provider's order.
+    row_rank: dict[str, str] = field(default_factory=dict)
     # Identity key -> expression over the identity and filters, a value built for a provider that
     # accepts NO variant the caller supplied (`q` from title + keywords + location, so a free-text
     # people search can answer a `{title}` request). A provider that can take the caller's own
@@ -171,6 +177,27 @@ class Contract:
             if any(sent == set(keys) for keys in self.fill_limit_when):
                 return limit
         return self.fill_rows or None
+
+    def rank_rows(self, identity: dict, rows: list) -> list:
+        """The rows in `row_rank` order: holders of the asked role now, then rows that say nothing
+        either way, then past holders and people with no role now. The provider's order stands
+        within each group, and a row is never dropped: the caller paid for it."""
+        cfg = self.row_rank
+        asked = _title_words((identity or {}).get(cfg["asked"])) if cfg else set()
+        if not asked:
+            return rows
+        holds = lambda v: isinstance(v, str) and asked <= _title_words(v)  # noqa: E731
+        ranked = []
+        for r in rows:
+            if not isinstance(r, dict):
+                ranked.append((1, r))
+                continue
+            ended, now = bool(r.get(cfg["ended"])), holds(r.get(cfg["now"]))
+            past = now or any(holds(t) for t in r.get(cfg["past"]) or [])
+            flag = "current" if now and not ended else "past" if past else None
+            ranked.append((0 if flag == "current" else 2 if flag or ended else 1,
+                           {**r, cfg["flag"]: flag} if flag else r))
+        return [r for _, r in sorted(ranked, key=lambda t: t[0])]
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -352,6 +379,19 @@ ADAPTER_KEYS = frozenset({
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
+# Words a title can drop without naming another role ('Head of Sales' holds 'Head Sales').
+_TITLE_FILLER = frozenset({"a", "an", "and", "at", "for", "in", "of", "the", "to"})
+
+
+def _title_words(v: object) -> set[str]:
+    """A title's words, lowercased, singular ('Evangelists' is 'evangelist') and without filler:
+    a title holds an asked role when it has every word of it ('Senior Developer Evangelist' holds
+    'Developer Evangelist'; 'Developer Advocate' does not)."""
+    if not isinstance(v, str):
+        return set()
+    words = re.findall(r"[a-z0-9]+", v.lower())
+    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+            for w in words if w not in _TITLE_FILLER}
 
 
 def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
@@ -422,7 +462,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
             stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
             identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
-            **_parse_row(cap, c.get("row"), c.get("output") or {}),
+            **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
     return out
 
@@ -537,7 +577,7 @@ def default_prefer(contract: Contract, identity: dict[str, Any], given=None, org
     return [*first, *(p for p in contract.prefer_for(given, org_id) if p not in first)]
 
 
-def _parse_row(cap: str, raw, output: dict) -> dict:
+def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
     if not raw:
         return {}
     of, fields = raw.get("of") if isinstance(raw, dict) else None, (raw or {}).get("fields") if isinstance(raw, dict) else None
@@ -547,12 +587,19 @@ def _parse_row(cap: str, raw, output: dict) -> dict:
     if not needs or any(k not in fields for k in needs):
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
     row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
+    rank = raw.get("rank_by_role") or {}
+    if rank and (not isinstance(rank, dict) or set(rank) != {"asked", "now", "past", "ended", "flag"}
+                 or rank["asked"] not in types or any(rank[k] not in row_fields for k in ("now", "past", "ended", "flag"))):
+        # A misnamed field would rank nothing and flag nothing, silently.
+        raise ValueError(f"contract {cap}: row rank_by_role maps asked (an identity key) and now, past, ended, "
+                         f"flag (row fields), got {rank!r}")
     for k, spec in row_fields.items():
         if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)
                               or spec["max"] < 1 or spec.get("type") != "str"):
             # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row.
             raise ValueError(f"contract {cap}: row field {k} `max` is a positive whole number on a str field")
-    return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs}
+    return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs,
+            "row_rank": {str(k): str(v) for k, v in rank.items()}}
 
 
 def _parse_complete(cap: str, raw, output: dict) -> tuple[str, ...]:

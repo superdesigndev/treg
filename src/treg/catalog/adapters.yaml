@@ -952,6 +952,7 @@ adapters:
           company: "get(current_role(entities[0].properties.workHistory), 'company.name')",
           title_since: "get(current_role(entities[0].properties.workHistory), 'dates.from')",
           title_until: "get(current_role(entities[0].properties.workHistory), 'dates.to')",
+          past_titles: "past_titles(entities[0].properties.workHistory)",
           location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
   parallel.people.search:
     accepts: [[q]]

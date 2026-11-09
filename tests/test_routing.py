@@ -387,6 +387,46 @@ def test_current_role_is_the_open_role_not_the_first_listed():
     assert P.current_role([]) is None and P.current_role(None) is None
 
 
+def test_past_titles_are_the_ended_roles_latest_first():
+    from treg.domain.catalog.routing import paths as P
+    hist = [{"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}},
+            {"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}},
+            {"title": "Intern", "dates": {"from": "2012", "to": "2013"}},
+            {"title": "Developer Evangelist", "dates": {"from": "2014", "to": "2016"}}]
+    assert P.past_titles(hist) == ["Developer Evangelist", "Intern"], "ended roles only, each once"
+    assert P.past_titles([hist[0]]) is None and P.past_titles(None) is None
+
+
+def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
+    """`row.rank_by_role`: a semantic search matches the whole history, so a former holder of the
+    role came back beside current ones; the router puts the role held now first and flags each."""
+    c = catalog_store.load().contracts["people.search"]
+    cfg = c.row_rank
+    now = {"name": "A", cfg["now"]: "Senior Developer Evangelist"}
+    left = {"name": "B", cfg["now"]: "Support Engineer", cfg["past"]: ["Developer Evangelist"]}
+    other = {"name": "C", cfg["now"]: "Developer Advocate"}
+    retired = {"name": "D", cfg["now"]: "Consultant", cfg["ended"]: "2024-01"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelists"}, [left, retired, other, now])
+    assert [r["name"] for r in out] == ["A", "C", "B", "D"], "now, then unknown, then past, provider order within"
+    assert out[0][cfg["flag"]] == "current" and out[2][cfg["flag"]] == "past" and cfg["flag"] not in out[1]
+    held_then_left = {"name": "E", cfg["now"]: "Developer Evangelist", cfg["ended"]: "2025-12"}
+    assert c.rank_rows({cfg["asked"]: "developer evangelist"}, [held_then_left])[0][cfg["flag"]] == "past"
+    rows = [left, now]
+    assert c.rank_rows({"q": "developer evangelists"}, rows) is rows, "no asked role: the provider's order"
+
+
+def test_a_malformed_rank_by_role_fails_the_load():
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    base = {"identity": [{"title": "str"}], "output": {"people": {"type": "list"}},
+            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}, "title": {"type": "str"},
+                                                                   "past": {"type": "list"}, "until": {"type": "str"}, "m": {"type": "str"}}}}
+    ok = {"asked": "title", "now": "title", "past": "past", "ended": "until", "flag": "m"}
+    assert parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": ok}}}})["y"].row_rank == ok
+    for bad in ({**ok, "asked": "q"}, {**ok, "flag": "nope"}, {"asked": "title"}):
+        with pytest.raises(ValueError, match="rank_by_role"):
+            parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": bad}}}})
+
+
 def test_in_rollout_is_stable_per_team_and_never_without_one():
     from treg.domain.catalog.routing.contracts import in_rollout
     picked = [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
@@ -2135,6 +2175,22 @@ async def test_a_q_search_fills_to_the_limit_the_caller_sent(clients: AsyncClien
     r2 = await clients.post("/call/treg.people.search", json={"q": "head of tax in phoenix", "limit": 5},
                             headers={"X-Treg-Route-Min-Results": "1"})
     assert [p for p, *_ in seen] == ["exa"] and "merged_from" not in r2.json()["_treg"]
+
+
+async def test_a_title_search_answers_with_current_holders_first(clients: AsyncClient, people_search_on, monkeypatch):
+    def person(i, history):
+        return {"url": f"https://linkedin.com/in/p{i}", "entities": [{"properties": {"name": f"P{i}", "workHistory": history}}]}
+    left = person(0, [{"title": "Support Engineer", "dates": {"from": "2026-01", "to": None}},
+                      {"title": "Developer Evangelist", "dates": {"from": "2016", "to": "2025-12"}}])
+    now = person(1, [{"title": "Developer Evangelist", "dates": {"from": "2023-01", "to": None}}])
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": [left, now]})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search", json={"title": "Developer Evangelist", "limit": 2},
+                           headers={"X-Treg-Route-Prefer": "exa", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    people = r.json()["output"]["people"]
+    assert [(p["name"], p.get("title_match")) for p in people] == [("P1", "current"), ("P0", "past")]
+    assert people[1]["past_titles"] == ["Developer Evangelist"]
 
 
 async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
