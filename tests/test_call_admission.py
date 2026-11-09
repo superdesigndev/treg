@@ -15,6 +15,9 @@ from treg.infra.db import _engine, session_maker
 from treg.models import Hold, LedgerEntry
 
 from test_marketplace_call import EP, EP_MICRO, _balance, platform_on  # noqa: F401 - fixture reuse
+from test_mcp_directory import _call_tool as _directory_call_tool, paired_mcp_session
+from test_routing import ROUTED, _relay_by_provider, enrichment_on  # noqa: F401 - fixture reuse
+from treg.application.call import service as call_service
 
 SIGNUP_EMAIL = "tim@superdesign.dev"  # the `clients` fixture's verified owner
 
@@ -69,7 +72,20 @@ async def test_a_denied_call_is_a_403_with_the_remedy_and_moves_no_money(clients
     assert set(kinds) == {"grant"}, "a refusal before the reserve writes no money entry"
     await audit.drain()
     row = (await clients.get("/calls")).json()[0]
-    assert (row["status_code"], row["refused_by"]) == (403, "policy")
+    assert (row["status_code"], row["refused_by"], row["cost_charged_micro"]) == (403, "policy", 0)
+
+
+async def test_a_team_that_already_paid_is_not_told_to_add_funds(clients, platform_on, admission):
+    admission["decision"] = policy.CallDecision.DENY
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, 5_000_000, "pi_admission_paid")
+        await db.commit()
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 403, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "own_key_required" and "topup_url" not in d
+    assert "add funds" not in d["message"] and "treg connections connect --provider tikhub" in d["message"]
 
 
 async def test_a_team_that_bought_credit_says_so(clients, platform_on, admission):
@@ -98,7 +114,8 @@ async def test_a_call_on_the_teams_own_key_never_asks(clients, platform_on, admi
     assert admission["asked"] == []
 
 
-async def test_a_failing_extension_lets_the_call_through(clients, platform_on, admission, caplog):
+async def test_a_failing_extension_lets_the_call_through(clients, platform_on, admission, caplog, monkeypatch):
+    monkeypatch.setattr(policy, "_failed_logged", {})
     admission["raise"] = RuntimeError("private-rule-name")
     with caplog.at_level(logging.WARNING, logger="treg"):
         r = await clients.get(f"/call/{EP}?aweme_id=7")
@@ -124,3 +141,76 @@ async def test_a_denied_call_does_not_hold_its_idempotency_key(clients, platform
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
     assert r.status_code == 200, r.text
     assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
+
+
+async def test_a_routed_job_refused_everywhere_answers_the_refusal_not_a_502(
+    clients, enrichment_on, admission, monkeypatch,
+):
+    admission["decision"] = policy.CallDecision.DENY
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": []}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"})
+    assert r.status_code == 403, r.text
+    d = r.json()["detail"]
+    assert (d["error"], d["endpoint_id"], d["topup_url"]) == ("funds_required", ROUTED, "/app#billing")
+    assert len(d["tried"]) == len(admission["asked"]) > 1
+    assert {t["outcome"] for t in d["tried"]} == {"skipped"}
+    assert seen == [] and await _balance(clients) == before, "nothing reached a provider or moved money"
+
+
+async def test_a_routed_job_moves_past_a_refused_candidate(clients, enrichment_on, monkeypatch):
+    """A refusal is about one candidate's way of paying: it skips without spending the error allowance."""
+    asked = []
+
+    async def handler(ctx):
+        asked.append(ctx.provider)
+        return policy.CallDecision.DENY if ctx.provider == "tomba" else policy.CallDecision.ALLOW
+    registry = policy.PolicyRegistry()
+    registry.on_call_admission(handler)
+    monkeypatch.setattr(policy, "registry", registry)
+    hit = {"data": {"email": "patrick@stripe.com", "score": 95, "first_name": "Patrick",
+                    "last_name": "Collison", "verification": {"status": "valid"}}}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, hit)] * 6}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"})
+    assert r.status_code == 200, r.text
+    assert asked[0] == "tomba" and len(asked) >= 2
+    assert r.headers["X-Treg-Served-By"].split(".")[0] != "tomba"
+    assert [p for p, *_ in seen] and "tomba" not in [p for p, *_ in seen]
+
+
+@pytest.mark.parametrize(("path", "tool"), [("/mcp/", "call"), ("/mcp/v2/", "catalog_call_read")])
+async def test_over_mcp_the_refusal_carries_no_payment_link(clients, platform_on, admission, path, tool):
+    """The policy the 402 path already keeps: nothing on MCP points a user at a payment page."""
+    admission["decision"] = policy.CallDecision.DENY
+    async with paired_mcp_session() as session:
+        out = await _directory_call_tool(session, tool, {"endpoint_id": EP, "params": {"aweme_id": "7"}},
+                                         clients.headers["X-Treg-Token"], path=path)
+    assert out["status"] == 403, out
+    blob = str(out)
+    assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob, blob
+    assert "can't pay for this tool" in out["hint"]
+    assert "treg connections connect --provider tikhub" in blob, "the own-key way out survives"
+
+
+async def test_call_media_carries_no_payment_link_either(clients, admission, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "PLATFORM-MINIMAX-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
+    get_settings.cache_clear()
+    admission["decision"] = policy.CallDecision.DENY
+    try:
+        async with paired_mcp_session() as session:
+            out = await _directory_call_tool(session, "call_media", {
+                "endpoint_id": "minimax.voice-gen.speech-2-8-turbo",
+                "body": {"model": "speech-2.8-turbo", "text": "hello", "stream": False, "output_format": "url",
+                         "voice_setting": {"voice_id": "English_expressive_narrator"}}},
+                clients.headers["X-Treg-Token"], path="/mcp/")
+    finally:
+        get_settings.cache_clear()
+    assert out["status"] == 403, out
+    assert admission["asked"][0][0].platform == "voice-gen"
+    blob = str(out)
+    assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob, blob
+

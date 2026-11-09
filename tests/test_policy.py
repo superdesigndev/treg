@@ -36,6 +36,7 @@ async def test_handler_decides(decision):
 
 @pytest.fixture
 def faults(monkeypatch):
+    monkeypatch.setattr(policy, "_failed_logged", {})
     seen = []
     monkeypatch.setattr(policy.analytics, "capture_fault", lambda **kw: seen.append(kw))
     return seen
@@ -290,3 +291,21 @@ async def test_no_transaction_is_open_while_the_extension_decides(clients, monke
     token = await verified_identity(clients, "pool@example.org")
     await _team(clients, token, "pool-team")
     assert open_during_decision == [False]
+
+
+async def test_a_failing_point_logs_at_most_once_per_window(monkeypatch, caplog, faults):
+    clock = [100.0]
+    monkeypatch.setattr(policy.time, "monotonic", lambda: clock[0])
+    registry = _call_registry(_raises)
+    with caplog.at_level(logging.WARNING, logger="treg"):
+        for _ in range(3):
+            assert await registry.call_admission(CALL) is policy.CallDecision.ALLOW
+        clock[0] += policy._FAILED_LOG_EVERY_S
+        assert await registry.call_admission(CALL) is policy.CallDecision.ALLOW
+    lines = [r.getMessage() for r in caplog.records if "event=policy_failed" in r.getMessage()]
+    assert lines == [
+        "event=policy_failed point=call_admission error=ValueError outcome=allow suppressed=0",
+        "event=policy_failed point=call_admission error=ValueError outcome=allow suppressed=2",
+    ]
+    assert len(faults) == 4, "every failure still reaches the fault rollup"
+

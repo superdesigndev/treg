@@ -55,19 +55,27 @@ withholding credit from every new user.
 
 Outcomes `allow` or `deny`; on failure `allow`; budget 20 ms. Asked from `_execute_call` through
 `application/call/admission.py` once a call has resolved to treg's own money (`mk.metered`: its key, or
-its pay-per-use OAuth app), after the caller's ceiling is read and before both the direct reserve and an
-overflow-only attempt. A call on the team's own credential never asks, and a deployment without a handler
-reads nothing extra (`PolicyRegistry.asks_call_admission`).
+its pay-per-use OAuth app), before anything reaches the provider on that account: the public-resource
+check, the direct reserve and an overflow-only attempt all come after it. A call on the team's own
+credential never asks, and a deployment without a handler reads nothing extra
+(`PolicyRegistry.asks_call_admission`).
 
 The context carries what treg already knows about the call (team, caller, key, endpoint, provider, the
-catalog row's `platform`, `funding`, the raw estimate) plus two reads made only for this point on the
-session the call already holds: the team's first owner (`identity.access.first_owner_email`, the person
-behind every agent identity) and whether the team ever bought credit (`money.has_purchased`). That session
-is committed before asking, so no pooled connection waits on the extension.
+catalog row's `platform`, `funding`, the raw estimate) plus one read made only for this point on the
+session the call already holds: the team's first owner (the person behind every agent identity) and
+whether the team ever bought credit. That session is committed before asking, so no pooled connection
+waits on the extension, and the reserve's own commit that follows has nothing left to send.
 
-`deny` is a 403 `policy_denied` whose body is `funds_required`: the endpoint, the provider, the top-up URL
-and the own-key alternative, never the rule. Nothing is reserved, so nothing is released; the audit row
-reads `refused_by=policy`, and a routed job treats it as a candidate-local refusal and moves on.
+`deny` is a 403 of kind `admission_denied`. Its body names the endpoint, the provider and the remedy,
+never the rule: `funds_required` with the top-up URL and the own-key alternative for a team that never
+bought credit, `own_key_required` with only the own-key alternative for one that did, since adding funds
+could not help it. Nothing is reserved; the audit row reads `refused_by=policy`, charged 0. On MCP the
+top-up URL and link are stripped like a 402's, and `hint` states the fact. A routed job skips a refused
+candidate without spending its error allowance (another candidate may run on the team's own key); when
+every candidate is refused it answers that refusal for the routed endpoint, with `tried`, not a 502.
 
-Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which
-still bound the spend, instead of refusing every metered call.
+Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which still
+bound the spend, instead of refusing every metered call. Failures arrive at the call rate, so the
+`event=policy_failed` line is written at most once per point and error every 10 s with a `suppressed`
+count; the fault event rolls up on its own. The budget cancels a handler only at an await, so a handler
+deciding from memory is never cut short by a busy event loop.

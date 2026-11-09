@@ -1116,7 +1116,8 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    refusals are terminal. A `call_admission` refusal of treg's money skips that candidate without
+    spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped

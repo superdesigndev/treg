@@ -48,7 +48,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, exists, func, literal_column, update
+from sqlalchemy import case, delete, func, literal_column, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -902,12 +902,6 @@ async def spend_since(db: AsyncSession, org_id: int, since: datetime) -> dict:
 
 async def balance_of(db: AsyncSession, org_id: int) -> int:
     return int((await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0)
-
-
-async def has_purchased(db: AsyncSession, org_id: int) -> bool:
-    """Whether the team has bought credit at least once (a refunded top-up still counts)."""
-    return bool((await db.execute(select(exists().where(
-        CreditBlock.org_id == org_id, CreditBlock.kind == "purchased")))).scalar())
 
 
 async def blocks_of(db: AsyncSession, org_id: int) -> list[CreditBlock]:

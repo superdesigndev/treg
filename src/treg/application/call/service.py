@@ -1260,6 +1260,18 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         ), request, call_ref)
         request.context.endpoint_id = mk.endpoint_id
 
+    if mk is not None and mk.metered:
+        # Before anything reaches the provider on treg's account: the public-resource check below,
+        # the direct reserve and an overflow-only attempt all spend it.
+        try:
+            await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
+        except CallFailure as exc:
+            refusal_secrets = _safe_secret_renderings(tool, secrets)
+            _audit(exc.status_code, charged_micro=0, refused_by=_refusal_kind(exc.status_code),
+                   answered=False, error_response=(
+                       _ERROR_MASKING_FAILED if refusal_secrets is None else
+                       _redact_snippet(f"treg: {exc.detail}", refusal_secrets, _ERROR_RESPONSE_MAX)))
+            raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
     if mk is not None and mk.tier == "platform" and mk.public_resource_ids:
@@ -1275,12 +1287,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
     if mk is not None and mk.metered:
         _set_caller_max_cost(request, mk)
-        # Before the direct reserve and before an overflow-only attempt: both spend treg's money.
-        try:
-            await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
-        except CallFailure as exc:
-            _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code), answered=False)
-            raise
 
     async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal,
                                       keep_refusal: bool = False) -> UpstreamResponse:

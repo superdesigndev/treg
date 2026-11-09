@@ -962,7 +962,8 @@ route's remainder. A refusal is a 402 `route_max_cost` that moves no money. Over
 field and checks its own estimate; a preceding direct charge reduces the remainder.
 
 Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))
-may refuse a call on treg's money with a 403 `funds_required`; like the ceiling it moves no money.
+may refuse a call on treg's money with a 403 (`funds_required` or `own_key_required`); like the
+ceiling it moves no money.
 
 With a `ceiling_param` declared (AGENTS.md non-negotiable 4), the appended USD figure is the largest
 provider charge that still settles within the ceiling after `with_margin` (which rounds up); at margin

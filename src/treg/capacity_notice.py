@@ -17,6 +17,13 @@ def is_balance_refusal(headers, body) -> bool:
             and isinstance(detail, dict) and detail.get("error") == "insufficient_balance")
 
 
+def is_admission_refusal(headers, body) -> bool:
+    """treg's policy refused its own money for this call (`funds_required`, `own_key_required`)."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return (bool(headers.get("X-Treg-Error")) and not headers.get("X-Treg-Idempotent-Replay")
+            and isinstance(detail, dict) and detail.get("error") in ("funds_required", "own_key_required"))
+
+
 def account_out_notice(headers) -> str | None:
     """The one-line notice for a `/call/` answer's headers, or None when treg's account is not out.
     "Not charged" is said only when the call's cost header says 0."""

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,8 +40,10 @@ POLICY_API_VERSION = 1
 ENTRY_POINT_GROUP = "treg.extensions"
 SIGNUP_CREDIT_BUDGET_S = 0.3
 CALL_ADMISSION_BUDGET_S = 0.02
+_FAILED_LOG_EVERY_S = 10.0
 
 _log = logging.getLogger("treg")
+_failed_logged: dict[tuple[str, str], tuple[float | None, int]] = {}
 
 
 @dataclass(frozen=True)
@@ -144,8 +147,19 @@ async def _ask(point: str, handler, ctx, budget_s: float, default):
 
 def _failed(point: str, error: str, fallback):
     """Report an extension failure and return the point's default. Only the exception TYPE is
-    recorded: an extension's message might name one of its private rules."""
-    _log.warning("event=policy_failed point=%s error=%s outcome=%s", point, error, fallback)
+    recorded: an extension's message might name one of its private rules.
+
+    `call_admission` fails at the call rate when an extension breaks, so the log line is written at
+    most once per `_FAILED_LOG_EVERY_S` for each point and error, counting the ones it held back.
+    The fault event rolls repeats up on its own (`analytics.capture_fault`)."""
+    now = time.monotonic()
+    last, held = _failed_logged.get((point, error), (None, 0))
+    if last is None or now - last >= _FAILED_LOG_EVERY_S:
+        _log.warning("event=policy_failed point=%s error=%s outcome=%s suppressed=%d",
+                     point, error, fallback, held)
+        _failed_logged[(point, error)] = (now, 0)
+    else:
+        _failed_logged[(point, error)] = (last, held + 1)
     analytics.capture_fault(component="policy", fault_type="PolicyFailed", value=f"{point} {error}")
     return fallback
 

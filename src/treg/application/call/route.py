@@ -86,7 +86,7 @@ from ...domain.catalog.routing.plan import (
     sampled_provider_allowed, unscoped,
 )
 from .. import asynctasks as async_task_app
-from . import async_bridge, keyslots
+from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
@@ -879,6 +879,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
+    admission_refusals: list[CallFailure] = []  # candidates whose treg money the team may not use
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -958,6 +959,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "treg's account is at its rate limit"))
                 rate_waits.append(exc.retry_after_s or 1)
+                continue
+            if exc.kind == "admission_denied":
+                # Decided for this candidate's way of paying, not for the job: a later candidate on
+                # the team's own key may still serve it, so this spends no error allowance.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's money is not available to this team here"))
+                admission_refusals.append(exc)
                 continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
@@ -1232,6 +1240,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
+        if tried and len(admission_refusals) == len(tried):
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, 403, 0, audit_client)
+            raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
@@ -1391,7 +1403,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 _CHECK_REASONS = {"route_max_cost": "over_cost_limit", "route_no_candidate": "no_checker",
                   **{k: "spend_limit" for k in _GLOBAL_REFUSALS},
                   **{k: "not_allowed" for k in _CANDIDATE_LOCAL_FAILURES},
-                  "org_endpoint_quota_exceeded": "quota_exceeded"}
+                  "org_endpoint_quota_exceeded": "quota_exceeded", "admission_denied": "not_allowed"}
 
 
 def _unchecked(reason: str) -> dict:
