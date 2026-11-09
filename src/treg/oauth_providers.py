@@ -4256,6 +4256,31 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+CAPTUREKIT = OAuthProvider(
+    service="capturekit",
+    display_name="CaptureKit",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your CaptureKit API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.capturekit.dev",
+    setup_action_label="Get your CaptureKit API key",
+    setup_steps=(
+        "Sign in to CaptureKit and open Settings → API → Keys.",
+        "Copy your API key.",
+    ),
+    setup_note="Each capture, extraction or analysis spends 1 credit; the usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Capture websites as PNG, JPEG, WebP or PDF, extract their content, or summarize them with AI.",
+    base_url="https://api.capturekit.dev",
+    docs_url="https://docs.capturekit.dev",
+    probe_path="/v1/usage",  # free; an invalid key gets 401 {"error": "Invalid API Key"}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4274,6 +4299,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        CAPTUREKIT,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
