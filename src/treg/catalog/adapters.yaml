@@ -946,7 +946,13 @@ adapters:
     const: {body.category: people, body.contents.highlights.maxCharacters: 2000}
     out: {people: results, count: "len(results)"}
     miss: "results == []"
-    row: {name: "coalesce(entities[0].properties.name, title)", title: "entities[0].properties.workHistory[0].title", company: "entities[0].properties.workHistory[0].company.name", location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
+    # The current role is the undated-end one, not the history's first item: Exa sometimes lists an
+    # ended role first.
+    row: {name: "coalesce(entities[0].properties.name, title)", title: "get(current_role(entities[0].properties.workHistory), 'title')",
+          company: "get(current_role(entities[0].properties.workHistory), 'company.name')",
+          title_since: "get(current_role(entities[0].properties.workHistory), 'dates.from')",
+          title_until: "get(current_role(entities[0].properties.workHistory), 'dates.to')",
+          location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}

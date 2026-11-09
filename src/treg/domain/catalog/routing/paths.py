@@ -422,6 +422,23 @@ _IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "a
                 "direct", "instagram", "web", "help", "privacy", "terms"}
 
 
+def current_role(history: Any) -> dict | None:
+    """`current_role(workHistory)` — the role a person holds now, from a work history whose items carry
+    `dates: {from, to}`: of the roles with no end date the latest started, else the latest started
+    of all (someone between jobs keeps their last role). Ties and missing dates keep list order."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    if not roles:
+        return None
+    def start(r: dict) -> str:
+        d = r.get("dates")
+        return str((d or {}).get("from") or "") if isinstance(d, dict) or d is None else ""
+    def ended(r: dict) -> bool:
+        d = r.get("dates")
+        return isinstance(d, dict) and bool(d.get("to"))
+    pool = [r for r in roles if not ended(r)] or roles
+    return max(pool, key=start)  # max keeps the first of equal starts
+
+
 def instagram_handles(results: Any) -> list | None:
     """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
     directory or list page of creators), one row each in page order, first mention wins: username,
@@ -572,7 +589,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")
