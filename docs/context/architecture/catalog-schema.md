@@ -173,12 +173,12 @@ The writing rules no check can judge:
 
 A note in that shape: "Answers for a private account are empty: check `is_private` before paging."
 
-The validator warns when a summary runs over about 50 tokens or a note over about 75, and when
-either contains a word from the reflection list; each warning names the word and why, and the
-author decides. With `--base` it adds one error: a row respelled between `cost:` and `price:`
-without the `catalog-migration` label. Run
-`uv run python scripts/catalog_validate.py --base origin/main` locally to see the warnings for the
-rows you touched.
+The validator warns when a summary runs over about 50 tokens or a note over about 75, and when the
+summary, the note or a parameter or charge note contains a word from the reflection list
+(`scripts/catalog_text_reflect.txt`); each warning names the word and why, and the author decides.
+With `--base` it adds one error: a row respelled between `cost:` and `price:` without the
+`catalog-migration` label. Run `uv run python scripts/catalog_validate.py --base origin/main`
+locally to see the warnings for the rows you touched.
 
 ## The shrink-only violation list
 
