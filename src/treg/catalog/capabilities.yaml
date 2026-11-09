@@ -156,6 +156,23 @@ platforms:
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
 
+  # --- Travel & public price data (added with the scrapercompany listing) ---------------------
+  google-hotels: {label: "Google Hotels", category: "Reviews & Apps", summary: "Hotel search results, nightly price calendars and per-booking-site offers from Google Hotels."}
+  google-flights: {label: "Google Flights", category: "Reviews & Apps", summary: "Flight itineraries, fares and date-grid prices from Google Flights."}
+  agoda: {label: "Agoda", category: "Reviews & Apps", summary: "Hotels, rooms and rate plans from Agoda."}
+  hotel-rates: {label: "Hotel rate comparison", category: "Reviews & Apps", summary: "One hotel's price for a stay compared across several booking sites."}
+  attractions: {label: "Theme parks & attractions", category: "Reviews & Apps", summary: "Day-ticket prices and opening status by date for theme parks."}
+  trivago: {label: "Trivago", category: "Reviews & Apps", summary: "Partner deals for a hotel stay from Trivago metasearch."}
+  hostelworld: {label: "Hostelworld", category: "Reviews & Apps", summary: "Hostel beds, rooms and rates from Hostelworld."}
+  rakuten-travel: {label: "Rakuten Travel", category: "Reviews & Apps", summary: "Japanese hotel rooms and plans from Rakuten Travel."}
+  seatgeek: {label: "SeatGeek", category: "Reviews & Apps", summary: "Events and live ticket price stats from SeatGeek."}
+  target: {label: "Target", category: "E-commerce", summary: "Product listings and store prices from Target."}
+  zalando: {label: "Zalando", category: "E-commerce", summary: "Fashion product listings and prices from Zalando."}
+  idealo: {label: "Idealo", category: "E-commerce", summary: "Price comparison results from Idealo."}
+  tcgplayer: {label: "TCGplayer", category: "E-commerce", summary: "Trading-card market prices and listings from TCGplayer."}
+  sec-edgar: {label: "SEC EDGAR", category: "Research & public data", summary: "Company profiles and filings from the US SEC EDGAR system."}
+  businesses-for-sale: {label: "Businesses for sale", category: "Market data", summary: "Online businesses listed for sale, with asking prices and financials."}
+
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
   # The job-level generation capabilities are DELIBERATELY memberless: generation models are not

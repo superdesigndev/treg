@@ -1,0 +1,603 @@
+# scrapercompany - EXTENDED tier: every other documented ScraperCompany operation that passed a
+# live test_request and has a healthy 7-day production success rate, generated from
+# https://scrapercompany.com/openapi.json (param names, types and example values) and filtered by
+# hand. Routes curated in core scrapercompany.yaml are excluded here; the full-surface map in the PR
+# lists every operation left out and why. Prices are the spec's `x-credits` per successful call;
+# the core file's `defaults:` (provenance) apply to these rows. No verified: stamps or examples.
+
+provider: scrapercompany
+source:
+  method: openapi
+  ingested: '2026-11-09'
+  spec_urls:
+  - https://scrapercompany.com/openapi.json
+
+proposed_capabilities:
+  agoda.hotel.find: "Find a hotel's Agoda id by name and city"
+  booking.search.hotels: "Search a destination's Booking.com hotels with prices for a stay"
+  trivago.hotel.offers: "List Trivago partners' deals for one hotel and stay"
+  tripadvisor.hotel.offers: "List the booking-site prices Tripadvisor shows for one hotel and stay"
+  hostelworld.property.rooms: "List a hostel's beds and rooms with rates for a stay"
+  rakuten-travel.hotel.rooms: "List a Rakuten Travel hotel's rooms and plans for a stay"
+  google-flights.calendar: "Get the cheapest fare for each date around a travel date"
+  google.serp.autocomplete: "Get Google query autocomplete suggestions"
+  target.search.products: "Search Target products priced at a store"
+  zalando.search.products: "Search Zalando products by keyword"
+  idealo.search.products: "Search Idealo products with their lowest offer price"
+  tcgplayer.search.products: "Search TCGplayer products with market prices"
+  shopify.store.products: "Products of a Shopify store"
+  seatgeek.search.events: "Search events with live ticket price stats"
+  sec-edgar.company.filings: "Get a company's SEC profile and recent filings"
+  businesses-for-sale.listings: "List online businesses for sale with asking price and financials"
+  weather.forecast.daily: "Daily weather forecast for a place"
+
+endpoints:
+- id: scrapercompany.x.google-search
+  added: '2026-11-09'
+  platform: google
+  method: POST
+  path: /v1/google/search
+  name: "Google web search results"
+  summary: "Returns one page of Google organic results for a query with People Also Ask questions, the AI Overview text when shown and related searches."
+  docs_url: https://scrapercompany.com/docs/reference/google-search
+  price: {value: '4', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.organic_results, op: empty}}
+  input:
+    bodyType: json
+    body:
+      gl: {type: string, required: false, note: "Country market (Google `gl`).", example: "us"}
+      hl: {type: string, required: false, note: "Interface language (Google `hl`).", example: "en"}
+      q: {type: string, required: true, note: "Search query.", example: "Hilton Chicago"}
+      location: {type: string, required: false, note: "City-level geo-targeting: a Google canonical place name such as `Austin,Texas,United States` (The standard SERP API `location`).", example: "Austin,Texas,United States"}
+      uule: {type: string, required: false, note: "Raw Google `uule` passthrough (`w+...` canonical-name or `a+...` coordinate form), for callers that already encode their own.", example: "w+CAIQICIaQXVzdGluLFRleGFzLFVuaXRlZCBTdGF0ZXM="}
+      page: {type: integer, required: false, note: "Result page (10 results per page).", example: 1}
+      num: {type: integer, required: false, note: "Results per page.", example: 10}
+  test_request:
+    body: {"q": "Hilton Chicago", "gl": "us", "hl": "en"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-agoda-search
+  added: '2026-11-09'
+  capability: agoda.hotel.find
+  platform: agoda
+  method: POST
+  path: /v1/ota/agoda/search
+  name: "Find a hotel's Agoda id by name"
+  summary: "Resolves a hotel name and city to Agoda's numeric property id for the Agoda rooms call."
+  docs_url: https://scrapercompany.com/docs/reference/agoda-search
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.matches, op: empty}}
+  input:
+    bodyType: json
+    body:
+      name: {type: string, required: true, note: "Hotel name as a guest would search for it.", example: "Moxy Boston Downtown"}
+      city: {type: string, required: false, note: "Strongly recommended.", example: "Boston"}
+      limit: {type: integer, required: false, note: "Maximum hotel candidates to return, best match first.", example: 1}
+      origin: {type: string, required: false, note: "Two-letter user-country context sent to Agoda.", example: "US"}
+  test_request:
+    body: {"name": "Moxy Boston Downtown", "city": "Boston", "limit": 1}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-booking-hotels
+  added: '2026-11-09'
+  capability: booking.search.hotels
+  platform: booking
+  method: POST
+  path: /v1/ota/booking/hotels
+  name: "Booking.com destination search with prices"
+  summary: "Lists the properties Booking.com shows for a destination and stay, each with the stay price, review score, stars and the pagename the Booking.com rooms and calendar calls take."
+  docs_url: https://scrapercompany.com/docs/reference/booking-hotels
+  price: {value: '4', currency: credit, per: 1, unit: call, note: "4 credits per started 25 properties returned."}
+  miss: {when: {path: response.properties, op: empty}}
+  input:
+    bodyType: json
+    body:
+      query: {type: string, required: false, note: "Destination as a guest would type it: a city, region, district, landmark or airport.", example: "Lisbon"}
+      check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+      nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+      currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "EUR"}
+      limit: {type: integer, required: false, note: "Properties to return, in Booking's order.", example: 5}
+      dest_id: {type: integer, required: false, note: "Booking's destination id from `POST /v1/ota/booking/destinations` (negative for most cities, e.g. Lisbon is `-2167973`).", example: -2167973}
+      dest_type: {type: string, required: false, note: "The `dest_type` that came with `dest_id`.", example: "city"}
+      url: {type: string, required: false, note: "A `booking.com/searchresults.html` link.", example: "https://www.booking.com/searchresults.html?ss=Lisbon&checkin=2026-12-08&checkout=2026-12-10&group_adults=2"}
+      check_out: {type: string, required: false, note: "Departure date.", example: "2027-03-29"}
+  test_request:
+    body: {"query": "Lisbon", "check_in": "2026-12-10", "nights": 1, "currency": "EUR", "limit": 5}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-trivago
+  added: '2026-11-09'
+  capability: trivago.hotel.offers
+  platform: trivago
+  method: POST
+  path: /v1/ota/trivago
+  name: "Trivago partner deals for one hotel and stay"
+  summary: "Returns each Trivago partner's deal for one hotel and stay, with price, total and the partner name."
+  docs_url: https://scrapercompany.com/docs/reference/trivago-deals
+  price: {value: '12', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.offers, op: empty}}
+  input:
+    bodyType: json
+    body:
+      hotel_id: {type: string, required: false, note: "Trivago hotel id: the number after `100-` in a Trivago URL's `search=` (`12715` is The Savoy, London).", example: "12715"}
+      check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+      nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+      market: {type: string, required: false, note: "Trivago market (ISO country; `GB` is trivago.co.uk): language, partners and price display (US before taxes, Europe all-in).", example: "US"}
+      currency: {type: string, required: false, note: "Currency of every price; omit for the market's own.", example: "USD"}
+      url: {type: string, required: false, note: "A Trivago hotel page on any Trivago domain, carrying `search=100-<id>`.", example: "https://www.trivago.com/en-US/oar/hotel-the-savoy-london?search=100-12715"}
+      name: {type: string, required: false, note: "Hotel name, looked up in Trivago's own search suggestions; the first hotel is used and `resolved` lists it with the other candidates.", example: "The Savoy"}
+      city: {type: string, required: false, note: "With `name`: the city, sent with it.", example: "London"}
+      check_out: {type: string, required: false, note: "Departure date.", example: "2027-03-22"}
+  test_request:
+    body: {"hotel_id": "12715", "check_in": "2026-12-10", "nights": 1, "market": "US", "currency": "USD"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-tripadvisor
+  added: '2026-11-09'
+  capability: tripadvisor.hotel.offers
+  platform: tripadvisor
+  method: POST
+  path: /v1/ota/tripadvisor
+  name: "Tripadvisor booking-site prices for one hotel and stay"
+  summary: "Returns the booking-site offers Tripadvisor lists for one hotel and stay, each with its price basis."
+  docs_url: https://scrapercompany.com/docs/reference/tripadvisor-prices
+  price: {value: '12', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.offers, op: empty}}
+  input:
+    bodyType: json
+    body:
+      location_id: {type: string, required: false, note: "Numeric Tripadvisor id (the digits after `-d` in a page URL), e.g. `17768161`.", example: "17768161"}
+      check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+      nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+      currency: {type: string, required: false, note: "One of 30 supported currencies.", example: "USD"}
+      url: {type: string, required: false, note: "Any Tripadvisor page for the location, on any Tripadvisor domain: `Hotel_Review`, `Restaurant_Review`, `Attraction_Review`, `ShowUserReviews` ...", example: "https://www.tripadvisor.com/Hotel_Review-g60745-d17768161-Reviews-Moxy_Boston_Downtown-Boston_Massachusetts.html"}
+      name: {type: string, required: false, note: "Place name, resolved with Tripadvisor's own search.", example: "Moxy Boston Downtown"}
+      city: {type: string, required: false, note: "With `name`: the city, sent with the name and used to rank same-name places elsewhere lower.", example: "Boston"}
+      check_out: {type: string, required: false, note: "Departure date.", example: "2027-01-19"}
+  test_request:
+    body: {"location_id": "17768161", "check_in": "2026-12-10", "nights": 1, "currency": "USD"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-hostelworld
+  added: '2026-11-09'
+  capability: hostelworld.property.rooms
+  platform: hostelworld
+  method: POST
+  path: /v1/ota/hostelworld
+  name: "Hostelworld beds and rooms for a stay"
+  summary: "Lists a Hostelworld property's dorm beds and private rooms with rate plans for one stay, in the property's own currency."
+  docs_url: https://scrapercompany.com/docs/reference/hostelworld-rooms
+  price: {value: '12', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.property.rooms, op: empty}}
+  input:
+    bodyType: json
+    body:
+      property_id: {type: string, required: true, note: "Numeric property id from Hostelworld URL, e.g. `hostelworld.com/pwa/hosteldetails.php/88047/...`.", example: "88047"}
+      check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+      nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+      guests: {type: integer, required: false, note: "Number of guests.", example: 1}
+      check_out: {type: string, required: false, note: "Departure date.", example: "2027-01-28"}
+  test_request:
+    body: {"property_id": "88047", "check_in": "2026-12-10", "nights": 1, "guests": 1}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-rakuten
+  added: '2026-11-09'
+  capability: rakuten-travel.hotel.rooms
+  platform: rakuten-travel
+  method: POST
+  path: /v1/ota/rakuten
+  name: "Rakuten Travel rooms and plans for a stay"
+  summary: "Lists a Rakuten Travel hotel's room types and plans for one stay, in JPY, with tax-inclusive totals."
+  docs_url: https://scrapercompany.com/docs/reference/rakuten-rooms
+  price: {value: '12', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.property.rooms, op: empty}}
+  input:
+    bodyType: json
+    body:
+      check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+      nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+      adults: {type: integer, required: false, note: "Adults in the one room quoted.", example: 2}
+      hotel_no: {type: string, required: true, note: "Rakuten Travel hotel number, or a hotel URL that carries it: `travel.rakuten.co.jp/HOTEL/74637/` or `hotel.travel.rakuten.co.jp/hotelinfo/plan/74637`.", example: "74637"}
+      check_out: {type: string, required: false, note: "Departure date.", example: "2027-03-10"}
+  test_request:
+    body: {"hotel_no": "74637", "check_in": "2026-12-10", "nights": 1, "adults": 2}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.serp-google-flights-calendar
+  added: '2026-11-09'
+  capability: google-flights.calendar
+  platform: google-flights
+  method: POST
+  path: /v1/serp/google_flights_calendar
+  name: "Google Flights date-grid prices"
+  summary: "Returns the cheapest Google Flights fare for each departure date around a target date for a route."
+  docs_url: https://scrapercompany.com/docs/reference/google-flights-calendar
+  price: {value: '6', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.prices, op: empty}}
+  input:
+    bodyType: json
+    body:
+      departure: {type: string, required: true, note: "IATA departure airport code.", example: "JFK"}
+      arrival: {type: string, required: true, note: "IATA arrival airport code.", example: "LAX"}
+      departure_date: {type: string, required: true, note: "Target outbound date (center of date range).", example: "2026-12-10"}
+      currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+      date_window_days: {type: integer, required: false, note: "Days before/after target date to include in grid.", example: 3}
+      return_date: {type: string, required: false, note: "Target return date for round-trip.", example: "2027-02-06"}
+      adults: {type: integer, required: false, note: "Number of passengers.", example: 1}
+      hl: {type: string, required: false, note: "Language code.", example: "en"}
+      gl: {type: string, required: false, note: "Market/country code.", example: "us"}
+  test_request:
+    body: {"departure": "JFK", "arrival": "LAX", "departure_date": "2026-12-10", "date_window_days": 3, "currency": "USD"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.google-autocomplete
+  added: '2026-11-09'
+  capability: google.serp.autocomplete
+  platform: google
+  method: POST
+  path: /v1/google/autocomplete
+  name: "Google search-box suggestions"
+  summary: "Returns the suggestions Google's search box offers for a partial query."
+  docs_url: https://scrapercompany.com/docs/reference/google-autocomplete
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.suggestions, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "The partial query to complete.", example: "coffee"}
+      gl: {type: string, required: false, note: "Country market (Google `gl`).", example: "us"}
+      hl: {type: string, required: false, note: "Interface language (Google `hl`).", example: "en"}
+      client: {type: string, required: false, note: "Which Google suggest client's format to return: `chrome` (type + relevance), `firefox`, `safari`, `toolbar`, `psy-ab`/`gws-wiz` (entity title, description, thum", example: "chrome"}
+      cp: {type: integer, required: false, note: "Cursor position inside `q` (0 = start)."}
+  test_request:
+    body: {"q": "coffee", "gl": "us", "hl": "en"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.trends-interest
+  added: '2026-11-09'
+  capability: google.keywords.trends
+  platform: google
+  method: POST
+  path: /v1/trends/interest
+  name: "Google Trends interest over time"
+  summary: "Returns Google Trends interest over time for a keyword as one 0-100 timeline."
+  docs_url: https://scrapercompany.com/docs/reference/trends-interest
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  input:
+    bodyType: json
+    body:
+      keyword: {type: string, required: true, note: "Search term to chart.", example: "Hilton"}
+      geo: {type: string, required: false, note: "Two-letter country.", example: "US"}
+      time_range: {type: string, required: false, note: "Google's window grammar", example: "today 1-m"}
+      hl: {type: string, required: false, note: "Language.", example: "en-US"}
+  test_request:
+    body: {"keyword": "Hilton", "geo": "US", "time_range": "today 1-m"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.retail-target-search
+  added: '2026-11-09'
+  capability: target.search.products
+  platform: target
+  method: POST
+  path: /v1/retail/target/search
+  name: "Target product search priced at a store"
+  summary: "Returns one page of up to 24 Target products with current and regular price at the given store, brand and rating."
+  docs_url: https://scrapercompany.com/docs/reference/target-search
+  price: {value: '6', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.products, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Search terms, as typed into target.com.", example: "lego"}
+      zip_code: {type: string, required: false, note: "US ZIP code the price is quoted for (Target prices by store).", example: "10001"}
+      store_id: {type: string, required: false, note: "Target store id the price is quoted for; pair it with its ZIP (`store_id` and `zip_code` of a store from `POST /v1/retail/target/stores`).", example: "3991"}
+  test_request:
+    body: {"q": "lego"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.retail-zalando-search
+  added: '2026-11-09'
+  capability: zalando.search.products
+  platform: zalando
+  method: POST
+  path: /v1/retail/zalando/search
+  name: "Zalando product search"
+  summary: "Returns one page of 24 Zalando products with price, regular price, discount, brand and link on the chosen market's site."
+  docs_url: https://scrapercompany.com/docs/reference/zalando-search
+  price: {value: '5', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.products, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Search terms, as typed into Zalando.", example: "nike air max"}
+      market: {type: string, required: false, note: "Which Zalando site: GB (zalando.co.uk), DE, FR, IT, NL, ES, PL or SE.", example: "GB"}
+      page: {type: integer, required: false, note: "Result page.", example: 1}
+  test_request:
+    body: {"q": "nike air max", "market": "GB"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.retail-idealo-search
+  added: '2026-11-09'
+  capability: idealo.search.products
+  platform: idealo
+  method: POST
+  path: /v1/retail/idealo/search
+  name: "Idealo price comparison search"
+  summary: "Returns one page of Idealo products with the lowest merchant offer price and the number of offers."
+  docs_url: https://scrapercompany.com/docs/reference/idealo-search
+  price: {value: '13', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.products, op: empty}}
+  input:
+    bodyType: json
+    body:
+      domain: {type: string, required: false, note: "Idealo country site.", example: "idealo.de"}
+      q: {type: string, required: true, note: "Search terms, as typed into Idealo's search box.", example: "playstation 5"}
+  test_request:
+    body: {"q": "playstation 5", "domain": "idealo.de"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.retail-tcgplayer-search
+  added: '2026-11-09'
+  capability: tcgplayer.search.products
+  platform: tcgplayer
+  method: POST
+  path: /v1/retail/tcgplayer/search
+  name: "TCGplayer market price search"
+  summary: "Returns up to 24 TCGplayer products with market price, lowest live listing and listing count."
+  docs_url: https://scrapercompany.com/docs/reference/tcgplayer-search
+  price: {value: '13', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.products, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Product name to search for (cards, sealed boxes, packs), across every game TCGplayer lists.", example: "foundations play booster box"}
+      size: {type: integer, required: false, note: "Results on the page, 1-24.", example: 5}
+  test_request:
+    body: {"q": "foundations play booster box", "size": 5}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.retail-shopify-products
+  added: '2026-11-09'
+  capability: shopify.store.products
+  platform: shopify
+  method: POST
+  path: /v1/retail/shopify/products
+  name: "Shopify store product catalog"
+  summary: "Returns one page of a public Shopify store's products with variants, prices and availability in the store's currency."
+  docs_url: https://scrapercompany.com/docs/reference/shopify-products
+  price: {value: '3', currency: credit, per: 1, unit: call, note: "9 credits when limit is above 50."}
+  miss: {when: {path: response.products, op: empty}}
+  input:
+    bodyType: json
+    body:
+      store: {type: string, required: true, note: "Public store address, a domain or an https URL (allbirds.com).", example: "allbirds.com"}
+      limit: {type: integer, required: false, note: "Products on this page.", example: 10}
+      market: {type: string, required: false, note: "Market code echoed on the answer.", example: "US"}
+      locale: {type: string, required: false, note: "Locale path prefix the store publishes, such as en or en-ca.", example: "en"}
+      page: {type: integer, required: false, note: "1-based page, when not using cursor."}
+      cursor: {type: string, required: false, note: "Opaque cursor from a previous page."}
+  test_request:
+    body: {"store": "allbirds.com", "limit": 10}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.seatgeek-search
+  added: '2026-11-09'
+  capability: seatgeek.search.events
+  platform: seatgeek
+  method: POST
+  path: /v1/seatgeek/search
+  name: "SeatGeek events with ticket price stats"
+  summary: "Returns one page of SeatGeek events with date, venue, performers and live lowest, median and highest ticket prices."
+  docs_url: https://scrapercompany.com/docs/reference/seatgeek-search
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.events, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Artist, team, event or venue keyword.", example: "Taylor Swift"}
+      per_page: {type: integer, required: false, note: "Maximum events to return.", example: 5}
+      city: {type: string, required: false, note: "Venue city filter."}
+      state: {type: string, required: false, note: "Venue state filter."}
+      country: {type: string, required: false, note: "Venue country code, e.g. US."}
+      page: {type: integer, required: false, note: "One-based result page."}
+  test_request:
+    body: {"q": "Taylor Swift", "per_page": 5}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.youtube-search
+  added: '2026-11-09'
+  capability: youtube.search.videos
+  platform: youtube
+  method: POST
+  path: /v1/youtube/search
+  name: "YouTube search results"
+  summary: "Returns one page of YouTube search results split into videos, Shorts, channels and playlists, with title, channel, views and length."
+  docs_url: https://scrapercompany.com/docs/reference/youtube-search
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Search query, as typed in YouTube's box.", example: "python tutorial"}
+      page_token: {type: string, required: false, note: "`next_page_token` from the previous answer of this route."}
+      type: {type: string, required: false, note: "Result type filter (YouTube's Type menu)."}
+      upload_date: {type: string, required: false, note: "Upload date filter."}
+      duration: {type: string, required: false, note: "Length filter, YouTube's buckets: `short` under 3 minutes, `medium` 3-20 minutes, `long` over 20 minutes."}
+  test_request:
+    body: {"q": "python tutorial"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.app-store-search
+  added: '2026-11-09'
+  capability: app-store.search.apps
+  platform: app-store
+  method: POST
+  path: /v1/app_store/search
+  name: "App Store app search"
+  summary: "Returns apps matching a term in one App Store storefront with app id, developer, rating, price and genre."
+  docs_url: https://scrapercompany.com/docs/reference/app-store-search
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.apps, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Search term.", example: "budget tracker"}
+      country: {type: string, required: false, note: "App Store storefront, two letters (`us`, `gb`, `jp`).", example: "us"}
+      limit: {type: integer, required: false, note: "Apps to return, 1..200 (Apple's own cap; it answer a few fewer).", example: 5}
+  test_request:
+    body: {"q": "budget tracker", "country": "us", "limit": 5}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.google-play-search
+  added: '2026-11-09'
+  capability: google-play.search.apps
+  platform: google-play
+  method: POST
+  path: /v1/google_play/search
+  name: "Google Play app search"
+  summary: "Returns one Google Play search page of up to about 30 apps with package id, developer, rating, price and installs."
+  docs_url: https://scrapercompany.com/docs/reference/google-play-search
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.apps, op: empty}}
+  input:
+    bodyType: json
+    body:
+      q: {type: string, required: true, note: "Search query, as typed in the Play Store.", example: "budget tracker"}
+      hl: {type: string, required: false, note: "Language of the listing text (Play's `hl`), e.g. `en`, `fr`.", example: "en"}
+      gl: {type: string, required: false, note: "Storefront country (Play's `gl`): sets the price currency and the country's rating histogram.", example: "us"}
+  test_request:
+    body: {"q": "budget tracker", "gl": "us", "hl": "en"}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.sec-filings
+  added: '2026-11-09'
+  capability: sec-edgar.company.filings
+  platform: sec-edgar
+  method: POST
+  path: /v1/sec/filings
+  name: "SEC EDGAR company profile and recent filings"
+  summary: "Returns a filer's SEC EDGAR profile and its recent filings newest first, with form type, dates and document links."
+  docs_url: https://scrapercompany.com/docs/reference/sec-filings
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  input:
+    bodyType: json
+    body:
+      company: {type: string, required: true, note: "Ticker (`AAPL`, `BRK.B`) or SEC CIK number (`320193`).", example: "AAPL"}
+      limit: {type: integer, required: false, note: "Most filings returned, newest first.", example: 3}
+      forms: {type: array, required: false, note: "Form types to keep (`10-K`, `10-Q`, `8-K`, `4`, `S-1`, `13F-HR`); each also keeps its amendments (`10-K/A`).", example: ["10-K", "10-Q", "8-K"]}
+      since: {type: string, required: false, note: "Earliest filing date.", example: "2026-01-01"}
+      until: {type: string, required: false, note: "Latest filing date.", example: "2026-10-27"}
+  test_request:
+    body: {"company": "AAPL", "limit": 3}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.careers-jobs
+  added: '2026-11-09'
+  capability: companies.jobs
+  platform: companies
+  method: POST
+  path: /v1/careers/jobs
+  name: "A company's open jobs from its own careers board"
+  summary: "Returns a company's open jobs read from the public board of its applicant-tracking system (Greenhouse, Lever, Ashby, Workable and others), normalized."
+  docs_url: https://scrapercompany.com/docs/reference/careers-jobs
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.jobs, op: empty}}
+  input:
+    bodyType: json
+    body:
+      url: {type: string, required: true, note: "The company's careers page or its job-board URL.", example: "https://www.figma.com/careers/"}
+      limit: {type: integer, required: false, note: "Most jobs to return (1-1000).", example: 5}
+      q: {type: string, required: false, note: "Keep jobs whose title contains this text (case-insensitive).", example: "engineer"}
+      location: {type: string, required: false, note: "Keep jobs with a location containing this text (case-insensitive), e.g. `London` or `Remote`.", example: "London"}
+      department: {type: string, required: false, note: "Keep jobs whose department or team contains this text (case-insensitive).", example: "Engineering"}
+      remote_only: {type: boolean, required: false, note: "Keep only jobs the ATS itself labels remote (`workplace_type: remote`).", example: false}
+  test_request:
+    body: {"url": "https://www.figma.com/careers/", "limit": 5}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.businesses-for-sale-empireflippers
+  added: '2026-11-09'
+  capability: businesses-for-sale.listings
+  platform: businesses-for-sale
+  method: POST
+  path: /v1/businesses_for_sale/empireflippers
+  name: "Empire Flippers businesses for sale"
+  summary: "Returns one page of Empire Flippers listings with asking price, revenue, profit, multiple, business model and niche."
+  docs_url: https://scrapercompany.com/docs/reference/empireflippers-listings
+  price: {value: '2', currency: credit, per: 1, unit: call}
+  miss: {when: {path: response.listings, op: empty}}
+  input:
+    bodyType: json
+    body:
+      status: {type: string, required: false, note: "`for_sale`, `sold` (comparables: asking price and multiple at sale) or `pending_sold`.", example: "for_sale"}
+      limit: {type: integer, required: false, note: "Listings per page.", example: 2}
+      monetization: {type: string, required: false, note: "One business model as the marketplace names it: `SaaS`, `eCommerce`, `Amazon FBA`, `Subscription`, `Application`, `Display Advertising`, `Affiliate`, `Service`,", example: "SaaS"}
+      niche: {type: string, required: false, note: "One niche: `Business`, `Technology`, `Health & Fitness`, `Home`."}
+      query: {type: string, required: false, note: "Words in the title or summary."}
+      min_price: {type: integer, required: false, note: "Lowest asking price in USD."}
+  test_request:
+    body: {"status": "for_sale", "limit": 2}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.weather-forecast
+  added: '2026-11-09'
+  capability: weather.forecast.daily
+  platform: weather
+  method: GET
+  path: /v1/weather/forecast
+  name: "Weather forecast for coordinates"
+  summary: "Returns current conditions plus hourly and daily forecasts for any coordinates. Free."
+  docs_url: https://scrapercompany.com/docs/reference/weather-forecast
+  provenance: null
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  input:
+    queryParams:
+      lat: {type: number, required: true, note: "Latitude, WGS84.", example: 45.5}
+      lon: {type: number, required: true, note: "Longitude, WGS84.", example: -73.57}
+      hours: {type: integer, required: false, note: "Hourly rows to return (MET Norway has about 60 hours of hourly steps, NWS 7 days).", example: 6}
+      days: {type: integer, required: false, note: "Daily rows to return, today first.", example: 1}
+      units: {type: string, required: false, note: "metric: °C, km/h, mm."}
+      tz: {type: string, required: false, note: "IANA time zone that groups hours into days (America/Toronto)."}
+      source: {type: string, required: false, note: "auto: NWS for US points when it answers, MET Norway everywhere else and as the fallback."}
+  test_request:
+    queryParams: {"lat": 45.5, "lon": -73.57, "days": 1, "hours": 6}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.attractions-parks
+  added: '2026-11-09'
+  platform: attractions
+  method: GET
+  path: /v1/attractions/parks
+  name: "List the theme parks the ticket calendar covers"
+  summary: "Lists every theme park the ticket calendar covers with its park id, name, country and website. Free."
+  docs_url: https://scrapercompany.com/docs/reference/attraction-parks
+  provenance: null
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  input:
+    queryParams: {}
+  test_request:
+    queryParams: {}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.billing-plans
+  added: '2026-11-09'
+  platform: account
+  kind: account
+  method: GET
+  path: /v1/billing/plans
+  name: "Plans and per-endpoint credit costs (rate card)"
+  summary: "Returns every plan with price and monthly credits, the credit cost of every metered endpoint, the free routes and the credit-pack prices. Free."
+  docs_url: https://scrapercompany.com/docs/reference/billing-plans
+  provenance: null
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  input:
+    queryParams: {}
+  test_request:
+    queryParams: {}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.markets
+  added: '2026-11-09'
+  platform: hotel-rates
+  method: GET
+  path: /v1/markets
+  name: "List the markets hotel prices can be quoted in"
+  summary: "Lists every market (country and currency) hotel prices can be quoted in, with whether that market's published rates include tax. Free."
+  docs_url: https://scrapercompany.com/docs/reference/markets
+  provenance: null
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  input:
+    queryParams: {}
+  test_request:
+    queryParams: {}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"
+- id: scrapercompany.x.ota-sources
+  added: '2026-11-09'
+  platform: hotel-rates
+  method: GET
+  path: /v1/ota/sources
+  name: "What each booking-site source supports and costs"
+  summary: "Lists each booking-site source with what it can answer (date horizon, rooms breakdown, single date) and its credit cost. Free."
+  docs_url: https://scrapercompany.com/docs/reference/ota-sources
+  provenance: null
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  input:
+    queryParams: {}
+  test_request:
+    queryParams: {}
+  skipped: "treg verification pending: vendor self-verified this test_request live (see the PR description); no verified stamp or example claimed"

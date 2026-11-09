@@ -1,0 +1,400 @@
+provider: scrapercompany
+source:
+  docs: https://scrapercompany.com/docs
+  openapi: https://scrapercompany.com/openapi.json
+  curated: '2026-11-09'
+limits: "Per-plan concurrency: 10 concurrent requests on Starter, 40 Growth, 100 Scale, 150 Business; a free trial runs 1. Over the limit returns HTTP 429; out of credits returns HTTP 402."
+pricing_url: https://scrapercompany.com/pricing
+
+# ScraperCompany collects public web data and returns it as JSON: hotel prices, rooms and
+# rate calendars from Google Hotels, Booking.com and Agoda, cross-site rate comparison, Google
+# Flights fares, theme-park ticket calendars, Google Maps and News results, and retail search.
+# ScraperCompany is an independent company; it has no partnership with, licence from or
+# endorsement by the sites it collects public pages from, and its API is not their official API.
+#
+# Billing: every endpoint has a fixed credit cost per successful call, published per route in the
+# OpenAPI spec (`x-credits`) and served live by the free rate card GET /v1/billing/plans (needs a
+# key). Failed calls (4xx/5xx) and empty results cost 0 credits. Responses carry
+# `x-credits-charged` and `x-credits-remaining`. Credit -> USD: fx.yaml `credit_rates_usd.scrapercompany`.
+
+proposed_capabilities:
+  google-hotels.search.hotels: "Search a destination's hotels with prices for a stay"
+  google-hotels.hotel.find: "Find a hotel's Google Hotels id by name and city"
+  google-hotels.hotel.offers: "Compare each booking site's price for one hotel and stay on Google Hotels"
+  google-hotels.hotel.calendar: "Get a hotel's lowest nightly price for each date ahead"
+  booking.hotel.rooms: "List a Booking.com hotel's rooms and rate plans for a stay"
+  booking.hotel.calendar: "Get a Booking.com hotel's nightly rate for each date ahead"
+  agoda.hotel.rooms: "List an Agoda hotel's rooms and rate plans for a stay"
+  hotel-rates.compare: "Compare one hotel's price for a stay across several booking sites"
+  google-flights.search.flights: "Search flight itineraries and fares for a route and date"
+  attractions.park.calendar: "Get a theme park's day-ticket price and status for each date"
+
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://api.scrapercompany.com/v1/billing/plans', checked: '2026-11-09', confidence: verified}
+
+endpoints:
+  - id: scrapercompany.account.usage
+    added: '2026-11-09'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: any_account
+    method: GET
+    path: /v1/usage
+    name: "Check this key's usage"
+    summary: "Returns request counts, errors, bytes and latency for the calling API key over a window. Free."
+    input:
+      queryParams:
+        period: {type: string, required: false, note: "Aggregation window: 24 hours, 7, 30, or 90 days.", example: "24h"}
+    test_request:
+      queryParams: {"period": "24h"}
+    provenance: null
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://scrapercompany.com/docs/reference/usage
+
+  - id: scrapercompany.google-hotels.search.hotels
+    added: '2026-11-09'
+    capability: google-hotels.search.hotels
+    platform: google-hotels
+    scope: any_account
+    method: POST
+    path: /v1/hotels/search
+    name: "Google Hotels destination search with prices"
+    summary: "Lists the hotels Google Hotels shows for a destination and stay, each with rating, class, amenities, coordinates and the lowest price split into base, taxes and fees, plus the property_token the price calls take."
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, note: "Destination query exactly as a traveller would type it into Google Hotels, e.g. `hotels in Montreal`, `Paris`, `hotels near JFK`.", example: "hotels in Montreal"}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "CAD"}
+        gl: {type: string, required: false, note: "Two-letter Google country (market).", example: "ca"}
+        check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+        check_out: {type: string, required: true, note: "Departure date, after `check_in`; at most 30 nights.", example: "2026-12-11"}
+        adults: {type: integer, required: false, note: "Adults in the room.", example: 2}
+        hl: {type: string, required: false, note: "Interface language.", example: "en"}
+        sort_by: {type: string, required: false, note: "Result order, as Google's Sort by control."}
+        price_min: {type: integer, required: false, note: "Minimum nightly price in `currency`.", example: 50}
+    test_request:
+      body: {"q": "hotels in Montreal", "check_in": "2026-12-10", "check_out": "2026-12-11", "currency": "CAD", "gl": "ca"}
+    price: {value: '4', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.properties, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/hotels-destination-search
+
+  - id: scrapercompany.google-hotels.hotel.find
+    added: '2026-11-09'
+    capability: google-hotels.hotel.find
+    platform: google-hotels
+    scope: any_account
+    method: POST
+    path: /v1/search
+    name: "Find a hotel's Google Hotels token by name"
+    summary: "Resolves a hotel name and city to candidate Google Hotels property tokens, each checked against a live price lookup, for use with the calendar and offers calls."
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: true, note: "Property name as a guest would type it.", example: "Hilton Chicago"}
+        city: {type: string, required: false, note: "Strongly recommended.", example: "Chicago"}
+        market: {type: string, required: false, note: "ISO country/Google market to try first, e.g. `US`, `MX`, `GD`.", example: "US"}
+        limit: {type: integer, required: false, note: "Candidates to return, best match first.", example: 1}
+        fallback_markets: {type: array, required: false, note: "Markets tried in order only when the requested market returns zero candidates.", example: ["US"]}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+        verify: {type: boolean, required: false, note: "Fetch each candidate to confirm the token resolves and read back its real name."}
+    test_request:
+      body: {"name": "Hilton Chicago", "city": "Chicago", "market": "US", "limit": 1}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    docs_url: https://scrapercompany.com/docs/reference/search
+
+  - id: scrapercompany.google-hotels.hotel.offers
+    added: '2026-11-09'
+    capability: google-hotels.hotel.offers
+    platform: google-hotels
+    scope: any_account
+    method: POST
+    path: /v1/offers
+    name: "Per-booking-site prices for one hotel and night"
+    summary: "Returns every booking site's offer Google Hotels lists for one hotel and stay (OTAs and the hotel's official site), with price, taxes and fees, room names and links."
+    input:
+      bodyType: json
+      body:
+        token: {type: string, required: true, note: "Google property token.", example: "ChUIoben2Mv6-CYaCi9tLzA3czVwbjQQAQ"}
+        check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+        nights: {type: integer, required: false, note: "Ignored when `check_out` is given.", example: 1}
+        market: {type: string, required: false, note: "Market/country, e.g. `US`, `MX`, `AU`, `GB`.", example: "US"}
+        currency: {type: string, required: false, note: "ISO currency for the returned prices.", example: "USD"}
+        check_out: {type: string, required: false, note: "Alternative to `nights`; wins if both are given.", example: "2027-01-02"}
+        adults: {type: integer, required: false, note: "Occupancy.", example: 2}
+        rates_include_tax: {type: boolean, required: false, note: "Which basis the summary price uses."}
+        property_name: {type: string, required: false, note: "Improves official-site detection"}
+    test_request:
+      body: {"token": "ChUIoben2Mv6-CYaCi9tLzA3czVwbjQQAQ", "check_in": "2026-12-10", "nights": 1, "market": "US", "currency": "USD"}
+    price: {value: '10', currency: credit, per: 1, unit: call, note: "14 credits when require_rooms is true."}
+    miss: {when: {path: response.offers, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/offers
+
+  - id: scrapercompany.google-hotels.hotel.calendar
+    added: '2026-11-09'
+    capability: google-hotels.hotel.calendar
+    platform: google-hotels
+    scope: any_account
+    method: POST
+    path: /v1/calendar
+    name: "Nightly price calendar for one hotel"
+    summary: "Returns the lowest nightly rate Google Hotels shows for one hotel on each date of a forward window of up to 330 nights, in one call."
+    input:
+      bodyType: json
+      body:
+        token: {type: string, required: true, note: "Google property token.", example: "ChUIoben2Mv6-CYaCi9tLzA3czVwbjQQAQ"}
+        market: {type: string, required: false, note: "Market/country, e.g. `US`, `MX`, `AU`, `GB`.", example: "US"}
+        currency: {type: string, required: false, note: "ISO currency for the returned prices.", example: "USD"}
+        days: {type: integer, required: false, note: "Nights to price, starting at `start`.", example: 7}
+        start: {type: string, required: false, note: "First stay date.", example: "2026-12-10"}
+        country: {type: string, required: false, note: "Two-letter `gl` override.", example: "us"}
+        adults: {type: integer, required: false, note: "Occupancy.", example: 2}
+        los: {type: integer, required: false, note: "Length of stay per quote.", example: 1}
+        rates_include_tax: {type: boolean, required: false, note: "Overrides the market default; pass the property's own setting"}
+    test_request:
+      body: {"token": "ChUIoben2Mv6-CYaCi9tLzA3czVwbjQQAQ", "market": "US", "currency": "USD", "days": 7, "start": "2026-12-10"}
+    price: {value: '8', currency: credit, per: 1, unit: call, note: "Plus 3 credits per night with basis=mainstream and 3 per verify_sources spot-check."}
+    miss: {when: {path: response.rates, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/calendar
+
+  - id: scrapercompany.booking.hotel.rooms
+    added: '2026-11-09'
+    capability: booking.hotel.rooms
+    platform: booking
+    scope: any_account
+    method: POST
+    path: /v1/ota/booking/rooms
+    name: "Booking.com rooms and rate plans for a stay"
+    summary: "Lists a Booking.com hotel's room types and rate plans for one stay, with price, meal plan, cancellation terms, room size and occupancy."
+    input:
+      bodyType: json
+      body:
+        pagename: {type: string, required: true, note: "URL slug returned by `POST /v1/ota/booking/search`, e.g. `moxy-boston-downtown` from `booking.com/hotel/us/moxy-boston-downtown.html`.", example: "moxy-boston-downtown"}
+        country: {type: string, required: false, note: "Two-letter segment before the slug in that URL.", example: "us"}
+        check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+        nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+        adults: {type: integer, required: false, note: "Adults in the room.", example: 2}
+        rooms: {type: integer, required: false, note: "Rooms requested.", example: 1}
+        country_market: {type: string, required: false, note: "Visitor country (point of sale), two letters, e.g. `GB`.", example: "GB"}
+    test_request:
+      body: {"pagename": "moxy-boston-downtown", "country": "us", "check_in": "2026-12-10", "nights": 1, "currency": "USD"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.rooms, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/booking-rooms
+
+  - id: scrapercompany.booking.hotel.calendar
+    added: '2026-11-09'
+    capability: booking.hotel.calendar
+    platform: booking
+    scope: any_account
+    method: POST
+    path: /v1/ota/booking
+    name: "Booking.com nightly rate calendar"
+    summary: "Returns a Booking.com hotel's nightly base rate and availability for each date of a window of up to 61 dates per call."
+    input:
+      bodyType: json
+      body:
+        pagename: {type: string, required: true, note: "URL slug returned by `POST /v1/ota/booking/search`.", example: "moxy-boston-downtown"}
+        country: {type: string, required: false, note: "The two-letter segment in the URL *before* the slug — part of the property's address on Booking, not your own location.", example: "us"}
+        start: {type: string, required: false, note: "Defaults to today.", example: "2026-12-10"}
+        days: {type: integer, required: false, example: 7}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+        adults: {type: integer, required: false, note: "Adults in the room.", example: 2}
+        rooms: {type: integer, required: false, note: "Rooms requested.", example: 1}
+        country_market: {type: string, required: false, note: "Visitor country (point of sale), two letters, e.g. `GB`.", example: "GB"}
+    test_request:
+      body: {"pagename": "moxy-boston-downtown", "country": "us", "start": "2026-12-10", "days": 7, "currency": "USD"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.calendar, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/booking-calendar
+
+  - id: scrapercompany.agoda.hotel.rooms
+    added: '2026-11-09'
+    capability: agoda.hotel.rooms
+    platform: agoda
+    scope: any_account
+    method: POST
+    path: /v1/ota/agoda
+    name: "Agoda rooms and rate plans for a stay"
+    summary: "Lists an Agoda hotel's room types and rate plans for one stay, with price, meal plan, cancellation terms and taxes."
+    input:
+      bodyType: json
+      body:
+        property_id: {type: string, required: true, note: "Numeric id returned by `POST /v1/ota/agoda/search`, or from the Agoda URL — the digits in `agoda.com/…/hotel/…-h8795952.html`, or the `hotelId` query parameter.", example: "8795952"}
+        check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+        nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+        currency: {type: string, required: false, note: "One of 23 supported.", example: "USD"}
+        check_out: {type: string, required: false, note: "Departure date.", example: "2027-01-02"}
+        adults: {type: integer, required: false, note: "Adults in the room.", example: 2}
+        rooms: {type: integer, required: false, note: "Rooms requested.", example: 1}
+        tax_breakdown: {type: boolean, required: false, note: "Also read Agoda's \"per night before taxes\" view and return each offer's `price_before_taxes` plus the derived stay `taxes_and_fees` (with its own provenance)."}
+    test_request:
+      body: {"property_id": "8795952", "check_in": "2026-12-10", "nights": 1, "currency": "USD"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.property.rooms, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/agoda-rooms
+
+  - id: scrapercompany.hotel-rates.compare
+    added: '2026-11-09'
+    capability: hotel-rates.compare
+    platform: hotel-rates
+    scope: any_account
+    method: POST
+    path: /v1/ota/compare
+    name: "Compare one hotel's price across booking sites"
+    summary: "Prices one hotel stay on Booking.com, Agoda, Hotels.com and Expedia in one call and reports each site's price, its price basis and whether the figures are comparable."
+    input:
+      bodyType: json
+      body:
+        check_in: {type: string, required: true, note: "First night of the stay, `YYYY-MM-DD`.", example: "2026-12-10"}
+        nights: {type: integer, required: false, note: "Length of stay.", example: 1}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+        booking_pagename: {type: string, required: false, note: "Booking slug.", example: "moxy-boston-downtown"}
+        booking_country: {type: string, required: false, note: "Two-letter segment before the slug in the Booking URL.", example: "us"}
+        agoda_property_id: {type: string, required: false, note: "Agoda numeric id from `POST /v1/ota/agoda/search`.", example: "8795952"}
+        check_out: {type: string, required: false, note: "Departure date.", example: "2027-01-02"}
+        adults: {type: integer, required: false, note: "Adults in the room.", example: 2}
+        hotels_property_id: {type: string, required: false, note: "Hotels.com numeric id from `POST /v1/ota/hotels/search`.", example: "38766175"}
+        hotels_market: {type: string, required: false, note: "Hotels.com point-of-sale; also picks its currency.", example: "US"}
+    test_request:
+      body: {"check_in": "2026-12-10", "nights": 1, "currency": "USD", "booking_pagename": "moxy-boston-downtown", "booking_country": "us", "agoda_property_id": "8795952"}
+    price: {value: '30', currency: credit, per: 1, unit: call}
+    docs_url: https://scrapercompany.com/docs/reference/ota-compare
+
+  - id: scrapercompany.google-flights.search.flights
+    added: '2026-11-09'
+    capability: google-flights.search.flights
+    platform: google-flights
+    scope: any_account
+    method: POST
+    path: /v1/serp/google_flights
+    name: "Google Flights itineraries and fares"
+    summary: "Returns every itinerary Google Flights offers for a route and date, with fare, airlines, flight numbers, layovers, duration, emissions and price insights."
+    input:
+      bodyType: json
+      body:
+        departure: {type: string, required: true, note: "IATA airport code (`JFK`) or IATA city code (`NYC`, `LON`, `PAR`, `TYO`...: every airport of that city).", example: "JFK"}
+        arrival: {type: string, required: true, note: "IATA airport code (`JFK`) or IATA city code (`NYC`, `LON`, `PAR`, `TYO`...: every airport of that city).", example: "LAX"}
+        departure_date: {type: string, required: true, note: "Outbound flight date, `YYYY-MM-DD`.", example: "2026-12-10"}
+        currency: {type: string, required: false, note: "ISO 4217 code for the returned prices.", example: "USD"}
+        return_date: {type: string, required: false, note: "Return flight date for round-trip.", example: "2027-02-06"}
+        departure_id: {type: string, required: false, note: "SerpApi's `departure_id`: overrides `departure` with comma-separated IATA airport/city codes and/or Google city ids (`/m/02_286`), up to 7.", example: "JFK,EWR"}
+        arrival_id: {type: string, required: false, note: "SerpApi's `arrival_id`: overrides `arrival` the same way, e.g. a city id from `/v1/serp/google_flights_location_search`.", example: "/m/05qtj"}
+        multi_city: {type: array, required: false, note: "Makes the trip multi-city: the legs after the first (`departure` -> `arrival` on `departure_date`), 1-4 of them, in date order."}
+    test_request:
+      body: {"departure": "JFK", "arrival": "LAX", "departure_date": "2026-12-10", "currency": "USD"}
+    price: {value: '4', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.itineraries, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/google-flights
+
+  - id: scrapercompany.attractions.park.calendar
+    added: '2026-11-09'
+    capability: attractions.park.calendar
+    platform: attractions
+    scope: any_account
+    method: POST
+    path: /v1/attractions/calendar
+    name: "Theme park ticket prices by date"
+    summary: "Returns a theme park's day-ticket price and open, closed or sold-out status for each visit date in a window."
+    input:
+      bodyType: json
+      body:
+        park: {type: string, required: false, note: "Park id from GET /v1/attractions/parks, e.g. `dollywood` or `alton-towers`.", example: "dollywood"}
+        days: {type: integer, required: false, note: "Visit dates to return from start_date, 1 to 92.", example: 7}
+        url: {type: string, required: false, note: "The park's website or ticket-shop URL, instead of `park`."}
+        start_date: {type: string, required: false, note: "First visit date, `YYYY-MM-DD`; defaults to today where the park is."}
+        include_capacity: {type: boolean, required: false, note: "Also return each date's capacity numbers (daily capacity, tickets sold, remaining, percent available) where the park's shop states them.", example: false}
+    test_request:
+      body: {"park": "dollywood", "days": 7}
+    price: {value: '4', currency: credit, per: 1, unit: call, note: "4 credits per started 31 days of dates."}
+    miss: {when: {path: response.calendar, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/attractions-calendar
+
+  - id: scrapercompany.google.serp.maps
+    added: '2026-11-09'
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/maps/search
+    name: "Google Maps place search"
+    summary: "Returns one page of Google Maps place cards for a query: name, address, coordinates, rating, category, website and the place token."
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, note: "Maps search query.", example: "Hilton Chicago"}
+        gl: {type: string, required: false, note: "Country market.", example: "us"}
+        hl: {type: string, required: false, note: "Language.", example: "en"}
+    test_request:
+      body: {"q": "Hilton Chicago", "gl": "us", "hl": "en"}
+    price: {value: '3', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.places, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/maps-search
+
+  - id: scrapercompany.google.serp.news
+    added: '2026-11-09'
+    capability: google.serp.news
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/news
+    name: "Google News results"
+    summary: "Returns up to 100 Google News results for a query or section, newest first, with title, source, link and publish time."
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: false, note: "Search query.", example: "Hilton Chicago"}
+        when: {type: string, required: false, note: "Freshness window appended to `q` (`1h`, `1d`, `7d`, `1y`).", example: "7d"}
+        gl: {type: string, required: false, note: "Country market.", example: "us"}
+        hl: {type: string, required: false, note: "Language.", example: "en"}
+        topic: {type: string, required: false, note: "Section feed: one of Google's reader sections.", example: "business"}
+        ceid: {type: string, required: false, note: "Explicit edition override (`CA:fr`, `GB:en`); built from `gl`/`hl` when omitted."}
+    test_request:
+      body: {"q": "Hilton Chicago", "when": "7d", "gl": "us", "hl": "en"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.news_results, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/news
+
+  - id: scrapercompany.walmart.search.products
+    added: '2026-11-09'
+    capability: walmart.search.products
+    platform: walmart
+    scope: any_account
+    method: POST
+    path: /v1/walmart/search
+    name: "Walmart product search"
+    summary: "Returns one page of about 40 Walmart search results with name, brand, price, rating and item id."
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, note: "Search query.", example: "bathrobe"}
+        page: {type: integer, required: false, note: "Result page.", example: 1}
+        sort: {type: string, required: false, note: "Walmart's own `sort=` value; omit for Walmart's default."}
+    test_request:
+      body: {"q": "bathrobe"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/walmart-search
+
+  - id: scrapercompany.amazon.search.products
+    added: '2026-11-09'
+    capability: amazon.search.products
+    platform: amazon
+    scope: any_account
+    method: POST
+    path: /v1/amazon/search
+    name: "Amazon product search"
+    summary: "Returns one page of about 48 Amazon search results with title, ASIN, price, rating, review count and a sponsored flag."
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, note: "Search query.", example: "bathrobe"}
+        page: {type: integer, required: false, note: "Result page.", example: 1}
+        sort: {type: string, required: false, note: "Amazon's own `s=` sort value; omit for Amazon's default."}
+        min_rating: {type: number, required: false, note: "Amazon's customer-rating filter (0..4.5)."}
+    test_request:
+      body: {"q": "bathrobe"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://scrapercompany.com/docs/reference/amazon-search

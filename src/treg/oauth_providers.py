@@ -4256,6 +4256,44 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+SCRAPERCOMPANY = OAuthProvider(
+    service="scrapercompany",
+    display_name="ScraperCompany",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your ScraperCompany API key (sk_...)",
+    # The key rides in the x-api-key header (Authorization: Bearer and an api_key query param are
+    # accepted too); the header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://api.scrapercompany.com/signup",
+    setup_action_label="Get your ScraperCompany API key",
+    setup_steps=(
+        "Sign up at api.scrapercompany.com/signup and verify your email. The free trial needs no card.",
+        "Open API keys in the dashboard and create a key.",
+        "Copy the key (sk_...) and paste it here.",
+    ),
+    setup_note=(
+        "Every data call costs a fixed number of credits per successful call; failed calls and "
+        "empty results are free. The usage check is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary=(
+        "Public web data as JSON: hotel prices, rooms and rate calendars from Google Hotels, "
+        "Booking.com and Agoda, Google Flights fares, theme-park tickets, Google Maps and News, "
+        "and retail search."
+    ),
+    base_url="https://api.scrapercompany.com",
+    docs_url="https://scrapercompany.com/docs",
+    # /v1/usage is free and needs auth. Checked 2026-11-09: a valid key gets 200 with the key's
+    # usage totals; "sk_" plus 32 zeros, "garbage", no key and a bogus Bearer all get HTTP 401
+    # application/json {"detail": "missing or invalid API key: ..."}.
+    probe_path="/v1/usage",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4270,7 +4308,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, SCRAPERCOMPANY,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
