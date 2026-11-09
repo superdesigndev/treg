@@ -124,6 +124,8 @@ source:
   curated: 2026-08-12
 limits: "60 requests/minute per key"
 pricing_url: https://acmeseo.example/pricing
+defaults:                                # what every row inherits
+  provenance: {source: docs, source_url: 'https://acmeseo.example/pricing', checked: '2026-08-12', confidence: documented}
 endpoints:
   - id: acmeseo.web.backlinks.summary
     capability: web.backlinks.summary     # the cross-provider join key, from capabilities.yaml
@@ -132,21 +134,14 @@ endpoints:
     method: GET
     path: /backlinks/summary
     name: "Backlink summary"
-    summary: "Aggregate backlink profile of a domain or URL"   # vendor's wording, verbatim
+    summary: "Aggregate backlink profile of a domain or URL"   # what the tool does (catalog-schema.md)
     input:
       queryParams:
         target: {type: string, required: true, note: "domain or full URL", example: "moz.com"}
         mode:   {type: string, required: false, note: "one of domain | url", example: "domain"}
     test_request:                          # the CHEAP call verification replays
       queryParams: {target: "moz.com", mode: "domain"}
-    cost:
-      type: per_success                    # errors free
-      value: 0.002
-      currency: USD
-      source: docs
-      source_url: https://acmeseo.example/pricing
-      checked: 2026-08-12
-      confidence: documented
+    price: {value: '0.002', currency: USD, per: 1, unit: call}   # misses and errors free by default
     docs_url: https://docs.acmeseo.example/backlinks-summary
     added: 2026-08-12                      # written by scripts/catalog_added.py
   # …7–14 more endpoints, same shape
@@ -214,7 +209,7 @@ Recorded reasons from past reviews, so nobody wastes a cycle:
 
 ## Keeping your listing healthy
 
-- **Prices moved?** Tell us or PR the `cost` blocks — stale prices are flagged after 90 days.
+- **Prices moved?** Tell us or PR the `price` and `provenance` keys — stale prices are flagged after 90 days.
 - **Routes changed?** If you publish OpenAPI, a re-ingest regenerates your extended tier from
   the spec; the curated core file is updated by hand, so breaking changes there need a heads-up.
 - **Success rates are public.** treg aggregates observed success rate and latency per endpoint

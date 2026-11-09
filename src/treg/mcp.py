@@ -107,6 +107,9 @@ class _SurfacePolicy:
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
+    # Whether catalog_get shows the row's `note`. The directory surface returns what it was
+    # submitted with until the next resubmission.
+    endpoint_note: bool = True
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -128,6 +131,7 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+    endpoint_note=False,
 )
 
 
@@ -702,13 +706,21 @@ async def _api(token: str, *, client_name: str = "mcp"):
         yield client
 
 
-_UNSAFE_SEGMENTS = frozenset({"", ".", ".."})
+_UNSAFE_SEGMENTS = frozenset({".", ".."})
 
 
 def _leaves_route(endpoint_id: str) -> bool:
-    """Whether a dot or empty segment, at any depth of percent-encoding, could move the call off its
-    route: httpx collapses `..` before the in-process request, and the caller's credential rides it."""
+    """Whether a `.` or `..` segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses those before the in-process request, and the caller's credential rides it.
+
+    Empty segments (a mid-path `//`, or `%2F` that only becomes empty after decoding) stay under the
+    route and must pass: own-tool paths carry percent-encoded URLs in a single segment (e.g. a GSC
+    `feedpath` of `https%3A%2F%2F…`), and refusing the empty that appears only after `unquote` blocked
+    them. An empty `endpoint_id` is still refused.
+    """
     path = endpoint_id.partition("?")[0].partition("#")[0]
+    if path == "":
+        return True
     for _ in range(4):
         segments = path.split("/")
         # A trailing slash is a real upstream path (`tool/items/`), not a way out.
@@ -723,7 +735,7 @@ def _leaves_route(endpoint_id: str) -> bool:
     return True
 
 
-_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain an empty, '.' or '..' path segment",
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain a '.' or '..' path segment",
                     "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
 
 
@@ -746,6 +758,30 @@ def _body(r: httpx.Response) -> Any:
     return jsontext.scrub_surrogates(body) if jsontext.may_hold_surrogates(r.content) else body
 
 
+def _dead_mcp_key_problem() -> dict:
+    """The saved MCP bearer is dead - CLI login does not refresh it. Name the cause and the repair.
+
+    A static Authorization header written by `treg mcp install` survives `treg login` and session-
+    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere.
+    Point them at `treg mcp install --oauth`, which rewrites every managed client to URL-only so the
+    client can authorize itself (Claude Code `/mcp`, Codex `codex mcp login`, Cursor/opencode OAuth).
+    A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written entry) is out of the installer's
+    reach, so the hint also says to replace it. This hint is the one place the repair is documented.
+    """
+    return {
+        "error": "not signed in, or this token is invalid or expired",
+        "hint": (
+            "This MCP server holds its own saved key, separate from the CLI login, and that key is "
+            "no longer valid. Run `treg update`, then `treg mcp install --oauth` (needs no login), "
+            "restart the agent, then authorize treg in the client (Claude Code: `/mcp`, then "
+            "Authenticate; Codex: `codex mcp login treg`; Cursor/opencode: follow the client's "
+            "sign-in prompt). If you set this key yourself (for example the `TREG_TOKEN` "
+            f"environment variable), replace it with a current team key from "
+            f"{get_settings().public_url.rstrip('/')} and restart the agent."
+        ),
+    }
+
+
 async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | None, dict | None]:
     """Which team is this caller acting for? Returns `(org_id, slug, problem)`.
 
@@ -766,6 +802,10 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     pinned = client.headers.get("X-Treg-Org")
     if pinned:
         r = await client.get("/orgs")
+        if r.status_code == 401:
+            # Dead team-pinned key (revoke-tokens / Default-key rotation / bad signature still
+            # carrying an org claim). The old answer said the TEAM was gone; the key is what died.
+            return None, None, _dead_mcp_key_problem()
         for o in (_body(r) or []) if r.status_code == 200 else []:
             if o.get("slug") == pinned:
                 return int(o["org_id"]), pinned, None
@@ -778,10 +818,7 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
 
     r = await client.get("/orgs")
     if r.status_code == 401 or me.status_code == 401:
-        return None, None, {"error": "not signed in, or this token is invalid or expired",
-                            "hint": ("sign in again with `treg login`, then run `treg mcp install` to "
-                                     "update this server's token, or configure a current key from "
-                                     f"{get_settings().public_url.rstrip('/')}")}
+        return None, None, _dead_mcp_key_problem()
     if r.status_code != 200:
         return None, None, {"error": "could not read the teams for this token"}
     orgs = _body(r) or []
@@ -1277,6 +1314,8 @@ async def _catalog_get_impl(
     # Lifted onto the result so the schema advertises it: the direct price is not the only price
     # a "free" endpoint can bill.
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict) and not surface.endpoint_note:
+        ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.

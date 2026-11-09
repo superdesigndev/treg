@@ -45,6 +45,7 @@ import hashlib
 import hmac
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 
 import httpx
 
@@ -162,6 +163,11 @@ def _scrub_treg_cookies(headers: httpx.Headers) -> None:
     else:
         del headers["cookie"]
 
+
+
+# Set by a caller that needs to know the request actually left: called once every local check
+# above has passed, immediately before the send. Not called for a request refused here.
+ON_SEND: ContextVar[Callable[[], None] | None] = ContextVar("relay_on_send", default=None)
 
 async def relay(
     request: UpstreamRequest,
@@ -285,6 +291,8 @@ async def relay(
             detail="upstream host resolves to a non-public address")
     if before_outbound is not None:
         await before_outbound()
+    if (on_send := ON_SEND.get()) is not None:
+        on_send()
     upstream_resp = await client.send(upstream_req, stream=True)
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection

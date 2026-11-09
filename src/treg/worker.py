@@ -18,6 +18,7 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
     treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
@@ -446,6 +447,31 @@ async def _spend_rollup(args) -> int:
     return 0
 
 
+async def _billing_reconcile(args) -> int:
+    """Exit 1 and alert when a paid top-up is missing from the ledger; exit 0 when every one matches."""
+    from datetime import datetime, timedelta, timezone
+    from .application import billing
+    from .config import get_settings
+    from .infra import slack
+    from .infra.db import verify_db
+
+    webhook = get_settings().ops_slack_webhook_url
+    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
+    try:
+        await verify_db()
+        report = await billing.reconcile_topups(since=until - timedelta(hours=args.hours), until=until)
+    except Exception as exc:
+        if webhook:
+            await slack.post(webhook, f"treg-worker billing reconcile failed: {type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(report, sort_keys=True))
+    if not report["gaps"]:
+        return 0
+    if webhook:
+        await slack.post(webhook, billing.reconcile_alert(report))
+    return 1
+
+
 async def _usage_rollup(args) -> int:
     from .infra.db import verify_db
     from .application.call_usage_rollup import refresh
@@ -522,6 +548,17 @@ async def _admin_erase_archive(args) -> int:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
     print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+async def _admin_revoke_refund(args) -> int:
+    """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
+    missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    print(json.dumps(await billing.revoke_refunded_payment(args.payment_intent), sort_keys=True))
     return 0
 
 
@@ -788,6 +825,14 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    bill = sub.add_parser("billing", help="prepaid balance top-ups")
+    billsub = bill.add_subparsers(dest="cmd", required=True)
+    breconcile = billsub.add_parser("reconcile", help="check every top-up Stripe collected against the ledger")
+    breconcile.add_argument("--hours", type=_positive_int, default=48,
+                            help="how far back to look, ending --grace-minutes ago")
+    breconcile.add_argument("--grace-minutes", type=_positive_int, default=30,
+                            help="leave the newest payments to their in-flight webhook")
+    breconcile.set_defaults(fn=_billing_reconcile)
     usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
     usagesub = usage.add_subparsers(dest="cmd", required=True)
     urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")
@@ -816,6 +861,9 @@ def main(argv: list[str] | None = None) -> int:
     erase.add_argument("--include-sole-public", action="store_true",
                        help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
+    revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
+    revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
+    revoke.set_defaults(fn=_admin_revoke_refund)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")

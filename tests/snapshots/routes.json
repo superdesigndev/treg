@@ -361,6 +361,32 @@
     "methods": [
       "POST"
     ],
+    "name": "cli_events",
+    "path": "/cli/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest",
+    "path": "/cli/latest"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest_download",
+    "path": "/cli/latest/{platform}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "publish_hub_tool",
     "path": "/hub/tools"
   },
@@ -752,6 +778,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "install_ps1",
+    "path": "/install.ps1"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "install_sh_linked",
     "path": "/i/{code}"
   },
@@ -1086,6 +1121,15 @@
     ],
     "name": "rea_growth_page",
     "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "social_search_page",
+    "path": "/social"
   },
   {
     "kind": "APIRoute",
@@ -2671,6 +2715,32 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user_by_email",
+    "path": "/admin/referrals/users"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user",
+    "path": "/admin/referrals/users/{user_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "admin_set_referral_affiliate",
+    "path": "/admin/referrals/users/{user_id}/affiliate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "admin_set_superadmin",
@@ -2865,6 +2935,23 @@
     ],
     "name": "table_account",
     "path": "/table-account"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "task_submission",
+    "path": "/tasks/{call_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "task_look",
+    "path": "/tasks/{call_id}"
   },
   {
     "kind": "APIRoute",
@@ -3324,6 +3411,24 @@
     ],
     "name": "rankings_board",
     "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
   },
   {
     "kind": "APIRoute",

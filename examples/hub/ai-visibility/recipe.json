@@ -1,6 +1,6 @@
 {
   "name": "ai-visibility",
-  "summary": "Ask ChatGPT, Gemini, Copilot and Google AI Mode one question. Per engine: did it mention your brand, cite your site, name a competitor. A judgment model decides, not a text search.",
+  "summary": "Ask ChatGPT, Gemini and Google AI Mode one question. Per engine: did it mention your brand, cite your site, name a competitor. A judgment model decides, not a text search.",
   "capability": "ai-search.mentions.summary",
   "inputs": {
     "prompt": {
@@ -35,7 +35,6 @@
   "uses": [
     "cloro.ai-search.chatgpt.scrape",
     "cloro.ai-search.gemini.scrape",
-    "cloro.ai-search.copilot.scrape",
     "cloro.google.serp.ai_mode",
     "openrouter.ai-judge.decide"
   ],

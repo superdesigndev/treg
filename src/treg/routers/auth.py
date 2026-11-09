@@ -26,7 +26,7 @@ from ..application.auth import (
 from ..config import get_settings
 from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
-from ..domain.identity.access import require_identity
+from ..domain.identity.access import require_identity, require_person
 from ..models import User
 from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
 from .web import _esc_html
@@ -1288,7 +1288,7 @@ token_router = app
 async def auth_cli_token(
     response: Response,
     request: Request,
-    user: User = Depends(require_identity),
+    user: User = Depends(require_person),
     x_treg_org: str = Header(default=""),
     x_treg_token: str = Header(default=""),
     treg_session: str = Cookie(default=""),

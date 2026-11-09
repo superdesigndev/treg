@@ -382,6 +382,35 @@ async def test_a_team_default_token_resolves_its_team(clients):
     assert out.get("team")
 
 
+
+async def test_a_revoked_team_key_names_the_oauth_repair_not_a_missing_team(clients):
+    """Pinned dead key: `/orgs` 401 must NOT say the team is gone - the key died. Name the repair.
+
+    `treg mcp install` writes a team-pinned Default key as a static Authorization header. After
+    revoke-tokens (or session-secret rotation) that header is still present, so `_resolve_org`
+    takes the pinned branch. The old copy answered "team … no longer available"; agents then
+    chased the wrong fix.
+    """
+    token = (await verified_signup(clients, json={"email": "dead-pinned@superdesign.dev"})).json()["token"]
+    clients.headers["X-Treg-Token"] = token
+    # Prove the live key works first (pinned path succeeds).
+    async with mcp_session(clients) as c:
+        live = await _call_tool(c, "balance", {}, token=token)
+    assert "balance_usd" in live, live
+
+    revoked = await clients.post("/auth/revoke-tokens", headers={"X-Treg-Token": token})
+    assert revoked.status_code == 200, revoked.text
+
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=token)
+    assert "no longer available" not in json.dumps(out), out
+    assert "not signed in" in out.get("error", ""), out
+    assert "treg mcp install --oauth" in out.get("hint", ""), out
+    assert "separate from the CLI login" in out.get("hint", ""), out
+    assert "treg update" in out.get("hint", ""), out
+    assert "TREG_TOKEN" in out.get("hint", ""), out
+
+
 async def test_one_team_cannot_read_another_teams_tools(clients):
     """Tenant isolation, asserted rather than assumed. Two orgs, two tokens: each sees only its own
     registered tools. This is the property a second front door is most likely to lose."""
@@ -854,14 +883,17 @@ async def test_auth_middleware_preserves_a_real_mid_body_disconnect() -> None:
 async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
     """The challenge fires only when there is NO credential. Deciding whether a token is valid needs
     the database, and doing that in transport middleware would put a second authentication
-    implementation in front of the first."""
+    implementation in front of the first. A garbage bearer still answers 200 at the transport and
+    the tool names the OAuth repair command (MCP grant ≠ CLI login)."""
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": "balance", "arguments": {}}},
             headers={**MCP_HEADERS, "Authorization": "Bearer not-a-real-token"})
     assert r.status_code == 200
-    assert "error" in json.loads(r.json()["result"]["content"][0]["text"])
+    body = json.loads(r.json()["result"]["content"][0]["text"])
+    assert "error" in body
+    assert "treg mcp install --oauth" in body.get("hint", ""), body
 
 
 async def test_call_accepts_an_ARRAY_body(clients):

@@ -136,7 +136,7 @@ async def test_leadocean_usage_monitors_independent_record_windows_without_block
     async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
         row = await collectors._leadocean(client, "test")
     assert row["value"] == 0 and row["informational"] is True
-    assert policy.default_policy("leadocean", has_key=True).rate_limit["limit"] == 25
+    assert policy.default_policy("leadocean", has_key=True).rate_limit["limit"] == 200
 
 
 @pytest.mark.parametrize("bad", [None, True, "1", -1])

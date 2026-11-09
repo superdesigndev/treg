@@ -1,11 +1,11 @@
 """partial index on idempotentcall (expires_at) WHERE archive_content_hash IS NOT NULL - the archive
 pruner reads which stored answers live retry rows still point to
 
-Revision ID: 0097
-Revises: 0096
+Revision ID: 0100
+Revises: 0099
 Create Date: 2026-11-03
 
-A retry row that dropped its own copy (0096) names an archive answer, and `archive.prune_once` must
+A retry row that dropped its own copy (0099) names an archive answer, and `archive.prune_once` must
 not strip those bytes while the row is inside its 24-hour window. The pruner asks once per pass for
 the content hashes of unexpired trimmed rows; this partial index holds only trimmed rows, so that
 question reads about a day of them instead of the whole table.
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0097"
-down_revision: str | Sequence[str] | None = "0096"
+revision: str = "0100"
+down_revision: str | Sequence[str] | None = "0099"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # pro forma - see the rollback floor note; the operation is one additive index
