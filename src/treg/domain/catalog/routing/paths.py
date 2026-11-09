@@ -425,7 +425,8 @@ _IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "a
 def current_role(history: Any) -> dict | None:
     """`current_role(workHistory)` — the role a person holds now, from a work history whose items carry
     `dates: {from, to}`: of the roles with no end date the latest started, else the latest started
-    of all (someone between jobs keeps their last role). Ties and missing dates keep list order."""
+    of all (someone between jobs keeps their last role). A role with a start date beats one without;
+    equal starts, including none at all, keep list order."""
     roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
     if not roles:
         return None

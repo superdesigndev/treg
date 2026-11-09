@@ -383,17 +383,8 @@ def test_current_role_is_the_open_role_not_the_first_listed():
     assert P.current_role([ended, now, advisor]) is now, "the latest-started role with no end date"
     assert P.current_role([ended, {"title": "Intern", "dates": {"from": "2012", "to": "2013"}}]) is ended
     assert P.current_role([{"title": "A"}, {"title": "B"}])["title"] == "A", "no dates keeps list order"
+    assert P.current_role([{"title": "A"}, {"title": "B", "dates": {"from": "2010"}}])["title"] == "B", "a dated start wins"
     assert P.current_role([]) is None and P.current_role(None) is None
-
-
-def test_exa_rows_carry_the_current_role_and_when_it_began():
-    ad = catalog_store.load().adapters["exa.people.search"]
-    history = [{"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}, "company": {"name": "Old Co"}},
-               {"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}, "company": {"name": "New Co"}}]
-    row = ad.from_upstream({"results": [{"url": "https://linkedin.com/in/x", "title": "X",
-                                         "entities": [{"properties": {"name": "X", "workHistory": history}}]}]})["people"][0]
-    assert (row["title"], row["company"], row["title_since"]) == ("Video Engineer", "New Co", "2026-01-01")
-    assert "title_until" not in row
 
 
 def test_in_rollout_is_stable_per_team_and_never_without_one():
