@@ -481,3 +481,31 @@ async def test_quota_signal_with_body_reset_uses_provider_timestamp(clients: Asy
             f"lock until ({actual_until}) should be at or before provider's reset ({expected_reset})"
     finally:
         capacity_signatures._TABLE[:] = original_table
+
+
+async def test_far_future_reset_does_not_suggest_quick_retry(clients: AsyncClient, platform_on):
+    """When the reset is more than 24 hours away (like a monthly quota), the error message
+    should not suggest a quick retry and should prominently show when the reset happens."""
+    await _publish("tikhub", exhausted=True, hours=21 * 24)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503
+    body = r.json()["detail"]
+    assert body["error"] == "provider_capacity_unavailable"
+    msg = body["message"]
+    assert "once a minute" not in msg, "far-future reset should not suggest quick retry"
+    assert "retry later may succeed" not in msg, "far-future reset should not suggest retry"
+    assert "connect your own key" in msg, "should suggest BYOK"
+    assert "own keys are never affected" in msg, "should explain BYOK immunity"
+    assert "resets" in msg.lower(), "should mention when it resets"
+
+
+async def test_short_term_reset_suggests_retry(clients: AsyncClient, platform_on):
+    """When the reset is within 24 hours (like a rate limit), the error message
+    should suggest that a retry later may succeed."""
+    await _publish("tikhub", exhausted=True, hours=1)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503
+    msg = r.json()["detail"]["message"]
+    assert "connect your own key" in msg, "should suggest BYOK"
+    assert "once a minute" in msg or "retry later may succeed" in msg, \
+        "short-term reset should suggest retry"

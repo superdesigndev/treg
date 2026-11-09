@@ -279,6 +279,35 @@ async def _overflow_disclosure(ep: dict, cat) -> dict:
     return {}
 
 
+async def _platform_exhaustion_notice(ep: dict, cat) -> dict:
+    """When treg's platform key for this endpoint's provider is exhausted, return the reset time
+    and a notice suggesting BYOK. Empty when not exhausted or not platform-eligible."""
+    from ..domain.capacity import marks as capacity_marks
+    from ..domain.capacity.view import view as capacity_view
+    settings = get_settings()
+    if not cat.platform_eligible(ep) or not settings.platform_key_for(ep["provider"]):
+        return {}
+    try:
+        await capacity_view.load()
+    except Exception:
+        logging.getLogger("treg.catalog").warning("capacity view unavailable", exc_info=True)
+        return {}
+    metered = capacity_marks.spends_balance((ep.get("cost") or {}).get("type"))
+    resets = capacity_view.exhausted_until(ep["provider"], ep["id"], metered=metered)
+    if resets is None:
+        return {}
+    service = ep["provider"]
+    env_var = service.upper().replace("-", "_") + "_API_KEY"
+    return {
+        "platform_exhausted": True,
+        "platform_resets_at": resets.isoformat() + "Z",
+        "platform_exhaustion_notice": (
+            f"treg's {service} account is out of capacity until {resets:%Y-%m-%d %H:%M} UTC. "
+            f"Connect your own key to continue: treg secret add {service} --env-var {env_var}"
+        ),
+    }
+
+
 async def _observed_or_empty(
     reader: endpoint_stats.EndpointObservationReader, endpoint_ids: list[str],
 ) -> endpoint_stats.ObservationSnapshot:
@@ -648,6 +677,7 @@ async def catalog_endpoint(
     observed_ids = [endpoint_id] + [s["id"] for s in siblings]
     stats = await _observed_or_empty(observations, observed_ids)
     overflow = await _overflow_disclosure(ep, cat)
+    exhaustion = await _platform_exhaustion_notice(ep, cat)
     # And what other teams' agents said after using each of them (`reviews`, where there are any):
     # the other half of the choice, attached here for the same reason as `observed`.
     verdicts = await _verdicts_or_empty()
@@ -719,6 +749,16 @@ async def catalog_endpoint(
                                                      "best measured quality first, each at its own price; the answer is "
                                                      "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
+    hints = [_run_hint(ep)]
+    if exhaustion:
+        hints.insert(0, exhaustion["platform_exhaustion_notice"])
+    if overflow:
+        hints.append(f"when treg's own {ep['provider']} account is out this may be served through the "
+                     f"overflow relay ({overflow['overflow_via']}) and bill "
+                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
+                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)")
+    if siblings:
+        hints.append(f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}")
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),
         "provider": {"service": ep["provider"], "display_name": _provider_display(ep["provider"]),
@@ -728,16 +768,10 @@ async def catalog_endpoint(
         **({"observed_pending": True} if _observation_pending(observations, observed_ids) else {}),
         **({"related_capabilities": rel} if (rel := _related_capabilities(ep, cat)) else {}),
         **({"routing": routing} if routing is not None else {}),
+        **exhaustion,
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
-        "hints": [_run_hint(ep)]
-                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
-                     f"overflow relay ({overflow['overflow_via']}) and bill "
-                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
-                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
-                    if overflow else [])
-                 + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
-                    if siblings else []),
+        "hints": hints,
     }
 
 
