@@ -110,6 +110,10 @@ class _SurfacePolicy:
     # Whether catalog_get shows the row's `note`. The directory surface returns what it was
     # submitted with until the next resubmission.
     endpoint_note: bool = True
+    # The hint on a balance refusal. Neither surface carries a purchase link (see `_call_impl`); the
+    # directory surface keeps the words it was submitted with.
+    balance_hint: str = ("the team's prepaid balance is not enough for this call. A team admin can "
+                         "add funds in the treg dashboard under Team → Billing.")
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -132,6 +136,7 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
     endpoint_note=False,
+    balance_hint="the team's prepaid balance is not enough for this call",
 )
 
 
@@ -1677,7 +1682,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
-            out["hint"] = "the team's prepaid balance is not enough for this call"
+            out["hint"] = surface.balance_hint
     return out
 
 
