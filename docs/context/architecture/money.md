@@ -233,7 +233,8 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
 - **Only `reserve` may shed load.** When its budget (`money_admission_wait_s`) expires it releases
   partial gates and raises `ReserveAdmissionTimeout`, which `reserve.reserve_admission` maps to a 429
   (`money_admission_timeout`, blame `treg`) with a randomized `Retry-After` between
-  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. Every other
+  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. A routed call
+  answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
   and cleanup must run.

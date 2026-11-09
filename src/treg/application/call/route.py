@@ -166,6 +166,9 @@ _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "c
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
                               "platform_daily_cap_reached", "daily_cap_reached"})
+# treg's own transient refusals for the whole team (or tag), answered before any hold: every
+# candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
+_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
 
 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
@@ -959,10 +962,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      exc.status_code, 0, "treg's account is at its rate limit"))
                 rate_waits.append(exc.retry_after_s or 1)
                 continue
-            if exc.kind in _GLOBAL_REFUSALS or (
-                exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
-            ):
+            if exc.kind in _GLOBAL_REFUSALS or exc.kind in _TEAM_BUSY:
+                if unconfirmed or undecided or best is not None:
+                    # An answer is already paid for: keep it, and say the next ask was refused.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                         exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                    break
                 raise  # the same refusal everywhere; nothing to fall back to
+            if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
+                raise
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:

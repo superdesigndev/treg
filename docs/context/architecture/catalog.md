@@ -1116,7 +1116,12 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    refusals (`_GLOBAL_REFUSALS`) and treg's own team-level transient refusals (`_TEAM_BUSY`: a
+    busy money queue, an unreadable daily-cap or tag budget) are terminal: the caller gets treg's
+    refusal with its `Retry-After`, never `route_failed`. Provider-level ones (`share_busy`,
+    `provider_rate_limited`, `trial_allowance_unavailable`) still fall back. When Confirm, Decisive
+    or Min-Results already holds a paid answer, a terminal refusal ends the walk instead: that answer
+    is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
