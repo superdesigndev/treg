@@ -10,6 +10,7 @@ sources:
   - src/treg/application/home.py
   - tests/test_released_cli_compat.py
   - tests/test_cli_key_compatibility.py
+  - tests/test_cli_call_transport.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
   - src/treg/web/install.sh
@@ -73,8 +74,10 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
 - **`--json`** prints the server's JSON as received. On `call` (not `--await`) it prints one envelope,
   `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
-  for. Exit status is unchanged (1 on HTTP >= 400). `--json` and `--org` are stripped in `main` and
-  last for one `main()` call.
+  for. Exit status is unchanged (1 on HTTP >= 400). A transport error before a complete HTTP
+  response is a `_fail` envelope instead (`error: network_error`, `message`, any known `call_id` /
+  `charged_micro` / `reserved_micro`, and `help`), so a script still parses one JSON value. `--json`
+  and `--org` are stripped in `main` and last for one `main()` call.
 - **stdout is the exact body.** Everything treg adds goes to stderr: on HTTP >= 400 one diagnostic
   line (`_show_failure_diagnostics`) with the status, whose answer it is (`X-Treg-Error: 1` = treg
   refused, absent = relayed provider answer), the call id and any charge. treg's saturation 503
@@ -145,7 +148,13 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   [proxy-model](../architecture/proxy-model.md)). `--header` adds a header the binding cannot know;
   an injected credential always wins. `--query` is relayed as a list of pairs (duplicates survive)
   and fills `{placeholder}` path params. `treg call <catalog-id> <path>` answers 400 naming the
-  endpoint's parameter slots.
+  endpoint's parameter slots. The initial registry request catches `httpx.RequestError` and
+  `OSError` (`_call_transport_error`) instead of letting a dropped or timed-out connection become
+  a Python traceback: the refusal names the exception type, reports a call id or charge only when
+  the exception already carries those headers (httpx closes a partial response before raising, so
+  they are usually unknown), says a retry might or might not repeat a charge, and points at
+  `treg balance` and `treg calls`. It never invents either value. Async poll already retried these
+  errors; this is the unprotected first request.
 - **`--await [--timeout]`** reads `X-Treg-Async` (a no-op without it), using descriptor semantics from
   `treg.domain.asynctasks`, never a CLI-side copy. It prints the task id and a resumable command to
   stderr, polls every descriptor `interval` and never past `max_age`, skips polling on
