@@ -1959,6 +1959,30 @@ OPENROUTER = OAuthProvider(
     probe_path="/key",
 )
 
+NACE = OAuthProvider(
+    service="nace",
+    display_name="Nace (Drex)",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="nace_sk_…",
+    setup_url="https://console.nace.ai",
+    setup_action_label="Get your Nace API key",
+    setup_steps=(
+        "Sign in to the Nace console and open API Keys.",
+        "Create a key (nace_sk_…) and copy it; it is shown once.",
+    ),
+    setup_note="Decisions are billed per input token; the model-list check is free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Judge evidence with the Drex decision models: labels, rubric scores and yes/no probabilities.",
+    base_url="https://console.nace.ai/v1",
+    docs_url="https://console.nace.ai/docs/drex",
+    # GET /v1/models runs no model. Checked 2026-11-09: a made-up nace_sk_ key gets HTTP 401
+    # {"error":{"type":"authentication_error","message":"Invalid API key. ..."}}.
+    probe_path="/models",
+)
+
 REPLICATE = OAuthProvider(
     service="replicate",
     display_name="Replicate",
@@ -4266,7 +4290,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
-        OPENROUTER,
+        OPENROUTER, NACE,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,

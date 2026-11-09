@@ -1075,6 +1075,16 @@ def test_anymailfinder_platform_prices_all_shared_key_tools():
     }
 
 
+def test_nace_catalog_is_platform_priced():
+    from treg.domain.catalog import store as cs
+
+    c = cs.load()
+    rows = [ep for ep in c.endpoints if ep["provider"] == "nace"]
+    assert rows
+    for ep in rows:
+        assert c.platform_eligible(ep), ep["id"]
+
+
 def test_orbisearch_shared_key_scope_and_verified_credit_prices():
     from treg.domain.catalog import store as cs
 

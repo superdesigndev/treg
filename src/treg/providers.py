@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 27  # v27: MobiusEngine.ai Jobs Data renamed
+CATALOG_VERSION = 28  # v28: Nace key detection
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -77,6 +77,7 @@ CATALOG: list[dict] = [
     {"provider": "Perplexity",  "tokens": ["PERPLEXITY", "PPLX"],  "base_url": "https://api.perplexity.ai",                       "auth": {"shape": "bearer"}},
     {"provider": "HuggingFace", "tokens": ["HUGGINGFACE", "HUGGINGFACEHUB", "HF"], "base_url": "https://api-inference.huggingface.co", "auth": {"shape": "bearer"}},
     {"provider": "Replicate",   "tokens": ["REPLICATE"],           "base_url": "https://api.replicate.com/v1",                    "auth": {"shape": "bearer"}},
+    {"provider": "Nace",        "tokens": ["NACE", "DREX"],        "base_url": "https://console.nace.ai/v1",                      "auth": {"shape": "bearer"}, "probe": "models"},
     {"provider": "ElevenLabs",  "tokens": ["ELEVENLABS", "ELEVEN"],"base_url": "https://api.elevenlabs.io/v1",                    "auth": {"shape": "api_key_header", "header": "xi-api-key"}},
     {"provider": "Deepgram",    "tokens": ["DEEPGRAM"],            "base_url": "https://api.deepgram.com/v1",                     "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Token {secret}"}},
     {"provider": "Stripe",      "tokens": ["STRIPE"],              "base_url": "https://api.stripe.com/v1",                       "auth": {"shape": "bearer"}, "probe": "balance",
