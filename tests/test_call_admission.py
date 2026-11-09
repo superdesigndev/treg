@@ -113,3 +113,14 @@ async def test_without_a_handler_nothing_is_asked(clients, platform_on, monkeypa
     monkeypatch.setattr(policy, "registry", registry)
     assert registry.asks_call_admission is False
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
+
+
+async def test_a_denied_call_does_not_hold_its_idempotency_key(clients, platform_on, admission):
+    """After the team adds funds, the same key runs the call instead of replaying the refusal."""
+    admission["decision"] = policy.CallDecision.DENY
+    headers = {"Idempotency-Key": "admission-retry-1"}
+    assert (await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)).status_code == 403
+    admission["decision"] = policy.CallDecision.ALLOW
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
