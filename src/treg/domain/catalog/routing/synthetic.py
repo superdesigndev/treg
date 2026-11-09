@@ -11,6 +11,9 @@ ROUTED_KIND = "routed"
 # many items come back. Copied onto the generated parent so callers can follow a
 # large_result hint without pinning that child. Execution forwards each name only to a
 # child that declares it.
+# Inherited `max_items` is advertised with `min` of at least 1: a child may allow 0,
+# but that empties the result rows adapters read, so child_outcome would treat a
+# billed hit as a miss.
 # `summary` and `jq` are not included: AnyAPI documents that `summary=true` returns only
 # an outline and `jq` replaces `output`, so child_outcome cannot read the adapter paths
 # and would treat a billed hit as a miss.
@@ -41,6 +44,11 @@ def _response_budget_query_params(kids: list[dict]) -> dict:
             spec = declared.get(name)
             if name not in merged and isinstance(spec, dict):
                 merged[name] = dict(spec)
+    spec = merged.get("max_items")
+    if isinstance(spec, dict):
+        minimum = spec.get("min")
+        if not isinstance(minimum, (int, float)) or minimum < 1:
+            spec["min"] = 1
     return merged
 
 

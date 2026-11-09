@@ -1070,7 +1070,9 @@ an invalid extra never disables the primary.
   `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract's identity and filters, plus any of `fields` and `max_items` that at
   least one child declares as `queryParams` (shape-preserving response-budget controls; they
-  trim that child's response, not the charge; `summary` and `jq` stay on the child because they
+  trim that child's response, not the charge; inherited `max_items` is advertised with `min: 1`
+  even when a child allows 0, because zero empties the result rows `child_outcome` reads;
+  `summary` and `jq` stay on the child because they
   replace `output` and would leave `child_outcome` unable to read the adapter paths), `cost` = the children's range, `routed_children`). `miss_billed_by` lists children that
   bill an answer treg judges a miss; when non-empty the cost carries `varies: true` and
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
@@ -1105,7 +1107,9 @@ an invalid extra never disables the primary.
   `max_items` that the selected child declares are copied onto that request;
   adapter-built query wins on a name clash. `summary` and `jq` are not forwarded: they replace
   `output` (an outline, or the jq result), so `child_outcome` would classify a billed hit as a
-  miss and the waterfall would continue. The child applies the forwarded controls; the parent
+  miss and the waterfall would continue. A parent `max_items` below 1 is refused before any
+  child runs: zero empties those result rows, and routing cannot tell withheld rows from a
+  genuine miss. The child applies the forwarded controls; the parent
   still wraps the child's answer unaltered.
   - Vendor 4xx (not 402/405/408/410/429) is usually the caller's fault, but scrapers answer 400 for
     their own outages, so the waterfall continues ONLY to candidates that bill nothing for a

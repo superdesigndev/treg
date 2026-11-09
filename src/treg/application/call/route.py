@@ -697,6 +697,36 @@ def _with_parent_response_budget_query(parent, ep: dict, query: dict[str, str]) 
     return forwarded
 
 
+def _reject_zero_routed_max_items(parent, ep: dict) -> None:
+    """Refuse max_items below 1 on a routed parent that inherited the control.
+
+    Zero empties the result rows adapters read, so child_outcome would classify a
+    billed 2xx as a miss and the waterfall would buy more attempts. Routing cannot
+    tell withheld rows from a genuine miss without upstream-specific metadata or a
+    second unprojected call.
+    """
+    declared = ((ep.get("input") or {}).get("queryParams") or {})
+    if "max_items" not in declared:
+        return
+    for key, value in parent.input.query_items:
+        if key != "max_items" or value is None:
+            continue
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed < 1:
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+                "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                "parameter": "queryParams.max_items", "expected": "an integer of at least 1",
+                "message": (
+                    f"{ep['id']} rejects query max_items below 1: a zero cap empties "
+                    "the result rows used to classify the child's answer, so a billed "
+                    "hit would look like a miss. Nothing was charged."
+                ),
+            })
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
@@ -855,6 +885,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    _reject_zero_routed_max_items(parent, ep)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
