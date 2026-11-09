@@ -35,7 +35,9 @@ that fails them will be declined.
    `test_request` (smallest limit, public well-known target), and a `price` (`value`, `currency`,
    `per`, `unit`) with its `provenance` (`source`, `source_url`, `checked`, `confidence`), the
    provider-wide parts once under `defaults:` in the file header. Never write a `cost:` block.
-   Follow the schema in the worked example; `src/treg/catalog/tikhub.yaml` is a full live file.
+   Follow the schema in the worked example; `src/treg/catalog/tikhub.yaml` is a full live file,
+   whose `bill` default charges misses and errors because TikHub bills them. Your `bill` follows
+   your own billing; without one, misses and errors are free.
 
 ## Capability first
 

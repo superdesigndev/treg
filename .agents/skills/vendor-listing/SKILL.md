@@ -138,11 +138,12 @@ slash in `probe_path`), 200-with-error-body (read a body field), CSV/text respon
    reviewer attaches both to the new capability.
 4. **Describe** `input` (param names, types, required, location; constraints into `note`).
 5. **Cost, in the v2 spelling** - never a `cost:` block. Each row states its `price`; when the
-   answer decides the charge, `reserve` / `settle` / `bill`; and its outcome rules, `expect` /
-   `error` / `miss` / `not_found`. What holds for every row of the provider (`provenance`, the
-   `bill` rule, a shared `expect`) goes once in the file header's `defaults:`. The keys, the merge
-   rule and the outcome order are `catalog-schema.md`; how each key bills is `money.md` ("Rows in
-   the v2 spelling"). Prefer a rate-card endpoint (`source: rate_card_api`) over a pricing page.
+   request or the answer decides the charge, `reserve` / `settle` / `bill`; and its outcome
+   rules, `expect` / `error` / `miss` / `not_found`. What holds for every row of the provider
+   (`provenance`, the `bill` rule, a shared `expect`) goes once in the file header's `defaults:`.
+   The keys, the merge rule and the outcome order are `catalog-schema.md`; how each key bills is
+   `money.md` ("Rows in the v2 spelling"). Prefer a rate-card endpoint (`source: rate_card_api`)
+   over a pricing page.
    A minimal file, header and one row:
 
    ```yaml
@@ -171,17 +172,15 @@ slash in `probe_path`), 200-with-error-body (read a body field), CSV/text respon
 
 ### Writing summary and note
 
-The rules are `catalog-schema.md`, "Summary and note"; read them there, this is only the order to
-apply them in. For each sentence of a row's `summary`, `note`, parameter notes and `price.note`:
+The rules are [`catalog-schema.md`, "Summary and note"](../../../docs/context/architecture/catalog-schema.md#summary-and-note);
+read them there. This is only the order to apply them in, to a row's `summary`, `note`, parameter
+notes and `price.note`:
 
-1. **Does most callers' main use need it?** If not, cut it.
-2. **Put it in its most specific home:** the parameter's note, then `price.note`, then the row's
-   `note`.
+1. Apply its "Most callers need it" rule to each sentence.
+2. Place each caveat that stays by its "A caveat goes to its most specific home first" bullet.
 3. **Run `uv run --frozen python scripts/catalog_validate.py` locally and read every warning** on
-   your rows (`--base origin/main` limits them to the rows you touched, as CI does). Each is a
-   prompt to weigh, not an error to silence.
-4. **The probes that back each sentence go in the PR body**, beside the Step 7b ledger, never in
-   the row.
+   your rows (`--base origin/main` limits them to the rows you touched, as CI does).
+4. Put the evidence behind each sentence where that bullet says, with the Step 7b ledger.
 
 ## Step 7 — verify, scrub, validate
 
@@ -266,8 +265,11 @@ Rules for the ledger:
 
 If the vendor publishes a stable OpenAPI spec with example parameter values, add an
 `ingest_<service>()` to `scripts/catalog_ingest.py`, register it in `INGESTERS`, and generate
-`<service>.extended.yaml`. Rules: never probe with a real call; platform = what the data is
-ABOUT; normalise platform slugs across providers. Bulk-verify with
+`<service>.extended.yaml`. The core file's `defaults:` apply to the extended rows too, so a v2
+provider's ingester writes v2 keys against them, as `ingest_tikhub` and `ingest_justoneapi` do,
+or its output is converted with `scripts/catalog_v2.py --provider <slug> --apply`. Rules: never
+probe with a real call; platform = what the data is ABOUT; normalise platform slugs across
+providers. Bulk-verify with
 `catalog_verify_extended.py --dry-run` first, then with an explicit `--budget`.
 
 ## Reviewing a vendor-RAISED PR (they wrote the files; you verify)
