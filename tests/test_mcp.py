@@ -1734,6 +1734,55 @@ async def test_catalog_get_gives_the_caller_its_own_team_values(clients, monkeyp
     assert out["endpoint"]["your_values"] == {"queryParams.agent": call_resolution.team_label(org_id)}
 
 
+async def test_catalog_get_surfaces_a_missing_org_credential_instead_of_a_ready_run_hint(clients):
+    """A ready call_template plus "run it — key injected server-side" made agents dispatch
+    endpoints this org cannot reach. catalog_get now includes the live /access decision the CLI
+    already prints, and replaces that run hint when a call would 404 for a missing credential."""
+    token = (await verified_signup(clients, json={"email": "nocred@superdesign.dev"})).json()["token"]
+    cases = (
+        ("google-ads.accounts", "google-ads"),
+        ("meta-ad-library.meta-ads.library.search", "meta-ad-library"),
+    )
+    async with mcp_session(clients) as c:
+        results = {
+            endpoint_id: await _call_tool(c, "catalog_get", {"endpoint_id": endpoint_id}, token=token)
+            for endpoint_id, _provider in cases
+        }
+    for endpoint_id, provider in cases:
+        out = results[endpoint_id]
+        access = out.get("access") or {}
+        assert access.get("tier") == "none", access
+        assert f"no {provider} credential in this org" in (access.get("detail") or ""), access
+        assert out.get("call_template")
+        assert (out.get("usd_per_call") or 0) == 0
+        hints = out.get("hints") or []
+        assert any(f"no {provider} credential in this org" in hint for hint in hints), hints
+        assert not any("run it — key injected server-side" in hint for hint in hints), hints
+
+
+async def test_catalog_get_keeps_the_run_hint_when_treg_can_serve_the_call(clients, monkeypatch):
+    """When a call really can run on treg's key, the run-it hint stays and access says so."""
+    from treg.config import get_settings
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPECREATORS", "platform-scrapecreators-key")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapecreators")
+    get_settings.cache_clear()
+    token = (await verified_signup(clients, json={"email": "haskey@superdesign.dev"})).json()["token"]
+    try:
+        async with mcp_session(clients) as c:
+            out = await _call_tool(
+                c, "catalog_get",
+                {"endpoint_id": "scrapecreators.x.v1-facebook-adlibrary-search-ads"},
+                token=token,
+            )
+    finally:
+        get_settings.cache_clear()
+    access = out.get("access") or {}
+    assert access.get("tier") == "platform", access
+    assert "treg's scrapecreators key" in (access.get("detail") or ""), access
+    assert any("run it — key injected server-side" in hint for hint in (out.get("hints") or [])), out.get("hints")
+
+
 async def test_catalog_get_stays_within_an_mcp_client_output_limit(clients):
     """Hosts cap a tool result (Claude Code at about 25k tokens) and read `structuredContent`; a job
     with dozens of providers returned 150k+ characters, and a routed row lost its plan to the schema."""
