@@ -21,7 +21,7 @@ source:
 #
 # Auth: `Authorization: Bearer jp_live_...`. A missing or unknown key gets HTTP 401 with a JSON
 # body, on every route including the probe.
-limits: "per API key: 2 requests/second on Free, 10 on Builder and Growth, 50 on Scale and Business; agentic search is also capped at 10 calls/minute per account. Max results per call: 25 Free, 100 Builder/Growth, 500 Scale/Business. Advertised on every response via RateLimit-Limit / RateLimit-Policy headers"
+limits: "per API key: 2 requests/second on Free, 10 on Builder and Growth, 50 on Scale and Business; agentic search is also capped at 10 calls/minute per account. Max results per call: 25 Free, 100 Seeker/Builder/Growth, 500 Scale/Business. Advertised on every response via RateLimit-Limit / RateLimit-Policy headers"
 pricing_url: https://jobspipe.dev/pricing
 
 endpoints:
@@ -54,7 +54,7 @@ endpoints:
         source_or: {type: "array[string]", required: false, note: "collector sources, e.g. linkedin, indeed, greenhouse, lever, workday", example: ["greenhouse"]}
         posted_at_max_age_days: {type: integer, required: false, note: "only postings newer than this many days", example: 7}
         status: {type: string, required: false, enum: [active, closed, any], note: "defaults to active"}
-        limit: {type: integer, required: false, note: "default 25, capped by the plan's page size (25 Free, 100 Builder/Growth, 500 Scale+) — THIS IS THE PRICE DIAL: 1 credit per returned job not already paid for this month", example: 1}
+        limit: {type: integer, required: false, note: "default 25, capped by the plan's page size (25 Free, 100 Seeker/Builder/Growth, 500 Scale+) — THIS IS THE PRICE DIAL: 1 credit per returned job not already paid for this month", example: 1}
         cursor: {type: string, required: false, note: "metadata.next_cursor from the previous response"}
       note: "all filters combine with AND; array filters ending in _or match any value. 40+ more filters (seniority, employer type, headcount, revenue, benefits, recruiter email, ghost score, language, metro code, ESCO skills) are in the OpenAPI spec. An empty body returns the most recent postings"
     test_request:
