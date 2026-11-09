@@ -81,8 +81,11 @@ def _decoded(body: bytes, encoding: str | None) -> bytes:
         if enc == "gzip":
             return gzip.decompress(body)
         if enc == "deflate":
-            try:                 except (EOFError, OSError, zlib.error):             except zlib.error:                 return zlib.decompress(body, -zlib.MAX_WBITS)
-    except (OSError, zlib.error):
+            try:
+                return zlib.decompress(body)
+            except zlib.error:
+                return zlib.decompress(body, -zlib.MAX_WBITS)
+    except (EOFError, OSError, zlib.error):
         return body
     return body
 
