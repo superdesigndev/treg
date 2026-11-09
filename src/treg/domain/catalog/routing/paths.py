@@ -440,6 +440,22 @@ def current_role(history: Any) -> dict | None:
     return max(pool, key=start)  # max keeps the first of equal starts
 
 
+def past_titles(history: Any) -> list | None:
+    """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
+    carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
+    current role is something else."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    def to(r: dict) -> str:
+        d = r.get("dates")
+        return str(d.get("to") or "") if isinstance(d, dict) else ""
+    out: list[str] = []
+    for r in sorted((r for r in roles if to(r)), key=to, reverse=True):
+        t = r.get("title")
+        if isinstance(t, str) and t.strip() and t.strip() not in out:
+            out.append(t.strip())
+    return out[:5] or None
+
+
 def instagram_handles(results: Any) -> list | None:
     """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
     directory or list page of creators), one row each in page order, first mention wins: username,
@@ -590,7 +606,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")
