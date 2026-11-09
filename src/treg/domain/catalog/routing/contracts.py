@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 
 import json
@@ -88,8 +89,11 @@ class Contract:
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # (sent keys, provider order) pairs: the first whose keys the caller all sent replaces `prefer`.
     # One order does not fit every question - a free-text `{q}` is answered best by a semantic
-    # search that a `{company_domain, title}` lookup can never reach.
-    prefer_when: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = ()
+    # search that a `{company_domain, title}` lookup can never reach. A rule with a third item, a
+    # percent, applies only to that share of teams (`in_rollout`), so a new order can be compared
+    # with the old one on live traffic before every team gets it; the other teams fall through to
+    # the next rule.
+    prefer_when: tuple[tuple, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
@@ -145,9 +149,16 @@ class Contract:
     # person in words). Without one a key reads only "identity", and an agent guesses its shape.
     identity_notes: dict[str, str] = field(default_factory=dict)
 
-    def prefer_for(self, given) -> tuple[str, ...]:
+    def prefer_for(self, given, org_id: int | None = None) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity and filter keys `given`."""
-        return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
+        for rule in self.prefer_when:
+            sent, order, percent = rule[0], rule[1], (rule[2] if len(rule) > 2 else None)
+            if not set(sent) <= set(given or ()):
+                continue
+            if percent is not None and not in_rollout(self.capability, org_id, percent):
+                continue
+            return order
+        return self.prefer
 
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
@@ -427,11 +438,19 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
     out = []
     for rule in raw:
         # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
-        if (not isinstance(rule, dict) or set(rule) != {"sent", "prefer"} or not names(rule["sent"])
-                or not names(rule["prefer"]) or any(k.strip() not in types for k in rule["sent"])):
+        if (not isinstance(rule, dict) or not {"sent", "prefer"} <= set(rule) <= {"sent", "prefer", "percent"}
+                or not names(rule["sent"]) or not names(rule["prefer"])
+                or any(k.strip() not in types for k in rule["sent"])):
             raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
-                             f"prefer: [provider names]}}, got {rule!r}")
-        out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
+                             f"prefer: [provider names], percent?: 1-99}}, got {rule!r}")
+        pair = (tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"]))
+        if "percent" in rule:
+            pct = rule["percent"]
+            # 0 and 100 are not rollouts: delete the rule, or drop its percent.
+            if isinstance(pct, bool) or not isinstance(pct, int) or not 1 <= pct <= 99:
+                raise ValueError(f"contract {cap}: prefer_when percent is a whole number from 1 to 99, got {pct!r}")
+            pair = (*pair, pct)
+        out.append(pair)
     return tuple(out)
 
 
@@ -494,7 +513,17 @@ def _parse_prefer_by_domain_suffix(cap: str, raw, types: dict) -> dict[str, tupl
     return out
 
 
-def default_prefer(contract: Contract, identity: dict[str, Any], given=None) -> list[str]:
+def in_rollout(capability: str, org_id: int | None, percent: int) -> bool:
+    """Whether a team is in the first `percent` of 100 stable buckets for this capability: the
+    same team always gets the same answer, so its calls are comparable over a week. A call with no
+    team is never in a partial rollout."""
+    if org_id is None:
+        return False
+    bucket = int.from_bytes(hashlib.sha256(f"prefer_when:{capability}:{org_id}".encode()).digest()[:8], "big") % 100
+    return bucket < percent
+
+
+def default_prefer(contract: Contract, identity: dict[str, Any], given=None, org_id: int | None = None) -> list[str]:
     """The provider order a caller who sent no `X-Treg-Route-Prefer` gets: the providers named for
     the longest suffix of the identity's `domain`, then the contract's `prefer` for the identity
     keys `given` (`prefer_when`)."""
@@ -505,7 +534,7 @@ def default_prefer(contract: Contract, identity: dict[str, Any], given=None) -> 
         matches = [s for s in contract.prefer_by_domain_suffix if host == s or host.endswith("." + s)]
         if matches:
             first = contract.prefer_by_domain_suffix[max(matches, key=len)]
-    return [*first, *(p for p in contract.prefer_for(given) if p not in first)]
+    return [*first, *(p for p in contract.prefer_for(given, org_id) if p not in first)]
 
 
 def _parse_row(cap: str, raw, output: dict) -> dict:

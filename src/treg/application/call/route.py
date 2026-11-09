@@ -661,7 +661,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if options.prefer:
         ranked = ordered(options.prefer)
     else:
-        default = default_prefer(contract, identity, given)
+        default = default_prefer(contract, identity, given, caller.org_id)
         ranked = ordered(default)
         orders["default"] = _endpoints(ranked)
         if rule is not None:

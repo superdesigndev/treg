@@ -391,8 +391,17 @@ contracts:
     idempotent: true
     prefer: [crawl4ai]
     # A free-text `q` is a semantic question: ask the semantic searches first.
+    # A role with no company or name ({title}, {q, title}) is one too: half the teams ask exa first
+    # (`in_rollout`) so the two orders compare on live calls. Company and name rules come first.
     prefer_when:
+      - {sent: [q, title, company_domain], prefer: [crawl4ai]}
+      - {sent: [q, title, full_name], prefer: [crawl4ai]}
+      - {sent: [q, title], prefer: [exa, crawl4ai], percent: 50}
+      - {sent: [q, title], prefer: [crawl4ai]}
       - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+      - {sent: [company_domain], prefer: [crawl4ai]}
+      - {sent: [full_name], prefer: [crawl4ai]}
+      - {sent: [title], prefer: [exa, crawl4ai], percent: 50}
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
