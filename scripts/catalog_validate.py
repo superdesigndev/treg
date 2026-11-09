@@ -42,6 +42,19 @@ capability (nothing has been mapped to the taxonomy yet). Id-prefix, id-uniquene
 integrity and the leak scan apply to BOTH — an extended entry that does declare a capability is
 held to the core referential rules.
 
+Caller-facing text. The writing rules are catalog-schema.md "Summary and note"; this script only
+warns, and the author decides. Length is the token limits and only them: SUMMARY_TOKENS for a
+summary and NOTE_TOKENS for a note. No tokenizer is a dependency, so a token is a run of letters
+and digits or one CJK character, and punctuation is not counted. Every entry of
+scripts/catalog_text_reflect.txt (its header gives the format) found in a row's summary, note,
+parameter notes or charge notes warns with the entry and its reason.
+
+A plain run warns on every row. `--base REF` warns only on the rows added or changed against REF,
+so an author sees the rows they touched; `catalog-added.yml` runs it on every pull request against
+the base branch. The one error under `--base` is the spelling: a row written in today's `cost` on
+REF and in v2 `price` on the head, or back, fails unless `--allow-respelling` is passed, which the
+workflow does when the pull request carries the `catalog-migration` label.
+
 The evidence rule is deliberately tier-blind, and needed no loosening when the extended tier gained
 generated `test_request`s and live verification (scripts/catalog_verify_extended.py): `verified`
 means the same thing in both files, so in both it must be backed by an `example_response` file that
