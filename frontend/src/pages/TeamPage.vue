@@ -65,6 +65,9 @@ export default {
             </div>
             <p v-if="myUsage && myUsage.cap>=0" class="sub" style="margin:-6px 0 12px">Your usage today: <b>{{myUsage.used_today}} / {{myUsage.cap}}</b> calls.</p>
             <div v-if="orgErr" class="banner">{{orgErr}}</div>
+            <div v-if="billingNote && canAdmin" class="tut-notice" role="status" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+              <span>{{billingNote}}</span><button class="btn sm ico" @click="billingNote=''" aria-label="Dismiss">✕</button>
+            </div>
             <div v-if="orgMsg" class="tut-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
               <span>{{orgMsg}}</span><button class="btn sm ico" @click="orgMsg=''" aria-label="Dismiss">✕</button>
             </div>
