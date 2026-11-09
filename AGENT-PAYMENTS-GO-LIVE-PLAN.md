@@ -25,8 +25,11 @@ Temporary working plan for this PR. Remove this file from the branch before merg
 2. Done: Tempo's hosted RPC key, `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY` (needs
    `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`), sent as the `tempo-api-key` header by pympp and our chain
    reads.
-3. To do: one play-money round through Stripe test mode, MPP and x402, to Stripe's test deposit
-   addresses (Stripe test mode is confirmed to create Base and Tempo addresses).
+3. Done: one play-money round in Stripe test mode, with a separate agent-payments Stripe key and
+   Tempo's hosted RPC key. One MPP payment (Tempo testnet) and one x402 payment (Base Sepolia, the
+   public facilitator) went to Stripe's test deposit addresses, and `agentpay reconcile` recorded
+   both as succeeded PaymentIntents.
+4. To do: the Coinbase CDP key path against Coinbase's real facilitator (Base Sepolia first).
 
 ## 3. Keys and accounts
 
