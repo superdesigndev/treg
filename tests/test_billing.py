@@ -30,7 +30,7 @@ from stripe.params.checkout._session_create_params import (
 )
 from sqlmodel import select
 
-from conftest import make_upstream, verified_signup
+from conftest import make_upstream, verified_signup, accept_with_code
 
 from treg import adsconv
 from treg.application import billing
@@ -73,7 +73,7 @@ async def _member(c: AsyncClient, org_id: int, admin_token: str, email: str, rol
     r = await c.post(f"/orgs/{org_id}/invites", json={"email": email, "role": role}, headers=_h(admin_token))
     assert r.status_code == 200, r.text
     code = r.json()["code"]
-    r = await c.post("/invites/accept", json={"code": code, "email": email})
+    r = await accept_with_code(c, json={"code": code, "email": email})
     assert r.status_code == 200, r.text
     return r.json()["token"]
 
@@ -1958,7 +1958,7 @@ def test_threshold_validation_is_not_the_topup_minimum(amount):
             billing.validate_threshold_usd(amount)
 
 
-async def test_manual_topup_grants_a_bonus_block_once_and_auto_never_does(c: AsyncClient, monkeypatch):
+async def test_every_topup_grants_a_bonus_block_once_manual_or_auto(c: AsyncClient, monkeypatch):
     """$100 by hand → $100 purchased + $10 bonus, and a redelivery adds nothing. The bonus is its own
     promotional-rank block: the purchased (refundable) block stays exactly what the card paid."""
     org_id, owner = await _org(c)
@@ -1976,12 +1976,57 @@ async def test_manual_topup_grants_a_bonus_block_once_and_auto_never_does(c: Asy
     grants = [e for e in body["entries"]["items"] if e["kind"] == "grant" and e["meta"].get("source") == "topup_bonus"]
     assert len(grants) == 1 and grants[0]["meta"]["payment_intent"] == "pi_bonus" and grants[0]["meta"]["pct"] == 10
 
-    # An automatic refill of the same size earns nothing.
+    # An automatic refill of the same size earns the same bonus.
     r = await _deliver(c, _pi_event(org_id, pi="pi_bonus_auto", cents=10_000, auto="1"))
     assert r.json()["credited"] is True
     body = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()
-    assert [b["kind"] for b in body["blocks"]].count("bonus") == 1
-    assert body["balance_micro"] == promo + 210_000_000
+    assert [b["kind"] for b in body["blocks"]].count("bonus") == 2
+    assert body["balance_micro"] == promo + 220_000_000
+
+
+async def test_inline_auto_charge_grants_the_bonus_once_and_the_webhook_adds_none(
+        c: AsyncClient, monkeypatch):
+    """The inline credit grants the bonus; the webhook for the same payment finds it and grants none."""
+    org_id, owner = await _org(c)
+    await _armed(org_id, autotopup_amount_micro=100_000_000, autotopup_monthly_cap_micro=500_000_000)
+    monkeypatch.setattr(billing, "_sdk", _invoice_sdk("pi_auto_bonus", cents=10_000))
+    assert (await _attempt(org_id))["ok"] is True
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    event = _pi_event(org_id, pi="pi_auto_bonus", cents=10_000, auto="1")
+    assert (await _deliver(c, event)).json()["credited"] is False
+    async with session_maker() as db:
+        block_id = (await ledger.block_for_payment(db, "pi_auto_bonus")).id
+        assert await billing._grant_topup_bonus(
+            db, org_id, "pi_auto_bonus", block_id, 100_000_000) == (0, 0)
+    body = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()
+    bonus = [b for b in body["blocks"] if b["kind"] == "bonus"]
+    assert len(bonus) == 1 and bonus[0]["amount_micro"] == 10_000_000
+    assert body["balance_micro"] == 100 + 100_000_000 + 10_000_000
+
+
+async def test_a_failed_inline_auto_bonus_is_granted_by_the_webhook(c: AsyncClient, monkeypatch):
+    """The inline credit stays paid when its bonus grant fails; the webhook's delivery grants it."""
+    org_id, owner = await _org(c)
+    await _armed(org_id, autotopup_amount_micro=100_000_000, autotopup_monthly_cap_micro=500_000_000)
+    monkeypatch.setattr(billing, "_sdk", _invoice_sdk("pi_auto_heal", cents=10_000))
+    real = ledger.grant
+
+    async def failing(db, oid, **kw):
+        if kw.get("kind") == "bonus":
+            raise RuntimeError("bonus grant down")
+        return await real(db, oid, **kw)
+
+    monkeypatch.setattr(ledger, "grant", failing)
+    assert (await _attempt(org_id))["ok"] is True
+    body = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()
+    assert [b["kind"] for b in body["blocks"]].count("bonus") == 0
+    monkeypatch.setattr(ledger, "grant", real)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    event = _pi_event(org_id, pi="pi_auto_heal", cents=10_000, auto="1")
+    assert (await _deliver(c, event)).json()["credited"] is False
+    body = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()
+    bonus = [b for b in body["blocks"] if b["kind"] == "bonus"]
+    assert len(bonus) == 1 and bonus[0]["amount_micro"] == 10_000_000
 
 
 async def test_bonus_burns_before_purchased_credit(c: AsyncClient, monkeypatch):

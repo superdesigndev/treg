@@ -1,6 +1,6 @@
 [project]
 name = "tools-registry"
-version = "0.29.0"
+version = "0.30.0"
 description = "A remote registry that turns team skills into shareable, callable tools via a credential-injecting proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -126,9 +126,16 @@ name = "Lightweight CLI modules do not import server dependencies"
 type = "forbidden"
 source_modules = [
     "treg.cli",
-    "treg.cli_view",
+    # The views the registry renders and the Python CLI prints: `treg.routers` here is only the
+    # package's own __init__, which the CLI imports on the way to them.
+    "treg.routers",
+    "treg.routers.views",
+    "treg.routers.views.account",
+    "treg.routers.views.catalog",
+    "treg.routers.views.toon",
     "treg.cli_session",
     "treg.cli_analytics",
+    "treg.client_notice",
     "treg.convert",
     "treg.skills",
     "treg.providers",

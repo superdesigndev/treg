@@ -204,6 +204,8 @@ REPORTED = {"reported": {"path": "response.used", "unit": "credit"}}
     (200, {"used": 0}, True, 0),
     (200, {"used": -1}, True, 20000),                                   # unreadable: the hold
     (200, {}, True, 20000),
+    (200, {"used": float("inf")}, True, 20000),
+    (200, {"used": 1e30}, True, 20000),                                 # too large to price: the hold
     (400, {"used": 2}, True, 40000),                                    # a 4xx that reports a charge
     (400, {"used": 0}, False, None),
     (429, {"used": 2}, False, None),                                    # not the caller's fault
@@ -290,14 +292,17 @@ def test_a_routed_child_answer_that_costs_nothing_is_released_for_its_parent():
     assert (decision.billable, decision.reason) == (False, "free_answer")
 
 
-def test_an_async_terminal_answer_settles_by_the_order_with_the_submission_report():
+def test_an_async_terminal_answer_settles_at_the_charge_reported_on_its_submission():
     ep = row(settle=REPORTED, miss={"when": {"path": "response.items", "op": "empty"}})
     hold, _, _, terms = cost.price(ep, Rates(), settlement.request_evidence([], b""))
     basis = cost.persisted({**cost.basis(Rates(), ep, hold, terminal=True), "submission_charge_micro": 7}, terms)
     assert cost.settle_terminal(json.loads(json.dumps(basis)), "success", {"items": [1]}) == 7
-    assert cost.settle_terminal(basis, "success", {"items": [1], "used": 1}) == 20000
-    assert cost.settle_terminal(basis, "billed_failure", {}) == 7
-    assert cost.settle_terminal({**basis, "submission_charge_micro": None}, "billed_failure", {}) == hold
+    assert cost.settle_terminal(basis, "success", {"items": [1], "used": 0}) == 7
+    assert cost.settle_terminal(basis, "billed_failure", {"used": 0}) == 7
+    unreported = {**basis, "submission_charge_micro": None}
+    assert cost.settle_terminal(unreported, "success", {"items": [1], "used": 1}) == hold
+    assert cost.settle_terminal(unreported, "success", {"items": [], "used": 1}) == 0
+    assert cost.settle_terminal(unreported, "billed_failure", {"used": 1}) == hold
     legacy = {"when": "terminal", "amount": {"kind": "observed"}, "fallback_micro": 9, "reserve_micro": 9}
     assert cost.settle_terminal(legacy, "success", {}) == 9
 
@@ -369,3 +374,25 @@ def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter
         loaded = SimpleNamespace(by_id={"demo.x": ep}, adapters={"demo.x": adapter} if adapter else {})
         monkeypatch.setattr(store, "load", lambda loaded=loaded: loaded)
         assert results.has_result_rules("demo.x") is opted
+
+
+@pytest.mark.parametrize("keys,rate", [
+    ({"price": {"value": "1", "currency": "credit"}}, None),
+    ({"price": {"value": "1", "currency": "credit"}}, "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"reported": {"path": "response.cost", "unit": "credit"}}},
+     "demo credit"),
+    ({"price": {"value": "0.01"}, "settle": {"usage": {"unit": "token", "path": "response.n"}}},
+     "demo token"),
+])
+def test_treg_s_key_refuses_a_row_whose_credit_or_meter_rate_is_unknown(keys, rate):
+    from treg.application.call.types import ResolutionFailed
+    ep = row(**keys)
+    rates = Rates(credit_rates={"demo": None if rate else 0.02})
+    if rate is None:
+        cost.require_rates(ep, rates)
+        return
+    with pytest.raises(ResolutionFailed) as refused:
+        cost.require_rates(ep, rates)
+    assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
+        ("catalog_price_invalid", "treg", 503)
+    assert refused.value.detail["endpoint_id"] == "demo.x" and refused.value.detail["rate"] == rate

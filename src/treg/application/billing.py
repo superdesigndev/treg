@@ -39,7 +39,7 @@ import json
 import logging
 import time
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,12 +131,12 @@ def cents_to_micro(amount_cents: int) -> int:
 
 
 def bonus_for_topup(amount_micro: int) -> tuple[int, int]:
-    """The promotional bonus a MANUAL top-up of `amount_micro` earns, as `(bonus_micro, percent)`.
+    """The promotional bonus a top-up of `amount_micro` earns, manual or automatic, as
+    `(bonus_micro, percent)`.
 
     Tiered by size (`topup_bonus_tiers`): the highest tier at or below the amount applies, so $99 gets
     the $50 rate and $250 the $200 rate. Integer micro-USD throughout — `amount * pct // 100`
     truncates the sub-micro remainder, which is at most a millionth of a dollar in treg's favour.
-    Callers decide whether the top-up qualifies at all (automatic refills never do).
     """
     tiers = get_settings().topup_bonus_tiers or {}
     usd = int(amount_micro) // MICRO_PER_USD
@@ -1011,6 +1011,14 @@ async def _invoice_metadata_for_known_customer(db: AsyncSession, pi: dict) -> di
     return meta if meta.get("treg_org_id") == str(org_id) else {}
 
 
+async def _topup_metadata(db: AsyncSession, pi: dict) -> dict:
+    """The treg metadata of a PaymentIntent: its own, or its invoice's for an automatic top-up."""
+    meta = pi.get("metadata") or {}
+    if not meta and pi.get("id"):
+        meta = await _invoice_metadata_for_known_customer(db, pi)
+    return meta
+
+
 async def _stop_failed_invoice(invoice_id: str, key: str) -> None:
     """No failed automatic invoice may be retried or dunned by Stripe."""
     if not invoice_id:
@@ -1299,14 +1307,26 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
         org_slug = org.slug
         db.add(org)
         await db.commit()
+        bonus_micro, bonus_pct = 0, 0
+        if not already:
+            try:
+                block_id = (await ledger.block_for_payment(db, pi["id"])).id
+                bonus_micro, bonus_pct = await _grant_topup_bonus(db, org_id, pi["id"], block_id,
+                                                                  credited)
+            except Exception as e:  # noqa: BLE001 - the webhook's delivery of this payment heals it
+                await db.rollback()
+                log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi["id"], e)
         if not already and (to or analytics.enabled()):
             balance_after = await ledger.balance_of(db, org_id)
             await db.rollback()  # release the read connection before sending the receipt
             if to:
-                await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True)
+                await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True,
+                                                  bonus_micro=bonus_micro)
             # The only emitter for an inline auto credit: the webhook finds it credited.
             _capture_topup_completed(to, org_id, org_slug, {"amount_micro": credited, "auto": True,
-                                                            "balance_after_micro": balance_after})
+                                                            "balance_after_micro": balance_after,
+                                                            "bonus_micro": bonus_micro,
+                                                            "bonus_pct": bonus_pct})
         return {"ok": True, "payment_intent": pi["id"], "amount_micro": credited}
 
 
@@ -1443,9 +1463,9 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     if (obj.get("metadata") or {}).get("treg_kind") == "enterprise_sso":
         return await handle_event(db, event)
     if kind == "checkout.session.completed":
-        return await _on_checkout_completed(db, obj)
+        return _settled(await _on_checkout_completed(db, obj))
     if kind == "payment_intent.succeeded":
-        return await _on_payment_succeeded(db, obj)
+        return _settled(await _on_payment_succeeded(db, obj))
     if kind == "payment_intent.payment_failed":
         return await _on_payment_failed(db, obj)
     if kind == "setup_intent.succeeded":
@@ -1457,6 +1477,16 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     # crediting on those too would be a second door onto the same money. The invoice is a document; the
     # PaymentIntent is the payment.
     return {"handled": False, "type": kind}
+
+
+class BonusPending(RuntimeError):
+    """The top-up credited but its bonus did not; failing the delivery makes Stripe redeliver it."""
+
+
+def _settled(result: dict) -> dict:
+    if result.get("bonus_pending"):
+        raise BonusPending("top-up credited, bonus grant pending")
+    return result
 
 
 def _capture_topup_completed(to: str | None, org_id: int, org_slug: str, props: dict) -> None:
@@ -1496,24 +1526,13 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     # sweep) rolls back to here.
     await db.commit()
     fresh = not already
-    bonus_micro, bonus_pct = 0, 0
-    if fresh and not auto:
-        # The tiered bonus on a MANUAL top-up, as its own promotional block: it burns first and is
-        # never refundable, so it must not inflate the purchased (refundable) block above. `fresh` is
-        # the idempotency guard — a webhook redelivery finds `already` and grants nothing. Swallowed
-        # like the referral qualification below: a failure here must not 500 the handler and make
-        # Stripe retry a payment that has already credited.
-        bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
-        if bonus_micro > 0:
-            try:
-                await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
-                                   meta={"source": "topup_bonus", "payment_intent": pi_id,
-                                         "pct": bonus_pct, "topup_block_id": block_id})
-                await db.commit()
-            except Exception as e:  # noqa: BLE001
-                await db.rollback()
-                bonus_micro, bonus_pct = 0, 0
-                log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
+    bonus_micro, bonus_pct, bonus_pending = 0, 0, False
+    try:
+        bonus_micro, bonus_pct = await _grant_topup_bonus(db, org_id, pi_id, block_id, amount_micro)
+    except Exception as e:  # noqa: BLE001 - reported through `bonus_pending`, see handle_webhook_event
+        await db.rollback()
+        bonus_pending = True
+        log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
     after = await ledger.balance_of(db, org_id)
     if fresh:
         org = await db.get(Org, org_id)
@@ -1573,7 +1592,67 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         await db.rollback()
         log.warning("billing: referral sweep failed: %s", e)
     return {"handled": True, "credited": fresh, "block_id": block_id,
-            "amount_micro": amount_micro, "balance_micro": after}
+            "amount_micro": amount_micro, "balance_micro": after, "bonus_pending": bonus_pending}
+
+
+# Stripe retries a live-mode event for up to three days.
+BONUS_HEAL_WINDOW = timedelta(days=3)
+
+
+async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id: str,
+                             amount_micro: int) -> tuple[int, int]:
+    """Grant a top-up's bonus unless this payment already has one; commits. Returns what this call
+    granted, net of a refund recorded before it."""
+    bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
+    if bonus_micro <= 0:
+        return 0, 0
+    created_at = await _lock_purchased_block(db, block_id)
+    if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
+        await db.rollback()
+        return 0, 0
+    bonus = await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
+                               meta={"source": "topup_bonus", "payment_intent": pi_id,
+                                     "pct": bonus_pct, "topup_block_id": block_id})
+    refunded = await _refunded_of(db, block_id)
+    if refunded and bonus is not None:
+        revoked = await ledger.revoke_in_transaction(
+            db, org_id, [ledger.RevokeTarget(bonus.id, bonus_micro * min(refunded, amount_micro)
+                                             // amount_micro)],
+            meta={"payment_intent": pi_id, "refunded_micro": refunded, "source": "bonus_heal"})
+        bonus_micro -= sum(r.revoked_micro for r in revoked)
+    await db.commit()
+    return bonus_micro, bonus_pct
+
+
+async def _lock_purchased_block(db: AsyncSession, block_id: str) -> datetime:
+    """A no-op UPDATE, because SQLite ignores SELECT FOR UPDATE. Returns the block's `created_at`."""
+    return (await db.execute(
+        update(CreditBlock).where(CreditBlock.id == block_id).values(id=CreditBlock.id)
+        .returning(CreditBlock.created_at).execution_options(synchronize_session=False)
+    )).scalar_one()
+
+
+async def _lock_refund_blocks(db: AsyncSession, org_id: int, block_id: str) -> None:
+    await db.execute(
+        select(CreditBlock.id).where(CreditBlock.org_id == org_id,
+                                     or_(CreditBlock.id == block_id, CreditBlock.kind == "bonus"))
+        .order_by(CreditBlock.org_id, CreditBlock.id).with_for_update())
+    await _lock_purchased_block(db, block_id)
+
+
+async def _refunded_of(db: AsyncSession, block_id: str) -> int:
+    metas = (await db.execute(
+        select(LedgerEntry.meta).where(LedgerEntry.kind == "revoke", LedgerEntry.block_id == block_id)
+    )).scalars().all()
+    return max((int((m or {}).get("target_micro") or 0) for m in metas), default=0)
+
+
+async def _bonused_payments(db: AsyncSession, org_id: int) -> set[str]:
+    metas = (await db.execute(
+        select(LedgerEntry.meta).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "grant")
+    )).scalars().all()
+    return {str(m["payment_intent"]) for m in metas
+            if isinstance(m, dict) and m.get("source") == "topup_bonus" and m.get("payment_intent")}
 
 
 async def _on_checkout_completed(db: AsyncSession, session: dict) -> dict:
@@ -1619,9 +1698,7 @@ async def _on_payment_succeeded(db: AsyncSession, pi: dict) -> dict:
     """A PaymentIntent succeeded. Fires for the manual Checkout purchase AND the off-session
     auto-charge; `treg_kind` on the metadata is what tells our top-ups apart from anything else the
     account does (the landing-page demo charges, for one)."""
-    meta = pi.get("metadata") or {}
-    if not meta and pi.get("id"):
-        meta = await _invoice_metadata_for_known_customer(db, pi)
+    meta = await _topup_metadata(db, pi)
     if meta.get("treg_kind") != "topup":
         return {"handled": False, "reason": "not a treg top-up"}
     org_id = _org_id_from({"metadata": meta})
@@ -1702,6 +1779,7 @@ async def revoke_refunded(db: AsyncSession, pi_id: str, refunded_micro: int, *, 
     refunded = max(0, min(int(refunded_micro), paid))
     if refunded == 0:
         return {"handled": True, "revoked_micro": 0, "shortfall_micro": 0, "held_micro": 0}
+    await _lock_refund_blocks(db, org_id, block_id)
     targets = [ledger.RevokeTarget(block_id, refunded)]
     targets += [ledger.RevokeTarget(bid, int(amt) * refunded // paid)
                 for bid, _, amt, _ in await _bonus_blocks_for(db, pi_id, org_id)]
@@ -1762,9 +1840,7 @@ async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:
     """A top-up PaymentIntent failed. Only the AUTOMATIC ones need bookkeeping: a human who saw a
     decline on the hosted page can just try again, but an unattended charge that keeps failing has to
     stop by itself."""
-    meta = pi.get("metadata") or {}
-    if not meta and pi.get("id"):
-        meta = await _invoice_metadata_for_known_customer(db, pi)
+    meta = await _topup_metadata(db, pi)
     if meta.get("treg_kind") != "topup":
         return {"handled": False, "reason": "not a treg top-up"}
     org_id = _org_id_from({"metadata": meta})
@@ -2092,6 +2168,84 @@ async def open_billing_portal(org_id: int, *, return_base: str) -> dict:
             raise BillingJourneyError("not_configured", str(e)) from e
         except TopupRejected as e:
             raise BillingJourneyError("rejected", str(e)) from e
+
+
+GAP_NOT_CREDITED = "not_credited"
+GAP_CREDITED_DIFFERENTLY = "credited_differently"
+GAP_BONUS_MISSING = "bonus_missing"
+
+
+async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
+    """Check every top-up that succeeded in [since, until) (naive UTC) against the ledger. Read-only."""
+    paid = await _succeeded_payment_intents(since, until)
+    succeeded_at = {pi["id"]: at for pi, at in paid}
+    topups: list[tuple[dict, int, int, bool]] = []
+    async with _db.session_maker() as db:
+        for pi, _ in paid:
+            meta = await _topup_metadata(db, pi)
+            org_id = _org_id_from({"metadata": meta})
+            amount_micro = cents_to_micro(pi.get("amount_received") or 0)
+            if meta.get("treg_kind") == "topup" and org_id is not None and amount_micro > 0:
+                topups.append((pi, org_id, amount_micro, meta.get("treg_auto") == "1"))
+        ids = [pi["id"] for pi, _, _, _ in topups]
+        blocks = {b.stripe_payment_intent: b for b in (await db.execute(
+            select(CreditBlock).where(CreditBlock.stripe_payment_intent.in_(ids))
+        )).scalars()} if ids else {}
+        org_ids = {org_id for _, org_id, _, _ in topups}
+        live = set((await db.execute(select(Org.id).where(Org.id.in_(org_ids)))).scalars()) \
+            if org_ids else set()
+        bonused: set[str] = set()
+        for org_id in live:
+            bonused |= await _bonused_payments(db, org_id)
+    gaps = []
+    for pi, org_id, amount_micro, auto in topups:
+        block = blocks.get(pi["id"])
+        if org_id not in live:
+            continue
+        if block is None:
+            gap = GAP_NOT_CREDITED
+        elif block.org_id != org_id or block.amount_micro != amount_micro:
+            gap = GAP_CREDITED_DIFFERENTLY
+        elif bonus_for_topup(amount_micro)[0] > 0 and pi["id"] not in bonused:
+            gap = GAP_BONUS_MISSING
+        else:
+            continue
+        gaps.append({"gap": gap, "payment_intent": pi["id"], "org_id": org_id, "amount_micro": amount_micro,
+                     "auto": auto, "paid_at": datetime.fromtimestamp(succeeded_at[pi["id"]], timezone.utc).isoformat()})
+    return {"since": since.isoformat(), "until": until.isoformat(), "topups": len(topups), "gaps": gaps}
+
+
+async def _succeeded_payment_intents(since: datetime, until: datetime) -> list[tuple[dict, int]]:
+    """Every PaymentIntent that succeeded in [since, until), with the time it succeeded. Stripe keeps
+    events for 30 days."""
+    window = {"gte": int(since.replace(tzinfo=timezone.utc).timestamp()),
+              "lt": int(until.replace(tzinfo=timezone.utc).timestamp())}
+    found: dict[str, tuple[dict, int]] = {}
+    after: dict = {}
+    while True:
+        page = await _sdk(stripe_adapter.EVENT_LIST, type="payment_intent.succeeded", created=window,
+                          limit=100, **after)
+        data = page.get("data") or []
+        for event in data:
+            pi = (event.get("data") or {}).get("object") or {}
+            if pi.get("id") and pi.get("status") == "succeeded":
+                found.setdefault(pi["id"], (pi, int(event.get("created") or 0)))
+        if not page.get("has_more") or not data:
+            return list(found.values())
+        after = {"starting_after": data[-1]["id"]}
+
+
+def reconcile_alert(report: dict) -> str:
+    """The operator message for a report with gaps."""
+    lines = [f"Stripe top-ups that treg's ledger does not match ({report['since'][:16]} to "
+             f"{report['until'][:16]} UTC):"]
+    for g in report["gaps"]:
+        lines.append(f"- {g['gap']}: org {g['org_id']}, ${g['amount_micro'] / 1_000_000:,.2f}"
+                     f"{' auto' if g['auto'] else ''}, {g['payment_intent']}, paid {g['paid_at'][:16]} UTC")
+    lines.append("not_credited, bonus_missing: resend the payment's Stripe event; a credit by hand pays "
+                 "twice if Stripe still delivers it later. credited_differently: investigate before any "
+                 "credit.")
+    return "\n".join(lines)
 
 
 async def process_webhook(

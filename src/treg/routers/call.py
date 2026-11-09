@@ -437,21 +437,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
     rest)` runs inside the same try, so a fault there is audited and released like any other.
     `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
     the provider for uncompressed bytes; a paid `/call/` drops its payment credential)."""
-    org_traffic.identify(request.scope, caller.org_id, enter=True,
-                         api_key_id=caller.api_key.id if caller.api_key else None)
-    # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
-    # tool, deny rule, daily cap) leaves this handler without an audit row, and the exception handler
-    # is the one place every such refusal passes through — but it has no Caller of its own.
-    request.state.call_identity = (caller.org_id, caller.email)
-    # The pin too: a pinned caller's history is filtered on it, and a refusal (403 on a pin
-    # mismatch above all) is the row they most need to see while integrating.
-    request.state.call_pins = dict(caller.membership.pinned_tags or {}) or None
-    request.state.call_team_slug = caller.org.slug
-    request.state.call_key = (
-        caller.api_key.id if caller.api_key else None,
-        caller.api_key.name if caller.api_key else None,
-        caller.api_key.safe_prefix if caller.api_key else None,
-    )
+    enter_call(request, caller)
     # Faithful-relay: use the RAW request path, not Starlette's decoded path param. Decoding is
     # lossy — an encoded slash (`%2f`) in `rest` would become a real `/` and change the upstream
     # route (npm's scoped publish `PUT /@scope%2fname` 404s as `/@scope/name`). httpx preserves
@@ -472,6 +458,31 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
         client_ip=_client_ip(request),
         catalog_only=bool(getattr(request.state, "catalog_only", False)),
     )
+    return await run_call_input(request, caller, call_input, finish=finish, rest=rest)
+
+
+def enter_call(request: Request, caller: Caller) -> None:
+    """Who is calling, stashed before anything can refuse: the root log and the refusal fallback."""
+    org_traffic.identify(request.scope, caller.org_id, enter=True,
+                         api_key_id=caller.api_key.id if caller.api_key else None)
+    # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
+    # tool, deny rule, daily cap) leaves this handler without an audit row, and the exception handler
+    # is the one place every such refusal passes through - but it has no Caller of its own.
+    request.state.call_identity = (caller.org_id, caller.email)
+    # The pin too: a pinned caller's history is filtered on it, and a refusal (403 on a pin
+    # mismatch above all) is the row they most need to see while integrating.
+    request.state.call_pins = dict(caller.membership.pinned_tags or {}) or None
+    request.state.call_team_slug = caller.org.slug
+    request.state.call_key = (
+        caller.api_key.id if caller.api_key else None,
+        caller.api_key.name if caller.api_key else None,
+        caller.api_key.safe_prefix if caller.api_key else None,
+    )
+
+
+async def run_call_input(request: Request, caller: Caller, call_input: CallInput, *, finish,
+                         rest: str) -> Response:
+    """`run_call_surface` from an already built `CallInput`, after `enter_call`."""
     try:
         context = create_call_context(call_input)
     except CallFailure as exc:

@@ -599,6 +599,7 @@ class Settings(BaseSettings):
     # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    ops_slack_webhook_url: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
     # membership, session, and authorization authority. Empty keys disable setup and login.
     workos_api_key: str = ""
@@ -621,9 +622,9 @@ class Settings(BaseSettings):
     topup_default_usd: int = 10
     # Four presets plus "Other" (any whole amount ≥ min). Deliberately few and skewed big.
     topup_presets: list[int] = [10, 50, 100, 200]
-    # Bonus credit on a MANUAL top-up, as {min_usd: percent}: the highest key ≤ the amount applies.
-    # It is promotional credit (a separate block that burns first and is never refundable), never
-    # purchased balance — see billing.bonus_for_topup. Automatic refills get no bonus.
+    # Bonus credit on a top-up, manual or automatic, as {min_usd: percent}: the highest key ≤ the
+    # amount applies. It is promotional credit (a separate block that burns first and is never
+    # refundable), never purchased balance — see billing.bonus_for_topup.
     topup_bonus_tiers: dict[int, int] = {10: 0, 50: 5, 100: 10, 200: 15}
     # After each manual top-up the dashboard's preselected amount steps one preset up, but never past
     # this — the ladder nudges $10 payers toward $50 without preselecting $200 at anyone.
@@ -902,6 +903,18 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
+    # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
+    cli_latest_version: str = ""
+    cli_min_version: str = ""
+    # The binary CLI's release channels (application/cli_releases.py). `/cli/latest` answers the stable
+    # channel with cli_stable_version and the beta channel with cli_beta_version; an empty one is
+    # answered from the newest matching GitHub release of cli_release_repo. Archives are fetched from
+    # cli_download_base_url with `{version}` filled in.
+    cli_stable_version: str = ""
+    cli_beta_version: str = ""
+    cli_release_repo: str = "superdesigndev/treg"
+    cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both
@@ -943,6 +956,9 @@ class Settings(BaseSettings):
     # in production.
     turnstile_hostnames: str = ""
     turnstile_mode: Literal["observe", "enforce"] = "observe"
+    # Off: a new GitHub/Google address signs in at once with signup credit, as with no widget; the
+    # email door keeps its check.
+    turnstile_social: bool = True
     # Registry OAuth apps for the non-Google providers (oauth_providers.py). Empty = that provider
     # is listed as unconfigured rather than failing part-way through a consent.
     # treg's own Google Ads developer token, from OUR approved manager account. Ads needs it on

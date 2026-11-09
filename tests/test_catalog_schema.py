@@ -110,6 +110,7 @@ PROVENANCE = {"source": "docs", "source_url": "https://example.com/pricing", "ch
     ({"bill": {"miss": 0}}, "bill.miss"),
     ({"reserve": {"plugin": "Demo-Hold", "max": "1"}, "price": {"value": "0"}}, "<module>.<function>"),
     ({"cost": {"type": "free"}, "price": {"value": "0"}}, "mixes today's spelling"),
+    ({"call_note": "x", "price": {"value": "0"}}, "call_note"),
 ])
 def test_the_v2_row_refuses_each_invalid_shape(keys, message):
     from treg.domain.catalog.schema.files import parse_row

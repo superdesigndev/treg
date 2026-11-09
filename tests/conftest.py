@@ -491,13 +491,36 @@ async def verified_signup(client, *, json, headers=None, cookies=None):
         json={**response.json(), "id": user_id, "email": email}, request=response.request)
 
 
-async def invite_code_member(client, email):
-    """A user the invite-code door made for the fixture's team: a member token, no inbox proof."""
+async def accept_with_code(client, *, json, headers=None):
+    """Redeem an invite code the way an invitee does: prove the invited email, then accept."""
+    token = await verified_identity(client, json["email"])
+    return await client.post("/invites/accept", json=json,
+                             headers={**(headers or {}), "X-Treg-Token": token})
+
+
+async def unproven_member(client, email):
+    """A member with no inbox proof, as the invite-code door created them before it required one."""
+    from treg.domain.identity import session as sess
+    from treg.domain.identity import api_keys as managed_keys
+    from treg.infra.db import session_maker
+    from treg.models import Membership, Org, User
+
     org_id = (await client.get("/auth/me")).json()["org_id"]
-    code = (await client.post(f"/orgs/{org_id}/invites", json={"email": email, "role": "member"})).json()["code"]
-    accepted = await client.post("/invites/accept", json={"email": email, "code": code})
-    assert accepted.status_code == 200, accepted.text
-    return accepted.json()
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        user = User(email=email)
+        db.add(user)
+        await db.flush()
+        membership = Membership(user_id=user.id, org_id=org_id, role="member", token_hash="")
+        db.add(membership)
+        await db.flush()
+        default = await managed_keys.ensure_default_key(db, membership, user)
+        token = sess.make_identity(
+            user.id, user.token_version, org=org.slug,
+            key_generation=default.default_generation if default else None, scope=sess.TEAM_SCOPE,
+        )
+        await db.commit()
+    return {"org": org.slug, "org_id": org_id, "role": "member", "token": token}
 
 
 async def funded_user(client, email, *, micro=1_000_000):

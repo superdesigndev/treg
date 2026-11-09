@@ -2473,6 +2473,7 @@ async def _resolve_marketplace_call(
         _enforce_caller_email(ep, caller.email, body, request_headers, query)
         _enforce_request_quantity(ep, cost, body, query)
         if schema.is_v2(ep):
+            call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
         if service == "sumble":
             from . import sumble

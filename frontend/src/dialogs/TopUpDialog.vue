@@ -59,6 +59,7 @@ export default { setup: useDashboard }
                   <template v-if="topupAuto">I authorize treg to charge my saved card <b>${{autoAmount}}</b> automatically whenever my balance drops below <b>${{autoThreshold}}</b>, up to <b>{{autoPerHour}}</b> times per hour. Cancel any time from the billing page.</template>
                   <template v-else>Calls fail with a 402 once the balance runs out. Turn this on to keep agents running without watching it.</template>
                 </span>
+                <span v-if="maxBonusPct" class="sub" style="display:block;margin:4px 0 0">Auto top-ups earn the same bonus. Raise the refill amount on the billing page for up to <span style="color:var(--green)">+{{maxBonusPct}}%</span> on every refill.</span>
               </span>
             </label>
           </template>

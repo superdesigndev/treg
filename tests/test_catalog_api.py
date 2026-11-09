@@ -1224,7 +1224,7 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
 def test_generic_display_prices_match_web_and_cli():
     from treg.domain.catalog import store
     from treg.routers.web import _price_label
-    from treg.cli import _cost_usd, _cost_label
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     cat = store.load()
     for quantity, rate in [(25, 2.0), (100, 1.0)]:
         raw = {'type': 'per_result', 'currency': 'USD', 'value': rate, 'per': quantity,
@@ -1257,7 +1257,7 @@ def test_moz_lists_priced_per_returned_row_show_per_result():
     `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
     meter stays `quota_rows` and `usd` stays the price of one row."""
     from treg.application.call.resolve import _platform_estimate_micro
-    from treg.cli import _cost_label, _cost_usd
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     from treg.routers.web import _price_label
 
     cat = cs.load()

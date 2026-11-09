@@ -53,7 +53,8 @@ direct `/hub/run`, provider-resource, arena and background work are out of scope
 
 ## Window semantics
 
-`run_call_surface` registers the arrival right after caller resolution, before
+`routers.call.enter_call` (from `run_call_surface`, and before a `/tasks/` poll) registers the
+arrival right after caller resolution, before
 [Org admission](org-flow-control.md), so `requests` includes guard rejections and excludes
 authentication time. In-flight and latency end when the root ASGI call returns or raises, after
 body transmission, upstream close and awaited financial cleanup. The middleware adds no awaits,

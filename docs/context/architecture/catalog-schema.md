@@ -105,14 +105,21 @@ an answer shape differently, and lists the rows it cannot rewrite with the reaso
 decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
 `value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
 prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
-equal to its default is left out, one the row lacks is written as `null`, an `expect` the row does
-not declare is inherited (the batch moves the header's `expect` there), `async: false` becomes
+equal to its default is left out, one the row lacks is written as `null`, a row without an `expect`
+takes its header's (a batch keeps the header's `expect` beside the defaults until the codemod has
+run) and with none opts out with `null`, `async: false` becomes
 `async: null` beside an `async` default and goes without one when neither the header nor the defaults
 declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
-translation of the Python branch it deletes, is inherited whole. A fallback equal to its row's
+translation of the Python branch it deletes, is inherited whole, as a `settle` default is by every
+row without a settle form of its own. A row priced by its `observed_cost` is rewritten at the price
+the catalog serves for it today (`_effective_cost`: the figure as a per-call USD price, `provenance:
+{source: observed, confidence: verified}` checked on its `verified` day, and no note: how a price was
+measured is evidence, not a caveat); an `observed_cost` beside
+a `cost` is dropped, since nothing reads it. A fallback equal to its row's
 `value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
-`price.note`. An unpriced row only opts out of the price defaults, and its outcome keys move to v2
-as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
+`price.note`. An unpriced row opts out of the price and provenance defaults (`price: null` when
+there are none), inherits the settle and bill rules, which price nothing without a price, and its
+outcome keys move to v2 as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
 of its rows is still in today's spelling, and with them once its rows are v2. An inert
 `miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files
 in place and keeps every comment outside the replaced keys. The fixture replay is the proof that a
@@ -135,6 +142,43 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 `credential`, `base_url`, `hosts` or `null`, and never repeats a header key of today's spelling
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
+
+## Summary and note
+
+A row has two prose fields, and each caveat has one home.
+
+- **`summary`** says what the tool does, in positive terms. It is searched and shown in lists.
+- **`note`** holds caveats about the whole tool or its answer that have no more specific home. Only
+  the endpoint's own detail shows it; it is not searched.
+- **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
+  `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
+  comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+
+The writing rules no check can judge:
+
+- **Most callers need it.** A sentence earns its place when most callers of the tool's main use meet
+  it and it changes how they call or read the answer. A failure only some callers hit belongs in
+  the error they get at that moment, and nothing is written when that error already explains it.
+  Correcting a false statement always qualifies.
+- **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
+  probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
+  X, Y").
+- **Summary.** Verb + object + key outputs; lead with the essentials: CLI search shows only the
+  start of a summary. Positive only: a limit or trap goes to a note. No parameter or output-column
+  lists.
+- **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
+  specific home. No price derivation.
+- **Both.** State the present fact; never argue with an earlier version. Do not contradict another
+  field. Say each thing once.
+
+A note in that shape: "Answers for a private account are empty: check `is_private` before paging."
+
+The validator warns when a summary runs over about 50 tokens or a note over about 75, and when the
+summary, the note or a parameter or charge note contains a word from the reflection list
+(`scripts/catalog_text_reflect.txt`); each warning names the word and why, and the author decides.
+With `--base` it adds one error: a row respelled between `cost:` and `price:` without the
+`catalog-migration` label. Run `uv run python scripts/catalog_validate.py --base origin/main`
+locally to see the warnings for the rows you touched.
 
 ## The shrink-only violation list
 

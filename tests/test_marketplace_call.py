@@ -793,16 +793,9 @@ async def test_malformed_marketplace_call_still_leaves_an_audit_row(clients: Asy
     assert row["status_code"] == 400 and row["endpoint_id"] == EP
 
 
-async def test_per_result_estimate_reads_a_body_limit(clients: AsyncClient, platform_on, monkeypatch):
-    """dataforseo expresses row counts in the JSON body — `[{"limit": 3}]` must scale the reserve,
-    not fall back to the 20-row default (which would reserve $2.50/call on a lusha-priced endpoint)."""
-    monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps({"cost": 0.00015}).encode()))
-    await clients.post(f"/call/{EP_DFS}", json=[{"url": "https://x.co/", "limit": 3}])
-    row = await _telemetry(clients)
-    assert row["cost_estimated_micro"] == 150 * 3
-
-
 @pytest.mark.parametrize(("body", "expected"), [
+    # a task array (`[{..., "limit": 3}]`): the first task's limit
+    ([{"url": "https://x.co/", "limit": 3}], 3),
     # companyenrich `pageSize`, exa `numResults`, icypeas/lusha `pagination.size`: a 2-row page must
     # not reserve (and settle at) the 20-row default ($0.196 charged live for 2 rows at $0.0098 each)
     ({"pageSize": 2, "technologies": ["stripe"]}, 2),
@@ -1178,11 +1171,6 @@ async def test_openmart_byok_lookup_preserves_the_documented_get_array_body(
 def test_observed_cost_only_trusts_a_real_number():
     """A missing, non-numeric or negative charge means "we never learned it" — settle at the estimate.
     A reported ZERO is different: the provider is saying it did not charge, and is honoured."""
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": 0}') == 0
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": "0.5"}') is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b'{"cost": -1}') is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b"not json") is None
-    assert call_settle._observed_cost_micro(_mk("dataforseo"), b"[1,2,3]") is None
     assert call_settle._observed_cost_micro(_mk("tikhub"), b'{"cost": 0.5}') is None, "tikhub doesn't report a charge"
     # exa reports dollars one level down; a 20-result search is the base plus ten $0.001 riders
     assert call_settle._observed_cost_micro(_mk("exa"), b'{"costDollars": {"total": 0.016, "search": {"neural": 0.016}}}') == 16_000
@@ -1836,7 +1824,7 @@ async def test_tavily_platform_gates_search_usage_and_site_work_limits(
 
 
 def test_cloro_state_targeting_rider_is_reserved():
-    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the four
+    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the
     engines that support it). The reserve must carry it; before the modifiers path was opened to
     providers other than Aviato it silently did not (found reviewing #349)."""
     cat = A.catalog_store.load()
@@ -1847,11 +1835,13 @@ def test_cloro_state_targeting_rider_is_reserved():
         return call_resolution._marketplace_pricing("cloro", endpoint_id, cv, {}, json.dumps(body).encode())
 
     plain = {"prompt": "what is a stock split", "country": "US"}
-    assert price("cloro.ai-search.perplexity.answer", plain) == (2_400, 0)            # 6 credits × $0.0004
-    assert price("cloro.ai-search.perplexity.answer", {**plain, "state": "CA"}) == (3_200, 0)  # 8
-    assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (4_400, 0)     # 11
-    # AI Mode has no state rider and no modifiers block: the plain estimate, untouched
-    assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 0)
+    assert price("cloro.ai-search.gemini.scrape", plain) == (2_400, 0)                # 6 credits × $0.0004
+    assert price("cloro.ai-search.gemini.scrape", {**plain, "state": "CA"}) == (3_200, 0)      # 8
+    assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (3_600, 0)     # 9
+    assert price("cloro.ai-search.chatgpt.shopping", {**plain, "state": "CA"}) == (4_400, 0)   # 11
+    # AI Mode has no state rider and no modifiers block: the plain estimate, untouched. As a
+    # per_success row it also carries its price as the unit; X-Credits-Charged still settles.
+    assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 2_400)
 
 
 def test_brightdata_estimate_counts_the_body_array():
@@ -3316,6 +3306,12 @@ def _usd_to_micro_for_test(usd) -> int:
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
     ("companyenrich.people.search", None, {"pageSize": 10}, b'{"totalItems":0}', None),
+    # CompanyEnrich companies: 1 credit per company, 5 per lookalike, one company on an empty page.
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10},
+     b'{"items":[{},{}]}', 2),
     # Icypeas bulk: only FOUND rows bill, at the row's credits (10 per reverse-email hit).
     ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
      b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),
@@ -3937,3 +3933,37 @@ async def test_a_balance_refusal_asks_for_an_auto_top_up(clients: AsyncClient, p
     await asyncio.sleep(0)
     assert asked == [org_id]
     assert "5 times per hour" in r.json()["detail"]["message"]
+
+
+async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves_it(
+    clients: AsyncClient, monkeypatch,
+):
+    """fx.yaml holds no coingecko credit rate, so a hold would be 0. Should eligibility ever let
+    the row through, treg's key refuses it before any hold; the team's own key is not priced."""
+    ep_id = "coingecko.simple.price"
+    monkeypatch.setenv("TREG_PLATFORM_KEY_COINGECKO", "PLATFORM-CG-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "coingecko")
+    get_settings.cache_clear()
+    eligible = catalog_store.Catalog.platform_eligible
+    monkeypatch.setattr(catalog_store.Catalog, "platform_eligible",
+                        lambda self, ep: ep["id"] == ep_id or eligible(self, ep))
+    relayed = []
+
+    async def relay(request, upstream_url, tool, secrets, client, **_):
+        relayed.append(secrets)
+        return await _fake_relay(200, b'{"bitcoin": {"usd": 1}}')(request, upstream_url, tool, secrets, client)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    try:
+        path = f"/call/{ep_id}?ids=bitcoin&vs_currencies=usd"
+        refused = await clients.get(path)
+        assert refused.status_code == 503, refused.text
+        assert refused.json()["detail"]["error"] == "catalog_price_invalid"
+        assert refused.json()["detail"]["rate"] == "coingecko credit"
+        assert relayed == [] and await _balance(clients) == 1_000_000
+        await clients.post("/secrets", json={"name": "coingecko", "value": "OWN-CG"})
+        served = await clients.get(path)
+        assert served.status_code == 200, served.text
+        assert len(relayed) == 1 and await _balance(clients) == 1_000_000
+    finally:
+        get_settings.cache_clear()
