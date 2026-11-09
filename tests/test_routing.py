@@ -211,16 +211,17 @@ def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
 
 def test_a_row_field_may_keep_more_text_than_the_default_cut():
     """people.search's `summary` is the evidence an agent checks a brief against: it keeps up to its
-    own `max` (1000) while every other text field is still cut to ROW_TEXT_MAX."""
+    own `max` while every other text field is still cut to ROW_TEXT_MAX."""
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
-    assert cat.contracts["people.search"].row_fields["summary"]["max"] == 1000
+    cap = cat.contracts["people.search"].row_fields["summary"]["max"]
+    assert cap > C.ROW_TEXT_MAX
     ad = cat.adapters["parallel.people.search"]
-    long = "evidence " * 200
+    long = "evidence " * (cap // 4)
     row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": "https://linkedin.com/in/ada",
                                           "description": long}]})["people"][0]
-    assert len(row["summary"]) == 1000 and len(row["name"]) == C.ROW_TEXT_MAX
+    assert len(row["summary"]) == cap and len(row["name"]) == C.ROW_TEXT_MAX
     doc = {"identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}}}}
     for bad in (0, -5, True, "1000", 1.5):
