@@ -14,7 +14,6 @@ from sqlalchemy.exc import IntegrityError, TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...config import get_settings
 from ...infra.db import session_maker
 from ...domain.identity.access import Caller
 from ...models import AsyncTaskRecord, Hold, IdempotentCall, LedgerEntry
@@ -35,6 +34,10 @@ IDEMPOTENCY_SWEEP_BATCH = 100  # expired labels one claim reclaims; the rest go 
 IDEMPOTENCY_LEASE_RENEW_S = 5 * 60
 IDEMPOTENCY_STALE_PENDING_S = 3 * IDEMPOTENCY_LEASE_RENEW_S
 _POOL_RETRY_PAUSE_S = 0.5  # the settle retry's pause (settle.py); one retry, fresh session
+# Same ceiling as settle._PLATFORM_BODY_MAX. A body that settled and was charged
+# fits here, so a retry can return it. archive_max_body_bytes is a separate,
+# smaller bound on long-lived archive inventory and must not drop a paid replay.
+_REPLAY_MAX_BODY_BYTES = 8 * 1024 * 1024
 
 _IDEM_MAX_KEY = 200
 
@@ -345,11 +348,11 @@ async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Calle
 
 
 def _too_large_note(key: str, call_ref: str, charged_micro: int, size: int) -> tuple[bytes, int, str]:
-    """What a retry gets instead of an answer over the archive's size limit (`archive_max_body_bytes`).
+    """What a retry gets instead of an answer over the replay size limit (`_REPLAY_MAX_BODY_BYTES`).
 
-    The caller already received the full answer; only the retry copy is dropped. A 410, never a new
-    run: running the key again is the double charge this table prevents. Without the limit every
-    body was kept whole for 24 h, however large.
+    The settlement buffer is the same 8 MiB, so a body that settled and was charged is kept. This
+    receipt is the backstop if a larger body reaches storage. A 410, never a new run: running the
+    key again is the double charge this table prevents.
     """
     detail = {"error": "idempotency_response_too_large", "call_id": call_ref, "charged_micro": charged_micro,
               "size_bytes": size,
@@ -391,7 +394,7 @@ async def _store_idempotent(key: str, caller: Caller, *, status_code: int, body:
     owned = (*_owned(caller.membership.id, key, call_ref), IdempotentCall.status == "pending")
     if keep and response_retention_forbidden:
         body, status_code, media_type = _not_retained_note(call_ref, charged_micro)
-    elif keep and len(body) > get_settings().archive_max_body_bytes:
+    elif keep and len(body) > _REPLAY_MAX_BODY_BYTES:
         body, status_code, media_type = _too_large_note(key, call_ref, charged_micro, len(body))
 
     async def _write() -> None:
