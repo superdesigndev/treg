@@ -40,6 +40,8 @@ async def _names():
 
 
 async def test_drop_keeps_every_covering_index_and_downgrade_restores_the_dropped(at_head):
+    await db._engine.dispose()
+    await asyncio.to_thread(command.downgrade, _alembic_config(), "0091")
     after = await _names()
     assert not after & DROPPED
     assert {(table, keep) for table, _, _, keep in migration._INDEXES} <= after
@@ -48,7 +50,7 @@ async def test_drop_keeps_every_covering_index_and_downgrade_restores_the_droppe
     await asyncio.to_thread(command.downgrade, _alembic_config(), "0090")
     assert await _names() == after | DROPPED
 
-    await _upgrade_to("head")
+    await _upgrade_to("0091")
     assert await _names() == after
 
 

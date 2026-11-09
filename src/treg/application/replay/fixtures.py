@@ -12,9 +12,11 @@ import json
 import re
 from collections.abc import Iterator
 
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import contracts as routing_contracts
 from ...domain.catalog.routing import paths as routing_paths
+from ...domain.catalog.schema.paths import leaf_paths, parse_path
 from . import records
 
 ERROR_2XX = {"error": {"code": "synthetic_error", "message": "synthetic failure"}}
@@ -127,10 +129,25 @@ def _empty_like(value: object) -> object:
     return None
 
 
-def synthetic_miss(adapter, example: object) -> object | None:
-    """The smallest blanking of the example along the adapter's own miss paths that the adapter
-    judges a miss, else a bare document it judges one, else None."""
-    paths = _miss_paths(adapter.miss)
+def _adapter_path(path: str) -> str | None:
+    """A v2 answer path in the adapter expression syntax, or None when it selects many values."""
+    parsed = parse_path(path)
+    if parsed.many:
+        return None
+    out = ""
+    for step in parsed.steps:
+        out += f"[{step.index}]" if step.index is not None else f".{step.name}" if out else step.name
+    return out or "."
+
+
+def synthetic_miss(adapter, example: object, endpoint: dict | None = None) -> object | None:
+    """The smallest blanking of the example along the adapter's own miss paths (a v2 row's miss
+    rule paths) that the adapter judges a miss, else a bare document it judges one, else None."""
+    if adapter.miss or endpoint is None:
+        paths = _miss_paths(adapter.miss)
+    else:
+        when = endpoint["miss"].get("when")
+        paths = [p for p in map(_adapter_path, leaf_paths(when) if when is not None else []) if p]
     tries: list[list[tuple[str, object]]] = []
     if example is not None:
         for path in paths:
@@ -157,7 +174,10 @@ def _judged_miss(adapter, doc: object) -> bool:
 
 
 def _declared_miss_body(miss: dict) -> bytes:
-    found = _EQUALS.match(str(miss.get("when") or ""))
+    when = miss.get("when")
+    if isinstance(when, dict) and when.get("op") == "equals" and (path := _adapter_path(when["path"])):
+        return json.dumps(_set_adapter_path({}, path, when["value"])).encode()
+    found = _EQUALS.match(str(when or ""))
     if not found:
         return b"{}"
     path, single, double, number = found.groups()
@@ -214,8 +234,8 @@ def generate() -> Iterator[dict]:
         if example is not None:
             yield _record(ep, "example", "hit", 200, example, request)
         answer = _parsed(_example(ep.get("terminal_example_file")) if descriptor else example)
-        if adapter is not None and adapter.miss.strip():
-            missed = synthetic_miss(adapter, answer)
+        if adapter is not None and (adapter.miss.strip() or catalog_outcome.declares_miss(ep)):
+            missed = synthetic_miss(adapter, answer, ep)
             if missed is not None:
                 cls = "async_terminal" if descriptor else "miss"
                 yield _record(ep, "miss", cls, 200, json.dumps(missed).encode(), request)

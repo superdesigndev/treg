@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ... import oauth_providers
 from ...config import get_settings
 from ...domain import money as ledger
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.identity.access import Caller
 from .resolve import (
@@ -151,6 +151,8 @@ async def catalog_endpoint_access(
 
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     """Estimate the catalog's runnable example, including provider-specific request pricing."""
+    if schema.is_v2(endpoint):
+        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
     if service != "openmart":
         return _platform_estimate_micro(cost, {})
     test_request = endpoint.get("test_request") or {}
@@ -216,7 +218,8 @@ def _billed_note(endpoint: dict, provider, service: str, catalog) -> str:
     if not (provider.platform_billed and service in get_settings().oauth_billed_set):
         return ""
     cost = catalog.cost_view(endpoint.get("cost"), service) if endpoint.get("cost") else None
-    estimate = _platform_estimate_micro(cost, {}) if cost and cost.get("usd") else 0
+    estimate = ((_marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0] if schema.is_v2(endpoint)
+                 else _platform_estimate_micro(cost, {})) if cost and cost.get("usd") else 0)
     if estimate:
         return (
             f" — metered from the team balance (~${ledger.usd(estimate):g}/call: "

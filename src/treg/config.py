@@ -158,6 +158,23 @@ class Settings(BaseSettings):
                 raise ValueError("enabled org flow control requires a valid Redis kv_url")
         return self
 
+    # Published route rules (docs/context/architecture/route-rules.md); off keeps the YAML order.
+    route_rules_enabled: bool = False
+    route_rules_refresh_s: float = Field(default=30.0, ge=1, le=300)
+
+    @model_validator(mode="after")
+    def _route_rules_configuration(self):
+        if self.route_rules_enabled:
+            try:
+                url = urlsplit(self.kv_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("enabled route rules require a valid Redis kv_url")
+        return self
+
     # Optional same-org admission in front of a balance session (settlement, reserve, release).
     # A lease expiry or an unavailable store still runs the database path. A reserve or release
     # with no positive org id refuses before checkout; that refusal is not an HTTP 429.
@@ -170,6 +187,9 @@ class Settings(BaseSettings):
         default=1, ge=1, le=60, validation_alias=AliasChoices(
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
+
+    # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
+    holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
@@ -340,6 +360,7 @@ class Settings(BaseSettings):
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_sixtyfour: str = ""  # x-api-key; monthly credits, free balance check
+    platform_key_leadocean: str = ""  # x-api-key; usage is read through the free account API
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
@@ -379,6 +400,7 @@ class Settings(BaseSettings):
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
+    platform_key_corpoapi: str = ""      # X-API-Key; prepaid USD balance, $0.05 per paid call, 100 free on signup
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
     platform_key_findymail: str = ""      # Bearer key
@@ -465,6 +487,9 @@ class Settings(BaseSettings):
     # router answer well" and "should every agent be led to it by default" are separate questions,
     # and the second one is answered by traffic, not by argument.
     routed_discovery: str = "on"
+    # Optional percent of routed requests on which each shared-key provider may be considered.
+    # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
+    route_provider_sample_pct: str = ""
     # The discovery EXPERIMENT (application.search_experiment): a relevance judge (TypeSafe's Jev)
     # scores a widened lexical recall and the result is compared with the shipped ranker on
     # behaviour — did the caller go on to `call` something from the page. `off` (default) leaves
@@ -574,6 +599,7 @@ class Settings(BaseSettings):
     # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    ops_slack_webhook_url: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
     # membership, session, and authorization authority. Empty keys disable setup and login.
     workos_api_key: str = ""
@@ -596,9 +622,9 @@ class Settings(BaseSettings):
     topup_default_usd: int = 10
     # Four presets plus "Other" (any whole amount ≥ min). Deliberately few and skewed big.
     topup_presets: list[int] = [10, 50, 100, 200]
-    # Bonus credit on a MANUAL top-up, as {min_usd: percent}: the highest key ≤ the amount applies.
-    # It is promotional credit (a separate block that burns first and is never refundable), never
-    # purchased balance — see billing.bonus_for_topup. Automatic refills get no bonus.
+    # Bonus credit on a top-up, manual or automatic, as {min_usd: percent}: the highest key ≤ the
+    # amount applies. It is promotional credit (a separate block that burns first and is never
+    # refundable), never purchased balance — see billing.bonus_for_topup.
     topup_bonus_tiers: dict[int, int] = {10: 0, 50: 5, 100: 10, 200: 15}
     # After each manual top-up the dashboard's preselected amount steps one preset up, but never past
     # this — the ladder nudges $10 payers toward $50 without preselecting $200 at anyone.
@@ -783,6 +809,18 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
+    # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
+    cli_latest_version: str = ""
+    cli_min_version: str = ""
+    # The binary CLI's release channels (application/cli_releases.py). `/cli/latest` answers the stable
+    # channel with cli_stable_version and the beta channel with cli_beta_version; an empty one is
+    # answered from the newest matching GitHub release of cli_release_repo. Archives are fetched from
+    # cli_download_base_url with `{version}` filled in.
+    cli_stable_version: str = ""
+    cli_beta_version: str = ""
+    cli_release_repo: str = "superdesigndev/treg"
+    cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both
@@ -824,6 +862,9 @@ class Settings(BaseSettings):
     # in production.
     turnstile_hostnames: str = ""
     turnstile_mode: Literal["observe", "enforce"] = "observe"
+    # Off: a new GitHub/Google address signs in at once with signup credit, as with no widget; the
+    # email door keeps its check.
+    turnstile_social: bool = True
     # Registry OAuth apps for the non-Google providers (oauth_providers.py). Empty = that provider
     # is listed as unconfigured rather than failing part-way through a consent.
     # treg's own Google Ads developer token, from OUR approved manager account. Ads needs it on
@@ -922,8 +963,8 @@ class Settings(BaseSettings):
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
     # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
-    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
-    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # sign-up and sign-in door and at the door that creates a promo-funded team (POST /orgs).
+    # Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.
@@ -963,6 +1004,27 @@ class Settings(BaseSettings):
     def _platform_accounts_shape(cls, v: str) -> str:
         _parse_platform_pools(v)  # raises ValueError on a malformed value
         return v
+
+    @field_validator("route_provider_sample_pct")
+    @classmethod
+    def _route_provider_sample_pct_shape(cls, v: str) -> str:
+        if not v.strip():
+            return v
+        try:
+            parsed = json.loads(v)
+        except ValueError:
+            raise ValueError("route_provider_sample_pct must be a JSON object") from None
+        if not isinstance(parsed, dict) or not all(
+            isinstance(provider, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]*", provider)
+            and isinstance(pct, int) and not isinstance(pct, bool) and 0 <= pct <= 100
+            for provider, pct in parsed.items()
+        ):
+            raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
+        return v
+
+    @property
+    def route_provider_sample_percentages(self) -> dict[str, int]:
+        return json.loads(self.route_provider_sample_pct) if self.route_provider_sample_pct.strip() else {}
 
     @property
     def fixed_login_code_hashes(self) -> dict[str, str]:

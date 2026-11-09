@@ -7,6 +7,7 @@ The `clients` fixture also registers a user and authes the client by default.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import glob
 import hashlib
@@ -15,6 +16,7 @@ import json
 import os
 import socket
 import tempfile
+import time
 from pathlib import Path
 
 # Tests and their CLI subprocesses must never emit production analytics.
@@ -92,6 +94,7 @@ os.environ["TREG_ORG_ENDPOINT_QUOTA_ENABLED"] = "false"
 os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
 os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
 os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
+os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
@@ -170,6 +173,25 @@ def fake_getaddrinfo(monkeypatch):
         monkeypatch.setattr(socket, "getaddrinfo", resolve)
 
     return install
+
+
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
+def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
+    """Block the event loop, as a GC pause does, once every Redis call is in flight."""
+    entered = 0
+    for store in stores:
+        evaluate = store._client.eval
+
+        async def paused(*args, evaluate=evaluate):
+            nonlocal entered
+            entered += 1
+            if entered == calls:
+                asyncio.get_running_loop().call_soon(time.sleep, seconds)
+            return await evaluate(*args)
+
+        store._client.eval = paused
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
@@ -448,17 +470,18 @@ async def verified_identity(client, email):
         client.cookies = previous_cookies
 
 
-async def verified_signup(client, *, json, headers=None):
-    """Funded test identity through OTP and team creation, with fixture identity fields."""
+async def verified_signup(client, *, json, headers=None, cookies=None):
+    """Funded test identity through OTP and team creation, with fixture identity fields. `cookies`
+    reach the team creation, where attribution is read."""
     import httpx
     from sqlmodel import select
     from treg.infra.db import session_maker
     from treg.models import User
 
-    email = json["email"]
-    token = await verified_identity(client, email)
+    token = await verified_identity(client, json["email"])
+    email = json["email"].strip().lower()
     response = await client.post("/orgs", json={"name": email},
-        headers={**(headers or {}), "X-Treg-Token": token})
+        headers={**(headers or {}), "X-Treg-Token": token}, cookies=cookies)
     if response.status_code != 200:
         return response
     async with session_maker() as db:
@@ -468,18 +491,46 @@ async def verified_signup(client, *, json, headers=None):
         json={**response.json(), "id": user_id, "email": email}, request=response.request)
 
 
-async def funded_user(client, email, *, micro=1_000_000):
-    """A per-org token whose team holds money.
+async def accept_with_code(client, *, json, headers=None):
+    """Redeem an invite code the way an invitee does: prove the invited email, then accept."""
+    token = await verified_identity(client, json["email"])
+    return await client.post("/invites/accept", json=json,
+                             headers={**(headers or {}), "X-Treg-Token": token})
 
-    `POST /users` is legacy registration: the user it mints is UNVERIFIED, and the signup credit is
-    now verified-only (`claim_signup_promo`), so that team starts at zero. A test that has to PAY
-    for something funds the team here instead of leaning on a promo that no longer arrives.
+
+async def unproven_member(client, email):
+    """A member with no inbox proof, as the invite-code door created them before it required one."""
+    from treg.domain.identity import session as sess
+    from treg.domain.identity import api_keys as managed_keys
+    from treg.infra.db import session_maker
+    from treg.models import Membership, Org, User
+
+    org_id = (await client.get("/auth/me")).json()["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        user = User(email=email)
+        db.add(user)
+        await db.flush()
+        membership = Membership(user_id=user.id, org_id=org_id, role="member", token_hash="")
+        db.add(membership)
+        await db.flush()
+        default = await managed_keys.ensure_default_key(db, membership, user)
+        token = sess.make_identity(
+            user.id, user.token_version, org=org.slug,
+            key_generation=default.default_generation if default else None, scope=sess.TEAM_SCOPE,
+        )
+        await db.commit()
+    return {"org": org.slug, "org_id": org_id, "role": "member", "token": token}
+
+
+async def funded_user(client, email, *, micro=1_000_000):
+    """A per-org token whose team holds `micro` on top of any signup credit.
     Returns the whole registration body, so `["token"]` and `["org_id"]` both work.
     """
     from treg.domain import money
     from treg.infra.db import session_maker
 
-    body = (await client.post("/users", json={"email": email})).json()
+    body = (await verified_signup(client, json={"email": email})).json()
     async with session_maker() as db:
         await money.grant(db, body["org_id"], amount_micro=micro, kind="promotional")
         await db.commit()
@@ -599,6 +650,9 @@ def _reset_call_path_caches():
         # Who a key is, for the hub's lists: remembered a minute, and keys repeat across resets.
         from treg.routers import hub_gate
         hub_gate._readers.clear()
+        # Teams at today's trial allowance: org ids restart with every reset_db().
+        from treg.application.call import reserve as call_reserve
+        call_reserve._spent_trials.clear()
         # The catalog's agent verdicts: a five-minute fold of callreview, which reset_db() empties.
         from treg.application import feedback
         feedback.forget_endpoint_verdicts()

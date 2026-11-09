@@ -80,8 +80,14 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
-5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+   A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
+   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   through the same road and reads the answer with the descriptor; it never changes what `/call/`
+   returns (docs/context/architecture/tasks.md).
+5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
+   revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
+   bonus, in proportion), never another payment's block and never below the unheld balance.
+   There is no adjustment entry; an ops correction is a grant.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";
@@ -118,8 +124,9 @@ agents then built against a constitution that was wrong.
 | `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits), `plugins` (a provider's pure functions a catalog row names, resolved by import) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
-- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
-  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+- Domains do not import each other, with four sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only), `catalog -> plugins` (the functions its
+  rows name). `identity` and `money` are leaves.
   import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
   `docs/context/architecture/import-boundaries.md` explains each contract.
 - `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role
@@ -138,6 +145,10 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Referral affiliates.** `domain/referrals.py` alone writes `User.referral_affiliate`, its
+  version and `ReferralAffiliateEvent`; the private admin calls the authenticated API. The flag
+  exempts only future qualification from the per-referrer cap, never abuse gates or historical
+  capped records. See `docs/context/architecture/money.md`.
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
@@ -149,11 +160,13 @@ agents then built against a constitution that was wrong.
   team, an exact count or money. See `docs/context/architecture/showcase.md`.
 - **The call runtime is self-contained.** `src/treg/application/call/` depends on no management
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
-  credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
+  credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
+  the team's first owner and whether it ever bought credit), and writes only what
+  `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, Redis org/endpoint
-  quota admission counters, and the shared provider rate window's members). Extend the
+  archive-question marks, durable provider-resource ownership, the task an async answer names,
+  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -169,9 +182,14 @@ agents then built against a constitution that was wrong.
   (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
-  the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
+- **Call admission.** Before treg's own money pays for a call (its key or its pay-per-use OAuth
+  app), an installed policy extension may refuse it through the `call_admission` decision point: a
+  403 before any hold and before the provider is reached, `funds_required` for a team that never
+  bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
+  slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
@@ -203,6 +221,8 @@ uv run python -m treg                          # the server
 uv run lint-imports                            # the import-linter contracts (CI runs this too)
 uv run ruff check                              # lint, config in pyproject.toml (CI runs this too)
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
+(cd cli && go vet ./... && go test ./...)      # the binary CLI (Go)
+TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
 xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
@@ -211,6 +231,10 @@ so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
+  a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
+  proved by `tests/cli_go`, except the differences `cli-binary.md` names ("Compatibility with the
+  Python CLI") and the harness's `normalize` spells out. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
@@ -225,6 +249,17 @@ so parallel runs and side-by-side runs never share one.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.
+- **No new foreign keys.** Keep referential rules in domain and application code, where a reader
+  sees them, not in database triggers that fire on every write. A foreign key adds a share lock on
+  the parent row to every child insert, and a lookup of every referencing table to every parent
+  delete; on an unindexed referencing column that lookup is a scan of the whole child table, per
+  deleted row. Do not drop existing ones in passing, but a delete path over a table that is still
+  referenced must have every referencing column indexed.
+- **Count the rows a query scans before it runs on the primary.** Run `EXPLAIN` against the replica
+  and read the plan, not the size of the result: a query returning a few thousand rows can scan
+  a whole large table once per candidate row. Write `NOT EXISTS`, never `NOT IN (subquery)`, against
+  a large table; past `work_mem` the latter cannot be hashed and rescans the subquery per row. A
+  statement that runs long on the primary holds back vacuum for every table, the hottest included.
 
 ## Working agreement
 
@@ -246,9 +281,11 @@ so parallel runs and side-by-side runs never share one.
   goes in the PR body, never into a fragment or a comment. A fragment moves only when a mechanism
   changes; `drift.sh` naming one is a prompt to check it, not an obligation to write. No dated
   per-provider sections in `docs/context/architecture/catalog.md`: a provider's quirk lives on
-  its row as a `note`. No per-endpoint tests: the round-trip test over every shipped adapter and
-  the validator already judge the rows, and a test that restates a list of declarations is
-  deleted, not extended. Code a data change needs ships in the same PR as its first rows.
+  its row, in the most specific note. Write and review every summary and note against
+  `docs/context/architecture/catalog-schema.md` ("Summary and note"). No per-endpoint tests: the
+  round-trip test over every shipped adapter and the validator already judge the rows, and a test
+  that restates a list of declarations is deleted, not extended. Code a data change needs ships in
+  the same PR as its first rows.
 
 ## When writing user-facing copy
 
@@ -264,6 +301,12 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 **Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
 changes weekly and every stale number is a lie.
+
+**A new public page: offer it a share image.** When you add a public page, ask the person driving
+the session whether it should get its own `og:image` from `scripts/og_images.py` (add the page to a
+group in `GROUPS`, then run the script for that one page). Tell them that if they do not like the
+current look, a new style is one more template in `LAYOUTS`. Without a card the page keeps the
+site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") has the details.
 
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and

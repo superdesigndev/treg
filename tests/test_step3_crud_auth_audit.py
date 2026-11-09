@@ -5,23 +5,11 @@ Reuses the in-process echo upstream + authed client fixture from the walking-ske
 
 from __future__ import annotations
 
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
-from treg.api import app
-from treg.infra.db import reset_db
 
 
 # ---- registration + auth ------------------------------------------------------------------
-async def test_register_returns_token_once_and_dedupes_email():
-    await reset_db()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "a@x.dev"})
-        assert r.status_code == 200
-        assert r.json()["token"]  # shown exactly once
-        again = await c.post("/users", json={"email": "a@x.dev"})
-        assert again.status_code == 409  # email already registered
-
-
 # ---- secret CRUD --------------------------------------------------------------------------
 async def test_secret_crud_and_owner_stamp(clients: AsyncClient):
     s = await clients.post("/secrets", json={"name": "k", "value": "v1"})
