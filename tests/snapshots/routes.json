@@ -1727,6 +1727,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "list_admins",
+    "path": "/orgs/{org_id}/admins"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "org_usage",
     "path": "/orgs/{org_id}/usage"
   },

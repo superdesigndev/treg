@@ -24,7 +24,7 @@ export default function data(){
       emailInput:'', codeInput:'', emailStage:false, devCode:'', pendingInvites:[], invitePrefill:'', inviteChoice:false, inviteBusy:false,
       inviteSel:{}, inviteLinkOrg:null, inviteErr:'',  // multi-select accept: checked ids, the org_id the clicked email link was for, partial-failure note
       tut:{i:0, panel:null}, tutCopied:false, tourI:0, helpMode:null, xtut:{i:0},
-      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'',
+      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'', memberFunds:false, teamAdmins:null,
       orgMembers:[], orgMembersLoaded:false, orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
       editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
       // agents (machine identities), projects (sub-scope) and deny rules (policy)
