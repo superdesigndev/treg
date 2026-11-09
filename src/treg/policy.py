@@ -25,6 +25,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Protocol
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
 POLICY_API_VERSION = 1
 ENTRY_POINT_GROUP = "treg.extensions"
 SIGNUP_CREDIT_BUDGET_S = 0.3
+CALL_ADMISSION_BUDGET_S = 0.02
 
 _log = logging.getLogger("treg")
 
@@ -57,36 +59,87 @@ class CreditDecision(StrEnum):
     DEFER = "defer"
 
 
+@dataclass(frozen=True)
+class CallAdmissionContext:
+    """treg's own money is about to pay for one call: its key, or its pay-per-use OAuth app.
+
+    Asked once the call has resolved and before anything is reserved, with no database session open.
+    A call paid with the team's own credential never asks.
+    """
+    org_id: int
+    user_id: int
+    caller_email: str  # the calling identity: a person, or an agent identity
+    owner_email: str | None  # the team's first owner, the person behind every agent identity
+    org_has_paid: bool  # the team has bought credit at least once
+    org_created_at: datetime | None
+    api_key_id: int | None
+    endpoint_id: str
+    provider: str
+    platform: str  # the catalog row's platform, for example `video-gen`; empty when it has none
+    funding: str  # `platform` (treg's key) or `billed_oauth` (treg's pay-per-use OAuth app)
+    estimate_micro: int
+
+
+class CallDecision(StrEnum):
+    ALLOW = "allow"
+    # Refused before anything is reserved: a 403 that tells the caller to add funds or bring its
+    # own key, never which rule decided.
+    DENY = "deny"
+
+
 SignupCreditHandler = Callable[[SignupCreditContext], Awaitable[CreditDecision]]
+CallAdmissionHandler = Callable[[CallAdmissionContext], Awaitable[CallDecision]]
 
 
 class PolicyRegistry:
-    """Where an extension registers its handlers during `install`. One handler per point."""
+    """Where an extension registers its handlers during `install`. One handler per point.
+
+    Every point takes its default when the handler is slow, raises or answers anything else. The
+    budget cancels a handler at its next await; a handler that blocks the event loop is not
+    interrupted, so handlers must not block.
+    """
 
     def __init__(self) -> None:
         self._signup_credit: SignupCreditHandler | None = None
+        self._call_admission: CallAdmissionHandler | None = None
 
     def on_signup_credit(self, handler: SignupCreditHandler) -> None:
         if self._signup_credit is not None:
             raise RuntimeError("a signup_credit handler is already registered")
         self._signup_credit = handler
 
-    async def signup_credit(self, ctx: SignupCreditContext) -> CreditDecision:
-        """Default GRANT, also when the handler is slow, raises or answers anything else.
+    def on_call_admission(self, handler: CallAdmissionHandler) -> None:
+        if self._call_admission is not None:
+            raise RuntimeError("a call_admission handler is already registered")
+        self._call_admission = handler
 
-        The budget cancels a handler at its next await; a handler that blocks the event loop is
-        not interrupted, so handlers must not block.
-        """
-        if self._signup_credit is None:
-            return CreditDecision.GRANT
-        try:
-            async with asyncio.timeout(SIGNUP_CREDIT_BUDGET_S):
-                decision = await self._signup_credit(ctx)
-        except Exception as exc:  # noqa: BLE001 - any extension failure takes the default
-            return _failed("signup_credit", type(exc).__name__, CreditDecision.GRANT)
-        if not isinstance(decision, CreditDecision):
-            return _failed("signup_credit", "BadOutcome", CreditDecision.GRANT)
-        return decision
+    @property
+    def asks_call_admission(self) -> bool:
+        """Whether a handler listens, so treg reads the point's context only when one does."""
+        return self._call_admission is not None
+
+    async def signup_credit(self, ctx: SignupCreditContext) -> CreditDecision:
+        """Default GRANT."""
+        return await _ask("signup_credit", self._signup_credit, ctx, SIGNUP_CREDIT_BUDGET_S,
+                          CreditDecision.GRANT)
+
+    async def call_admission(self, ctx: CallAdmissionContext) -> CallDecision:
+        """Default ALLOW."""
+        return await _ask("call_admission", self._call_admission, ctx, CALL_ADMISSION_BUDGET_S,
+                          CallDecision.ALLOW)
+
+
+async def _ask(point: str, handler, ctx, budget_s: float, default):
+    if handler is None:
+        return default
+    try:
+        async with asyncio.timeout(budget_s):
+            decision = await handler(ctx)
+    except Exception as exc:  # noqa: BLE001 - any extension failure takes the default
+        return _failed(point, type(exc).__name__, default)
+    if not isinstance(decision, type(default)):
+        return _failed(point, "BadOutcome", default)
+    return decision
 
 
 def _failed(point: str, error: str, fallback):

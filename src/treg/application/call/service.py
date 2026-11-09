@@ -41,7 +41,7 @@ from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import keyslots
+from . import admission, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1275,6 +1275,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
     if mk is not None and mk.metered:
         _set_caller_max_cost(request, mk)
+        # Before the direct reserve and before an overflow-only attempt: both spend treg's money.
+        try:
+            await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
+        except CallFailure as exc:
+            _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code), answered=False)
+            raise
 
     async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal,
                                       keep_refusal: bool = False) -> UpstreamResponse:

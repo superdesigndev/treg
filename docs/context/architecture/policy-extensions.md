@@ -5,6 +5,7 @@ sources:
   - src/treg/policy.py
   - src/treg/bootstrap.py
   - src/treg/application/signup.py
+  - src/treg/application/call/admission.py
   - src/treg/domain/identity/promotions.py
   - tests/test_policy.py
 ---
@@ -49,3 +50,24 @@ entry type. A first-proof deferral is never re-asked, since a first proof happen
 Failure grants because the other signup-credit defenses (one credit per inbox, the human check, the
 domain blocklist) still apply, so a broken extension returns to the public baseline instead of
 withholding credit from every new user.
+
+## `call_admission`
+
+Outcomes `allow` or `deny`; on failure `allow`; budget 20 ms. Asked from `_execute_call` through
+`application/call/admission.py` once a call has resolved to treg's own money (`mk.metered`: its key, or
+its pay-per-use OAuth app), after the caller's ceiling is read and before both the direct reserve and an
+overflow-only attempt. A call on the team's own credential never asks, and a deployment without a handler
+reads nothing extra (`PolicyRegistry.asks_call_admission`).
+
+The context carries what treg already knows about the call (team, caller, key, endpoint, provider, the
+catalog row's `platform`, `funding`, the raw estimate) plus two reads made only for this point on the
+session the call already holds: the team's first owner (`identity.access.first_owner_email`, the person
+behind every agent identity) and whether the team ever bought credit (`money.has_purchased`). That session
+is committed before asking, so no pooled connection waits on the extension.
+
+`deny` is a 403 `policy_denied` whose body is `funds_required`: the endpoint, the provider, the top-up URL
+and the own-key alternative, never the rule. Nothing is reserved, so nothing is released; the audit row
+reads `refused_by=policy`, and a routed job treats it as a candidate-local refusal and moves on.
+
+Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which
+still bound the spend, instead of refusing every metered call.

@@ -28,6 +28,15 @@ async def lock_user(db: AsyncSession, user_id: int) -> None:
                      .execution_options(synchronize_session=False))
 
 
+async def first_owner_email(db: AsyncSession, org_id: int) -> str | None:
+    """The address of the team's earliest owner, the person behind every agent identity it mints."""
+    return (await db.execute(
+        select(User.email).join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == org_id, Membership.role == "owner")
+        .order_by(Membership.id).limit(1)
+    )).scalar_one_or_none()
+
+
 @dataclass
 class Caller:
     """The resolved caller: their membership (org + role + token), identity, and org row.
