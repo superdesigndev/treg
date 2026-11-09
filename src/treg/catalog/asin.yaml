@@ -1,0 +1,177 @@
+provider: asin
+source:
+  docs: https://www.asin.dev/docs
+  openapi: https://www.asin.dev/openapi.json
+  curated: '2026-11-09'
+pricing_url: https://www.asin.dev/pricing
+limits: 30 searches and 600 history or offers reads an hour per account, and a daily cap on different products read (1,000
+  on Starter); a 429 names the limit.
+proposed_capabilities:
+  amazon.product.price.history: Get the price history of an Amazon product by ASIN
+defaults:
+  expect:
+    path: response.error
+    op: absent
+  provenance:
+    source: docs
+    source_url: https://www.asin.dev/pricing
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: asin.amazon.search.products
+  capability: amazon.search.products
+  platform: amazon
+  domain: search
+  scope: any_account
+  method: GET
+  path: /search
+  name: Search Amazon products
+  summary: Search an Amazon store and return up to 60 results, sponsored ones included, with ASIN, title, price, rating and
+    review count.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: wireless earbuds
+      marketplace: &id001
+        type: string
+        required: false
+        default: com
+        enum:
+        - com
+        - co.uk
+        - de
+        - fr
+        - it
+        - es
+        - ca
+        - co.jp
+        - com.br
+        - com.mx
+        - in
+        note: Amazon store.
+  test_request:
+    queryParams:
+      query: wireless earbuds
+      marketplace: com
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Free; 30 searches an hour per account.
+  miss:
+    when:
+      any:
+      - path: response.results
+        op: absent
+      - path: response.results
+        op: empty
+  added: '2026-11-09'
+  docs_url: https://www.asin.dev/docs
+- id: asin.amazon.product.sellers
+  capability: amazon.product.sellers
+  platform: amazon
+  domain: products
+  scope: any_account
+  method: POST
+  path: /offers
+  name: Read a product's offers from Amazon
+  summary: 'Read every offer for an ASIN from Amazon now: seller, price, Prime and FBA, delivery, with Amazon''s own price
+    and the lowest new and used offers.'
+  input:
+    body:
+      asin: &id002
+        type: string
+        required: true
+        example: B09DFCB66S
+        note: 10-character ASIN.
+      marketplace: *id001
+  test_request:
+    body:
+      asin: B09DFCB66S
+      marketplace: com
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+    note: 'A read of the same product in the last 3 hours is returned free (charged: false); a read Amazon does not answer
+      is refunded.'
+  miss:
+    when: &id003
+      any:
+      - path: response.offers
+        op: absent
+      - path: response.offers
+        op: empty
+  bill:
+    miss: charged
+  added: '2026-11-09'
+  docs_url: https://www.asin.dev/docs
+- id: asin.amazon.product.sellers.cached
+  capability: amazon.product.sellers
+  platform: amazon
+  domain: products
+  scope: any_account
+  method: GET
+  path: /offers
+  name: Get a product's last known offers
+  summary: Get the sellers and prices last read for an ASIN, cheapest first, with Amazon's own price and the lowest new and
+    used offers, without reading Amazon again.
+  input:
+    queryParams:
+      asin: *id002
+      marketplace: *id001
+  test_request:
+    queryParams:
+      asin: B09DFCB66S
+      marketplace: com
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Free; a product nobody read yet has no offers (fetched_at null).
+  miss:
+    when: *id003
+  added: '2026-11-09'
+  docs_url: https://www.asin.dev/docs
+- id: asin.amazon.product.price.history
+  capability: amazon.product.price.history
+  platform: amazon
+  domain: products
+  scope: any_account
+  method: GET
+  path: /history
+  name: Get a product's price history
+  summary: Get every price read for an ASIN over a period, oldest first, with its lowest, highest and average price; a history
+    over 5,000 points is thinned evenly.
+  input:
+    queryParams:
+      asin: *id002
+      marketplace: *id001
+      days:
+        type: integer
+        required: false
+        default: 30
+        example: 30
+        note: Days of history to return.
+  test_request:
+    queryParams:
+      asin: B09DFCB66S
+      marketplace: com
+      days: 30
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Free; an ASIN nobody tracked yet has an empty history.
+  miss:
+    when:
+      path: response.history
+      op: empty
+  added: '2026-11-09'
+  docs_url: https://www.asin.dev/docs
