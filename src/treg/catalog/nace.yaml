@@ -38,7 +38,7 @@ endpoints:
       per: 1
       unit: call
       note: "$0.03 per million input tokens; output tokens are free. `usage.input_tokens` settles, above the hold too."
-    provenance: {source: rate_card_api, source_url: 'https://console.nace.ai/models', checked: '2026-11-09', confidence: documented}
+    provenance: {source: rate_card_api, source_url: 'https://console.nace.ai/models', checked: '2026-11-09', confidence: verified}
     settle:
       usage:
         unit: usd
