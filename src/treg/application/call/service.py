@@ -1266,11 +1266,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         try:
             await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
         except CallFailure as exc:
-            refusal_secrets = _safe_secret_renderings(tool, secrets)
+            # treg wrote this refusal and it holds no credential, so it is recorded as it stands.
             _audit(exc.status_code, charged_micro=0, refused_by=_refusal_kind(exc.status_code),
-                   answered=False, error_response=(
-                       _ERROR_MASKING_FAILED if refusal_secrets is None else
-                       _redact_snippet(f"treg: {exc.detail}", refusal_secrets, _ERROR_RESPONSE_MAX)))
+                   answered=False, error_response=f"treg: {exc.detail}"[:_ERROR_RESPONSE_MAX])
             raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles

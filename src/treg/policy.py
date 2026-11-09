@@ -66,14 +66,16 @@ class CreditDecision(StrEnum):
 class CallAdmissionContext:
     """treg's own money is about to pay for one call: its key, or its pay-per-use OAuth app.
 
-    Asked once the call has resolved and before anything is reserved, with no database session open.
-    A call paid with the team's own credential never asks.
+    Asked once the call has resolved and before anything reaches the provider on treg's account,
+    with no transaction open, so no pooled connection waits on the handler. A call paid with the
+    team's own credential never asks. An overflow attempt is covered by the same decision; the context
+    names the provider the call asked for, not the aggregator that might serve it.
     """
     org_id: int
-    user_id: int
+    user_id: int | None
     caller_email: str  # the calling identity: a person, or an agent identity
     owner_email: str | None  # the team's first owner, the person behind every agent identity
-    org_has_paid: bool  # the team has bought credit at least once
+    org_has_paid: bool  # the team bought credit at least once and was not refunded for it
     org_created_at: datetime | None
     api_key_id: int | None
     endpoint_id: str

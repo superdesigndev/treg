@@ -9,19 +9,22 @@ CAPACITY_HEADER = "X-Treg-Capacity"
 EXHAUSTED = "exhausted"
 
 
-def is_balance_refusal(headers, body) -> bool:
-    """treg itself refused for the team's balance (`error: insufficient_balance`). Not a provider's
-    402, not a replay (which marks every stored error `X-Treg-Error`), not `route_max_cost`."""
+def _treg_refusal(headers, body, errors: frozenset[str]) -> bool:
+    """treg itself refused with one of `errors`: not a provider's answer and not a replay (which
+    marks every stored error `X-Treg-Error`)."""
     detail = body.get("detail") if isinstance(body, dict) else None
     return (bool(headers.get("X-Treg-Error")) and not headers.get("X-Treg-Idempotent-Replay")
-            and isinstance(detail, dict) and detail.get("error") == "insufficient_balance")
+            and isinstance(detail, dict) and detail.get("error") in errors)
+
+
+def is_balance_refusal(headers, body) -> bool:
+    """treg itself refused for the team's balance (`error: insufficient_balance`), not `route_max_cost`."""
+    return _treg_refusal(headers, body, frozenset({"insufficient_balance"}))
 
 
 def is_admission_refusal(headers, body) -> bool:
     """treg's policy refused its own money for this call (`funds_required`, `own_key_required`)."""
-    detail = body.get("detail") if isinstance(body, dict) else None
-    return (bool(headers.get("X-Treg-Error")) and not headers.get("X-Treg-Idempotent-Replay")
-            and isinstance(detail, dict) and detail.get("error") in ("funds_required", "own_key_required"))
+    return _treg_refusal(headers, body, frozenset({"funds_required", "own_key_required"}))
 
 
 def account_out_notice(headers) -> str | None:

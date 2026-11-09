@@ -63,8 +63,13 @@ credential never asks, and a deployment without a handler reads nothing extra
 The context carries what treg already knows about the call (team, caller, key, endpoint, provider, the
 catalog row's `platform`, `funding`, the raw estimate) plus one read made only for this point on the
 session the call already holds: the team's first owner (the person behind every agent identity) and
-whether the team ever bought credit. That session is committed before asking, so no pooled connection
-waits on the extension, and the reserve's own commit that follows has nothing left to send.
+whether the team bought credit it was not refunded for (a purchased block with no `revoke`). That
+session is committed before asking, so no pooled connection waits on the extension, and the reserve's
+own commit that follows has nothing left to send.
+
+The decision covers the whole call. An archive hit is refused too: it spends the team's credit on
+treg's account even though no provider is reached. An overflow attempt rides the same decision, and
+the context names the provider the call asked for, not the aggregator that might serve it.
 
 `deny` is a 403 of kind `admission_denied`. Its body names the endpoint, the provider and the remedy,
 never the rule: `funds_required` with the top-up URL and the own-key alternative for a team that never
@@ -72,7 +77,8 @@ bought credit, `own_key_required` with only the own-key alternative for one that
 could not help it. Nothing is reserved; the audit row reads `refused_by=policy`, charged 0. On MCP the
 top-up URL and link are stripped like a 402's, and `hint` states the fact. A routed job skips a refused
 candidate without spending its error allowance (another candidate may run on the team's own key); when
-every candidate is refused it answers that refusal for the routed endpoint, with `tried`, not a 502.
+nothing ran and a candidate was refused, it answers that refusal for the routed endpoint, with `tried`,
+not a 502 or a cost-ceiling 402.
 
 Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which still
 bound the spend, instead of refusing every metered call. Failures arrive at the call rate, so the

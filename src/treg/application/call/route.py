@@ -879,7 +879,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
-    admission_refusals: list[CallFailure] = []  # candidates whose treg money the team may not use
+    admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -1240,7 +1240,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
-        if tried and len(admission_refusals) == len(tried):
+        if admission_refusals and all(t.outcome == "skipped" for t in tried):
+            # Nothing ran: the refusal names a remedy, unlike a cost ceiling the caller may never have set.
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 403, 0, audit_client)
             raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])

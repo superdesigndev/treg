@@ -190,7 +190,7 @@ async def test_over_mcp_the_refusal_carries_no_payment_link(clients, platform_on
     assert out["status"] == 403, out
     blob = str(out)
     assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob, blob
-    assert "can't pay for this tool" in out["hint"]
+    assert "treg won't pay for this call" in out["hint"]
     assert "treg connections connect --provider tikhub" in blob, "the own-key way out survives"
 
 
@@ -213,4 +213,35 @@ async def test_call_media_carries_no_payment_link_either(clients, admission, mon
     assert admission["asked"][0][0].platform == "voice-gen"
     blob = str(out)
     assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob, blob
+
+
+async def test_a_refunded_top_up_does_not_count_as_paid(clients, platform_on, admission):
+    admission["decision"] = policy.CallDecision.DENY
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        block = await ledger.topup(db, org_id, 5_000_000, "pi_admission_refunded")
+        await db.commit()
+    async with session_maker() as db:
+        await ledger.revoke_in_transaction(db, org_id, [ledger.RevokeTarget(block.id, 5_000_000)])
+        await db.commit()
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "funds_required", r.text
+    assert admission["asked"][0][0].org_has_paid is False
+
+
+async def test_a_routed_job_skipped_for_mixed_reasons_answers_the_refusal(clients, enrichment_on, monkeypatch):
+    """One candidate refused, the rest over the caller's ceiling: the answer names the remedy that
+    applies to this team, not only the ceiling."""
+    async def handler(ctx):
+        return policy.CallDecision.DENY if ctx.provider == "tomba" else policy.CallDecision.ALLOW
+    registry = policy.PolicyRegistry()
+    registry.on_call_admission(handler)
+    monkeypatch.setattr(policy, "registry", registry)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": []}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Max-Cost": "0.012"})
+    assert r.status_code == 403, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "funds_required" and d["endpoint_id"] == ROUTED
+    assert {t["outcome"] for t in d["tried"]} == {"skipped"} and len(d["tried"]) > 1
 

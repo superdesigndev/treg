@@ -1659,6 +1659,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+    admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
     if notice := account_out_notice(r.headers):
         # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
         # provider's words would name its wallet and top-up page, so they are left out; the call id
@@ -1666,7 +1667,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out.pop("body", None)
         out["whose_error"] = "treg"
         out["hint"] = notice
-    elif r.status_code == 402 or (r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))):
+    elif r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
         # nothing on this path points a user at a payment page. A 403 admission refusal names the
         # same remedy and gets the same treatment.
@@ -1676,8 +1677,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         #
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
-        if is_admission_refusal(r.headers, out.get("body")):
-            out["hint"] = "treg's key can't pay for this tool on this team; the team's own key for the provider can"
+        if admitted_no:
+            out["hint"] = "treg won't pay for this call on this team; the body names the way around it"
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
             out["hint"] = "the team's prepaid balance is not enough for this call"
