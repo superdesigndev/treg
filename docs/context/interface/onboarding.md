@@ -11,6 +11,7 @@ sources:
   - src/treg/routers/auth.py
   - src/treg/routers/onboard.py
   - frontend/src/state/onboarding.js
+  - frontend/src/state/onboardingComputed.js
   - frontend/src/pages/GettingStartedPage.vue
 related:
   - interface/api.md
@@ -34,6 +35,13 @@ When `created: true`, the welcome dialog opens over the view the user landed on;
 carries the same agent picker and setup line for anyone who skipped it. A use-case landing's
 `/app?ref=<page>` is stashed in `localStorage['treg-ref']` because sign-in reloads the page, and
 `_welcomeAgentFromRef` preselects that agent (unknown refs are ignored).
+
+Getting started says whether the setup worked. `pollFirstCall` reads `GET /orgs/{id}/first-call`
+when the page opens, then once per pause (bounded rounds, the next pause only after the last read
+settles) until a first call shows; `startStage` turns the answer into "Waiting for your agent…",
+"Connected" or "First call made: <tool>". Copying the setup line or opening the connector or plugin
+link starts a new round; leaving the page or switching teams cancels it, and an answer for another
+team is never shown. A team that already made a call gets one read and no polling.
 
 Getting started shows the team's signed Default key, which is revealable again on purpose: the
 server derives it from signed identity, team and Default generation. Additional and agent keys are

@@ -11956,6 +11956,78 @@
         "summary": "Delete Deny Rule"
       }
     },
+    "/orgs/{org_id}/first-call": {
+      "get": {
+        "description": "Getting started's progress: has an agent reached this team, and which tool did its first\nsuccessful call reach. Each answer is at most one indexed row; no usage scan.",
+        "operationId": "team_first_call_orgs__org_id__first_call_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Team First Call Orgs  Org Id  First Call Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Team First Call"
+      }
+    },
     "/orgs/{org_id}/invites": {
       "get": {
         "operationId": "list_invites_orgs__org_id__invites_get",

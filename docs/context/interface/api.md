@@ -164,6 +164,12 @@ existence query scoped to the live key, never a history scan; an old key's histo
 a new key. Revoking an agent sweeps its deny rules and idempotent replay cache before deleting the
 membership.
 
+`GET /orgs/{id}/first-call` (any member, `no-store`) answers Getting started's progress:
+`connected` (any audited row for the team, or the caller's Default key used by a CLI or agent) and
+`first_call` (`{tool, at}` of the team's earliest successful call, read only once
+`Org.first_call_at` is set; `tool` is null when that audit row was shed). Each answer reads at most
+one indexed row.
+
 ## Teams and governance
 
 - `POST /orgs` refuses when the caller already owns `teams.MAX_OWNED_TEAMS`.

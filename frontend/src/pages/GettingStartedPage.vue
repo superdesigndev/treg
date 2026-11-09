@@ -7,9 +7,12 @@ export default {
   components: { AgentCover },
   setup: useDashboard,
   computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons, connectorLink: () => claudeConnectorLink(location.origin), agentInHost() { return installsInHost(this.welcomeAgent) } },
+  watch: { activeOrgId(){ this.pollFirstCall() } },
   mounted(){
     this.loadPlatforms()  // the catalog size in the copy
+    this.pollFirstCall()
   },
+  unmounted(){ this.stopFirstCallPoll() },
 }
 </script>
 
@@ -43,13 +46,13 @@ export default {
                 <section v-if="agentInHost" class="rd-setup-panel">
                   <p class="rd-panel-label">{{welcomeAgent.connector ? 'Add treg as a connector' : 'Install the treg plugin'}}</p>
                   <p class="rd-token-help">Open {{welcomeAgent.name}} and add treg, then sign in when it asks.{{welcomeAgent.setupFallback ? '' : ' You need no setup line and no key.'}}</p>
-                  <a v-if="welcomeAgent.connector" class="btn" :href="connectorLink" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_connector_add_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Add connector in {{welcomeAgent.name}} ↗</a>
-                  <a v-else class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Install plugin in {{welcomeAgent.name}} ↗</a>
+                  <a v-if="welcomeAgent.connector" class="btn" :href="connectorLink" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_connector_add_clicked',{agent:welcome.agent,from:'start'}); startWatching || pollFirstCall()"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Add connector in {{welcomeAgent.name}} ↗</a>
+                  <a v-else class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'}); startWatching || pollFirstCall()"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Install plugin in {{welcomeAgent.name}} ↗</a>
                 </section>
                 <template v-if="!agentInHost || welcomeAgent.setupFallback">
                 <section class="rd-setup-panel">
                   <p class="rd-panel-label">{{welcomeAgent.setupFallback || "In your agent's chat, send:"}}</p>
-                  <div class="lc-codewrap"><button class="lc-cp" @click="track('onboarding_setup_copied',{agent:welcome.agent,from:'start'}); copyStart(welcomeSetupCopy,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{welcomeSetupShown}}</pre></div>
+                  <div class="lc-codewrap"><button class="lc-cp" @click="track('onboarding_setup_copied',{agent:welcome.agent,from:'start'}); copyStart(welcomeSetupCopy,'gsc'); startWatching || pollFirstCall()">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{welcomeSetupShown}}</pre></div>
                 </section>
                 <section v-if="myToken" class="rd-setup-panel">
                   <p class="rd-panel-label">Your API key</p>
@@ -62,6 +65,12 @@ export default {
                   <button class="btn sm" @click="enableDefaultKey" :disabled="keyBusy">{{keyBusy?'…':'Enable key'}}</button>
                 </section>
                 </template>
+                <section v-if="startStage" class="rd-setup-panel rd-agent-status" :class="'is-'+startStage" role="status" aria-live="polite">
+                  <p class="rd-panel-label"><span class="rd-status-dot" aria-hidden="true"></span>{{startStage==='waiting' ? 'Waiting for your agent…' : startStage==='connected' ? 'Connected' : 'First call made' + (startProgress.first_call.tool ? ': ' + startProgress.first_call.tool : '')}}</p>
+                  <p v-if="startStage==='waiting'" class="rd-token-help">{{startWatching ? 'Send the setup to your agent. This page updates by itself when your agent reaches treg.' : 'Nothing has reached treg yet.'}} <a v-if="!startWatching" href="#start" @click.prevent="pollFirstCall()">Check again</a></p>
+                  <p v-else-if="startStage==='connected'" class="rd-token-help">Your agent reached treg. Now send it an example from Try it out below.</p>
+                  <p v-else class="rd-token-help">Your agent is set up and working. See every call in <a href="#activity" @click.prevent="go('activity')">Activity</a>.</p>
+                </section>
 
               </div>
             </div>
