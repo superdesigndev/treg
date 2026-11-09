@@ -1,0 +1,570 @@
+provider: piloterr
+source:
+  docs: https://www.piloterr.com/library
+  openapi: https://app.piloterr.com/openapi
+  curated: '2026-11-09'
+pricing_url: https://www.piloterr.com/pricing
+limits: Rate limits depend on the plan; GET /usage returns the key's credit balance and per-second and per-minute limits.
+proposed_capabilities:
+  crunchbase.company.profile: One company on Crunchbase
+  zillow.property.detail: One Zillow home
+defaults:
+  expect:
+    path: response.error
+    op: absent
+  miss:
+    status:
+    - 404
+    when:
+      path: response.error
+      op: equals
+      value: Not Found
+    means: Nothing found for that query (an unknown id, URL or page).
+  provenance:
+    source: docs
+    source_url: https://www.piloterr.com/pricing
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: piloterr.web.fetch.html
+  capability: web.extract
+  platform: web
+  domain: extract
+  scope: any_account
+  method: GET
+  path: /v2/website/crawler
+  name: Fetch a web page's HTML
+  summary: Fetch a public web page over fast HTTP and return its HTML, without running JavaScript.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://example.com
+      allow_redirects:
+        type: boolean
+        required: false
+        default: true
+        note: Controls whether the crawler should follow HTTP redirects.
+      return_page_source:
+        type: boolean
+        required: false
+        default: false
+        note: Controls whether the response returns the raw, unprocessed HTML source of the page.
+  test_request:
+    queryParams:
+      query: https://example.com
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.web.render.html
+  capability: web.extract
+  platform: web
+  domain: extract
+  scope: any_account
+  method: GET
+  path: /v2/website/rendering
+  name: Fetch a JavaScript page's rendered HTML
+  summary: Render a JavaScript-heavy page in a headless browser and return the post-render HTML.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://example.com
+      wait_in_seconds:
+        type: number
+        required: false
+        default: 0
+        note: Number of seconds to wait after page load before returning the rendered HTML. Useful for pages with delayed
+          rendering or animations.
+      wait_for:
+        type: string
+        required: false
+      block_ads:
+        type: boolean
+        required: false
+        default: false
+        note: Controls whether the headless browser should block ad requests during rendering.
+      timeout:
+        type: number
+        required: false
+        default: 30
+        note: Maximum number of seconds to wait for the page to fully load before returning whatever has been rendered so
+          far.
+  test_request:
+    queryParams:
+      query: https://example.com
+  price:
+    value: '2'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.web.screenshot
+  capability: web.screenshot
+  platform: web
+  domain: screenshot
+  scope: any_account
+  method: GET
+  path: /v2/website/screenshot
+  name: Capture a web page screenshot
+  summary: Capture a public web page as a PNG, JPEG, WebP image or a PDF, by viewport, full page or CSS selector.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://example.com
+      format:
+        type: string
+        required: false
+        enum:
+        - jpeg
+        - jpg
+        - pdf
+        - png
+        - webp
+        default: png
+        example: png
+        note: The output format of the screenshot.
+      device:
+        type: string
+        required: false
+        enum:
+        - galaxy_fold4
+        - galaxy_s23
+        - galaxy_s23_ultra
+        - galaxy_s8
+        - huawei_mate_50_pro
+        - huawei_p60_pro
+        - ipad
+        - iphone_12
+        - iphone_13_mini
+        - iphone_13_pro_max
+        - iphone_14_pro
+        - iphone_14_pro_max
+        - iphone_x
+        - pixel_5
+        - pixel_6a
+        - pixel_7_pro
+        - redmi_note_11
+        - redmi_note_12_pro
+        note: The device type to emulate for the screenshot.
+      full_page:
+        type: boolean
+        required: false
+        default: false
+        note: Capture the entire page instead of just the visible viewport.
+      full_page_scroll:
+        type: boolean
+        required: false
+        default: false
+        note: Scroll the page to fully load lazy-loaded elements before capturing a full-page screenshot.
+      full_page_scroll_duration:
+        type: number
+        required: false
+        default: 400
+        note: Time in milliseconds for scrolling before capturing the full page.
+      viewport_width:
+        type: number
+        required: false
+        default: 1280
+        note: The width of the browser viewport in pixels.
+      viewport_height:
+        type: number
+        required: false
+        default: 1024
+        note: The height of the browser viewport in pixels.
+      scale_factor:
+        type: number
+        required: false
+        default: 1
+        note: The scale factor for high-resolution screenshots.
+      image_quality:
+        type: string
+        required: false
+        default: '80'
+        note: Generate images with custom quality settings.
+      selector:
+        type: string
+        required: false
+        note: Capture a specific element on the page instead of the full viewport.
+      cache:
+        type: boolean
+        required: false
+        default: false
+        note: Cache the response.
+      cache_ttl:
+        type: number
+        required: false
+        default: 2592000
+        note: Cache the response for a custom TTL (in seconds).
+      remove_selectors:
+        type: string
+        required: false
+        note: A comma-separated list of elements to hide before capturing (e.g., ads, popups).
+      remove_cookie_banners:
+        type: boolean
+        required: false
+        default: false
+        note: Automatically remove cookie banners before capturing.
+      remove_ads:
+        type: boolean
+        required: false
+        default: false
+        note: Automatically remove ads before capturing.
+      block_resources:
+        type: string
+        required: false
+        enum:
+        - document
+        - eventsource
+        - fetch
+        - font
+        - image
+        - manifest
+        - media
+        - other
+        - script
+        - stylesheet
+        - texttrack
+        - websocket
+        - xhr
+        note: Comma-separated list of resource types to block (e.g., “image,stylesheet,font”).
+      block_urls:
+        type: string
+        required: false
+        note: Comma-separated list of URL patterns to block (e.g., “analytics,tracking,advertisement”).
+      delay:
+        type: number
+        required: false
+        default: 0
+        note: Delay in seconds before capturing the screenshot.
+      wait_until:
+        type: array
+        required: false
+        enum:
+        - domcontentloaded
+        - load
+        - networkidle0
+        - networkidle2
+        note: Define when to capture.
+      wait_for_selector:
+        type: string
+        required: false
+        note: Wait for a specific element to appear before taking the screenshot.
+      storage_endpoint:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      url: https://example.com
+      format: png
+  price:
+    value: '2'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.companies.tech_stack
+  capability: companies.tech_stack
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /v2/website/technology
+  name: Detect a website's technology stack
+  summary: 'Detect the technologies a website runs: CMS, frameworks, analytics, CDN and hosting.'
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://example.com
+      mode:
+        type: string
+        required: false
+        default: expert
+        note: Controls the level of detail returned in the technology detection response.
+  test_request:
+    queryParams:
+      query: https://example.com
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.google.serp.organic
+  capability: google.serp.organic
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v2/google/search
+  name: Search Google
+  summary: Search Google and return organic results, knowledge graph and related searches as JSON.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+        note: The search query to execute on Google. Supports all standard Google search operators.
+      tbs:
+        type: string
+        required: false
+        note: Advanced time-range and filter string for Google Search. Used to restrict results by recency.
+      location:
+        type: string
+        required: false
+        note: City or region from which the search should originate. Simulates a real user's search from the specified location.
+      uule:
+        type: string
+        required: false
+        note: Google-encoded location string for precise geographic targeting.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number of search results to retrieve.
+      num:
+        type: number
+        required: false
+        default: 10
+        example: 10
+      safe:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: best electric cars
+      gl: us
+      hl: en
+      num: 10
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.amazon.search.products
+  capability: amazon.search.products
+  platform: amazon
+  domain: ecommerce
+  scope: any_account
+  method: GET
+  path: /v2/amazon/search
+  name: Search Amazon products
+  summary: Search an Amazon marketplace and return product cards with ASIN, price, rating and position.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: playstation 5
+        note: Keyword or phrase to search for products on Amazon.
+      domain:
+        type: string
+        required: false
+        default: com
+        example: com
+        note: Amazon domain extension to query. Controls which Amazon marketplace is searched.
+      page:
+        type: number
+        required: false
+        default: 1
+        example: 1
+        note: Page number for paginated search results. Each page returns up to 60 results.
+  test_request:
+    queryParams:
+      query: playstation 5
+      domain: com
+      page: 1
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.ebay.product.detail
+  capability: ebay.product.detail
+  platform: ebay
+  domain: ecommerce
+  scope: any_account
+  method: GET
+  path: /v2/ebay/product
+  name: Get an eBay listing
+  summary: 'Get one eBay listing by URL or item id: price, condition, seller and item details.'
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: '257758922911'
+        note: Item id, or an item URL on a supported eBay site.
+      return_page_source:
+        type: boolean
+        required: false
+        note: When true, return raw HTML.
+  test_request:
+    queryParams:
+      query: '257758922911'
+  price:
+    value: '3'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.ebay.search.products
+  capability: ebay.search.products
+  platform: ebay
+  domain: ecommerce
+  scope: any_account
+  method: GET
+  path: /v2/ebay/search
+  name: Search eBay listings
+  summary: Search eBay listings by keyword and return price, seller and pagination.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: laptop
+        note: Keyword on www.ebay.com, or a search URL on a supported eBay site.
+      page:
+        type: number
+        required: false
+        note: Page number, sent as _pgn. Default 1 for a keyword. On a URL, the page already in the URL is kept when this
+          is empty. Below 1 returns 400.
+      return_page_source:
+        type: boolean
+        required: false
+        note: When true, return raw HTML.
+  test_request:
+    queryParams:
+      query: laptop
+  price:
+    value: '3'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.linkedin.company.profile
+  capability: linkedin.company.profile
+  platform: linkedin
+  domain: company
+  scope: any_account
+  method: GET
+  path: /v2/linkedin/company/info
+  name: Get a LinkedIn company page
+  summary: Get a LinkedIn company's firmographics by page URL, slug, id or website domain.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: false
+        example: https://www.linkedin.com/company/ferrari
+        note: LinkedIn company identifier when you already know the page.
+      domain:
+        type: string
+        required: false
+        note: Company website domain for reverse lookup when you do not have the LinkedIn URL.
+  test_request:
+    queryParams:
+      query: https://www.linkedin.com/company/ferrari
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.crunchbase.company.profile
+  capability: crunchbase.company.profile
+  platform: crunchbase
+  domain: company
+  scope: any_account
+  method: GET
+  path: /v2/crunchbase/company/info
+  name: Get a Crunchbase company profile
+  summary: 'Get a company''s Crunchbase profile by slug, URL or website domain: funding, investors and firmographics.'
+  input:
+    queryParams:
+      query:
+        type: string
+        required: false
+        example: openai
+        note: Search for a company by its name, permalink, or full Crunchbase URL.
+      domain:
+        type: string
+        required: false
+        note: Perform a reverse lookup by domain name to find the associated Crunchbase company profile.
+  test_request:
+    queryParams:
+      query: openai
+  price:
+    value: '2'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
+- id: piloterr.zillow.property.detail
+  capability: zillow.property.detail
+  platform: zillow
+  domain: realestate
+  scope: any_account
+  method: GET
+  path: /v2/zillow/property
+  name: Get a Zillow property
+  summary: 'Get a Zillow home from its homedetails URL: specs, price and tax history, photos and schools.'
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://www.zillow.com/homedetails/20-Kyle-Ct-Staten-Island-NY-10312/32361983_zpid/
+        note: Full Zillow homedetails URL.
+  test_request:
+    queryParams:
+      query: https://www.zillow.com/homedetails/20-Kyle-Ct-Staten-Island-NY-10312/32361983_zpid/
+  price:
+    value: '3'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://www.piloterr.com/library
