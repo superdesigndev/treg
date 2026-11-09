@@ -442,14 +442,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     more, which `ledger.settle` handles as an overrun).
 
     Providers that volunteer the number, in two different denominations:
-      - akta and leadmagic (`credits_consumed`): provider
-        credits, converted through the provider's credit rate (fx.yaml) — the same conversion
-        `cost_view` uses, so a settle can't disagree with the catalog's price. Akta is the one that
-        NEEDS this: its enrich route is priced per SECTION requested and its news route adds a
-        per-article rider, so the catalog's single estimate can only be an upper bound — the actual
-        charge lives here. LeadMagic answers a miss with 2xx and `credits_consumed: 0` (observed at
-        verify time), so honouring the field is what keeps a free miss from billing the estimate;
-        it also reports fractions (email verify is 0.25).
+      - akta and leadmagic (`credits_consumed`): provider credits, converted through the
+        provider's credit rate (fx.yaml) — the same conversion `cost_view` uses, so a settle can't
+        disagree with the catalog's price. Akta is the one that NEEDS this: its enrich route is
+        priced per SECTION requested and its news route adds a per-article rider, so the catalog's
+        single estimate can only be an upper bound — the actual charge lives here. LeadMagic
+        answers a miss with 2xx and `credits_consumed: 0` (observed at verify time), so honouring
+        the field is what keeps a free miss from billing the estimate; it also reports fractions
+        (email verify is 0.25).
       - Dropleads: REPORTED in provider credits through `credits_charged` for finder/verifier,
         `credits_consumed` for people enrichment, or `credits.creditsDeducted` for company calls.
         Each field uses the same Dropleads credit rate from fx.yaml.

@@ -344,6 +344,32 @@ async def test_firecrawl_search_settles_reported_credits(
         assert await _balance(clients) == before - 5000
 
 
+@pytest.mark.parametrize("status,answer,charged", [
+    (200, {"success": True, "credits_charged": 2}, 2 * EP_CALL_MICRO),
+    (200, {"success": True, "credits_charged": "2"}, 2 * EP_CALL_MICRO),
+    (200, {"success": True}, EP_CALL_MICRO),
+    (404, {"success": False, "error": "not_found", "credits_charged": 0}, 0),
+])
+async def test_scrapecreators_platform_call_settles_the_credits_it_reports(
+    clients: AsyncClient, monkeypatch, platform_on, status, answer, charged,
+):
+    seen = []
+
+    def upstream(request):
+        seen.append(request.headers["x-api-key"])
+        assert request.url.path == "/v1/facebook/group"
+        return _dropleads_response(status, answer)
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        response = await clients.get(f"/call/{EP_CALL}", params={"group_id": "366190054572553"})
+        assert response.status_code == status, response.text
+        assert response.json() == answer
+        assert await _balance(clients) == before - charged
+        assert seen == ["PLATFORM-SC-KEY"]
+
+
 async def _entries(clients: AsyncClient) -> list[dict]:
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     return (await clients.get(f"/orgs/{org_id}/balance")).json()["entries"]["items"]
