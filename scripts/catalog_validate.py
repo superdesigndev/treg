@@ -27,7 +27,8 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
     (scripts/catalog_text_reflect.txt) in a row's summary and notes, on every row, or with
     `--base REF` on the rows added or changed against REF (catalog-schema.md, "Summary and note")
   - with `--base REF`, a row keeps the spelling (today's `cost` or v2) it has on REF, unless
-    `--allow-respelling` (the `catalog-migration` label)
+    `--allow-respelling`; catalog-added.yml runs `--base` on every pull request and passes
+    `--allow-respelling` when the pull request carries the `catalog-migration` label
   - a `verified` endpoint must have an existing example_response file, and every example file
     parses and stays under EXAMPLE_MAX_BYTES
   - an extended endpoint a verification run has touched claims exactly one non-empty state
@@ -211,7 +212,8 @@ def check_added(ep: dict, where: str, errors: list[str]) -> None:
         fail(errors, where, f"`added: {added}` is in the future; it is the UTC day the tool reached main")
 
 
-# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character.
+# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character;
+# punctuation is not counted.
 SUMMARY_TOKENS = 50
 NOTE_TOKENS = 75
 _CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"

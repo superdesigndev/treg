@@ -74,6 +74,20 @@ def join(*parts: Any) -> str | None:
     return " ".join(words) if words else None
 
 
+def phrase(*parts: Any) -> str | None:
+    """`phrase(q, title)` → the parts as one text, each part left out when the text so far already
+    says it as whole words (case-insensitive): a title the caller also wrote into `q`, or a `q`
+    built from it. "CTO" is not said by "semiconductor"."""
+    words: list[str] = []
+    for p in parts:
+        if not (isinstance(p, str) and p.strip()):
+            continue
+        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
+        if not said:
+            words.append(p.strip())
+    return " ".join(words) if words else None
+
+
 def place(*parts: Any) -> str | None:
     """`place(city, state, country)` → "Berlin, Germany": the non-empty parts, in order, each once."""
     seen: list[str] = []
@@ -408,6 +422,40 @@ _IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "a
                 "direct", "instagram", "web", "help", "privacy", "terms"}
 
 
+def current_role(history: Any) -> dict | None:
+    """`current_role(workHistory)` — the role a person holds now, from a work history whose items carry
+    `dates: {from, to}`: of the roles with no end date the latest started, else the latest started
+    of all (someone between jobs keeps their last role). A role with a start date beats one without;
+    equal starts, including none at all, keep list order."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    if not roles:
+        return None
+    def start(r: dict) -> str:
+        d = r.get("dates")
+        return str((d or {}).get("from") or "") if isinstance(d, dict) or d is None else ""
+    def ended(r: dict) -> bool:
+        d = r.get("dates")
+        return isinstance(d, dict) and bool(d.get("to"))
+    pool = [r for r in roles if not ended(r)] or roles
+    return max(pool, key=start)  # max keeps the first of equal starts
+
+
+def past_titles(history: Any) -> list | None:
+    """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
+    carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
+    current role is something else."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    def to(r: dict) -> str:
+        d = r.get("dates")
+        return str(d.get("to") or "") if isinstance(d, dict) else ""
+    out: list[str] = []
+    for r in sorted((r for r in roles if to(r)), key=to, reverse=True):
+        t = r.get("title")
+        if isinstance(t, str) and t.strip() and t.strip() not in out:
+            out.append(t.strip())
+    return out[:5] or None
+
+
 def instagram_handles(results: Any) -> list | None:
     """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
     directory or list page of creators), one row each in page order, first mention wins: username,
@@ -552,13 +600,13 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

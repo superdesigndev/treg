@@ -352,7 +352,7 @@ contracts:
       full_name: "one person's name, to find their profile"
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
-      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
+      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
@@ -377,8 +377,12 @@ contracts:
       needs: [name, profile_url, email]
       fields:
         name: {type: str}
-        title: {type: str, note: "current job title, or the provider's headline when it has no title"}
-        company: {type: str, note: "current employer's name"}
+        title: {type: str, note: "current job title, or the provider's headline when it has no title; when `title_until` is set, the person's last dated title, not a current one"}
+        company: {type: str, note: "current employer's name; when `title_until` is set, the employer of that last title"}
+        title_since: {type: str, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
+        title_until: {type: str, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
+        past_titles: {type: list, note: "titles of roles the person has left, latest first, at most five, where the provider lists a work history: a profile can match a search on one of these"}
+        title_match: {type: str, note: "set by treg when you sent `title` and the row carries a work history: `current` when `title` is that role held now, `past` when the person held it only in the past. Unmarked = no work history, or the role is not in it. Rows are ordered current, then the rest, then past holders and people with no role now"}
         company_domain: {type: str}
         location: {type: str}
         profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
@@ -386,13 +390,25 @@ contracts:
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
-        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
+        summary: {type: str, max: 2000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 2000 characters: what to check the brief against"}
+      # A semantic search matches the whole work history: a former holder of the asked role ranks
+      # with the current ones unless the rows are ordered by the role held now.
+      rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
     # A free-text `q` is a semantic question: ask the semantic searches first.
+    # A role with no company or name ({title}, {q, title}) is one too: half the teams ask exa first
+    # (`in_rollout`) so the two orders compare on live calls. Company and name rules come first.
     prefer_when:
+      - {sent: [q, title, company_domain], prefer: [crawl4ai]}
+      - {sent: [q, title, full_name], prefer: [crawl4ai]}
+      - {sent: [q, title], prefer: [exa, crawl4ai], percent: 50}
+      - {sent: [q, title], prefer: [crawl4ai]}
       - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+      - {sent: [company_domain], prefer: [crawl4ai]}
+      - {sent: [full_name], prefer: [crawl4ai]}
+      - {sent: [title], prefer: [exa, crawl4ai], percent: 50}
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]

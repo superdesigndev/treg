@@ -934,16 +934,26 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     # The passages that match the brief come back with each row (not billed on top of the search):
-    # an agent checks the brief against them instead of fetching every profile. Capped at the row's
-    # `summary` length, enough to check a brief and short of a full page.
+    # an agent checks the brief against them instead of fetching every profile. Up to the row's
+    # `summary` length, enough for the current role, its dates and the place; the place rides in
+    # the passage query too.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
-    in_expr: {body.query: "join(q, company_domain, csv(keywords))", body.numResults: limit,
-              body.contents.highlights.query: "join(q, csv(keywords))"}
-    const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
+    # A title and place the caller sent beside `q` ride in the text too (`phrase` skips what q
+    # already says, or what q was built from), so the search keeps the caller's role and place.
+    in_expr: {body.query: "join(phrase(q, title, location, country_name(country)), company_domain, csv(keywords))", body.numResults: limit,
+              body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
+    const: {body.category: people, body.contents.highlights.maxCharacters: 2000}
     out: {people: results, count: "len(results)"}
     miss: "results == []"
-    row: {name: "coalesce(entities[0].properties.name, title)", title: "entities[0].properties.workHistory[0].title", company: "entities[0].properties.workHistory[0].company.name", location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
+    # The current role is the undated-end one, not the history's first item: Exa sometimes lists an
+    # ended role first.
+    row: {name: "coalesce(entities[0].properties.name, title)", title: "get(current_role(entities[0].properties.workHistory), 'title')",
+          company: "get(current_role(entities[0].properties.workHistory), 'company.name')",
+          title_since: "get(current_role(entities[0].properties.workHistory), 'dates.from')",
+          title_until: "get(current_role(entities[0].properties.workHistory), 'dates.to')",
+          past_titles: "past_titles(entities[0].properties.workHistory)",
+          location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
