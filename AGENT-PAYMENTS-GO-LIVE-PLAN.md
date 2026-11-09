@@ -29,7 +29,9 @@ Temporary working plan for this PR. Remove this file from the branch before merg
    Tempo's hosted RPC key. One MPP payment (Tempo testnet) and one x402 payment (Base Sepolia, the
    public facilitator) went to Stripe's test deposit addresses, and `agentpay reconcile` recorded
    both as succeeded PaymentIntents.
-4. To do: the Coinbase CDP key path against Coinbase's real facilitator (Base Sepolia first).
+4. Done: the Coinbase CDP key path against Coinbase's real facilitator: one x402 payment on Base
+   Sepolia settled through it and was recorded in Stripe test mode; the facilitator refuses the same
+   request without the key (401).
 
 ## 3. Keys and accounts
 
