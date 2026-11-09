@@ -140,6 +140,9 @@ provider: tikhub                # must equal OAuthProvider.service
 source: {docs: https://docs.tikhub.io/, openapi: https://api.tikhub.io/openapi.json, curated: 2026-07-28}
 limits: "10 requests/second per key"   # optional: the rate/quota model in one line
 pricing_url: https://...               # optional: where CURRENT prices live
+defaults:                              # optional: endpoint keys every row inherits (catalog-schema.md)
+  bill: {miss: charged, error: charged}
+  provenance: {source: rate_card_api, source_url: https://..., checked: '2026-07-28', confidence: verified}
 endpoints:
   - id: tikhub.tiktok.user.profile   # unique across the whole catalog; convention <provider>.<capability>
     capability: tiktok.user.profile
@@ -158,8 +161,8 @@ endpoints:
       note: "one of uniqueId | secUid"
       # also pathParams, headers, body, bodyType (json|form|multipart). Unknown keys fail the load.
     test_request: {queryParams: {uniqueId: "tiktok"}}   # EXACT params the verifier sends; must be cheap
-    expect: {json_path: code, equals: 200, misses: [404]}   # optional; default is HTTP 2xx
-    cost: {type: per_success, value: 0.0015, currency: USD, note: "charged on 2xx only"}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}   # v2 spelling; a new row never writes `cost:`
+    miss: {when: {path: response.data.userInfo.user.uniqueId, op: absent}}   # optional; also expect, error, not_found
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main
     example_response: examples/tikhub.tiktok.user.profile.json
