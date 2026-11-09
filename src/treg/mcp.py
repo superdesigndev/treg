@@ -1335,17 +1335,23 @@ async def _catalog_get_impl(
                    else _api(token, client_name=surface.client_name))
     async with api_context as client:
         headers = {}
-        if token and ep is not None and (ep.get("team_label") or ep.get("caller_email")):
-            # Name the team, so a person signed in to several teams still gets its own values
-            # (`your_values`): an identity token alone does not say which team is asking.
+        access_headers: dict[str, str] = {}
+        if token:
+            # /access requires require_member. An unpinned identity bearer has no team on
+            # the token, so without X-Treg-Org the route returns HTTP 400 "choose an org"
+            # even when this caller has a sole or active team `_resolve_org` could name.
+            # The public document only needs that header for team_label / caller_email
+            # (`your_values`); the access probe needs it regardless.
             _, slug, problem = await _resolve_org(client)
             if slug and not problem:
-                headers["X-Treg-Org"] = slug
+                access_headers["X-Treg-Org"] = slug
+                if ep is not None and (ep.get("team_label") or ep.get("caller_email")):
+                    headers["X-Treg-Org"] = slug
         r = await client.get(f"/catalog/endpoints/{endpoint_id}", headers=headers)
         # CLI `catalog get` already asks /access how THIS caller would be served. MCP used to
         # return only the public document, so a ready call_template plus "run it — key injected
         # server-side" looked callable when the org had no credential and the call would 404.
-        access = await _endpoint_access(client, endpoint_id, headers) if token and r.status_code == 200 else None
+        access = await _endpoint_access(client, endpoint_id, access_headers) if token and r.status_code == 200 else None
     if r.status_code == 404:
         cat = catalog_store.load()
         return {"error": f"unknown endpoint {endpoint_id!r}",

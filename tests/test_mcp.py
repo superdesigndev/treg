@@ -1760,6 +1760,36 @@ async def test_catalog_get_surfaces_a_missing_org_credential_instead_of_a_ready_
         assert not any("run it — key injected server-side" in hint for hint in hints), hints
 
 
+async def test_catalog_get_surfaces_missing_credentials_for_an_unpinned_identity(clients):
+    """An unpinned identity bearer (what `treg login` mints) does not name a team, and ordinary
+    catalog rows do not trigger the team_label/caller_email header path. /access then answered
+    HTTP 400 "choose an org" and catalog_get silently dropped the decision, leaving the ready
+    run hint. Resolve the sole or active team before that probe, independently of the public
+    document."""
+    from sqlmodel import select
+
+    from treg.domain.catalog import store as catalog_store
+    from treg.domain.identity import session as sess
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    ep = catalog_store.load().by_id["google-ads.accounts"]
+    assert not ep.get("team_label") and not ep.get("caller_email")
+    email = "unpinned-access@superdesign.dev"
+    await verified_signup(clients, json={"email": email})
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        identity = sess.make_identity(user.id, token_version=user.token_version)
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_get", {"endpoint_id": "google-ads.accounts"}, token=identity)
+    access = out.get("access") or {}
+    assert access.get("tier") == "none", access
+    assert "no google-ads credential in this org" in (access.get("detail") or ""), access
+    hints = out.get("hints") or []
+    assert any("no google-ads credential in this org" in hint for hint in hints), hints
+    assert not any("run it — key injected server-side" in hint for hint in hints), hints
+
+
 async def test_catalog_get_keeps_the_run_hint_when_treg_can_serve_the_call(clients, monkeypatch):
     """When a call really can run on treg's key, the run-it hint stays and access says so."""
     from treg.config import get_settings
