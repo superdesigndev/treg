@@ -18,16 +18,15 @@ Temporary working plan for this PR. Remove this file from the branch before merg
 - Stripe enables stablecoin payments on the second account (its card onboarding must be finished
   first; then Settings → Payment methods).
 
-## 2. Code still to build (in this PR)
+## 2. Code (in this PR)
 
-1. A separate Stripe key for agent payments: `TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, falling back
-   to `TREG_STRIPE_SECRET_KEY` when empty. Used by `stripe-address`, the PaymentIntent record and
-   the startup check.
-2. A Tempo RPC API key: `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. When set, one `httpx.AsyncClient`
-   with the `tempo-api-key` header goes to `tempo.charge(http_client=...)` and to our `evm.Chain`.
-   Empty keeps today's behavior.
-3. One round in Stripe test mode, once Stripe enables it (the Stripe path is so far tested only
-   against a fake).
+1. Done: a separate Stripe key for agent payments, `TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, falling
+   back to `TREG_STRIPE_SECRET_KEY` when empty.
+2. Done: Tempo's hosted RPC key, `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY` (needs
+   `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`), sent as the `tempo-api-key` header by pympp and our chain
+   reads.
+3. To do: one play-money round through Stripe test mode, MPP and x402, to Stripe's test deposit
+   addresses (Stripe test mode is confirmed to create Base and Tempo addresses).
 
 ## 3. Keys and accounts
 
@@ -48,7 +47,7 @@ Every key goes into the host's secret settings only. Never into chat or this rep
 TREG_AGENT_PAYMENTS_ENABLED=true
 TREG_AGENT_PAYMENTS_SECRET=<openssl output>
 TREG_AGENT_PAYMENTS_SETTLEMENT=stripe
-TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY=<agent-payments Stripe key>      # to build
+TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY=<agent-payments Stripe key>
 
 # MPP on Tempo
 TREG_AGENT_PAYMENTS_MPP_ENABLED=true
@@ -56,7 +55,7 @@ TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT=<Stripe Tempo deposit address>
 TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID=4217
 TREG_AGENT_PAYMENTS_TEMPO_CURRENCY=0x20C000000000000000000000b9537d11c60E8b50
 TREG_AGENT_PAYMENTS_TEMPO_RPC_URL=https://api.tempo.xyz/rpc
-TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY=<Tempo console key>               # to build
+TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY=<Tempo console key>
 
 # x402 on Base
 TREG_AGENT_PAYMENTS_X402_ENABLED=true
@@ -76,7 +75,7 @@ TREG_AGENT_PAYMENTS_X402_RPC_URL=<CDP Node URL>
 
 ## 5. Order
 
-1. Build section 2 items 1 and 2. Remove this file. Review and merge with the feature off.
+1. Finish section 2. Remove this file. Review and merge with the feature off.
 2. `python -m treg upgrade` (revision 0101).
 3. Schedule `treg-worker agentpay reconcile` every few minutes.
 4. Stripe enables stablecoins; run the Stripe test-mode round.

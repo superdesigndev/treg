@@ -1017,6 +1017,17 @@ async def test_a_payment_settled_to_an_earlier_wallet_is_not_stripes(anon: Async
     assert (await agent_payments.reconcile()).recorded == 0 and stripe_mode == []
 
 
+async def test_stripe_settlement_can_use_its_own_stripe_account(anon: AsyncClient, monkeypatch,
+                                                                stripe_mode):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY", "sk_test_123")
+    get_settings.cache_clear()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert (await agent_payments.reconcile()).recorded == 1
+    assert stripe_mode[0]["api_key"] == "sk_test_123"
+
+
 def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
     from treg.config import Settings
 
@@ -1026,6 +1037,52 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
     monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
     with pytest.raises(ValueError, match="TREG_STRIPE_SECRET_KEY"):
         Settings()
+
+
+async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
+    from mpp.methods.tempo import server as tempo_server
+
+    charge, given = tempo_server.charge, {}
+
+    def spy(**kwargs):
+        given.update(kwargs)
+        return charge(**kwargs)
+
+    monkeypatch.setattr(tempo_server, "charge", spy)
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="https://rpc.example/testnet",
+                        rpc_api_key="tempo_sandbox:sk:k")
+    client = given["http_client"]
+    assert client.headers["tempo-api-key"] == "tempo_sandbox:sk:k"
+    sent: list[httpx.Request] = []
+
+    def node(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
+                                         "result": {"number": "0x1", "timestamp": "0x1"}})
+
+    client._transport = httpx.MockTransport(node)
+    await rail._chain.head()
+    assert sent[0].headers["tempo-api-key"] == "tempo_sandbox:sk:k"
+    assert str(sent[0].url) == "https://rpc.example/testnet"
+
+    MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)
+    assert given["http_client"] is None
+
+
+def test_a_tempo_rpc_key_needs_its_rpc_url(monkeypatch):
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SECRET", "s" * 40)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MPP_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", RECIPIENT)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY", "tempo_sandbox:sk:k")
+    monkeypatch.delenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", raising=False)
+    with pytest.raises(ValueError, match="TREG_AGENT_PAYMENTS_TEMPO_RPC_URL"):
+        Settings()
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", "https://rpc.example/testnet")
+    assert Settings().agent_payments_tempo_rpc_api_key
 
 
 async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans():

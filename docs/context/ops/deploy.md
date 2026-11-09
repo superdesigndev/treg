@@ -221,7 +221,10 @@ On mainnet the x402 facilitator is Coinbase's
 `TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`.
 `TREG_AGENT_PAYMENTS_SETTLEMENT` is `wallet` (the recipients are treg's own wallet) or `stripe` (they
 are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
-`TREG_STRIPE_SECRET_KEY` and an explicit `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). See
+`TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
+`TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
+`TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. See
 [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission

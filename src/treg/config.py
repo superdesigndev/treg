@@ -772,6 +772,8 @@ class Settings(BaseSettings):
     agent_payments_tempo_recipient: str = ""
     agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
     agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC
+    # Tempo's hosted RPC (tempo.xyz/console) API key, sent as a header to the RPC URL above.
+    agent_payments_tempo_rpc_api_key: str = ""
     agent_payments_tempo_currency: str = ""             # empty: the chain's default TIP-20 USD token
     agent_payments_x402_pay_to: str = ""
     agent_payments_x402_network: str = "eip155:84532"   # Base Sepolia; eip155:8453 is Base mainnet
@@ -790,6 +792,9 @@ class Settings(BaseSettings):
     # `stripe`: they are Stripe crypto deposit addresses (`treg-worker agentpay stripe-address`);
     # payments are whole cents and the worker records each one as a Stripe PaymentIntent.
     agent_payments_settlement: Literal["wallet", "stripe"] = "wallet"
+    # The Stripe account settlement `stripe` uses, when it is not the one `stripe_secret_key` opens
+    # (stablecoin acceptance is enabled per account). Empty: `stripe_secret_key`.
+    agent_payments_stripe_secret_key: str = ""
     # A `settling` payment younger than this is left to the request that started it.
     agent_payments_reconcile_min_age_s: int = Field(default=300, ge=60)
     # A `settling` payment older than this is counted as stuck in each reconcile result.
@@ -797,6 +802,10 @@ class Settings(BaseSettings):
     # Requests carrying a payment credential, per client IP per minute: each one costs a
     # signature check, and an x402 one a facilitator request.
     agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+
+    @property
+    def agent_payments_stripe_key(self) -> str:
+        return self.agent_payments_stripe_secret_key or self.stripe_secret_key
 
     @model_validator(mode="after")
     def _agent_payments_configuration(self):
@@ -823,11 +832,13 @@ class Settings(BaseSettings):
         if not (mpp or x402):
             problems.append("TREG_AGENT_PAYMENTS_MPP_ENABLED or TREG_AGENT_PAYMENTS_X402_ENABLED")
         stripe = self.agent_payments_settlement == "stripe"
-        if stripe and not self.stripe_secret_key:
-            problems.append("TREG_STRIPE_SECRET_KEY (settlement stripe)")
+        if stripe and not self.agent_payments_stripe_key:
+            problems.append("TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY or TREG_STRIPE_SECRET_KEY (settlement stripe)")
         if mpp:
             if not self.agent_payments_tempo_recipient:
                 problems.append("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT")
+            if self.agent_payments_tempo_rpc_api_key and not self.agent_payments_tempo_rpc_url:
+                problems.append("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL (the hosted RPC its API key is for)")
             if stripe and not self.agent_payments_tempo_currency:
                 problems.append("TREG_AGENT_PAYMENTS_TEMPO_CURRENCY (a token Stripe accepts)")
         x402_mainnet = self.agent_payments_x402_network == "eip155:8453"

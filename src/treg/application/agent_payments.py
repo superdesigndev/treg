@@ -493,7 +493,7 @@ async def reconcile(*, limit: int = 50) -> ReconcileResult:
         else:
             result.pending += 1
     if settings.agent_payments_settlement == "stripe":
-        await _record_to_stripe(result, limit=limit, api_key=settings.stripe_secret_key)
+        await _record_to_stripe(result, limit=limit, api_key=settings.agent_payments_stripe_key)
     stuck_before = _now() - timedelta(seconds=settings.agent_payments_stuck_after_s)
     async with session_maker() as db:
         result.stuck = int((await db.execute(
@@ -565,4 +565,4 @@ async def create_stripe_deposit_address(network: str) -> dict:
     """Ops setup for settlement `stripe`: one reusable deposit address per network, set as the
     rail's recipient. Never called on the request path."""
     return await stripe_api.create_crypto_deposit_address(
-        network, api_key=get_settings().stripe_secret_key)
+        network, api_key=get_settings().agent_payments_stripe_key)

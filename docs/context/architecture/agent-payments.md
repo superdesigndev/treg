@@ -212,8 +212,10 @@ still `settling`. `pending` (not knowable yet, node unavailable): left for the n
   After settlement the reconciler records each settled payment as a PaymentIntent in
   `transaction_verification` mode (`infra.stripe.record_crypto_payment`, the transaction hash as
   idempotency key) and stores its id in `stripe_payment_intent`; a payment settled to an address
-  the rail no longer offers (an earlier wallet) is not recorded. Startup refuses `stripe` without
-  `stripe_secret_key`, and without an explicit Tempo currency (one Stripe accepts). x402 on mainnet
+  the rail no longer offers (an earlier wallet) is not recorded. Stablecoin acceptance is enabled
+  per Stripe account, so `agent_payments_stripe_secret_key` may name another account than
+  `stripe_secret_key` (card top-ups); empty, the two are one. Startup refuses `stripe` with neither
+  key, and without an explicit Tempo currency (one Stripe accepts). x402 on mainnet
   still settles through Coinbase's facilitator in this mode.
 
 ## Rails (`infra/agent_payments/`)
@@ -228,6 +230,8 @@ rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `t
   private pympp helpers (the canonical transaction hash, the RLP decoder) are used, so the
   dependency is pinned below the next minor version.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
+  With `..._tempo_rpc_api_key` (Tempo's hosted RPC), one `httpx.AsyncClient` carrying it in the
+  `tempo-api-key` header serves both pympp (`http_client`) and the reconciler's `evm.Chain`.
 - `X402Rail` uses `pympp`'s x402 support (`mpp.x402`): the header codecs, which validate the
   untrusted payload, and an `HttpFacilitator` for `verify` and `settle`; the facilitator pays gas.
   treg's own checks stay in the rail: the accepted terms and resource URL against the offer, the
@@ -247,17 +251,20 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 `agent_payments_min_payment_micro`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
 Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
+`..._tempo_rpc_api_key` (needs `..._tempo_rpc_url`),
 `..._tempo_currency`; x402: `..._x402_pay_to`, `..._x402_network` (`eip155:84532` Base Sepolia by
 default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 `..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
 public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
-`agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`,
+`agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_stripe_secret_key` (empty:
+`stripe_secret_key`), `agent_payments_reconcile_min_age_s`,
 `agent_payments_stuck_after_s`, `agent_payments_max_payments_per_ip_minute`. Every
 address is checked to be 20 bytes.
 
 With the feature on, startup checks the whole set and refuses with one error that names every
 problem (`Settings._agent_payments_problems`): the secret; at least one rail switch; each enabled
-rail's recipient; for `stripe` settlement the Stripe key and an explicit Tempo currency; on Base
+rail's recipient; for `stripe` settlement a Stripe key and an explicit Tempo currency; a Tempo RPC API key only
+with its RPC URL; on Base
 mainnet a CDP key, Base mainnet USDC as the asset and its EIP-712 name `USD Coin`; a CDP key only
 with Coinbase's facilitator URL; and both rails on the same kind of network (Tempo 4217 with Base
 mainnet, or both testnets).

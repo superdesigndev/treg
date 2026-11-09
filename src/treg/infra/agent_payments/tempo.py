@@ -7,6 +7,8 @@ import json
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
+import httpx
+
 from . import Lookup, Offer, PaymentRejected, Settlement, Unconfirmed, Verified, micro_to_decimal
 from .evm import Chain, ChainUnavailable, moved
 
@@ -16,6 +18,7 @@ CONSUMED_HEADERS = ("authorization",)
 UNBOUNDED_VALIDITY = timedelta(days=1)
 # Block timestamps and our clock disagree a little; this is the margin past `valid_before`.
 EXPIRY_GRACE = timedelta(seconds=60)
+RPC_TIMEOUT_S = 30.0
 
 
 def _payment_scheme(value: str) -> bool:
@@ -29,16 +32,19 @@ class MppTempoRail:
     stripe_network = "tempo"
 
     def __init__(self, *, secret: str, realm: str, recipient: str, chain_id: int,
-                 rpc_url: str = "", currency: str = "") -> None:
+                 rpc_url: str = "", rpc_api_key: str = "", currency: str = "") -> None:
         from mpp.methods.tempo import server as tempo
         from mpp.methods.tempo._defaults import rpc_url_for_chain
         from mpp.server import Mpp
 
         self.network = f"tempo:{chain_id}"
         self.pay_to = recipient.lower()
-        self._chain = Chain(rpc_url or rpc_url_for_chain(chain_id))
+        # Tempo's hosted RPC takes its console API key in this header, not in the URL.
+        client = (httpx.AsyncClient(headers={"tempo-api-key": rpc_api_key}, timeout=RPC_TIMEOUT_S)
+                  if rpc_api_key else None)
+        self._chain = Chain(rpc_url or rpc_url_for_chain(chain_id), client=client)
         methods = tempo.charge(
-            recipient=recipient, chain_id=chain_id, rpc_url=rpc_url or None,
+            recipient=recipient, chain_id=chain_id, rpc_url=rpc_url or None, http_client=client,
             currencies=[currency] if currency else None, decimals=6)
         self._mpp = Mpp(methods=methods, realm=realm, secret_key=secret)
 
