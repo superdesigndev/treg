@@ -169,8 +169,8 @@ These carry nothing about your treg account — no balance, no top-up link — s
 ```
 
 **Never proxy a treg error body to your end user blindly.** The team-level ones (`402
-insufficient_balance`, `429 platform_daily_cap_reached`) contain *your* balance and a top-up URL.
-Handle those yourself.
+insufficient_balance`, `429 platform_daily_cap_reached`, `403 funds_required`) contain *your*
+balance or a top-up URL. Handle those yourself.
 
 > **Per-customer caps are advisory, not exact.** They are checked against an aggregate, so concurrent
 > calls can overshoot by roughly one call's estimate per in-flight request. Your prepaid balance is
