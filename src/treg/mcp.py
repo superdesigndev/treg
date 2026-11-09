@@ -62,7 +62,7 @@ from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
-from .capacity_notice import account_out_notice, is_balance_refusal
+from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
@@ -1659,6 +1659,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+    admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
     if notice := account_out_notice(r.headers):
         # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
         # provider's words would name its wallet and top-up page, so they are left out; the call id
@@ -1666,15 +1667,18 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out.pop("body", None)
         out["whose_error"] = "treg"
         out["hint"] = notice
-    elif r.status_code == 402:
+    elif r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
-        # nothing on this path points a user at a payment page.
+        # nothing on this path points a user at a payment page. A 403 admission refusal names the
+        # same remedy and gets the same treatment.
         #
         # ChatGPT's submission policy supports linking users out to purchase PHYSICAL goods only;
         # prepaid API credit is a digital good.
         #
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
+        if admitted_no:
+            out["hint"] = "treg won't pay for this call on this team; the body names the way around it"
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
             out["hint"] = "the team's prepaid balance is not enough for this call"
@@ -1747,6 +1751,9 @@ async def _call_media_impl(
             structuredContent=metadata,
         )
     metadata["body"] = _body(response)
+    if response.status_code == 402 or (
+            response.status_code == 403 and is_admission_refusal(response.headers, metadata["body"])):
+        metadata["body"] = _without_purchase_pointers(metadata["body"])  # as `call` does: no payment link
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, default=str))],
         structuredContent=metadata, isError=response.status_code >= 400,
