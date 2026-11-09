@@ -224,12 +224,14 @@ class Catalog:
         return out
 
     def advertised_usd(self, cost: dict | None) -> float | None:
-        """Dollar figure catalog_search / catalog_get should quote for one typical paid call.
+        """Dollar figure to show for this price.
 
         `usd` is the reserve unit: for `per` > 1 it is the linear slice (Hunter Domain Search
-        → $0.00245/email). When `display.grouped` is set, `display_usd` is the chargeable
-        event — one search credit, one started block — which is what a live successful call
-        actually bills and what `usd_per_call` must say. Settlement still reads `usd`.
+        → $0.00245/email). When `display.grouped` is set, `display_usd` is the grouped figure:
+        a started-block minimum when `round_up` is set (what a live successful call bills), or
+        a presentation bundle such as $15 per 1M UTF-8 bytes when it is not. Settlement still
+        reads `usd`. MCP `usd_per_call` uses `advertised_quote`, which withholds a presentation
+        bundle so agents do not quote it as one call.
         """
         if not cost or cost.get("varies"):
             return None  # a routed row whose children bill misses: the note carries the range
@@ -238,6 +240,38 @@ class Catalog:
             return shown
         usd = cost.get("usd")
         return usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else None
+
+    def advertised_quote(self, cost: dict | None) -> dict:
+        """MCP catalog_search / catalog_get price fields for one row.
+
+        `usd_per_call` is the advertised figure only when that figure is what one paid call
+        bills (a flat price, a per-call ceiling, or a started block). A presentation bundle
+        produced by `display.grouped` without `round_up` — `display_usd == usd * per`, such as
+        $15 per 1M UTF-8 bytes — is returned as `display_usd` plus `display_unit` with
+        `usd_per_call` left unset.
+        """
+        quoted = self.advertised_usd(cost)
+        if not cost:
+            return {"usd_per_call": quoted}
+        unit = cost.get("display_unit") or ""
+        display_usd = cost.get("display_usd")
+        usd = cost.get("usd")
+        per = cost.get("per") or 1
+        is_presentation_bundle = (
+            isinstance(display_usd, (int, float)) and not isinstance(display_usd, bool)
+            and isinstance(usd, (int, float)) and not isinstance(usd, bool)
+            and isinstance(per, (int, float)) and not isinstance(per, bool)
+            and per > 1
+            and bool(unit) and unit != "call" and not str(unit).startswith("started ")
+            and display_usd == round(usd * per, 9)
+        )
+        if is_presentation_bundle:
+            return {
+                "usd_per_call": None,
+                "display_usd": display_usd,
+                "display_unit": unit,
+            }
+        return {"usd_per_call": quoted}
 
     def platform_eligible(self, endpoint: dict) -> bool:
         """May treg serve this endpoint with a PLATFORM key, billed to the caller's balance?

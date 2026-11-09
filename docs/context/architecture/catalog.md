@@ -418,9 +418,12 @@ cost:
   the reserve. Validation requires `body_allowlist` and a one-item input array or scalar inputs, so a
   shared key cannot buy several results under one hold.
 - **`cost.display`** flags (`unit`, `grouped`, `round_up`, `variable`, `value`, `maximum`) change only
-  the advertised figure (`Catalog.advertised_usd`, `usd_per_call` in search and get); `usd` and
-  settlement are untouched. A grouped price needs a positive integer `per`; a table display must
-  describe its maximum.
+  the advertised figure (`Catalog.advertised_usd`); `usd` and settlement are untouched. MCP
+  `catalog_search` / `catalog_get` copy that figure into `usd_per_call` only when it is what one
+  paid call bills (a flat price, a per-call ceiling, or a started block). A presentation bundle
+  (`display.grouped` without `round_up`, e.g. $15 per 1M UTF-8 bytes) is exposed as `display_usd`
+  plus `display_unit` with `usd_per_call` left unset. A grouped price needs a positive integer `per`;
+  a table display must describe its maximum.
 - A scalar `unit: character` is request-priced: `_body_text_characters` counts the top-level JSON
   `text` string; invalid or empty input reserves one character, never zero.
 - Provider-specific rate tables (`tavily_rates`, `octen_rates`) have exact mode-key contracts:

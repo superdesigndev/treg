@@ -351,6 +351,8 @@ class SearchResult(TypedDict, total=False):
     job: str | None              # a judged answer: the job (capability) this row does
     more_providers: int | None   # a judged answer, on a job's first row: vendors of it the page left out
     usd_per_call: float | None
+    display_usd: float | None    # usage-bundle price when usd_per_call would mislabel it
+    display_unit: str | None     # e.g. "1M UTF-8 bytes"; present with display_usd
     no_key_needed: bool | None
     added: str | None            # the UTC day the tool reached the catalog (YYYY-MM-DD); null on a routed row
     score: float | None          # the lexical score; null on a judged answer (no probability is shown)
@@ -435,7 +437,9 @@ class CatalogGetOut(TypedDict, total=False):
                                            # response is a list of records (brightdata datasets)
     hints: list[str] | None
     did_you_mean: list[str] | None         # real ids close to one that missed
-    usd_per_call: float | None             # typical-call quote (display_usd when grouped; else usd)
+    usd_per_call: float | None             # typical-call quote; null when the advertised figure is a usage bundle
+    display_usd: float | None              # usage-bundle price (with display_unit) when usd_per_call is null
+    display_unit: str | None               # e.g. "1M UTF-8 bytes"
     overflow_price_usd: float | None       # what a call bills when treg's own account is out and the
                                            # overflow relay serves it instead (absent = never relayed)
     overflow_price_unit: str | None        # "call" | "result": what one unit of that price buys
@@ -884,7 +888,8 @@ async def _whose_grant(client: httpx.AsyncClient, slug: str | None, *, oauth: bo
         f"Search {_ENDPOINTS} API endpoints by WHAT YOU WANT TO DO. Use plain task words: "
         "'work email', 'backlinks for a domain', 'tiktok comments', 'keyword search volume'; a "
         "provider or platform name lists what it offers. Returns each endpoint's id, provider, price "
-        "per call, and whether treg can serve it without you owning an API key. Read `verdict`: "
+        "(usd_per_call when that is what one call bills; otherwise display_usd and display_unit "
+        "for a usage bundle), and whether treg can serve it without you owning an API key. Read `verdict`: "
         "strong = these do it; closest = nearest, check catalog_get; none = not in the catalog, file "
         "catalog_request. Use it when a task needs data or an API you have no key for. "
         "Recently added tools: added_within_days=N (1-365; 30 is a good default) keeps tools added "
@@ -985,7 +990,7 @@ async def _catalog_search_impl(
             # vendors the page left out; no probability is shown
             **({"job": ep["capability"]} if page.judged and ep.get("capability") else {}),
             **({"more_providers": hidden[ep["id"]]} if page.judged and ep["id"] in hidden else {}),
-            "usd_per_call": cat.advertised_usd(cost),
+            **cat.advertised_quote(cost),
             # BOTH halves of tier 4's own truth, not just the price side: `platform_eligible` says
             # the row is priceable, `platform_key_for` says this deploy actually holds an enabled
             # key; an eligible-but-keyless row would refuse at call time.
@@ -1266,7 +1271,8 @@ async def _catalog_request_impl(
 
 @mcp.tool(
     description=(
-        "One endpoint in full: its parameters, the exact price per call, whether treg serves it on "
+        "One endpoint in full: its parameters, the price (usd_per_call, or display_usd plus "
+        "display_unit when billed per usage unit), whether treg serves it on "
         "its own key, and the other providers that answer the same capability — with the success "
         "rate and speed treg has measured across real calls. Read this BEFORE call() so you can "
         "tell the human what it will cost."
@@ -1318,8 +1324,9 @@ async def _catalog_get_impl(
         ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
-        # does not fall back to the per-record `cost.usd` slice on a grouped credit.
-        out["usd_per_call"] = catalog_store.load().advertised_usd(ep.get("cost") or {})
+        # does not fall back to the per-record `cost.usd` slice on a grouped credit, and
+        # does not read a presentation bundle as a flat per-call price.
+        out.update(catalog_store.load().advertised_quote(ep.get("cost") or {}))
         if ep.get("overflow_price_usd") is not None:
             out["overflow_price_usd"] = ep["overflow_price_usd"]
             out["overflow_price_unit"] = ep.get("overflow_price_unit")
