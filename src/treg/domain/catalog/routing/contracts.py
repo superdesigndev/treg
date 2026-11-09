@@ -142,7 +142,8 @@ class Contract:
     row_needs: tuple[str, ...] = ()
     # `row.rank_by_role`: when the caller sent the role it wants (`asked`, an identity key), rows
     # whose current title (`now`) holds it lead, rows that held it only in the past (`past`) or hold
-    # no role now (`ended` set) go last, and `flag` says which: `current` or `past`. A semantic
+    # no role now (`ended` set) go last, and `flag` says which: `current` or `past`. Only rows with
+    # a work history (`since`, `past` or `ended` set) are judged; a bare title may be a headline. A semantic
     # search matches the whole history, so without it a former holder of the role ranks with the
     # current ones. Empty = rows keep the provider's order.
     row_rank: dict[str, str] = field(default_factory=dict)
@@ -180,8 +181,10 @@ class Contract:
 
     def rank_rows(self, identity: dict, rows: list) -> list:
         """The rows in `row_rank` order: holders of the asked role now, then rows that say nothing
-        either way, then past holders and people with no role now. The provider's order stands
-        within each group, and a row is never dropped: the caller paid for it."""
+        either way, then past holders and people with no role now. Only a row that carries a work
+        history (`since`, `past` or `ended` set) is judged: a `title` without one may be a headline
+        ('Former Developer Evangelist'), so it stays unmarked. The provider's order stands within
+        each group, and a row is never dropped: the caller paid for it."""
         cfg = self.row_rank
         asked = _title_words((identity or {}).get(cfg["asked"])) if cfg else set()
         if not asked:
@@ -189,7 +192,7 @@ class Contract:
         holds = lambda v: isinstance(v, str) and asked <= _title_words(v)  # noqa: E731
         ranked = []
         for r in rows:
-            if not isinstance(r, dict):
+            if not isinstance(r, dict) or not any(r.get(cfg[k]) for k in ("since", "past", "ended")):
                 ranked.append((1, r))
                 continue
             ended, now = bool(r.get(cfg["ended"])), holds(r.get(cfg["now"]))
@@ -386,11 +389,13 @@ _TITLE_FILLER = frozenset({"a", "an", "and", "at", "for", "in", "of", "the", "to
 def _title_words(v: object) -> set[str]:
     """A title's words, lowercased, singular ('Evangelists' is 'evangelist') and without filler:
     a title holds an asked role when it has every word of it ('Senior Developer Evangelist' holds
-    'Developer Evangelist'; 'Developer Advocate' does not)."""
+    'Developer Evangelist'; 'Developer Advocate' does not). Any script's letters count, and `+`, `#`
+    and an inner `.` stay in the word, so 'C++', 'C#' and 'C' are three roles; a title written
+    without spaces ('高级产品经理') is one word, so it holds only itself."""
     if not isinstance(v, str):
         return set()
-    words = re.findall(r"[a-z0-9]+", v.lower())
-    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+    words = re.findall(r"[\w+#]+(?:\.[\w+#]+)*", v.lower())
+    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") and w.isascii() else w
             for w in words if w not in _TITLE_FILLER}
 
 
@@ -588,10 +593,11 @@ def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
     row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
     rank = raw.get("rank_by_role") or {}
-    if rank and (not isinstance(rank, dict) or set(rank) != {"asked", "now", "past", "ended", "flag"}
-                 or rank["asked"] not in types or any(rank[k] not in row_fields for k in ("now", "past", "ended", "flag"))):
+    if rank and (not isinstance(rank, dict) or set(rank) != {"asked", "now", "since", "past", "ended", "flag"}
+                 or rank["asked"] not in types
+                 or any(rank[k] not in row_fields for k in ("now", "since", "past", "ended", "flag"))):
         # A misnamed field would rank nothing and flag nothing, silently.
-        raise ValueError(f"contract {cap}: row rank_by_role maps asked (an identity key) and now, past, ended, "
+        raise ValueError(f"contract {cap}: row rank_by_role maps asked (an identity key) and now, since, past, ended, "
                          f"flag (row fields), got {rank!r}")
     for k, spec in row_fields.items():
         if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)

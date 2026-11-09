@@ -402,7 +402,7 @@ def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
     role came back beside current ones; the router puts the role held now first and flags each."""
     c = catalog_store.load().contracts["people.search"]
     cfg = c.row_rank
-    now = {"name": "A", cfg["now"]: "Senior Developer Evangelist"}
+    now = {"name": "A", cfg["now"]: "Senior Developer Evangelist", cfg["since"]: "2023-01"}
     left = {"name": "B", cfg["now"]: "Support Engineer", cfg["past"]: ["Developer Evangelist"]}
     other = {"name": "C", cfg["now"]: "Developer Advocate"}
     retired = {"name": "D", cfg["now"]: "Consultant", cfg["ended"]: "2024-01"}
@@ -413,6 +413,16 @@ def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
     assert c.rank_rows({cfg["asked"]: "developer evangelist"}, [held_then_left])[0][cfg["flag"]] == "past"
     rows = [left, now]
     assert c.rank_rows({"q": "developer evangelists"}, rows) is rows, "no asked role: the provider's order"
+    headline = {"name": "F", cfg["now"]: "Former Developer Evangelist; now advisor"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelist"}, [left, headline])
+    assert out[0] is headline and out[1][cfg["flag"]] == "past", \
+        "a title with no work history may be a headline: unmarked, not current"
+    dated = lambda t: {"name": t, cfg["now"]: t, cfg["since"]: "2024"}  # noqa: E731
+    marked = lambda asked, *ts: [r.get(cfg["flag"]) for r in c.rank_rows({cfg["asked"]: asked}, [dated(t) for t in ts])]  # noqa: E731
+    assert marked("C++ Developer", "C# Developer", "C Developer", "Senior C++ Developer") == ["current", None, None], \
+        "C++, C# and C are different roles"
+    assert marked("AI 产品经理", "AI 产品经理", "AI 工程师") == ["current", None]
+    assert marked("产品经理", "产品经理", "高级产品经理") == ["current", None], "a word without spaces holds only itself"
 
 
 def test_a_malformed_rank_by_role_fails_the_load():
@@ -420,7 +430,7 @@ def test_a_malformed_rank_by_role_fails_the_load():
     base = {"identity": [{"title": "str"}], "output": {"people": {"type": "list"}},
             "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}, "title": {"type": "str"},
                                                                    "past": {"type": "list"}, "until": {"type": "str"}, "m": {"type": "str"}}}}
-    ok = {"asked": "title", "now": "title", "past": "past", "ended": "until", "flag": "m"}
+    ok = {"asked": "title", "now": "title", "since": "title", "past": "past", "ended": "until", "flag": "m"}
     assert parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": ok}}}})["y"].row_rank == ok
     for bad in ({**ok, "asked": "q"}, {**ok, "flag": "nope"}, {"asked": "title"}):
         with pytest.raises(ValueError, match="rank_by_role"):
