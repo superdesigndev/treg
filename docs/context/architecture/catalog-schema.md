@@ -84,11 +84,14 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
 `miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a 2xx miss beside a verified adapter, in today's
-result reasons; routing's `child_outcome` reads it too, keeping its own checks (declared miss,
-`not_found`, non-JSON body, empty required output) on top: a 2xx it judges an error is a miss with
-reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter only maps fields:
-`Adapter.is_miss` reads the row's rule, so every reader of an adapter's miss reads the one declaration.
+cache admission) reads it for a row that declares a `miss` rule, for a 2xx or a 4xx status, beside
+a verified adapter, in today's result reasons; routing's `child_outcome` reads it too, keeping its
+own checks (declared miss, `not_found`, non-JSON body, empty required output) on top: a 2xx it
+judges an error is a miss with reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's
+adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
+miss reads the one declaration. Such an adapter verifies beside any `miss` rule; beside a status
+rule alone, a 2xx that found nothing is a routing miss by the empty required output and a hit to
+stats.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 

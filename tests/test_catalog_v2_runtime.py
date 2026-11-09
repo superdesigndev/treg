@@ -364,16 +364,39 @@ def test_a_rates_row_is_served_at_its_reserve_max_so_treg_s_key_may_serve_it():
     assert store.load().platform_eligible(ep)
 
 
-def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter(monkeypatch):
+@pytest.mark.parametrize("miss", [{"when": {"path": "response.items", "op": "empty"}}, {"status": [404]}])
+def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter(monkeypatch, miss):
     from types import SimpleNamespace
 
     from treg.domain.catalog import results, store
-    ep = row(miss={"when": {"path": "response.items", "op": "empty"}})
+    ep = row(miss=miss)
     for adapter, opted in ((None, False), (SimpleNamespace(verified=False, miss=""), False),
                            (SimpleNamespace(verified=True, miss=""), True)):
         loaded = SimpleNamespace(by_id={"demo.x": ep}, adapters={"demo.x": adapter} if adapter else {})
         monkeypatch.setattr(store, "load", lambda loaded=loaded: loaded)
         assert results.has_result_rules("demo.x") is opted
+    loaded = SimpleNamespace(by_id={"demo.x": row()}, adapters={"demo.x": SimpleNamespace(verified=True, miss="")})
+    monkeypatch.setattr(store, "load", lambda: loaded)
+    assert results.has_result_rules("demo.x") is False
+
+
+@pytest.mark.parametrize("endpoint,verified", [
+    ({**row(miss={"status": [404]}), "capability": "lookup"}, True),
+    ({**row(miss={"when": {"path": "response.name", "op": "absent"}}), "capability": "lookup"}, True),
+    ({**row(), "capability": "lookup"}, False),
+    ({"capability": "lookup", "miss": {"status": 404, "means": "today's spelling"}}, False),
+])
+def test_an_adapter_without_a_miss_verifies_beside_any_v2_miss_rule(endpoint, verified):
+    from pathlib import Path
+
+    from treg.domain.catalog.routing.contracts import load_routing
+    lookup = {"identity": [{"name": "str"}], "output": {"name": {"type": "str", "required": True}}, "filters": {}}
+    adapter = {"accepts": [["name"]], "in": {"name": "queryParams.name"}, "out": {"name": "name"}}
+    docs = {"contracts.yaml": {"contracts": {"lookup": lookup}}, "adapters.yaml": {"adapters": {"demo.x": adapter}}}
+    endpoint = {**endpoint, "test_request": {"queryParams": {"name": "Example"}}}
+    _, adapters = load_routing(Path("."), {"demo.x": endpoint}, lambda p: docs[p.name],
+                               lambda ep: {"name": "Example"})
+    assert adapters["demo.x"].verified is verified
 
 
 @pytest.mark.parametrize("keys,rate", [
