@@ -6,10 +6,15 @@ from .contracts import Adapter, Contract
 from .plan import bills_miss
 
 ROUTED_KIND = "routed"
-# Response-budget query params a child may declare (AnyAPI's header `queryParams`). Copied onto
-# the generated parent so callers can follow a large_result hint without pinning that child.
-# Execution forwards each name only to a child that declares it.
-RESPONSE_BUDGET_QUERY = ("fields", "max_items", "summary", "jq")
+# Shape-preserving response-budget query params a child may declare (AnyAPI's header
+# `queryParams`). `fields` keeps listed keys on each result item; `max_items` caps how
+# many items come back. Copied onto the generated parent so callers can follow a
+# large_result hint without pinning that child. Execution forwards each name only to a
+# child that declares it.
+# `summary` and `jq` are not included: AnyAPI documents that `summary=true` returns only
+# an outline and `jq` replaces `output`, so child_outcome cannot read the adapter paths
+# and would treat a billed hit as a miss.
+RESPONSE_BUDGET_QUERY = ("fields", "max_items")
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
                    "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",

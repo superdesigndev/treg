@@ -678,11 +678,13 @@ def _endpoints(cands) -> list[str]:
 
 
 def _with_parent_response_budget_query(parent, ep: dict, query: dict[str, str]) -> dict[str, str]:
-    """Forward parent query keys a child declares as response-budget controls.
+    """Forward parent query keys a child declares as shape-preserving response-budget controls.
 
     Adapter-built query from `to_upstream` wins on a name clash so a caller cannot
     overwrite what the adapter sent. Names the child does not declare stay off the
-    child request. The parent still wraps the child's answer unaltered.
+    child request. Only `fields` and `max_items` are forwarded: they keep the envelope
+    the adapter reads. `summary` and `jq` replace `output`, so classifying the child's
+    answer would miss a billed hit. The parent still wraps the child's answer unaltered.
     """
     declared = ((ep.get("input") or {}).get("queryParams") or {})
     if not declared:
