@@ -161,7 +161,7 @@ endpoints:
       note: "one of uniqueId | secUid"
       # also pathParams, headers, body, bodyType (json|form|multipart). Unknown keys fail the load.
     test_request: {queryParams: {uniqueId: "tiktok"}}   # EXACT params the verifier sends; must be cheap
-    price: {value: '0.001', currency: USD, per: 1, unit: call}   # v2 spelling; a new row never writes `cost:`
+    price: {value: '0.001', currency: USD, per: 1, unit: call}   # v2 spelling; a new provider never writes `cost:`
     miss: {when: {path: response.data.userInfo.user.uniqueId, op: absent}}   # optional; also expect, error, not_found
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main

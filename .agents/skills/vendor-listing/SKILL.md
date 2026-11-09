@@ -33,8 +33,9 @@ Deep references (read before non-trivial work; do not duplicate them here):
 - `docs/VENDORS.md` — what we told the vendor to prepare (their checklist)
 - `src/treg/web/vendor-listing.md` — the HOSTED instructions (served at `/vendor-listing`) that a
   vendor's own coding agent follows to raise a listing PR; the dashboard's "List as vendor" modal
-  (connections view, `vendorAsk` in `index.html`) hands vendors a prompt pointing at it. Keep the
-  three vendor-facing surfaces (doc, hosted page, modal prompt) telling one story.
+  (Catalog page, `vendorPromptText` in `frontend/src/state/agentsComputed.js`) hands vendors a
+  prompt pointing at it. Keep the three vendor-facing surfaces (doc, hosted page, modal prompt)
+  telling one story.
 
 ## Step 0 — intake: collect the vendor facts
 
