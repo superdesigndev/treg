@@ -300,7 +300,7 @@ first call's charge in `X-Treg-Original-Cost-Micro`.
   different request is refused (422).
 - Idempotency keys belong to the caller and last 24 hours; a call that fails frees its key at once.
 - 409: the original call is still running; retry shortly.
-- 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 2 MB replay limit,
+- 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 8 MiB replay limit,
   `idempotency_response_not_retained` when provider terms forbid keeping the answer,
   `idempotency_outcome_unknown`): the first call was, or may have been, charged and its answer was
   not kept. The body names the `call_id`; `GET {BASE}/calls/<call id>` shows the cost and

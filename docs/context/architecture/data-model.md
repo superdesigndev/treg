@@ -297,7 +297,9 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   (`idempotency_response_lost` with the charge when the ledger shows one, else
   `idempotency_outcome_unknown`). The key never runs again: a lapsed lease does not prove its
   owner stopped. Rows without a `call_ref` answer 409 until they expire.
-- An answer over `archive_max_body_bytes` is not stored; a terminal 410
+- A settled answer is stored for replay up to the 8 MiB settlement buffer,
+  even when it exceeds `archive_max_body_bytes` (a separate inventory cap).
+  An answer over that buffer is not stored; a terminal 410
   `idempotency_response_too_large` is kept instead.
 - The per-call expired-label sweep deletes at most `IDEMPOTENCY_SWEEP_BATCH` rows with
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
