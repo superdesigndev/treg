@@ -352,7 +352,7 @@ contracts:
       full_name: "one person's name, to find their profile"
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
-      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
+      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
@@ -386,7 +386,7 @@ contracts:
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
-        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
+        summary: {type: str, max: 2000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 2000 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
