@@ -1,14 +1,13 @@
 # scrapecreators — EXTENDED tier: the provider's full documented endpoint surface,
 # generated from ScrapeCreators' own OpenAPI spec (docs.scrapecreators.com/openapi.json).
-# All 170 documented GET routes are covered; no core scrapecreators.yaml exists yet
-# (this is a new provider), so nothing is deduped out here.
+# All 170 documented GET routes are covered across both tiers; the routes the core
+# scrapecreators.yaml serves are deduped out of this file.
 #
 # `input` / `test_request` come from the spec's per-parameter `example` values (the
 # provider's own demo values); a route whose only required param ships no example is
-# marked `untestable` rather than guessed. `cost` is `credits_charged` from the spec's own
+# marked `untestable` rather than guessed. `price` is `credits_charged` from the spec's own
 # response example for that route (1 credit for nearly all routes, 26 for
-# tiktok/user/audience) — ScrapeCreators does not publish a USD-per-credit rate, so cost is
-# recorded in the provider's own unit (currency: credit) rather than invented in USD.
+# tiktok/user/audience).
 # NOT VERIFIED: no live calls were made in this pass (see docs_url per entry; verification
 # is a separate pass per docs/context/architecture/catalog.md).
 #
