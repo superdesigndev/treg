@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from treg.health import host_is_public, safe_webhook_url
+from conftest import accept_with_code
 
 
 def test_ssrf_blocks_numeric_ip_encodings():
@@ -31,7 +32,7 @@ def test_host_is_public_resolves_and_blocks_internal(fake_getaddrinfo):
 async def _member_in_owner_org(clients: AsyncClient, email="m3b@x.dev"):
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": email, "role": "member"})).json()
-    tok = (await clients.post("/invites/accept", json={"code": inv["code"], "email": email})).json()["token"]
+    tok = (await accept_with_code(clients, json={"code": inv["code"], "email": email})).json()["token"]
     return org_id, tok
 
 

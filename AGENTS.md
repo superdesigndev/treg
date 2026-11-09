@@ -80,6 +80,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
+   A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
+   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   through the same road and reads the answer with the descriptor; it never changes what `/call/`
+   returns (docs/context/architecture/tasks.md).
 5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
    revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
    bonus, in proportion), never another payment's block and never below the unheld balance.
@@ -141,6 +145,10 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Referral affiliates.** `domain/referrals.py` alone writes `User.referral_affiliate`, its
+  version and `ReferralAffiliateEvent`; the private admin calls the authenticated API. The flag
+  exempts only future qualification from the per-referrer cap, never abuse gates or historical
+  capped records. See `docs/context/architecture/money.md`.
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
@@ -155,8 +163,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, Redis org/endpoint
-  quota admission counters, and the shared provider rate window's members). Extend the
+  archive-question marks, durable provider-resource ownership, the task an async answer names,
+  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -206,6 +214,8 @@ uv run python -m treg                          # the server
 uv run lint-imports                            # the import-linter contracts (CI runs this too)
 uv run ruff check                              # lint, config in pyproject.toml (CI runs this too)
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
+(cd cli && go vet ./... && go test ./...)      # the binary CLI (Go)
+TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
 xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
@@ -214,6 +224,10 @@ so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
+  a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
+  proved by `tests/cli_go`, except the differences `cli-binary.md` names ("Compatibility with the
+  Python CLI") and the harness's `normalize` spells out. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
@@ -260,9 +274,11 @@ so parallel runs and side-by-side runs never share one.
   goes in the PR body, never into a fragment or a comment. A fragment moves only when a mechanism
   changes; `drift.sh` naming one is a prompt to check it, not an obligation to write. No dated
   per-provider sections in `docs/context/architecture/catalog.md`: a provider's quirk lives on
-  its row as a `note`. No per-endpoint tests: the round-trip test over every shipped adapter and
-  the validator already judge the rows, and a test that restates a list of declarations is
-  deleted, not extended. Code a data change needs ships in the same PR as its first rows.
+  its row, in the most specific note. Write and review every summary and note against
+  `docs/context/architecture/catalog-schema.md` ("Summary and note"). No per-endpoint tests: the
+  round-trip test over every shipped adapter and the validator already judge the rows, and a test
+  that restates a list of declarations is deleted, not extended. Code a data change needs ships in
+  the same PR as its first rows.
 
 ## When writing user-facing copy
 

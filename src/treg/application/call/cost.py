@@ -128,6 +128,22 @@ def require_rows(ep: dict, request_data: dict) -> None:
             "message": f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}"})
 
 
+def require_rates(ep: dict, cat) -> None:
+    """On treg's key, a row whose price, reported charge or usage meter is in a credit or meter
+    fx.yaml has no rate for refuses the call before anything is held."""
+    price_ = ep.get("price") or {}
+    settle = ep.get("settle") or {}
+    needed = [(price_.get("currency", "USD"), price_.get("unit"))] \
+        if price_.get("value") is not None or price_.get("table") is not None or price_.get("rates") else []
+    needed += [_meter(settle[form]["unit"]) for form in ("reported", "usage") if form in settle]
+    for currency, unit in needed:
+        if _rate(cat, ep["provider"], currency, unit) is None:
+            name = f"{ep['provider']} {unit if currency == 'unit' else currency}"
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"], "rate": name,
+                "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
+
+
 def _entities(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
@@ -255,11 +271,11 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
         return None
     try:
         figure = Decimal(str(raw).strip()) * Decimal(str(rule.get("scale", 1)))
+        if not figure.is_finite() or figure < 0:
+            return None
+        return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return None
-    if not figure.is_finite() or figure < 0:
-        return None
-    return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,
@@ -327,19 +343,23 @@ def _settled(terms: dict, basis_: dict, hold: int, doc: object, raw: bytes, evid
     return hold if evidence is None else evidence
 
 
-def _figure(terms: dict, doc: object, headers, submitted: int | None) -> int | None:
-    """A readable reported charge, else what the provider reported on an async submission."""
-    figure = reported(terms, doc, headers)
-    return submitted if figure is None and (terms.get("settle") or {}).get("reported") else figure
+def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None) -> int | None:
+    """The provider's reported charge: read off this answer, or for an async task the one it
+    reported on the submission, which is when the task was billed; a terminal answer's own figure
+    is never read."""
+    if terminal:
+        return submitted if (terms.get("settle") or {}).get("reported") else None
+    return reported(terms, doc, headers)
 
 
 def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, raw: bytes = b"",
-           headers=None, request_data: dict | None = None,
+           headers=None, request_data: dict | None = None, terminal: bool = False,
            submitted: int | None = None) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
     what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
-    today's spelling records it."""
+    today's spelling records it. A `terminal` answer is an async task's, settled with what the
+    provider reported on its `submitted` submission."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -350,7 +370,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if free_when is not None and holds(free_when, {
             **request_document(endpoint, request_values, defaults=True), "response": doc}):
         return 0, 0
-    if (figure := _figure(terms, doc, headers, submitted)) is not None:
+    if (figure := _figure(terms, doc, headers, terminal, submitted)) is not None:
         return figure, figure
     evidence = _evidence(terms, hold, doc, request, answer)
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
@@ -364,14 +384,15 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
 
 def terminal(terms: dict, basis_: dict, outcome: str, doc: object) -> int:
     """What an async v2 task settles at on its terminal answer: a `billed_failure` is charged by
-    its `settle` form, a `success` goes through steps 2 to 5 with the terminal document; a figure
-    the provider reported on the submission stands in for one the terminal answer lacks."""
+    its `settle` form, a `success` goes through steps 2 to 5 with the terminal document. A reported
+    settle is the figure the provider reported on the submission, as a row in today's spelling
+    settles it."""
     hold = int(basis_.get("reserve_micro") or 0)
     raw = json.dumps(doc).encode() if doc is not None else b""
     submitted = basis_.get("submission_charge_micro")
     if outcome != "billed_failure":
-        return charge(terms, basis_, hold, 200, doc, raw=raw, submitted=submitted)[1]
-    if (figure := _figure(terms, doc, None, submitted)) is not None:
+        return charge(terms, basis_, hold, 200, doc, raw=raw, terminal=True, submitted=submitted)[1]
+    if (figure := _figure(terms, doc, None, True, submitted)) is not None:
         return figure
     return _settled(terms, basis_, hold, doc, raw, _evidence(terms, hold, doc, None, None))
 

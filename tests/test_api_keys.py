@@ -15,6 +15,7 @@ from treg.api import app
 from treg.domain.identity import api_keys as managed_keys
 from treg.infra.db import reset_db, session_maker
 from treg.models import ApiKey, ApiKeyEvent, Membership, User
+from conftest import accept_with_code
 
 
 def _h(token: str) -> dict[str, str]:
@@ -66,7 +67,7 @@ async def test_new_human_team_has_only_default_key_with_visible_prefix(sent_otps
             headers=_h(default_token),
             json={"email": "fresh-member@example.dev", "role": "member"},
         )).json()
-        accepted = await client.post("/invites/accept", json={
+        accepted = await accept_with_code(client, json={
             "email": "fresh-member@example.dev", "code": invite["code"],
         })
         member_token = accepted.json()["token"]
@@ -368,7 +369,7 @@ async def test_every_token_bearing_response_is_no_store(clients, sent_otps):
     invite = await clients.post(f"/orgs/{org_id}/invites", json={
         "email": "no-store-invite@example.dev", "role": "member",
     })
-    accepted = await clients.post("/invites/accept", json={
+    accepted = await accept_with_code(clients, json={
         "email": "no-store-invite@example.dev", "code": invite.json()["code"],
     })
     assert accepted.json()["token"] and accepted.headers["cache-control"] == "no-store"

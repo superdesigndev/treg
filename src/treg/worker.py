@@ -446,6 +446,31 @@ async def _spend_rollup(args) -> int:
     return 0
 
 
+async def _billing_reconcile(args) -> int:
+    """Exit 1 and alert when a paid top-up is missing from the ledger; exit 0 when every one matches."""
+    from datetime import datetime, timedelta, timezone
+    from .application import billing
+    from .config import get_settings
+    from .infra import slack
+    from .infra.db import verify_db
+
+    webhook = get_settings().ops_slack_webhook_url
+    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
+    try:
+        await verify_db()
+        report = await billing.reconcile_topups(since=until - timedelta(hours=args.hours), until=until)
+    except Exception as exc:
+        if webhook:
+            await slack.post(webhook, f"treg-worker billing reconcile failed: {type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(report, sort_keys=True))
+    if not report["gaps"]:
+        return 0
+    if webhook:
+        await slack.post(webhook, billing.reconcile_alert(report))
+    return 1
+
+
 async def _usage_rollup(args) -> int:
     from .infra.db import verify_db
     from .application.call_usage_rollup import refresh
@@ -775,6 +800,14 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    bill = sub.add_parser("billing", help="prepaid balance top-ups")
+    billsub = bill.add_subparsers(dest="cmd", required=True)
+    breconcile = billsub.add_parser("reconcile", help="check every top-up Stripe collected against the ledger")
+    breconcile.add_argument("--hours", type=_positive_int, default=48,
+                            help="how far back to look, ending --grace-minutes ago")
+    breconcile.add_argument("--grace-minutes", type=_positive_int, default=30,
+                            help="leave the newest payments to their in-flight webhook")
+    breconcile.set_defaults(fn=_billing_reconcile)
     usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
     usagesub = usage.add_subparsers(dest="cmd", required=True)
     urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")

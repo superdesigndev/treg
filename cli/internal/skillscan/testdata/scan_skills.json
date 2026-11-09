@@ -1,0 +1,204 @@
+[
+ {
+  "name": "bad",
+  "kind": "skip",
+  "base_url": null,
+  "secrets": [],
+  "bindings": [],
+  "gaps": [],
+  "note": "bad treg.json: treg.json cli block: cli.bin 'a b' must be a plain command name (no path separators or spaces)",
+  "cli": null
+ },
+ {
+  "name": "contract",
+  "kind": "contract",
+  "base_url": "https://c.example",
+  "secrets": [
+   {
+    "source": "file",
+    "file": ".secret/k",
+    "name": "k"
+   },
+   {
+    "source": "file",
+    "env": "MISSING_ENV",
+    "name": "m"
+   }
+  ],
+  "bindings": [
+   {
+    "secret": "k",
+    "name": "X-A"
+   },
+   {
+    "secret": "m",
+    "name": "x-a"
+   }
+  ],
+  "gaps": [
+   "treg.json secret file missing: .secret/k",
+   "needs env var MISSING_ENV - not found in the env",
+   "ships multiple credentials that all map to one header (x-a) - add a treg.json mapping each credential to its own header (e.g. Authorization + developer-token)"
+  ],
+  "note": "has treg.json",
+  "cli": null
+ },
+ {
+  "name": "doppler",
+  "kind": "generated",
+  "base_url": "https://api.doppler.com/v3",
+  "secrets": [
+   {
+    "source": "env",
+    "env": "DOPPLER_TOKEN",
+    "name": "doppler-token",
+    "kind": "env"
+   }
+  ],
+  "bindings": [],
+  "gaps": [
+   "needs credential DOPPLER_TOKEN (not found in your environment)"
+  ],
+  "note": "catalog CLI skill",
+  "cli": {
+   "bin": "doppler",
+   "install": "brew install dopplerhq/cli/doppler",
+   "auth_mechanism": "env",
+   "beta": true,
+   "deny": [
+    "(^|\\s)run(\\s|$)",
+    "(^|\\s)secrets\\s+download(\\s|$)"
+   ],
+   "inject": [
+    {
+     "via": "env",
+     "name": "DOPPLER_TOKEN",
+     "secret": "doppler-token"
+    }
+   ],
+   "errors": [
+    {
+     "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+     "verdict": "credential_invalid",
+     "message": "the org's credential is invalid or expired"
+    }
+   ],
+   "enabled": true
+  }
+ },
+ {
+  "name": "envy",
+  "kind": "generated",
+  "base_url": "https://api.openai.com/v1",
+  "secrets": [
+   {
+    "source": "env",
+    "env": "OPENAI_API_KEY",
+    "name": "envy",
+    "kind": "env"
+   }
+  ],
+  "bindings": [
+   {
+    "secret": "envy",
+    "injector": "env",
+    "location": "header",
+    "name": "Authorization",
+    "format": "Bearer {secret}"
+   }
+  ],
+  "gaps": [],
+  "note": "reads 2 auth vars (OPENAI_API_KEY, SECOND_TOKEN); only OPENAI_API_KEY bound - verify",
+  "cli": null
+ },
+ {
+  "name": "gsc",
+  "kind": "generated",
+  "base_url": "https://searchconsole.googleapis.com",
+  "secrets": [
+   {
+    "source": "file",
+    "file": ".secret/developer_token",
+    "name": "developer_token",
+    "kind": "env"
+   },
+   {
+    "source": "file",
+    "file": ".secret/token.json",
+    "name": "token",
+    "kind": "secret_file"
+   }
+  ],
+  "bindings": [
+   {
+    "secret": "developer_token",
+    "injector": "env",
+    "location": "header",
+    "name": "Authorization",
+    "format": "Bearer {secret}",
+    "secret_field": "access_token"
+   },
+   {
+    "secret": "token",
+    "injector": "secret_file",
+    "location": "header",
+    "name": "token",
+    "format": "{secret}",
+    "secret_field": "access_token"
+   }
+  ],
+  "gaps": [],
+  "note": null,
+  "cli": null
+ },
+ {
+  "name": "multi",
+  "kind": "generated",
+  "base_url": "https://api.multi.example",
+  "secrets": [
+   {
+    "source": "file",
+    "file": ".secrets/developer_token",
+    "name": "developer_token",
+    "kind": "env"
+   },
+   {
+    "source": "file",
+    "file": ".secrets/token.json",
+    "name": "token",
+    "kind": "oauth"
+   }
+  ],
+  "bindings": [
+   {
+    "secret": "developer_token",
+    "injector": "env",
+    "location": "header",
+    "name": "developer-token",
+    "format": "{secret}",
+    "secret_field": "access_token"
+   },
+   {
+    "secret": "token",
+    "injector": "oauth",
+    "location": "header",
+    "name": "Authorization",
+    "format": "Bearer {secret}",
+    "secret_field": "token"
+   }
+  ],
+  "gaps": [],
+  "note": null,
+  "cli": null
+ },
+ {
+  "name": "notes",
+  "kind": "recipe_only",
+  "base_url": null,
+  "secrets": [],
+  "bindings": [],
+  "gaps": [],
+  "note": "knowledge skill - recipe only",
+  "cli": null
+ }
+]

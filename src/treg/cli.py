@@ -47,13 +47,18 @@ from urllib.parse import parse_qsl, quote, urlsplit
 import httpx
 
 from . import agents as _agents
-from . import cli_analytics, cli_session, cli_view
+from . import cli_analytics, cli_session, client_notice
 from . import jsontext
 from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
 # One source of truth for the proxy's default port (help text below). Importing the module is cheap —
 # it pulls only stdlib plus httpx, which the CLI already has; `cryptography` stays lazy inside it.
 from .localproxy import DEFAULT_PORT as _PROXY_DEFAULT_PORT
+from .routers.views import account as account_views
+from .routers.views import catalog as catalog_views
+from .routers.views import toon
+from .routers.views.account import usd as _usd
+from .routers.views.catalog import clip as _clip, cost_usd as _cost_usd
 
 # TREG_CONFIG points the CLI at an alternate config file (CI, agents, tests — anywhere isolating
 # by faking $HOME is the wrong tool). The default stays ~/.treg/config.json.
@@ -218,6 +223,32 @@ def _is_loopback_url(url: str) -> bool:
     return host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")
 
 
+_client_notice_seen = False
+
+
+def _print_client_notice(resp: httpx.Response) -> None:
+    """The registry's word on this CLI's version (client_notice.py): on stderr, once a day per
+    notice, never under `--json`."""
+    global _client_notice_seen
+    text = resp.headers.get(client_notice.NOTICE_HEADER)
+    if not text or _client_notice_seen or _JSON_OVERRIDE:
+        return
+    _client_notice_seen = True
+    stamp = CONFIG_PATH.with_name("client-notice")
+    shown = f"{time.strftime('%Y-%m-%d')} {text}"
+    try:
+        if stamp.read_text(encoding="utf-8") == shown:
+            return
+    except OSError:
+        pass
+    print(f"  {_M}{text}{_R}", file=sys.stderr)
+    try:
+        stamp.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stamp.write_text(shown, encoding="utf-8")
+    except OSError:
+        pass
+
+
 class _RegistryClient(httpx.Client):
     """An httpx client that survives an upstream WAF. Some edges (Cloudflare, incl. Render's) 403 a
     request whose body matches an injection signature -- e.g. a skill recipe or a proxied `call` that
@@ -228,6 +259,7 @@ class _RegistryClient(httpx.Client):
 
     def send(self, request: httpx.Request, **kwargs) -> httpx.Response:
         resp = super().send(request, **kwargs)
+        _print_client_notice(resp)
         body = request.content or b""
         if (resp.status_code != 403 or not body
                 or "html" not in resp.headers.get("content-type", "").lower()
@@ -921,7 +953,7 @@ def _dim(t: str) -> None: print(f"{_M}{t}{_R}")
 
 
 def _emit(view: dict, help_lines: list[str] | None = None, groups: list[tuple[str, ...]] | None = None) -> None:
-    print(cli_view.render_json(view, help_lines) if _JSON_OVERRIDE else cli_view.render(view, help_lines, groups))
+    print(toon.render_json(view, help_lines) if _JSON_OVERRIDE else toon.render(view, help_lines, groups))
 
 
 def _fail(error: str, message: str, help_lines: list[str] | None = None, **details) -> NoReturn:
@@ -938,15 +970,13 @@ def _relay_json(r: httpx.Response) -> None:
         sys.exit(1)
 
 
+def _fail_with(failure: catalog_views.Failure) -> NoReturn:
+    error, message, help_lines, details = failure
+    _fail(error, message, help_lines, **details)
+
+
 def _fail_response(r: httpx.Response) -> NoReturn:
-    body = _json_dict(r)
-    detail = body.get("detail", body) if body else None
-    if isinstance(detail, dict):
-        message = detail.get("message") or detail.get("error") or f"HTTP {r.status_code}"
-    else:
-        message = detail or r.text[:500] or f"HTTP {r.status_code}"
-    _fail(f"http_{r.status_code}", str(message), status=r.status_code,
-          detail=detail if isinstance(detail, dict) else None)
+    _fail_with(catalog_views.refusal(r.status_code, _json_dict(r), r.text))
 
 
 def _kv(k: str, v: str) -> None: print(f"  {_M}{k:<7}{_R} {v}" if len(k) >= 7 else f"  {_M}{k:<7}{_R}{v}")
@@ -1609,9 +1639,7 @@ def cmd_accept(args, cfg) -> None:
             sys.exit(f"no pending invite for '{args.org}' — run `treg invites`")
         r = c.post(f"/invites/{inv['id']}/accept")
         if r.status_code == 200:
-            data = r.json()
-            cfg.update(token=data["token"], active_org=data["org"], identity=True)
-            _save_config(cfg)
+            _save_joined_team(cfg, r.json())
         _show(r)
 
 
@@ -4385,19 +4413,6 @@ def _write_bundle_files(dest: Path, files: dict) -> int:
     return written
 
 
-def _usd(micro) -> str:
-    """micro-USD → a money string, sign OUTSIDE the dollar mark (-$0.0006, not $-0.0006).
-
-    Under a dollar it keeps four decimals: sub-cent amounts are the norm here (a catalog call runs
-    ~$0.0006), and two decimals would round a real charge to $0.00 and read as free."""
-    try:
-        v = int(micro) / 1_000_000
-    except (TypeError, ValueError):
-        return "-"
-    sign, v = ("-" if v < 0 else ""), abs(v)
-    return f"{sign}${v:,.2f}" if v >= 1 else f"{sign}${v:.4f}"
-
-
 def cmd_whoami(args, cfg) -> None:
     """Who this CLI acts as: the account, the active team and your role in it, and the registry.
     Found in the hub simulation: `treg whoami` was not a command, so it ran the system `whoami`
@@ -4623,11 +4638,6 @@ def cmd_version(args, cfg) -> None:
     print(f"treg {cli_version()}")
 
 
-def _home_description(catalog_tools: str | None = None) -> str:
-    """The slogan, with the catalog's size as the registry counts it (`/home`); no number is typed here."""
-    return f"The tool catalog for your agent. Search and call {catalog_tools or 'its'} tools"
-
-
 def _quietly(read):
     """One best-effort read for the home view: its result, or None when the read fails, so one slow
     or odd answer leaves out its own line and not the rest."""
@@ -4662,23 +4672,13 @@ def _home_state(cfg: dict) -> dict:
 def _home_answer(home: httpx.Response) -> dict:
     """`/home`'s answer as home state, or what went wrong with it."""
     if home.status_code in (401, 403):
-        return _credential_refused(home)
+        return account_views.credential_refused(home.status_code, _json_dict(home))
     if home.status_code >= 500:  # the right registry, having a bad moment
         return {"registry_error": f"HTTP {home.status_code} from /home"}
     body = _json_dict(home)
     if home.status_code != 200 or "account" not in body:  # something answers here, but not a treg registry
         return {"unavailable": f"HTTP {home.status_code} from /home is not a treg answer"}
     return body
-
-
-def _credential_refused(r: httpx.Response) -> dict:
-    """A 401 (the token is not valid) or 403 (valid, but refused: a suspended account or team, a
-    team that needs its SSO), with the registry's reason."""
-    detail = _json_dict(r).get("detail")
-    reason = detail if isinstance(detail, str) and detail else None
-    if r.status_code == 401:
-        return {"account": None, "account_error": "token rejected" + (f": {reason}" if reason else "")}
-    return {"account": None, "account_error": "refused" + (f": {reason}" if reason else "")}
 
 
 def _home_state_by_parts(cfg: dict, c: httpx.Client, state: dict) -> dict:
@@ -4694,7 +4694,7 @@ def _home_state_by_parts(cfg: dict, c: httpx.Client, state: dict) -> dict:
             state["unavailable"] = f"{type(exc).__name__} reaching the registry"
             return state
         if me.status_code in (401, 403):
-            return state | _credential_refused(me)
+            return state | account_views.credential_refused(me.status_code, _json_dict(me))
         if me.status_code >= 500:  # the right registry, having a bad moment
             state["registry_error"] = f"HTTP {me.status_code} from /auth/me"
             return state
@@ -4723,51 +4723,22 @@ def _home_state_by_parts(cfg: dict, c: httpx.Client, state: dict) -> dict:
     return state
 
 
-def _home_help(state: dict) -> list[str]:
-    """Next steps as runnable commands, most useful first. Runtime values stay `<placeholders>`."""
-    out: list[str] = []
-    if state.get("unavailable"):
-        out.append("treg config   # which registry this CLI talks to")
-    elif state.get("registry_error"):
-        out.append("treg   # again in a minute, the registry answered with a server error")
-    elif not state.get("account"):
-        out.append("treg login   # or treg login --token <key> with a team key")
-    elif not state.get("team") and state.get("teams"):
-        out.append("treg org use <team>   # pick a team; treg org ls lists them")
-    elif not state.get("team"):
-        out.append("treg org create \"<team name>\"   # or treg invites to see invites")
-    elif state.get("balance_micro") is not None and state["balance_micro"] <= 0:
-        out.append("treg topup   # catalog calls on treg's key spend the balance")
-    out += ["treg catalog search \"<task>\"   # find a tool for a job, with prices",
-            _GET_HELP]
-    if state.get("own_tools"):
-        out.append("treg call <tool>/<path>   # an own_tools entry; <path> is the upstream API's own")
-    out.append("treg --help   # every command")
-    return out
-
-
 def cmd_home(args, cfg) -> None:
     """Bare `treg`: live state and the next commands, the way an agent orients itself."""
     state = _home_state(cfg)
     exe = shutil.which(sys.argv[0]) or sys.argv[0]
     home = str(Path.home())
     exe = "~" + exe[len(home):] if exe.startswith(home + os.sep) else exe
-    help_lines = _home_help(state)
     if _JSON_OVERRIDE:
-        _emit({"bin": exe, "version": cli_version(), "description": _home_description(state.get("catalog_tools")),
-               **state}, help_lines)
+        _emit({"bin": exe, "version": cli_version(),
+               "description": account_views.home_description(state.get("catalog_tools")), **state},
+              account_views.home_help(state))
         return
-    team = state.get("team")
-    if team and state.get("role"):
-        team += f" ({state['role']}" + (f"; 1 of {state['teams']} teams)" if (state.get("teams") or 0) > 1 else ")")
     custom = state["registry"].rstrip("/") != PRODUCTION_BASE_URL
     problem = state.get("unavailable") or state.get("registry_error")
-    _emit({"treg": f"{cli_version()} at {exe}", "about": _home_description(state.get("catalog_tools")),
-           "registry": f"{state['registry']} ({problem})" if problem else state["registry"] if custom else None,
-           "account": None if problem else state.get("account") or state.get("account_error") or "not signed in",
-           "team": (team or "none") if state.get("account") else None,
-           "balance": _usd(state["balance_micro"]) if "balance_micro" in state else None,
-           "own_tools": state.get("own_tools")}, help_lines)
+    _emit(*account_views.home(state, treg=f"{cli_version()} at {exe}",
+                              registry=f"{state['registry']} ({problem})" if problem
+                              else state["registry"] if custom else None))
 
 
 def cmd_update(args, cfg) -> None:
@@ -5270,13 +5241,29 @@ def cmd_org_deny_rm(args, cfg) -> None:
 
 
 def cmd_org_join(args, cfg) -> None:
-    with _client(cfg, auth=False) as c:
-        r = c.post("/invites/accept", json={"code": args.code, "email": args.email})
+    """Join a team with an invite code, signed in as the invited email (`treg login` first)."""
+    if not (os.environ.get("TREG_TOKEN") or cfg.get("token")):
+        sys.exit("sign in first: run `treg login` with the email the invite was sent to, then retry")
+    body = {"code": args.code}
+    if args.email:
+        body["email"] = args.email
+    with _client(cfg) as c:
+        r = c.post("/invites/accept", json=body)
     if r.status_code == 200:
-        d = r.json()
-        cfg.update(token=d["token"], active_org=d["org"], email=args.email, identity=True)
-        _save_config(cfg)
+        _save_joined_team(cfg, r.json())
+    elif r.status_code == 403 and "different email" in r.text:
+        print("(this invite is for a different email — run `treg login` with that address, then retry)",
+              file=sys.stderr)
     _show(r)
+
+
+def _save_joined_team(cfg: dict, joined: dict) -> None:
+    """Keep the new team token, unless this run's identity came from `TREG_TOKEN`: that token is
+    per-process and must never overwrite the login saved in the config file."""
+    if os.environ.get("TREG_TOKEN"):
+        return
+    cfg.update(token=joined["token"], active_org=joined["org"], identity=True)
+    _save_config(cfg)
 
 
 def _clear_active_if_targeted(cfg: dict) -> None:
@@ -5398,52 +5385,6 @@ def cmd_oauth_providers(args, cfg) -> None:
         _show(c.get("/oauth/providers"))
 
 
-def _cost_label(cost) -> str:
-    """A price you can scan in a column: "$0.001/success", "free", "quota rows"."""
-    if not isinstance(cost, dict):
-        return "-"
-    if cost.get("display_unit") and cost.get("display_usd") is not None:
-        return (cost.get("display_prefix", "") + f"${cost['display_usd']:.3g}" + cost.get("display_suffix", "")
-                + "/" + cost["display_unit"])
-    kind = (cost.get("type") or "").replace("_", " ")
-    value, currency = cost.get("value"), cost.get("currency") or ""
-    if value in (None, "") and isinstance(cost.get("table"), list):
-        # A price table: the ceiling is the scalar (matches `usd`); `_cost_usd` shows the range.
-        value = (cost.get("fallback") or {}).get("value")
-    if kind == "free":
-        return "free"
-    if value in (None, ""):
-        return kind or "-"
-    # `quota_rows` prices a CALL, in rows — so the denominator is "call" and the row count shows up
-    # as the native amount ("1 quota row/call"), not as "1 quota row/quota rows".
-    unit = {"per call": "call", "per result": "result", "per success": "success",
-            "quota rows": "call"}.get(kind, kind or "call")
-    # unified USD display: the server computes `usd` from the billing currency (or, for
-    # `currency: credit`, the provider's credit rate) via fx.yaml. The USD number leads so rows
-    # stay comparable; the native amount trails in parentheses as the secondary fact.
-    # Native ALONE only when no rate exists — a bare credit count is never a price.
-    usd = cost.get("usd")
-    if usd is not None:
-        native = "" if currency in ("USD", "") else f" ({_native_amount(value, currency, cost.get('unit') or '')})"
-        return f"${usd:g}/{unit}{native}"
-    return f"{_native_amount(value, currency, cost.get('unit') or '')}/{unit}"
-
-
-def _native_amount(value, currency: str, meter: str = "") -> str:
-    """The provider's own number in its own unit. "credit" is a provider-scoped unit, not a
-    currency, so it reads as a noun ("3 credits") rather than a currency prefix ("credit 3") — and
-    `currency: unit` is a provider METER named by `cost.unit`, so it reads the same way
-    ("5000 analysis units"), never as the literal word "unit"."""
-    if currency == "credit":
-        return f"{value:g} credit{'' if value == 1 else 's'}"
-    if currency == "unit":
-        noun = (meter or "unit").replace("_", " ")
-        return f"{value:g} {noun}{'' if value == 1 else 's'}"
-    return f"${value:g}" if currency in ("USD", "") else f"{currency} {value:g}"
-
-
-
-
 def _pinned_provider(cfg: dict, capability: str | None) -> str | None:
     """The provider this team pinned for `capability`, or None. Best-effort: a registry that is old,
     unreachable or does not know about pins must not stop `catalog get` from rendering."""
@@ -5511,72 +5452,10 @@ def cmd_catalog(args, cfg) -> None:
     if r.status_code != 200:
         _fail_response(r)
     if not args.platform:
-        rows = r.json().get("platforms", [])
-        platforms = [{"platform": p["slug"], "category": p.get("category") or "Other", "endpoints": p["endpoints"],
-                      "jobs": p["capabilities"], "providers": ", ".join(p["providers"])} for p in rows]
-        _emit({"total": len(rows),
-               "platforms": cli_view.table(platforms, ("platform", "category", "endpoints", "jobs", "providers"))},
-              ["treg catalog <platform>   # its endpoints, by job",
-               "treg catalog search \"<task>\"   # find a tool by what it does"])
+        _emit(*catalog_views.platforms(r.json()))
         return
     data = r.json()
-    connected = _connected_providers(cfg)
-    endpoints = [(cap["id"], e) for cap in data.get("capabilities", []) for e in cap["endpoints"]] \
-        + [(None, e) for e in data.get("extended", [])]
-    own_key = any(e["provider"] in connected for _, e in endpoints)
-    fields = ("id", "job", "price") + (("own_key",) if own_key else ()) + ("name",)
-    rows = [{"id": e["id"], "job": job, "price": _cost_usd(e.get("cost")), "own_key": e["provider"] in connected,
-             "name": _clip(e.get("name") or e.get("summary") or "", 120)} for job, e in endpoints]
-    jobs = [{"job": cap["id"], "does": cap.get("description")} for cap in data.get("capabilities", [])]
-    _emit({"platform": data["platform"]["slug"], "label": data["platform"]["label"],
-           "jobs": cli_view.table(jobs, ("job", "does")) or None,
-           "endpoints": cli_view.table(rows, fields),
-           "routed": f"a treg.<job> id {_ROUTED_NOTE}; any other id is one provider"
-           if any(e.get("kind") == "routed" for _, e in endpoints) else None},
-          [_GET_HELP])
-
-
-def _cost_usd(cost: dict | None) -> str:
-    """Cost in ONE currency so a search table is comparable down the column — the provider's own
-    unit (CNY, or a provider-scoped credit) makes unlike rows look like the same number. Narrow
-    column, so USD stands alone here; `treg catalog get` carries the native amount alongside it."""
-    if not isinstance(cost, dict):
-        return "-"
-    if cost.get("varies"):
-        return "variable"
-    if cost.get("display_unit") and cost.get("display_usd") is not None:
-        return (cost.get("display_prefix", "") + f"${cost['display_usd']:.3g}" + cost.get("display_suffix", "")
-                + "/" + cost["display_unit"])
-    usd = cost.get("usd")
-    if usd is None:
-        # no rate for this unit (a provider that publishes no per-credit price): the native
-        # amount, labelled as such, beats an invented dollar figure
-        return _cost_label(cost)
-    unit = {"per_call": "call", "per_result": "result", "per_success": "success",
-            "per call": "call", "per result": "result", "per success": "success"}.get(cost.get("type"), "call")
-    # 3 significant digits: no decision turns on the 5th decimal of a sub-cent price, and the full
-    # value (plus the provider's own currency) is one `treg catalog get` away
-    if not usd:
-        return "free"
-    rate = cost.get("rate_usd")  # a duration-priced table: quoted per second, as the model is sold
-    if isinstance(rate, (int, float)) and cost.get("rate_unit"):
-        low = cost.get("rate_usd_min")
-        if isinstance(low, (int, float)) and low < rate:
-            return f"${low:.3g}-${rate:.3g}/{cost['rate_unit']}"
-        return f"${rate:.3g}/{cost['rate_unit']}"
-    low = cost.get("usd_min")  # a price table: the cheapest row up to the validated ceiling
-    if isinstance(low, (int, float)) and low < usd:
-        return f"${low:.3g}-${usd:.3g}/{unit}"
-    return f"${usd:.3g}/{unit}"
-
-
-_GET_HELP = "treg catalog get <id>   # params, price, a ready treg call line"
-_ROUTED_NOTE = "lets treg pick the provider (own keys first, then cheapest per hit); its price varies"
-
-
-def _clip(text: str, width: int) -> str:
-    text = " ".join((text or "").split())
-    return text if len(text) <= width else text[: width - 1] + "…"
+    _emit(*catalog_views.platform(data, _connected_providers(cfg)))
 
 
 def _catalog_new_days(value: str) -> int:
@@ -5616,53 +5495,12 @@ def _catalog_search(query: str, args, cfg) -> None:
     if r.status_code != 200:
         _fail_response(r)
     body = r.json()
-    rows = body.get("results", [])
     if added and "added_within_days" not in body and "sort" not in body:
         # An older server ignores both options and answers a plain search: say so rather than
         # labelling ordinary results as new tools.
         _fail("unsupported", "this server does not support --new yet")
-    view: dict = {"query": query or None}
-    if added:
-        view |= {"added_within_days": body.get("added_within_days"), "capped_at_days": body.get("capped_at_days"),
-                 "sort": body.get("sort")}
-    if body.get("verdict") == "none":
-        _emit(view | {"total": 0, "results": [], "note": f"the catalog has no tool for \"{query}\""},
-              [f"treg catalog request \"{query}\"   # requests steer what gets added next"])
-        return
-    if not rows:
-        near = [{"id": n["endpoint_id"], "matches": ", ".join(n["matches"]), "missing": ", ".join(n["missing"])}
-                for n in (body.get("near") or [])[:3]]
-        _emit(view | {"total": 0, "results": [], "almost": cli_view.table(near, ("id", "matches", "missing")) or None},
-              ["treg catalog search \"<other task words>\"",
-               f"treg catalog request \"{query}\"   # requests steer what gets added next"])
-        return
-    connected = _connected_providers(cfg)
-    own_key = any(e["provider"] in connected for e in rows)
-    fields = ("id", "job", "price") + (("added",) if added else ()) + (("own_key",) if own_key else ()) + ("name",)
-    out_rows, help_lines = [], []
-    for e in rows:
-        name = e.get("name") or e.get("summary") or ""
-        if e.get("kind") == "hub":
-            name = f"hub tool by {e.get('provider', '')}: {name}"
-        if e.get("kind") == "routed" and e.get("children_hidden"):
-            help_lines.append(f"treg catalog get {e['id']}   # all providers of {e.get('capability')}")
-        out_rows.append({"id": e["id"], "job": e.get("capability"), "price": _cost_usd(e.get("cost")),
-                         "added": e.get("added"), "own_key": e["provider"] in connected, "name": _clip(name, 120)})
-    view |= {"total": body.get("total", len(rows)), "results": cli_view.table(out_rows, fields)}
-    if body.get("verdict") == "closest":
-        view["note"] = "no exact fit: read treg catalog get before relying on one, or say the task differently"
-    elif body.get("verdict") == "keyword" and body.get("reason") not in (None, "", "not_task"):
-        view["note"] = "ranked by keywords only (the judge did not answer)"
-    if any(e.get("kind") == "routed" for e in rows):
-        view["routed"] = f"a treg.<job> id {_ROUTED_NOTE}; any other id is one provider"
-    help_lines.insert(0, _GET_HELP)
-    if body.get("total", 0) > len(rows):
-        # the same search, words before `--new` (it takes a number), with more rows
-        again = ([shlex.quote(query.strip())] if query.strip() else []) + ([f"--new {days}"] if days is not None else []) \
-            + (["--sort newest"] if sort == "newest" else [])
-        help_lines.append(" ".join(["treg catalog search", *again, f"--limit {min(body['total'], 100)}"]))
-    _emit(view, help_lines)
-
+    _emit(*catalog_views.search(body, query=query, days=days, sort=sort,
+                                connected=lambda: _connected_providers(cfg)))
 
 
 def _feedback_error(code: str, message: str, **details) -> None:
@@ -6160,30 +5998,6 @@ def _catalog_request(text: str, cfg) -> None:
     _dim("requests steer which provider gets added next — the most-asked-for tools land first")
 
 
-def _hub_view(e: dict) -> dict:
-    """A hub tool's contract: what a caller needs, nothing the maker hides."""
-    chk = e.get("check") or {}
-    out = e.get("output") or {}
-    inputs = [{"name": k, "type": v.get("type"), "required": "default" not in v,
-               "default": _as_sent(v["default"]) if "default" in v else None, "max": v.get("max"),
-               "note": v.get("note")} for k, v in (e.get("inputs") or {}).items()]
-    ct = e.get("call_template") or {}
-    return {
-        "maker": e.get("provider"),
-        "made_of": f"{e.get('made_of')} tools; {e.get('recipe')} recipe, v{e.get('version')}",
-        "price": e.get("price_line"),
-        "price_per_run": e.get("price_range"),
-        "health": f"{e.get('status')}; check {chk.get('status') or 'none'}"
-                  + (f" at {str(chk.get('checked_at'))[:16]}" if chk.get("checked_at") else ""),
-        "call": ct.get("cli"),
-        "http": f"{ct.get('http', '')} with X-Treg-Token and a JSON body of inputs" if ct.get("http") else None,
-        "inputs": cli_view.table(inputs, ("name", "type", "required", "default", "max", "note")) or None,
-        "output": out.get("fields") if isinstance(out, dict) and "fields" in out else list(out) or None,
-        "added": e.get("added"),
-        "page": e.get("page"),
-    }
-
-
 def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
     """One endpoint, everything about it — the last stop before `treg call`."""
     with _client(cfg, auth=False) as c:
@@ -6198,151 +6012,18 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         _relay_json(r)
         return
     if r.status_code == 404:
-        detail = _json_dict(r).get("detail")
-        near = (detail.get("did_you_mean") or []) if isinstance(detail, dict) else []
-        # The whole id minus its provider, as words: the last segment alone ("find" for
-        # `apollo.people.email.find`) is a search term that matches half the catalog.
-        terms = " ".join(endpoint_id.split(".")[1:] or [endpoint_id]).replace("-", " ").replace("_", " ").strip()
-        _fail("unknown_endpoint", f"no endpoint or job {endpoint_id!r} in the catalog",
-              [f"treg catalog get {near[0]}"] if near else [f"treg catalog search {terms}"],
-              did_you_mean=near or None)
+        _fail_with(catalog_views.unknown_endpoint(endpoint_id, _json_dict(r)))
     if r.status_code != 200:
         _fail_response(r)
     body = r.json()
-    e, prov = body["endpoint"], body.get("provider") or {}
-    head = {"id": e["id"], "name": e.get("name") or None, "summary": e.get("summary") or None,
-            "note": e.get("note") or None}
+    e = body["endpoint"]
     if e.get("kind") == "hub":
-        _emit(head | _hub_view(e))
+        _emit(catalog_views.head(e) | catalog_views.hub(e))
         return
-    cost = e.get("cost") or {}
-    template = body["call_template"]
-    if e.get("async") and "--await" not in template:
-        template += " --await --timeout 900"
-    # A routed id is treg's own: its name, job, path and provider restate the id, and which providers
-    # can serve this caller is the plan's `skipped` column.
-    routed_id = e.get("kind") == "routed"
-    view = head | {
-        "name": None if routed_id or head.get("summary") else head.get("name"),
-        "job": None if routed_id else e.get("capability"),
-        "upstream": f"{e['method']} {e['path']}" if e.get("method") and e.get("path") and not routed_id else None,
-        "price": _routed_price(body) if routed_id else _cost_usd(cost) if cost else "not priced",
-        # the provider's own number, behind the USD one; skipped when `_cost_usd` already fell back to it
-        "native_price": _native_amount(cost["value"], cost["currency"])
-        if cost.get("currency", "USD") != "USD" and cost.get("value") is not None and cost.get("usd") is not None else None,
-        "price_note": cost.get("note"),
-        "overflow_price": f"${e['overflow_price_usd']:g}/{e.get('overflow_price_unit') or 'call'} through "
-                          f"{e.get('overflow_via')} when treg's own account for it is out"
-        if e.get("overflow_price_usd") is not None else None,
-        "access": None if routed_id else _access_detail(endpoint_id, cfg),
-        # on a routed id, with a ceiling: how every route option is passed, shown on the call itself
-        "call": _with_route_cap(template, (body.get("routing") or {}).get("max_cost_usd")) if routed_id else template,
-        "requires": _requires(body.get("routing")),
-        **_params_view(e.get("input") or {}),
-        **_price_table_view(cost),
-        "async": _async_view(e.get("async")),
-        **_example_view(body.get("example_response"), e["id"], cfg),
-        **_compare_view(e, body, cfg, limit),
-        "provider": None if routed_id else f"{prov.get('display_name', e['provider'])} ({e['provider']})",
-        "limits": prov.get("limits"),
-        "pricing": prov.get("pricing_url"),
-        "docs": e.get("docs_url") or prov.get("docs"),
-        "verified": "generated from its children's verified adapters" if e.get("kind") == "routed"
-        else e.get("verified") or "not verified against the live API",
-        "added": e.get("added"),
-    }
-    help_lines = []
-    rows = view.get("compare") if isinstance(view.get("compare"), list) else []
-    routed = e["id"] if routed_id else next((x["id"] for x in rows if x["id"].startswith("treg.")), None)
-    if routed_id and view.get("also_total") and not view.get("also"):
-        help_lines.append(f"treg catalog get {e['id']} --limit {view['also_total']}   # the {view['also_total']} "
-                          f"providers of {e.get('capability')} treg does not route to, called by id")
-    elif routed and not routed_id:
-        total = view.get("compare_total")
-        help_lines.append(f"treg catalog get {routed}{f' --limit {total}' if total else ''}   # let treg pick the "
-                          f"provider; its plan and every other provider of this job")
-    elif view.get("compare_total") and e.get("capability"):
-        help_lines.append(f"treg catalog get {e['capability']}   # every provider of this job")
-    if view.get("example_more"):
-        help_lines.append(f"treg --json catalog get {e['id']} | jq .example_response   # the whole example")
-    if not routed and (others := [row["id"] for row in rows if row["id"] != e["id"]]):
-        help_lines.append(f"treg catalog get {others[0]}   # the next way to do this job in compare")
-    _emit(view, help_lines, _GET_GROUPS)
-
-
-# `catalog get <id>` in the order an agent acts on it, one paragraph each: what it is; what it costs
-# and the call; a routed call's options; what to send; the response; the other ways to do the job;
-# where it comes from.
-_GET_GROUPS = [
-    ("id", "name", "summary", "note", "job", "upstream"),
-    ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires"),
-    ("route_headers",),
-    ("params_note", "params_shared", "params", "param_examples"),
-    ("price_table", "async"),
-    ("example_response", "example_more"),
-    ("routes_note", "routes", "also_total", "also"),
-    ("routed", "pinned", "compare_total", "compare_note", "compare"),
-    ("provider", "limits", "pricing", "docs", "verified", "added"),
-]
-
-EXAMPLE_FIELDS = 40
-
-
-def _example_view(example, endpoint_id: str, cfg) -> dict:
-    """The example response's shape, cut at about `EXAMPLE_FIELDS` values: it shows what comes back, not
-    data to read, so the rest is a link. Each object keeps its own plain fields before its nested ones
-    (a page's `total` and cursor outrank the twentieth field of its first row), a list keeps its first
-    item, and whatever is cut goes whole, so the cut still decodes."""
-    if example is None:
-        return {}
-    budget = [EXAMPLE_FIELDS]
-
-    def nested(x) -> bool:
-        return isinstance(x, (dict, list))
-
-    def clip(v):
-        if isinstance(v, list):
-            return [clip(v[0])] if v and budget[0] > 0 else []
-        if not isinstance(v, dict):
-            budget[0] -= 1
-            return v
-        kept = {}
-        for k, x in v.items():
-            if not nested(x) and budget[0] > 0:
-                budget[0] -= 1
-                kept[k] = x
-        for k, x in v.items():
-            if nested(x) and budget[0] > 0:
-                kept[k] = clip(x)
-        return {k: kept[k] for k in v if k in kept}
-
-    def leaves(v) -> int:
-        if isinstance(v, dict):
-            return sum(leaves(x) for x in v.values())
-        if isinstance(v, list):
-            return sum(leaves(x) for x in v)
-        return 1
-
-    clipped, total = clip(example), leaves(example)
-    base = (cfg.get("base_url") or PRODUCTION_BASE_URL).rstrip("/")
-    return {"example_response": clipped,
-            "example_more": f"cut to {leaves(clipped)} of {total} values; the whole example: "
-                            f"{base}/catalog/examples/{endpoint_id}" if leaves(clipped) < total else None}
-
-
-def _with_route_cap(template: str, max_cost_usd) -> str:
-    """The ready call with the job's own ceiling written out, so the way every `route_headers` option
-    rides `--header` is shown without changing what the call may spend."""
-    cap = f"--header 'X-Treg-Route-Max-Cost: {max_cost_usd if isinstance(max_cost_usd, (int, float)) else 1:g}'"
-    return template.replace(" --data ", f" {cap} --data ", 1) if " --data " in template else f"{template} {cap}"
-
-
-def _requires(routing: dict | None) -> str | None:
-    """What a routed call needs at minimum: one of its contract's identity sets. Each identity param is
-    optional on its own, which is why the params table cannot say this."""
-    sets = ((routing or {}).get("contract") or {}).get("identity") or []
-    names = [" + ".join(s) for s in sets if s]
-    return None if not names else names[0] if len(names) == 1 else "one of " + " | ".join(names)
+    access = None if e.get("kind") == "routed" else _access_detail(endpoint_id, cfg)
+    _emit(*catalog_views.endpoint(body, access=access, pinned=lambda capability: _pinned_provider(cfg, capability),
+                                  limit=limit, base_url=cfg.get("base_url") or PRODUCTION_BASE_URL),
+          catalog_views.GET_GROUPS)
 
 
 def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
@@ -6356,20 +6037,12 @@ def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
             if r.status_code == 200 else None
         if not cap or not cap.get("endpoints"):
             return None
-        if routed := next((x["id"] for x in cap["endpoints"] if x.get("kind") == "routed"), None):
+        if routed := catalog_views.routed_member(cap):
             return routed
         d = c.get(f"/catalog/endpoints/{quote(cap['endpoints'][0]['id'], safe='')}")
     if d.status_code != 200:
         return None
-    body = d.json()
-    members = [body["endpoint"], *(body.get("siblings") or [])]
-    pinned = _pinned_provider(cfg, job)
-    ranked = sorted((x for x in members if not pinned or x["provider"] == pinned), key=_compare_rank)
-    view = {"job": job, "does": cap.get("description"),
-            "providers": len({x["provider"] for x in ranked}),
-            "pinned": _pinned_note(pinned, job),
-            "compare_note": _COMPARE_NOTE, "compare": _compare_rows(ranked)}
-    return view, [_GET_HELP]
+    return catalog_views.job(job, cap.get("description"), d.json(), _pinned_provider(cfg, job))
 
 
 def _access_detail(endpoint_id: str, cfg) -> str | None:
@@ -6383,232 +6056,6 @@ def _access_detail(endpoint_id: str, cfg) -> str | None:
         return (a.json() if a.status_code == 200 else {}).get("detail")
     except Exception:  # noqa: BLE001 — an access hint must never break the catalog page
         return None
-
-
-def _params_view(inp: dict) -> dict:
-    """What to SEND, by location, required first: the shortest working call is the required set. A
-    nested object (Replicate's `input: {properties: …}`) becomes dotted names, which is what the
-    caller types. Each note carries the param's own contract (closed set, default, range); prose that
-    three or more params share is said once, in `params_shared`. Each param's own example is listed
-    under `param_examples` as a JSON literal, so its type is unambiguous; together they are not a request
-    (`call` is the runnable one). The endpoint's own rule (`params_note`) comes before the table."""
-    rows = []
-
-    def walk(items: dict, where: str, prefix: str) -> None:
-        for name, spec in items.items():
-            spec = spec if isinstance(spec, dict) else {}
-            props = spec.get("properties")
-            if isinstance(props, dict) and props:
-                walk(props, where, f"{prefix}{name}.")
-                continue
-            rows.append({"in": where, "name": f"{prefix}{name}", "type": str(spec.get("type") or "") or None,
-                         "required": bool(spec.get("required")), "_prose": (spec.get("note") or "").strip(),
-                         "_spec": spec})
-
-    for where, key in (("path", "pathParams"), ("query", "queryParams"), ("body", "body")):
-        if isinstance(inp.get(key), dict):
-            walk(inp[key], where, "")
-    rows.sort(key=lambda r: not r["required"])
-    examples = {r["name"]: json.dumps(r["_spec"]["example"], ensure_ascii=False, separators=(",", ":"))
-                for r in rows if r["_spec"].get("example") not in (None, "")}
-    counts: dict[str, list[str]] = {}
-    for r in rows:
-        if r["_prose"]:
-            counts.setdefault(r["_prose"], []).append(r["name"])
-    # A one-word note (`identity`) costs less on each row than a block that names the rows.
-    shared = {prose: names for prose, names in counts.items() if len(names) >= 3 and " " in prose}
-    for r in rows:
-        spec, parts = r.pop("_spec"), []
-        prose = r.pop("_prose")
-        if prose and prose not in shared:
-            parts.append(prose)
-        if isinstance(spec.get("enum"), list) and spec["enum"]:
-            parts.append("one of: " + " | ".join(_as_sent(v) for v in spec["enum"]))
-        if "default" in spec:
-            parts.append(f"default {_as_sent(spec['default'])}")
-        lo, hi = spec.get("min"), spec.get("max")
-        if lo is not None or hi is not None:
-            parts.append(f"range {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
-        r["note"] = " · ".join(p.rstrip(".") if i else p for i, p in enumerate(parts) if p) or None
-    return {"params_note": inp.get("note"),
-            "params_shared": [{"params": ", ".join(names), "note": prose} for prose, names in shared.items()] or None,
-            "params": cli_view.table(rows, ("in", "name", "type", "required", "note")) or None,
-            "param_examples": examples or None}
-
-
-def _as_sent(value) -> str:
-    """A value as the request carries it: JSON, not Python's repr (`true`, `{"include": [...]}`)."""
-    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
-def _price_table_view(cost) -> dict:
-    """The price rows a `cost.table` endpoint bills by: the provider's own list, first match wins;
-    the fallback is what an unmatched request reserves."""
-    if not isinstance(cost, dict) or not isinstance(cost.get("table"), list) or not cost["table"]:
-        return {}
-    cur = cost.get("currency") or "USD"
-    money = (lambda v: f"${v:g}") if cur == "USD" else (lambda v: f"{v:g} {cur}")
-    rows = []
-    for row in cost["table"]:
-        if not isinstance(row, dict):
-            continue
-        price = money(float(row.get("value") or 0))
-        if row.get("times"):
-            price += f" × {str(row['times']).split('.', 1)[-1]}"
-            if row.get("times_min") is not None:
-                price += f" (from {row['times_min']})"
-        rows.append({"when": " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items()),
-                     "price": price})
-    fb = cost.get("fallback") or {}
-    if isinstance(fb, dict) and fb.get("value") is not None:
-        rows.append({"when": "fallback (ceiling)", "price": money(float(fb["value"]))})
-    if cost.get("settle", "table") == "usage":
-        usage = cost.get("usage") or {}
-        reported = (", ".join(str(t.get("path")) for t in usage["terms"]) + " at their rates"
-                    if usage.get("terms") else usage.get("path", "usage"))
-        settle = (f"usage: the matched row is reserved; the provider's reported {reported} is what you pay, "
-                  "which can exceed the reserve when the provider applies a minimum charge")
-    else:
-        settle = "table: the matched row is reserved at submission and charged when the task succeeds"
-    return {"price_table": rows, "settle": settle}
-
-
-def _async_view(desc) -> dict | None:
-    """How an async generation call is followed: the descriptor `--await` executes and the
-    `X-Treg-Async` header carries, so an MCP or raw-HTTP agent can poll it by hand."""
-    if not isinstance(desc, dict) or not desc:
-        return None
-    poll, status, result = desc.get("poll") or {}, desc.get("status") or {}, desc.get("result") or {}
-    every = f"every ~{desc.get('interval', 10)} s"
-    if poll.get("endpoint"):
-        poll_how = f"treg call {poll['endpoint']} -p {(poll.get('param') or {}).get('name')}=<task id>, {every}"
-    elif poll.get("url_from"):
-        poll_how = f"the URL in response field {poll['url_from']} (hosts: {', '.join(poll.get('url_hosts') or [])}), {every}"
-    else:
-        poll_how = None
-    if result.get("path"):
-        result_how = f"response field {result['path']}"
-    elif result.get("fetch"):
-        fp = result.get("fetch_param") or {}
-        result_how = f"treg call {result['fetch']} -p {fp.get('name')}=<{fp.get('value_from')} from the finished task>"
-    else:
-        result_how = None
-    return {"returns": "at once; the result arrives later (`treg call … --await` follows it for you)",
-            "task_id": f"response field {desc.get('id_from')}", "poll": poll_how,
-            "done_when": f"{status.get('path')} is one of {status.get('success')}",
-            "failed_when": f"{status.get('failure')} (a failed task refunds the hold)",
-            "result": result_how,
-            "lifetime": f"{result['ttl_note']}; download promptly, treg never stores media" if result.get("ttl_note") else None}
-
-
-def _compare_view(e: dict, body: dict, cfg, limit: int) -> dict:
-    """The other ways to do this job. A routed id gets its plan (what `treg call` tries, in order, at
-    treg's prices; own keys jump the queue at call time) and the providers it does not route to; any
-    other id gets the job's providers, itself first, then the measured ones by success rate and price,
-    then the unmeasured, `limit` rows at most."""
-    routing = body.get("routing") or {}
-    if routing.get("plan"):
-        plan = [{"id": c["endpoint_id"], "price": _plan_price(c),
-                 "accepts": " | ".join("+".join(v) for v in (c.get("accepts") or [])) or None,
-                 "works": _pct(c.get("works")), "hit": _pct(c.get("hit_rate")),
-                 "skipped": c.get("skipped") or ("exhausted" if c.get("exhausted") else None)}
-                for c in routing["plan"]]
-        also = [{"id": a["endpoint_id"], "price": _plan_price(a)} for a in routing.get("also") or []]
-        per_call = any("~$" in (row["price"] or "") for row in plan)
-        # The providers it does not route to are listed only on request (`--limit`): this page is how
-        # to let treg choose, and a list of the others reads as a menu.
-        return {"routes_note": "the order a call tries, own keys first at call time; "
-                               + ("~$/call is one call at the default size, what X-Treg-Route-Max-Cost is checked "
-                                  "against, and limit changes it; " if per_call else "") + _METRICS_NOTE,
-                "routes": cli_view.table(plan, ("id", "price", "accepts", "works", "hit", "skipped")),
-                "route_headers": routing.get("headers") or None,
-                "also_total": len(also) if also and (limit is None or len(also) > limit) else None,
-                "also": cli_view.table(also[:limit], ("id", "price")) or None if limit else None}
-    sibs = body.get("siblings") or []
-    if not sibs:
-        return {"compare": f"no other provider does {e['capability']}"} if e.get("capability") else {}
-    pinned = _pinned_provider(cfg, e.get("capability"))
-    others = sorted((s for s in sibs if not pinned or s["provider"] == pinned), key=_compare_rank)
-    # The routed id rides second, under any limit: it is the other way to do this job, not one more
-    # provider to rank.
-    routed = [s for s in others if s.get("kind") == "routed"]
-    rows = [e, *routed, *(s for s in others if s.get("kind") != "routed")][:max(limit or 10, 1 + len(routed))]
-    return {"compare_total": len(others) + 1 if len(others) + 1 > len(rows) else None,
-            "routed": f"{routed[0]['id']} {_ROUTED_NOTE}" if routed else None,
-            "compare_note": _COMPARE_NOTE, "compare": _compare_rows(rows),
-            "pinned": _pinned_note(pinned, e.get("capability"))}
-
-
-def _routed_price(body: dict) -> str:
-    """A routed id's price: it varies with the provider that serves, so the range of its plan's unit
-    prices."""
-    usd = [u for row in (body.get("routing") or {}).get("plan") or []
-           if isinstance(u := (row.get("cost") or {}).get("usd", row.get("usd")), (int, float))]
-    return f"variable, ${min(usd):.3g}–${max(usd):.3g} per hit" if usd else "variable"
-
-
-def _plan_price(row: dict) -> str | None:
-    """The unit price, then what one call at the default size costs when that is another number
-    (a page of rows, a whole credit): the router holds and caps that one."""
-    cost, usd = row.get("cost"), row.get("usd")
-    if not cost:
-        return _usd_or_none(usd)
-    unit = _cost_usd(cost)
-    shown = cost.get("display_usd", cost.get("usd"))
-    if usd is None or shown is None or cost.get("varies") or f"{usd:.3g}" == f"{shown:.3g}":
-        return unit
-    return f"{unit} (~${usd:.3g}/call)"
-
-
-_METRICS_NOTE = ("works is the share of calls the provider answered without error; hit is the share that "
-                 "found something, so a provider can work 100% and still miss; both are measured by treg")
-_COMPARE_NOTE = _METRICS_NOTE + "; last_ok_days is measured, verified is the catalog's hand-run stamp"
-_COMPARE_FIELDS = ("id", "price", "works", "calls", "hit", "p50", "last_ok_days", "verified")
-
-
-def _compare_rows(endpoints: list[dict]) -> list[dict]:
-    rows = []
-    for x in endpoints:
-        obs = x.get("observed") or {}
-        rows.append({"id": x["id"], "price": _cost_usd(x.get("cost")), "works": _pct(obs.get("ok_rate")),
-                     "calls": _count(obs.get("samples")), "hit": _pct(obs.get("hit_rate")), "p50": _duration(obs.get("p50_ms")),
-                     "last_ok_days": obs.get("last_ok_days"), "verified": x.get("verified")})
-    return cli_view.table(rows, _COMPARE_FIELDS)
-
-
-def _pinned_note(pinned: str | None, job: str | None) -> str | None:
-    return f"your team pins this job to {pinned}; other providers are refused (admin: treg org unpin {job})" \
-        if pinned else None
-
-
-def _compare_rank(s: dict) -> tuple:
-    """Measured before unmeasured; then the higher success rate, to the percent; then the lower price
-    (a varying one, as on a routed id, after every known price)."""
-    rate = (s.get("observed") or {}).get("ok_rate")
-    cost = s.get("cost") or {}
-    usd = cost.get("usd")
-    known = isinstance(usd, (int, float)) and not cost.get("varies")
-    return (rate is None, -round(rate or 0, 2), usd if known else float("inf"))
-
-
-def _count(n) -> int | str | None:
-    """A sample size to the magnitude that weighs a rate: 124 stays exact, 1622303 is 1.6M."""
-    if not isinstance(n, int) or n < 1000:
-        return n
-    v, unit = (n / 1e6, "M") if n >= 999_500 else (n / 1e3, "k")
-    return (f"{v:.1f}".rstrip("0").rstrip(".") if v < 10 else str(round(v))) + unit
-
-
-def _pct(rate) -> str | None:
-    return None if rate is None else f"{round(rate * 100, 1):g}%"
-
-
-def _duration(ms) -> str | None:
-    return None if ms is None else (f"{ms}ms" if ms < 1000 else f"{ms / 1000:.1f}s")
-
-
-def _usd_or_none(usd) -> str | None:
-    return None if usd is None else ("free" if usd == 0 else f"${usd:.4g}")
 
 
 def cmd_connections_ls(args, cfg) -> None:
@@ -7088,8 +6535,8 @@ def build_parser() -> argparse.ArgumentParser:
     odr = mk(og, "deny-rm", "Remove a deny rule.", "treg org deny-rm 3")
     odr.add_argument("rule_id", type=int, help="the rule id (from `org deny-ls`)")
     odr.set_defaults(fn=cmd_org_deny_rm)
-    oj = mk(og, "join", "Join a team using an invite code.", "treg org join <code> --email you@company.com")
-    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", required=True, help="your email (creates you if new)"); oj.set_defaults(fn=cmd_org_join)
+    oj = mk(og, "join", "Join a team using an invite code (sign in as the invited email first).", "treg org join <code>")
+    oj.add_argument("code", help="the one-time invite code"); oj.add_argument("--email", default="", help="optional: the invited email, checked against the account you are signed in as"); oj.set_defaults(fn=cmd_org_join)
     mk(og, "leave", "Remove yourself from the active team.", "treg org leave").set_defaults(fn=cmd_org_leave)
     od = mk(og, "delete", "Delete a team you own (confirms by name).", "treg org delete superdesign")
     od.add_argument("slug", help="the org slug to delete"); od.set_defaults(fn=cmd_org_delete)

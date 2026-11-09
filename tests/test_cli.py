@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from treg import cli
+from treg.routers.views import catalog as catalog_views
 
 
 @pytest.fixture(autouse=True)
@@ -366,6 +367,40 @@ def test_team_create_and_join_replace_the_saved_bootstrap(monkeypatch):
     monkeypatch.setattr(cli, "_client", lambda cfg, auth=False: Client(joined))
     cli.cmd_org_join(type("A", (), {"code": "inv", "email": "me@example.com"})(), cfg)
     assert cfg["token"] == "joined-default" and cfg["active_org"] == "joined"
+
+
+def test_join_with_an_env_token_keeps_the_saved_login(monkeypatch):
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json):
+            return type("R", (), {"status_code": 200, "text": "{}",
+                                  "json": lambda self: {"token": "bob-team", "org": "bobs"}})()
+
+    saved = []
+    monkeypatch.setenv("TREG_TOKEN", "bob-identity")
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_show", lambda response: None)
+    monkeypatch.setattr(cli, "_save_config", lambda cfg: saved.append(dict(cfg)))
+    cfg = {"token": "alice-identity", "email": "alice@example.com", "identity": True}
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": ""})(), cfg)
+    assert saved == [] and cfg["token"] == "alice-identity"
+
+
+def test_join_for_another_email_still_shows_the_server_answer(monkeypatch, capsys):
+    refused = type("R", (), {"status_code": 403, "text": '{"detail": "this invite is for a different email"}'})()
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json): return refused
+
+    shown = []
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_show", shown.append)
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": ""})(), {"token": "t"})
+    assert shown == [refused]
+    assert "treg login" in capsys.readouterr().err
 
 
 class _FakeResp:
@@ -947,11 +982,11 @@ def test_a_view_tables_only_several_narrow_rows_and_decodes_to_what_it_was_given
     """One row, or rows too wide to read across, print field by field; the data is the same either
     way, and commands print as typed so they copy without unescaping."""
     from toon_format import decode
-    from treg import cli_view
-    wide = {f"f{i}": i for i in range(cli_view.TABLE_MAX_COLUMNS + 1)}
+    from treg.routers.views import toon
+    wide = {f"f{i}": i for i in range(toon.TABLE_MAX_COLUMNS + 1)}
     view = {"one": [{"a": 1, "b": "x, y"}], "narrow": [{"a": 1, "b": 2}, {"a": 3, "b": 4}],
             "wide": [wide, wide], "keyed": {"US": wide, "UK": wide}, "call": "treg call x --data '{\"k\":[1]}'"}
-    text = cli_view.render(view)
+    text = toon.render(view)
     assert "narrow[2]{a,b}:" in text and "one[1]:" in text and "wide[2]:" in text and "keyed:" in text
     assert "call: treg call x --data '{\"k\":[1]}'" in text
     assert decode(text) == view
@@ -961,7 +996,7 @@ def test_params_say_shared_prose_once_and_lead_with_the_endpoint_rule():
     inp = {"note": "At least one filter is required.", "body": {
         n: {"type": "object", "note": "Include/exclude string arrays.", "example": {"include": [n], "exclude": []}}
         for n in ("title", "city", "company")} | {"has_email": {"type": "boolean", "example": True}}}
-    view = cli._params_view(inp)
+    view = catalog_views.params_view(inp)
     assert list(view)[0] == "params_note"
     assert view["params_shared"] == [{"params": "title, city, company", "note": "Include/exclude string arrays."}]
     assert all("note" not in r for r in view["params"])
@@ -974,17 +1009,17 @@ def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
     """A bare credit count is not a price — a reader cannot compare "1 credit" to "$0.001". When
     the server priced the credit, dollars lead; only an unpriced credit shows alone."""
     priced = {"type": "per_call", "value": 1, "currency": "credit", "usd": 0.00188}
-    assert cli._cost_label(priced) == "$0.00188/call (1 credit)"
-    assert cli._cost_usd(priced) == "$0.00188/call"                 # narrow comparison column
+    assert catalog_views.cost_label(priced) == "$0.00188/call (1 credit)"
+    assert catalog_views.cost_usd(priced) == "$0.00188/call"                 # narrow comparison column
 
     unpriced = {"type": "per_success", "value": 3, "currency": "credit", "usd": None}
-    assert cli._cost_label(unpriced) == "3 credits/success"         # native, labelled as credits
+    assert catalog_views.cost_label(unpriced) == "3 credits/success"         # native, labelled as credits
     # a duration-priced video table is quoted per second, not as a whole-call total range
     per_second = {"type": "per_success", "usd": 13.87, "usd_min": 0.4744,
                   "rate_usd_min": 0.1186, "rate_usd": 0.462, "rate_unit": "s"}
-    assert cli._cost_usd(per_second) == "$0.119-$0.462/s"
-    assert cli._cost_usd(unpriced) == "3 credits/success"
-    assert "$" not in cli._cost_usd(unpriced), "no rate, no invented dollar figure"
+    assert catalog_views.cost_usd(per_second) == "$0.119-$0.462/s"
+    assert catalog_views.cost_usd(unpriced) == "3 credits/success"
+    assert "$" not in catalog_views.cost_usd(unpriced), "no rate, no invented dollar figure"
 
 
 def test_catalog_search_new_and_newest(monkeypatch, capsys):
@@ -1065,9 +1100,9 @@ def test_a_routed_detail_says_what_it_needs_and_prices_each_route_per_unit():
     routing = {"contract": {"identity": [["q"], ["company_domain", "title"]]},
                "plan": [{"endpoint_id": "a.x", "usd": 0.004, "accepts": [["q"]],
                          "cost": {"type": "per_success", "usd": 0.004}}], "also": []}
-    assert cli._requires(routing) == "one of q | company_domain + title"
-    assert cli._requires({"contract": {"identity": [["email"]]}}) == "email"
-    view = cli._compare_view({}, {"routing": routing}, {}, 10)
+    assert catalog_views.requires(routing) == "one of q | company_domain + title"
+    assert catalog_views.requires({"contract": {"identity": [["email"]]}}) == "email"
+    view = catalog_views.compare_view({}, {"routing": routing}, 10, lambda capability: None)
     assert view["routes"][0]["price"] == "$0.004/success", "a per-success child bills no miss; the unit says so"
 
 
@@ -1368,7 +1403,6 @@ def test_hub_init_writes_the_four_files(tmp_path, monkeypatch):
 
 
 def test_catalog_get_prints_a_hub_tool_contract():
-    from treg import cli
     e = {"id": "acme.leads-db", "kind": "hub", "version": 2, "provider": "acme", "made_of": 2, "recipe": "script",
          "price_line": "seller $0.01 + steps", "cost": {"usd": 0.01}, "status": "live",
          "check": {"status": "passed", "checked_at": "2026-09-09T20:11:00"},
@@ -1377,7 +1411,7 @@ def test_catalog_get_prints_a_hub_tool_contract():
          "output": {"fields": ["rows", "count"]},
          "call_template": {"cli": "treg call acme.leads-db --data '{\"domain\": \"figma.com\"}'", "http": "POST https://treg.to/call/acme.leads-db"},
          "page": "https://treg.to/hub/acme.leads-db"}
-    view = cli._hub_view(e)
+    view = catalog_views.hub(e)
     assert view["price"] == "seller $0.01 + steps" and view["output"] == ["rows", "count"]
     assert {i["name"]: i["required"] for i in view["inputs"]} == {"domain": True, "limit": False}
     assert view["call"].startswith("treg call acme.leads-db") and view["page"] == "https://treg.to/hub/acme.leads-db"

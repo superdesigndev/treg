@@ -40,6 +40,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Showcase leaderboard and pictures - applications, review, votes, avatars](architecture/showcase.md) | shipped | __init__.py, showcase.py, showcase.py, __init__.py, … |
 | [Super-admin - cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer - one call, answered as rows and columns (`/table/`)](architecture/table.md) | shipped | __init__.py, table.py, table.py, call.py, … |
+| [Async tasks - `/tasks/{call_id}` follows the task an async call started](architecture/tasks.md) | building | tasks.py, tasks.py, asynctasks.py, 0098_call_task.py, … |
 | [Workbench table storage](architecture/workbench-storage.md) | foundational | models.py, 0077_workbench_table_metadata.py, teams.py, test_workbench_table_schema.py, … |
 
 ## Interfaces (API · CLI · skill)
@@ -47,7 +48,8 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, sitetrack.js, api.py, … |
-| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, cli_view.py, home.py, test_released_cli_compat.py, … |
+| [The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events](interface/cli-binary.md) | building | .goreleaser.yaml, main.go, agents.go, mcp.go, … |
+| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, __init__.py, toon.py, catalog.py, … |
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |

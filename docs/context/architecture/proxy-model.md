@@ -565,7 +565,8 @@ Other responses needing settlement or ownership evidence have a hard 8 MiB compl
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,
 before any success headers, and closes the upstream in `finally`. The hold and claim are released,
 the caller gets a 502 at zero cost blamed on treg, and no prefix reaches settlement, archive or
-replay. Own-key streams are outside this limit. `tests/test_call_response_limits.py` covers both
+replay. Own-key streams are outside this limit; an own-key async answer is read whole up to
+`_TASK_ANSWER_MAX` to record its task, and a larger one streams untouched ([tasks](tasks.md)). `tests/test_call_response_limits.py` covers both
 HTTP hops.
 
 ### Spooled evidence for inline media

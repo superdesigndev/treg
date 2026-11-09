@@ -12,6 +12,8 @@ sources:
   - src/treg/models.py
   - src/treg/application/billing.py
   - src/treg/routers/billing.py
+  - src/treg/infra/slack.py
+  - tests/test_topup_reconcile.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -125,7 +127,8 @@ limit, and changing a type there rewrites a very large table under an exclusive 
 that sums or caps money is `BIGINT` from its first revision.
 
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
-it creates no other money movement.
+it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
+([tasks](tasks.md)).
 
 ## The six operations (`domain/money`)
 
@@ -265,7 +268,7 @@ rolls everything back. Meta records `source=signup` and the `user_id`. The per-o
 `grant(once=True)` check is not a concurrency arbiter.
 
 `User.email_verified_at` is set only by successful OTP, verified social login or an inbox-only
-invitation link; legacy `/users` and admin-visible invite codes prove nothing. An unverified account
+invitation link; legacy `/users` and accounts the invite-code door created before it required sign-in prove nothing. An unverified account
 may create teams with zero credit. The sign-in that first verifies it
 (`find_or_create_user(..., proven=)`, then `signup.grant_signup_promo_on_proof` after that commit)
 offers the claim to the oldest eligible team it owns, or its first eligible team, without a second
@@ -458,16 +461,37 @@ never a Stripe coupon.
 
 **The top-up bonus is a separate `grant`, manual and automatic alike.** `topup_bonus_tiers`
 (`{min_usd: percent}`) gives a top-up a `bonus` block at the highest tier at or below the amount
-(`bonus_for_topup`, integer arithmetic). `_grant_topup_bonus` grants it after the purchased credit
-commits, from `_credit`'s `fresh` branch and from the inline auto-top-up credit. An auto top-up
-reaches both doors, so the helper locks the payment's purchased block and grants nothing when a bonus
-for that PaymentIntent already exists. It is its own block that burns with promo credit, so the
+(`bonus_for_topup`, integer arithmetic, read at grant time). It burns with promo credit, so the
 purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
-bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up,
-so a bigger refill amount is the visible way to earn more. A refund or dispute does not
-reverse it on its own: a refund revokes the unspent bonus in proportion to what was refunded
-(see "Refunds revoke unspent credit"); a dispute only logs it for a human (`bonus_blocks_flagged`). The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which
-`topup_history` joins to show `bonus_micro`.
+bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up.
+The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which `topup_history` joins
+to show `bonus_micro`.
+
+`_grant_topup_bonus` grants per payment, not per first delivery: every delivery, and the inline
+auto-top-up credit, grants when no `topup_bonus` entry names the PaymentIntent. A lock on the
+purchased block (a no-op UPDATE, so SQLite serializes too) keeps two doors from both granting. A
+failed webhook grant still credits, then raises `BonusPending` (a 500) so Stripe redelivers; a failed
+inline grant only logs and the webhook grants it. Only a purchased block younger than Stripe's
+three-day retry window (`BONUS_HEAL_WINDOW`) is healed: an older gap may already have been paid by
+hand. A heal after a refund revokes the refunded share of the new bonus in the same transaction.
+`revoke_refunded` takes the same lock, after row-locking the purchased and bonus blocks in
+settlement's id order, so it neither misses a concurrent heal nor deadlocks a settlement. A refund
+revokes the unspent bonus in proportion (see "Refunds revoke unspent credit"); a dispute only logs
+it for a human (`bonus_blocks_flagged`).
+
+**Reconciliation against Stripe** (`treg-worker billing reconcile`, `billing.reconcile_topups`). The
+webhook is the only door for a paid top-up, so a delivery that keeps failing is money paid and not
+credited, and nothing in the request path notices. The command lists Stripe's
+`payment_intent.succeeded` events in `[now - grace - hours, now - grace)`, by success rather than
+creation time because a bank debit can succeed days later. It keeps the treg top-ups by the
+webhook's `_topup_metadata` rule and reports `not_credited` (no purchased block),
+`credited_differently` (another org or amount) and `bonus_missing` (owed a bonus at the current
+tiers, so a tier change inside the window reports false gaps). Payments of deleted teams are
+skipped: deletion removed what they would match. It writes nothing: the fix is a Stripe event
+resend, which goes through the webhook's idempotency, while a hand credit pays twice if Stripe later
+delivers the event. A resend heals `bonus_missing` only inside `BONUS_HEAL_WINDOW`. It prints one
+JSON line, exits 1 on a gap, and with `TREG_OPS_SLACK_WEBHOOK_URL` set posts the gaps or its own
+failure to that Slack incoming webhook (`infra/slack.py`).
 
 **The preselected amount** (`next_default_usd`) is the first preset above the org's last *manual*
 top-up, capped at `topup_default_cap_usd`; auto refills are skipped so the ladder cannot ratchet on
@@ -729,7 +753,9 @@ row.
   its default; with no default treg's key refuses a request without it), `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
-  or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503). `round:
+  or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
+  does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
+  fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
@@ -747,8 +773,12 @@ row.
   same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
   settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
   basis (`cost.persisted`); the worker settles a terminal answer through `cost.settle_terminal`: a
-  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on, with a
-  charge the provider reported on the submission standing in for a missing one.
+  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on. An async
+  row's `settle.reported` is the charge the provider reported on the submission, when it billed the
+  task (DataForSEO's task_post); the terminal answer's own figure is never read, as a row in today's
+  spelling settles an `observed` basis. Without a submission figure the outcome and `bill` decide.
+  This refines the settlement order for async rows: step 3 reads the submission's report, so a
+  provider that reports its charge only on the terminal answer needs its own declared change.
 - The served `cost` of a `rates` row carries the reserve `max` as its `fallback`, the most one
   call is held at, so eligibility on treg's key reads a price for it.
 - `MarketplaceCall.unit_micro` is one `price.value` (a table's fallback) and
@@ -883,13 +913,27 @@ implemented, so the per-referrer cap does not bound platform-wide exposure.
 
 - A referral is redeemed at first team creation and qualifies when cumulative purchased credit
   reaches `referral_min_topup_micro`. `qualify` checks referrer availability, the card fingerprint
-  against earlier qualified/paid referrals, and the referrer's lifetime cap. Evaluate eligibility
+  against earlier qualified/paid referrals, and the referrer's lifetime cap. A default-false
+  `User.referral_affiliate` exempts only that last gate; revocation restores the configured cap,
+  counting all qualified/paid referrals including those earned while exempt. Historical `capped`
+  rows remain terminal and neither enabling nor revoking triggers grants or a sweep. Evaluate eligibility
   against scarce payment instruments, not freely created accounts. The Stripe fingerprint is optional
   and lives only on `Referral`; refusals stay recorded (`capped`, `rejected`).
+- `lock_referrer` serializes qualification and affiliate operations with a no-op user update on
+  PostgreSQL and SQLite. Qualification reloads the pending row after locking. PostgreSQL additionally
+  takes a transaction advisory lock derived from the card fingerprint so different referrers cannot
+  concurrently reuse one card; SQLite's write lock supplies that serialization.
+- Affiliate changes and `ReferralAffiliateEvent` are committed together by `application.referrals`.
+  Every accepted operation, including a no-op, advances the version. A UUID identifies a retry:
+  the same authenticated principal and exact operation return the original event plus current
+  state, so a delayed enable retry cannot undo a later revocation. History is keyed by user id and
+  creation timestamp because SQLite can reuse a deleted account's id. Events survive deletion.
 - The referee is credited on qualification; the referrer waits `referral_hold_days`. Uniqueness on
   `referred_org_id` and `qualifying_payment_intent` prevents duplicate qualification. Grants use
   `once=False` (`once=True` is a SELECT check, not a concurrency guard).
-- `_pay` commits the paid claim before granting, then commits grants and block-id stamps together. A
+- `_grant_referee`, `_pay` and `reject_for_payment` lock and refresh the referral before acting,
+  preventing stale instant-grant and dispute decisions from racing a sweep. `_pay` commits the
+  paid claim before granting, then commits grants and block-id stamps together. A
   crash between them leaves a paid row with missing block ids (visible in `/admin/referrals`):
   no double payout, but it needs reconciliation.
 - `charge.dispute.created` and `charge.refunded` cancel rewards still in the hold window; granted

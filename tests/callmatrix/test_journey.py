@@ -16,6 +16,7 @@ from treg.domain.money import with_margin
 from test_marketplace_call import EP, EP_DFS, EP_MICRO
 
 from .provider import FakeProvider
+from conftest import accept_with_code
 
 
 _WEBHOOK_SECRET = "whsec_callmatrix_journey"
@@ -128,9 +129,7 @@ async def test_j1_signup_to_topup_and_recovery(
         },
     )
     assert invite.status_code == 200, invite.text
-    accepted = await matrix_clients.post(
-        "/invites/accept",
-        json={"code": invite.json()["code"], "email": "journey-viewer@example.com"},
+    accepted = await accept_with_code(matrix_clients, json={"code": invite.json()["code"], "email": "journey-viewer@example.com"},
     )
     assert accepted.status_code == 200, accepted.text
     hits_before_viewer = len(fake_provider.hits)

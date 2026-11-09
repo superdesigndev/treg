@@ -17,6 +17,81 @@ Regenerate via `scripts/build-map.py`.
 | `.github/workflows/ci.yml` | architecture/import-boundaries.md |
 | `alembic.ini` | architecture/data-model.md |
 | `assets/brand/og-card.html` | interface/seo.md |
+| `cli/.goreleaser.yaml` | interface/cli-binary.md |
+| `cli/cmd/treg/main.go` | interface/cli-binary.md |
+| `cli/internal/agents/agents.go` | interface/cli-binary.md |
+| `cli/internal/agents/mcp.go` | interface/cli-binary.md |
+| `cli/internal/api/client.go` | interface/cli-binary.md |
+| `cli/internal/api/proxy.go` | interface/cli-binary.md |
+| `cli/internal/api/proxy_darwin.go` | interface/cli-binary.md |
+| `cli/internal/api/proxy_other.go` | interface/cli-binary.md |
+| `cli/internal/api/proxy_parse.go` | interface/cli-binary.md |
+| `cli/internal/api/proxy_windows.go` | interface/cli-binary.md |
+| `cli/internal/api/url.go` | interface/cli-binary.md |
+| `cli/internal/api/view.go` | interface/cli-binary.md |
+| `cli/internal/app/app.go` | interface/cli-binary.md |
+| `cli/internal/buildinfo/buildinfo.go` | interface/cli-binary.md |
+| `cli/internal/commands/account.go` | interface/cli-binary.md |
+| `cli/internal/commands/args.go` | interface/cli-binary.md |
+| `cli/internal/commands/audit.go` | interface/cli-binary.md |
+| `cli/internal/commands/await.go` | architecture/tasks.md, interface/cli-binary.md |
+| `cli/internal/commands/balance.go` | interface/cli-binary.md |
+| `cli/internal/commands/call.go` | interface/cli-binary.md |
+| `cli/internal/commands/catalog.go` | interface/cli-binary.md |
+| `cli/internal/commands/connections.go` | interface/cli-binary.md |
+| `cli/internal/commands/env.go` | interface/cli-binary.md |
+| `cli/internal/commands/feedback.go` | interface/cli-binary.md |
+| `cli/internal/commands/feedback_get.go` | interface/cli-binary.md |
+| `cli/internal/commands/health.go` | interface/cli-binary.md |
+| `cli/internal/commands/help.go` | interface/cli-binary.md |
+| `cli/internal/commands/helpers.go` | interface/cli-binary.md |
+| `cli/internal/commands/home.go` | interface/cli-binary.md |
+| `cli/internal/commands/host.go` | interface/cli-binary.md |
+| `cli/internal/commands/mcp.go` | interface/cli-binary.md |
+| `cli/internal/commands/mediatype.go` | interface/cli-binary.md |
+| `cli/internal/commands/org.go` | interface/cli-binary.md |
+| `cli/internal/commands/resources.go` | interface/cli-binary.md |
+| `cli/internal/commands/review.go` | interface/cli-binary.md |
+| `cli/internal/commands/root.go` | interface/cli-binary.md |
+| `cli/internal/commands/secret.go` | interface/cli-binary.md |
+| `cli/internal/commands/skills.go` | interface/cli-binary.md |
+| `cli/internal/commands/tool.go` | interface/cli-binary.md |
+| `cli/internal/commands/topup.go` | interface/cli-binary.md |
+| `cli/internal/commands/update.go` | interface/cli-binary.md |
+| `cli/internal/commands/upload.go` | interface/cli-binary.md |
+| `cli/internal/commands/upload_clis.go` | interface/cli-binary.md |
+| `cli/internal/commands/upload_env.go` | interface/cli-binary.md |
+| `cli/internal/commands/upload_llm.go` | interface/cli-binary.md |
+| `cli/internal/commands/upload_skills.go` | interface/cli-binary.md |
+| `cli/internal/commands/usage.go` | interface/cli-binary.md |
+| `cli/internal/config/config.go` | interface/cli-binary.md |
+| `cli/internal/minisign/minisign.go` | interface/cli-binary.md |
+| `cli/internal/ojson/ojson.go` | interface/cli-binary.md |
+| `cli/internal/output/call.go` | interface/cli-binary.md |
+| `cli/internal/output/output.go` | interface/cli-binary.md |
+| `cli/internal/output/view.go` | interface/cli-binary.md |
+| `cli/internal/prompt/hidden_other.go` | interface/cli-binary.md |
+| `cli/internal/prompt/hidden_unix.go` | interface/cli-binary.md |
+| `cli/internal/prompt/prompt.go` | interface/cli-binary.md |
+| `cli/internal/prompt/termios_darwin.go` | interface/cli-binary.md |
+| `cli/internal/prompt/termios_linux.go` | interface/cli-binary.md |
+| `cli/internal/providers/catalog.json` | interface/cli-binary.md |
+| `cli/internal/providers/providers.go` | interface/cli-binary.md |
+| `cli/internal/session/proc_darwin.go` | interface/cli-binary.md |
+| `cli/internal/session/proc_linux.go` | interface/cli-binary.md |
+| `cli/internal/session/proc_other.go` | interface/cli-binary.md |
+| `cli/internal/session/session.go` | interface/cli-binary.md |
+| `cli/internal/skillscan/cliprofile.go` | interface/cli-binary.md |
+| `cli/internal/skillscan/skillscan.go` | interface/cli-binary.md |
+| `cli/internal/telemetry/telemetry.go` | interface/cli-binary.md |
+| `cli/internal/term/term.go` | interface/cli-binary.md |
+| `cli/internal/update/detach_unix.go` | interface/cli-binary.md |
+| `cli/internal/update/detach_windows.go` | interface/cli-binary.md |
+| `cli/internal/update/legacy.go` | interface/cli-binary.md |
+| `cli/internal/update/method.go` | interface/cli-binary.md |
+| `cli/internal/update/update.go` | interface/cli-binary.md |
+| `cli/scripts/check-beta.sh` | interface/cli-binary.md |
+| `cli/scripts/sign-release.sh` | interface/cli-binary.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
 | `docs/hub-recipes/data-csv/run.js` | architecture/hub.md |
 | `docs/hub-recipes/data-sheets/run.js` | architecture/hub.md |
@@ -199,6 +274,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0092_media_object_key.py` | architecture/media.md |
 | `src/treg/alembic/versions/0095_ledgerentry_grant_index.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0096_route_rule_version.py` | architecture/data-model.md, architecture/route-rules.md |
+| `src/treg/alembic/versions/0097_referral_affiliate.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0098_call_task.py` | architecture/tasks.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -206,7 +283,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/arena.py` | architecture/org-endpoint-quota.md, interface/enrich-arena.md |
 | `src/treg/application/arena_insights.py` | interface/enrich-arena.md |
 | `src/treg/application/arena_verification_insights.py` | interface/enrich-arena.md |
-| `src/treg/application/asynctasks.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md |
+| `src/treg/application/asynctasks.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/tasks.md |
 | `src/treg/application/auth.py` | architecture/data-model.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/onboarding.md |
 | `src/treg/application/billing.py` | architecture/money.md |
 | `src/treg/application/call/__init__.py` | architecture/import-boundaries.md |
@@ -235,6 +312,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/catalog_find.py` | architecture/find.md |
 | `src/treg/application/catalog_search.py` | architecture/find.md |
 | `src/treg/application/catalog_stats.py` | architecture/catalog.md |
+| `src/treg/application/cli_releases.py` | interface/cli-binary.md |
 | `src/treg/application/connect.py` | architecture/auth-secrets.md, architecture/composition.md, interface/api.md |
 | `src/treg/application/enterprise_billing.py` | architecture/money.md |
 | `src/treg/application/enterprise_sso.py` | architecture/multi-tenancy.md |
@@ -271,6 +349,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/showcase.py` | architecture/showcase.md |
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, architecture/policy-extensions.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
+| `src/treg/application/tasks.py` | architecture/tasks.md |
+| `src/treg/application/view_context.py` | interface/api.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -299,9 +379,9 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli.py` | architecture/hub.md, architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
 | `src/treg/cli_analytics.py` | interface/cli.md |
 | `src/treg/cli_session.py` | interface/cli.md |
-| `src/treg/cli_view.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
+| `src/treg/client_notice.py` | interface/cli.md |
 | `src/treg/compare_pages.py` | interface/seo.md |
 | `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/route-rules.md, architecture/super-admin.md, architecture/table.md, interface/web-arena.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
@@ -403,6 +483,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/catalog_stat_dirty.py` | architecture/catalog.md, architecture/data-model.md |
 | `src/treg/infra/db.py` | architecture/data-model.md, architecture/multi-tenancy.md, ops/deploy.md |
 | `src/treg/infra/embed.py` | architecture/find.md |
+| `src/treg/infra/github_releases.py` | interface/cli-binary.md |
 | `src/treg/infra/imaging.py` | architecture/showcase.md |
 | `src/treg/infra/judge.py` | architecture/find.md |
 | `src/treg/infra/kv.py` | architecture/data-model.md, architecture/feedback.md, architecture/org-flow-control.md, architecture/route-rules.md |
@@ -424,6 +505,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/provider_concurrency.py` | ops/capacity.md |
 | `src/treg/infra/provider_rate.py` | ops/capacity.md |
 | `src/treg/infra/route_quality.py` | architecture/catalog.md |
+| `src/treg/infra/slack.py` | architecture/money.md |
 | `src/treg/infra/stripe.py` | architecture/money.md |
 | `src/treg/infra/structured_logging.py` | architecture/org-flow-control.md, architecture/org-traffic.md |
 | `src/treg/infra/turnstile.py` | architecture/multi-tenancy.md |
@@ -461,6 +543,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/billing.py` | architecture/composition.md, architecture/money.md, interface/api.md |
 | `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-flow-control.md, architecture/org-traffic.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
 | `src/treg/routers/catalog.py` | architecture/catalog.md, architecture/hub.md, interface/api.md |
+| `src/treg/routers/cli_client.py` | interface/cli-binary.md |
 | `src/treg/routers/compare.py` | interface/seo.md |
 | `src/treg/routers/connections.py` | architecture/auth-secrets.md, architecture/composition.md, interface/api.md |
 | `src/treg/routers/enterprise_sso.py` | architecture/money.md, architecture/multi-tenancy.md, interface/web-arena.md |
@@ -478,6 +561,12 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/showcase.py` | architecture/showcase.md |
 | `src/treg/routers/signup_cookies.py` | interface/api.md |
 | `src/treg/routers/table.py` | architecture/org-traffic.md, architecture/table.md |
+| `src/treg/routers/tasks.py` | architecture/tasks.md |
+| `src/treg/routers/view.py` | interface/api.md |
+| `src/treg/routers/views/__init__.py` | interface/cli.md |
+| `src/treg/routers/views/account.py` | interface/cli.md |
+| `src/treg/routers/views/catalog.py` | interface/cli.md |
+| `src/treg/routers/views/toon.py` | interface/cli.md |
 | `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/runner.py` | interface/api.md |
@@ -503,7 +592,9 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/gtag.js` | architecture/ads-conversions.md |
 | `src/treg/web/gtm-engineering.html` | interface/seo.md |
 | `src/treg/web/index.html` | architecture/hub.md |
-| `src/treg/web/install.sh` | interface/skill.md |
+| `src/treg/web/install-bin.sh` | interface/cli-binary.md |
+| `src/treg/web/install.ps1` | interface/cli-binary.md |
+| `src/treg/web/install.sh` | interface/cli.md, interface/skill.md |
 | `src/treg/web/integrate.md` | interface/skill.md |
 | `src/treg/web/jev.html` | interface/seo.md |
 | `src/treg/web/landing.html` | interface/seo.md |
@@ -581,6 +672,10 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/web-arena/arena.js` | interface/web-arena.md |
 | `src/treg/worker.py` | architecture/composition.md, architecture/hub.md, architecture/multi-tenancy.md, interface/web-arena.md, ops/capacity.md, ops/deploy.md |
 | `tests/callmatrix/test_hub_run.py` | architecture/hub.md |
+| `tests/cli_go/agent_sandbox.py` | interface/cli-binary.md |
+| `tests/cli_go/cli_go_harness.py` | interface/cli-binary.md |
+| `tests/cli_go/cli_go_live.py` | interface/cli-binary.md |
+| `tests/cli_go/test_await_parity.py` | architecture/tasks.md |
 | `tests/fake_object_store.py` | architecture/archive.md |
 | `tests/fixtures/find_bench.yaml` | architecture/find.md |
 | `tests/fixtures/org-flow-control/generate.ts` | architecture/org-flow-control.md |
@@ -691,6 +786,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_provider_concurrency_redis.py` | ops/capacity.md |
 | `tests/test_rankings.py` | architecture/catalog.md |
 | `tests/test_redundant_index_migration.py` | architecture/data-model.md |
+| `tests/test_referral_affiliate_schema.py` | architecture/data-model.md |
 | `tests/test_relay_content_length.py` | architecture/proxy-model.md |
 | `tests/test_relay_quota_admission.py` | architecture/org-endpoint-quota.md |
 | `tests/test_released_cli_compat.py` | interface/cli.md |
@@ -709,9 +805,11 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_table_oauth.py` | architecture/table.md |
 | `tests/test_tag_billing.py` | architecture/proxy-model.md |
 | `tests/test_tag_billing_adversarial.py` | architecture/proxy-model.md |
+| `tests/test_tasks.py` | architecture/tasks.md |
 | `tests/test_team_limit.py` | architecture/multi-tenancy.md |
 | `tests/test_tinyfish.py` | architecture/money.md |
 | `tests/test_token_revocation.py` | architecture/multi-tenancy.md |
+| `tests/test_topup_reconcile.py` | architecture/money.md |
 | `tests/test_turnstile.py` | architecture/multi-tenancy.md |
 | `tests/test_web_arena.py` | interface/web-arena.md |
 | `tests/test_web_arena_calls.py` | interface/web-arena.md |
@@ -730,7 +828,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/catalog-schema.md` | `__init__.py`, `base.py`, `paths.py`, `common.py`, `legacy.py`, `v2.py`, `manifest.py`, `files.py`, `violations.py`, `violations.yaml`, `export.py`, `outcome.py`, `__init__.py`, `catalog_schema.py`, `catalog_shrink_only.py`, `catalog_v2.py`, `test_catalog_schema.py`, `test_catalog_v2_codemod.py` |
 | `architecture/catalog.md` | `__init__.py`, `store.py`, `stats.py`, `results.py`, `rankings.py`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `quality.py`, `synthetic.py`, `rankings.py`, `catalog_stats.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `route.py`, `async_bridge.py`, `octen.py`, `enrichlayer.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `route_quality.py`, `settlement.py`, `catalog.py`, `mcp.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `capabilities.yaml`, `aliases.yaml`, `fx.yaml`, `contracts.yaml`, `adapters.yaml`, `catalog_added.py`, `catalog_backfill_added.py`, `catalog_cost_provenance.py`, `catalog_drift.py`, `catalog_fx_update.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `catalog_verify.py`, `catalog_verify_extended.py`, `catalog-added.yml`, `catalog-drift.yml`, `test_aigc_pr_b.py`, `test_call_verdict.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_rankings.py`, `test_route_cost_ceiling.py`, `test_routing.py` |
 | `architecture/composition.md` | `bootstrap.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `worker.py`, `money_trace_runner.py`, `loop_stall.py`, `money_admission_reporting.py`, `call_surface.py`, `connect.py`, `mcp_oauth.py`, `session.py`, `admin.py`, `auth.py`, `billing.py`, `call.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `web.py`, `dump_surface.py`, `test_app_roles.py` |
-| `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0091_remove_prefix_covered_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0096_route_rule_version.py`, `0075_ad_click_stash.py`, `0079_enterprise_sso.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `0087_rankings_snapshot.py`, `0088_call_usage_rollup.py`, `0089_ledgerentry_settle_spend_index.py`, `0090_ledgerentry_topup_index.py`, `0095_ledgerentry_grant_index.py`, `call_usage_rollup.py`, `call_usage.py`, `test_call_usage_rollup.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
+| `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0091_remove_prefix_covered_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0096_route_rule_version.py`, `0097_referral_affiliate.py`, `test_referral_affiliate_schema.py`, `0075_ad_click_stash.py`, `0079_enterprise_sso.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `0087_rankings_snapshot.py`, `0088_call_usage_rollup.py`, `0089_ledgerentry_settle_spend_index.py`, `0090_ledgerentry_topup_index.py`, `0095_ledgerentry_grant_index.py`, `call_usage_rollup.py`, `call_usage.py`, `test_call_usage_rollup.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `verdicts.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_endpoint_verdicts.py`, `test_hints.py`, `test_kv.py` |
 | `architecture/find.md` | `catalog_find.py`, `find_recall.py`, `find_index.py`, `embed.py`, `bootstrap.py`, `test_find_index.py`, `test_embed.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `find_bench.py`, `find_bench.yaml`, `test_find_bench.py`, `test_find_recall.py`, `test_catalog_find.py`, `test_search_queries.py`, `search_queries.yaml`, `find.js`, `FindAnswer.vue`, `SearchPage.vue`, `CatalogSearch.vue`, `catalog-find.spec.ts`, `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `limits.py`, `health.py`, `hub_sandbox.py`, `hub.py`, `catalog.py`, `web.py`, `hub_gate.py`, `service.py`, `__init__.py`, `mcp.py`, `hub.js`, `HubPage.vue`, `HubRunPage.vue`, `cli.py`, `worker.py`, `models.py`, `index.html`, `skill.md`, `llms.txt`, `0044_hub_tools.py`, `0045_hub_runs.py`, `0046_hubtool_check_result.py`, `0047_hubrun_output.py`, `0048_hubtool_data.py`, `0049_hubtool_listed_public_log.py`, `0050_hub_listing.py`, `run.js`, `run.js`, `run.js`, `test_hub.py`, `test_hub_sandbox.py`, `test_hub_run.py` |
@@ -740,7 +838,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/local-run.md` | `localrun.py`, `egress.py`, `fsjail.py` |
 | `architecture/mcp-oauth.md` | `auth.py`, `mcp.py`, `health.py`, `mcp_oauth.py`, `session.py`, `access.py`, `api_keys.py`, `0082_oauth_sso_provenance.py`, `api_keys.py`, `auth.py`, `claude-connector.html`, `connect-demo.html`, `test_mcp.py`, `test_mcp_oauth.py`, `test_mcp_directory.py`, `test_marketplace_call.py` |
 | `architecture/media.md` | `media.py`, `media.py`, `models.py`, `object_store.py`, `0037_media_hosting.py`, `0092_media_object_key.py`, `test_media.py` |
-| `architecture/money.md` | `policy.py`, `tavily.yaml`, `tinyfish.yaml`, `test_tinyfish.py`, `__init__.py`, `settlement.py`, `__init__.py`, `models.py`, `billing.py`, `billing.py`, `billing.js`, `data.js`, `TeamPage.vue`, `enterprise_billing.py`, `enterprise_sso.py`, `idempotency.py`, `intake.py`, `resolve.py`, `octen.py`, `service.py`, `async_bridge.py`, `route.py`, `reserve.py`, `settle.py`, `cost.py`, `test_catalog_v2_runtime.py`, `tomba.yaml`, `asynctasks.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `referrals.py`, `budgets.py`, `__init__.py`, `money_admission.py`, `money_session.py`, `runner.py`, `stripe.py`, `reconcile.py`, `key_spend_rollup.py`, `0070_api_key_spend_rollup.py`, `test_key_spend_rollup.py`, `referrals.py`, `api.py`, `signup.py`, `promotions.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `admin.py`, `billing.py`, `call.py`, `orgs.py`, `referrals.py`, `test_call_architecture.py`, `test_money_lock_order.py`, `test_money_admission.py`, `test_money_admission_application.py`, `test_money_admission_postgres.py`, `test_archive_batch_postgres.py`, `bench_money_admission.py`, `test_marketplace_call.py`, `test_anyapi_cost_ceiling.py`, `test_asynctasks.py` |
+| `architecture/money.md` | `policy.py`, `tavily.yaml`, `tinyfish.yaml`, `test_tinyfish.py`, `__init__.py`, `settlement.py`, `__init__.py`, `models.py`, `billing.py`, `billing.py`, `slack.py`, `test_topup_reconcile.py`, `billing.js`, `data.js`, `TeamPage.vue`, `enterprise_billing.py`, `enterprise_sso.py`, `idempotency.py`, `intake.py`, `resolve.py`, `octen.py`, `service.py`, `async_bridge.py`, `route.py`, `reserve.py`, `settle.py`, `cost.py`, `test_catalog_v2_runtime.py`, `tomba.yaml`, `asynctasks.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `referrals.py`, `budgets.py`, `__init__.py`, `money_admission.py`, `money_session.py`, `runner.py`, `stripe.py`, `reconcile.py`, `key_spend_rollup.py`, `0070_api_key_spend_rollup.py`, `test_key_spend_rollup.py`, `referrals.py`, `api.py`, `signup.py`, `promotions.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `admin.py`, `billing.py`, `call.py`, `orgs.py`, `referrals.py`, `test_call_architecture.py`, `test_money_lock_order.py`, `test_money_admission.py`, `test_money_admission_application.py`, `test_money_admission_postgres.py`, `test_archive_batch_postgres.py`, `bench_money_admission.py`, `test_marketplace_call.py`, `test_anyapi_cost_ceiling.py`, `test_asynctasks.py` |
 | `architecture/multi-tenancy.md` | `access.py`, `0042_pinned_read_scope.py`, `test_pinned_read_scope.py`, `models.py`, `api.py`, `caller_metadata.py`, `auth.py`, `asynctasks.py`, `resolve.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0043_provider_resources.py`, `signup.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `access.py`, `api_keys.py`, `session.py`, `enterprise_sso.py`, `0079_enterprise_sso.py`, `0080_enterprise_sso_audit.py`, `0081_sso_manual_block.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `worker.py`, `enterprise_sso.py`, `workos.py`, `test_enterprise_sso.py`, `promotions.py`, `test_team_limit.py`, `test_auth.py`, `test_token_revocation.py`, `auth.py`, `turnstile.py`, `client_ip.py`, `test_client_ip.py`, `captcha.js`, `test_turnstile.py`, `captcha.test.ts`, `orgs.py`, `resources.py`, `bundles.py`, `db.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `test_asynctasks.py` |
 | `architecture/org-endpoint-quota.md` | `org_endpoint_quota.py`, `service.py`, `types.py`, `route.py`, `async_bridge.py`, `overflow.py`, `arena.py`, `relay.py`, `bootstrap.py`, `config.py`, `analytics.py`, `test_org_endpoint_quota_redis.py`, `test_org_endpoint_quota_call.py`, `test_org_endpoint_quota_hub.py`, `test_org_endpoint_quota_async.py`, `test_org_endpoint_quota_best_effort.py`, `test_org_endpoint_quota_breaker.py`, `test_org_endpoint_quota_telemetry.py`, `test_org_endpoint_quota_rollup.py`, `test_org_endpoint_quota_rate_observe.py`, `test_org_endpoint_quota_local_rejections.py`, `test_org_endpoint_quota_route.py`, `test_relay_quota_admission.py`, `test_call_architecture.py` |
 | `architecture/org-flow-control.md` | `org_flow_control.py`, `org_concurrency.py`, `structured_logging.py`, `kv.py`, `config.py`, `call.py`, `mcp.py`, `test_org_flow_control.py`, `test_org_flow_control_reader.py`, `test_org_flow_control_redis.py`, `test_org_rate_limit_redis.py`, `test_org_concurrency.py`, `test_org_concurrency_redis.py`, `generate.ts` |
@@ -753,9 +851,11 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
+| `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `await.go`, `test_tasks.py`, `test_await_parity.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
-| `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
-| `interface/cli.md` | `cli.py`, `cli_view.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
+| `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `view.py`, `view_context.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
+| `interface/cli-binary.md` | `.goreleaser.yaml`, `main.go`, `agents.go`, `mcp.go`, `client.go`, `proxy.go`, `proxy_darwin.go`, `proxy_other.go`, `proxy_parse.go`, `proxy_windows.go`, `url.go`, `view.go`, `app.go`, `buildinfo.go`, `account.go`, `args.go`, `audit.go`, `await.go`, `balance.go`, `call.go`, `catalog.go`, `connections.go`, `env.go`, `feedback.go`, `feedback_get.go`, `health.go`, `help.go`, `helpers.go`, `home.go`, `host.go`, `mcp.go`, `mediatype.go`, `org.go`, `resources.go`, `review.go`, `root.go`, `secret.go`, `skills.go`, `tool.go`, `topup.go`, `update.go`, `upload.go`, `upload_clis.go`, `upload_env.go`, `upload_llm.go`, `upload_skills.go`, `usage.go`, `config.go`, `minisign.go`, `call.go`, `output.go`, `view.go`, `hidden_other.go`, `hidden_unix.go`, `prompt.go`, `termios_darwin.go`, `termios_linux.go`, `catalog.json`, `providers.go`, `ojson.go`, `proc_darwin.go`, `proc_linux.go`, `proc_other.go`, `session.go`, `cliprofile.go`, `skillscan.go`, `telemetry.go`, `term.go`, `detach_unix.go`, `detach_windows.go`, `legacy.go`, `method.go`, `update.go`, `check-beta.sh`, `sign-release.sh`, `cli_releases.py`, `github_releases.py`, `cli_client.py`, `install-bin.sh`, `install.ps1`, `cli_go_harness.py`, `cli_go_live.py`, `agent_sandbox.py` |
+| `interface/cli.md` | `cli.py`, `__init__.py`, `toon.py`, `catalog.py`, `account.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `boot.js`, `SignedOutPage.vue`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
