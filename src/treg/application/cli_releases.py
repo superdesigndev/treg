@@ -1,10 +1,9 @@
 """Which binary CLI release a channel runs, and where its files are.
 
-The operator names each channel's release (`cli_latest_version` for stable, `cli_beta_version` for
-beta, which falls back to stable's). A value that is empty or below 1.0.0 (a Python CLI release,
-which `client_notice` still words notices from) leaves the channel to the newest GitHub release of
-`cli_release_repo` tagged `v<version>` from 1.0.0 up (the repository's 0.x tags are the registry's
-own releases); stable skips pre-releases.
+The operator names each channel's release (`cli_stable_version` for stable, `cli_beta_version` for
+beta, which falls back to stable's). A value that is empty or below 1.0.0 leaves the channel to the
+newest GitHub release of `cli_release_repo` tagged `v<version>` from 1.0.0 up (the repository's 0.x
+tags are the registry's own releases); stable skips pre-releases.
 """
 
 from __future__ import annotations
@@ -35,8 +34,8 @@ def archive_name(version: str, os: str, arch: str) -> str:
 async def current(channel: str) -> str:
     """The release `channel` runs now, or "" when it has none."""
     settings = get_settings()
-    named = (settings.cli_beta_version or settings.cli_latest_version) if channel == "beta" \
-        else settings.cli_latest_version
+    named = (settings.cli_beta_version or settings.cli_stable_version) if channel == "beta" \
+        else settings.cli_stable_version
     if is_binary_release(named):
         return named
     for release in await github_releases.published(settings.cli_release_repo):

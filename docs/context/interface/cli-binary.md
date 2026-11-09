@@ -203,15 +203,16 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   versions compare as semantic versions (a pre-release before its release).
 - `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
   `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
-  a CLI on that channel and platform runs: `TREG_CLI_LATEST_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
-  (beta falls back to stable), else the newest GitHub release of `cli_release_repo` tagged
+  a CLI on that channel and platform runs: `TREG_CLI_STABLE_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
+  (beta falls back to stable; either may name a pre-release), else the newest GitHub release of `cli_release_repo` tagged
   `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
   `TREG_CLI_DOWNLOAD_BASE_URL`. On a channel the operator names, publishing a release moves no
   one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
-  served installer that way. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
+  served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
+  `--skills` when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
   shell has no signature tool; the binary verifies signatures on update), installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints

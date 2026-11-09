@@ -90,6 +90,23 @@ report() {  # report <step> [reason]
     -d "{\"api_key\":\"$PH_KEY\",\"event\":\"cli_install_step\",\"distinct_id\":\"$INSTALL_ID\",\"properties\":{$props}}" \
     "$PH_HOST/i/v0/e/" >/dev/null 2>&1 || true
 }
+leave_ad_link() {
+  if [ -n "$AD_LINK" ]; then
+    mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
+  fi
+}
+fail() {  # fail <reason>
+  report failed "$1"
+  [ -z "$PRIOR_VERSION" ] || exit 1
+  script=$(curl -fsSL "$BASE/install.sh?channel=beta" 2>/dev/null) || exit 1
+  case "$script" in "#!/bin/sh"*) ;; *) exit 1 ;; esac
+  printf '\nInstalling the treg binary instead, which needs no Python…\n\n'
+  leave_ad_link
+  set -- --channel stable
+  if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
+  if [ -n "$SKILLS" ]; then set -- "$@" --skills "$SKILLS"; fi
+  exec sh -c "$script" install-bin "$@"
+}
 INSTALL_ID=""
 [ -n "$PH_KEY" ] && INSTALL_ID=$(install_id || true)
 OS=$(clean "$(uname -s 2>/dev/null)")
@@ -103,7 +120,7 @@ printf '\n\033[38;5;173m▚ tools-registry\033[0m - installing the treg CLI…\n
 
 if command -v uv >/dev/null 2>&1; then
   METHOD=uv
-  uv tool install --force --python "$PYREQ" "$SRC" || { report failed install_command; exit 1; }
+  uv tool install --force --python "$PYREQ" "$SRC" || fail install_command
 elif command -v pipx >/dev/null 2>&1; then
   METHOD=pipx
   # pipx needs a concrete interpreter, not a range — probe for one inside PYREQ before falling
@@ -113,9 +130,9 @@ elif command -v pipx >/dev/null 2>&1; then
     if command -v "$py" >/dev/null 2>&1; then PIPX_PY="$py"; break; fi
   done
   if [ -n "$PIPX_PY" ]; then
-    pipx install --force --python "$PIPX_PY" "$SRC" || { report failed install_command; exit 1; }
+    pipx install --force --python "$PIPX_PY" "$SRC" || fail install_command
   else
-    pipx install --force "$SRC" || { report failed install_command; exit 1; }
+    pipx install --force "$SRC" || fail install_command
   fi
 elif command -v pip3 >/dev/null 2>&1; then
   METHOD=pip3
@@ -125,15 +142,13 @@ elif command -v pip3 >/dev/null 2>&1; then
     echo "pip3 belongs to $(pip3 --version 2>/dev/null | sed -n 's/.*(python \([0-9.]*\)).*/Python \1/p'), but treg needs Python 3.12 or 3.13." >&2
     echo "Easiest fix — install uv (it fetches a matching Python by itself), then rerun this command:" >&2
     echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-    report failed python_version
-    exit 1
+    fail python_version
   fi
-  pip3 install --user --upgrade "$SRC" || { report failed install_command; exit 1; }
+  pip3 install --user --upgrade "$SRC" || fail install_command
 else
   echo "Need Python 3.12 or 3.13 and one of: uv (recommended), pipx, or pip3." >&2
   echo "Install uv:  https://docs.astral.sh/uv/getting-started/installation/" >&2
-  report failed no_installer
-  exit 1
+  fail no_installer
 fi
 
 if command -v treg >/dev/null 2>&1; then
@@ -146,9 +161,7 @@ report installed
 treg config --base-url "$BASE" >/dev/null 2>&1 || true
 
 # Fetched as {BASE}/i/<code>: leave the code for the next `treg login`.
-if [ -n "$AD_LINK" ]; then
-  mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
-fi
+leave_ad_link
 
 # install the official treg skill into every detected agent so it knows how to use treg.
 # `treg skill bootstrap` fans out across all supported agents (Claude Code, Cursor, Codex, Gemini,
