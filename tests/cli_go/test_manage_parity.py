@@ -16,6 +16,18 @@ ORGS = json.dumps([
     {"org_id": 7, "slug": "acme", "name": "Acme", "role": "owner", "active": True},
     {"org_id": 9, "slug": "beta-team", "name": "Beta Team ü", "role": "member", "active": False},
 ]).encode()
+SETTINGS_UNSET = json.dumps({
+    "daily_cap_micro": 0, "daily_cap_set_by_team": None, "platform_default_micro": 0,
+    "platform_overflow": True, "archive": True,
+}).encode()
+SETTINGS_TEAM = json.dumps({
+    "daily_cap_micro": 15_000_000, "daily_cap_set_by_team": 15_000_000, "platform_default_micro": 0,
+    "platform_overflow": True, "archive": True,
+}).encode()
+SETTINGS_PLATFORM = json.dumps({
+    "daily_cap_micro": 5_000_000, "daily_cap_set_by_team": None, "platform_default_micro": 5_000_000,
+    "platform_overflow": True, "archive": True,
+}).encode()
 OK = Canned(200, {}, b'{"ok": true}')
 DEFAULT_KEY = Canned(200, {}, json.dumps({"org": "beta-team", "token": "beta-default-key",
                                           "default_key_state": "active"}).encode())
@@ -117,6 +129,26 @@ CASES: dict[str, Case] = {
     "org_agent_new_bad_cap": Case(["org", "agent-new", "ci-bot", "--cap", "lots"]),
     "org_bare": Case(["org"]),
     "org_unknown": Case(["org", "frobnicate"]),
+    "org_daily_cap": Case(["org", "daily-cap"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                "/orgs/7/settings": [Canned(200, {}, SETTINGS_UNSET)]}),
+    "org_daily_cap_json": Case(["--json", "org", "daily-cap"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                              "/orgs/7/settings": [Canned(200, {}, SETTINGS_UNSET)]}),
+    "org_daily_cap_team": Case(["org", "daily-cap"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                     "/orgs/7/settings": [Canned(200, {}, SETTINGS_TEAM)]}),
+    "org_daily_cap_platform": Case(["org", "daily-cap"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                         "/orgs/7/settings": [Canned(200, {}, SETTINGS_PLATFORM)]}),
+    "org_daily_cap_set": Case(["org", "daily-cap", "15"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                          "/orgs/7/settings": [Canned(200, {}, SETTINGS_TEAM)]}),
+    "org_daily_cap_set_zero": Case(["org", "daily-cap", "0"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                              "/orgs/7/settings": [Canned(200, {}, SETTINGS_UNSET)]}),
+    "org_daily_cap_set_json": Case(["--json", "org", "daily-cap", "15"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                                        "/orgs/7/settings": [Canned(200, {}, SETTINGS_TEAM)]}),
+    "org_daily_cap_negative": Case(["org", "daily-cap", "-1"], {"/orgs": [Canned(200, {}, ORGS)]}),
+    "org_daily_cap_bad": Case(["org", "daily-cap", "lots"]),
+    "org_daily_cap_no_team": Case(["org", "daily-cap"], {"/orgs": [Canned(200, {}, b"[]")]}),
+    "org_daily_cap_refused": Case(["org", "daily-cap", "15"], {"/orgs": [Canned(200, {}, ORGS)],
+                                                              "/orgs/7/settings": [Canned(403, {"X-Treg-Error": "1"},
+                                                                                           b'{"detail": "admins only"}')]}),
     # tool
     "tool_ls": Case(["tool", "ls"], {"/tools": [Canned(200, {}, TOOLS)]}),
     "tool_add_secret": Case(["tool", "add", "stripe", "--base-url", "https://api.stripe.com", "--secret", "4",

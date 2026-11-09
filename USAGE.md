@@ -224,7 +224,7 @@ tools, vendor CLIs — is free of it.
 
 | Command | Options | What it does |
 |---|---|---|
-| `treg balance` | `--limit N`, `--json` | credit left, calls in flight, recent spend |
+| `treg balance` | `--limit N`, `--json` | credit left, calls in flight, recent spend, and the daily cap on treg's keys |
 | `treg topup` | | add funds, or set up automatic top-ups |
 
 ```bash
@@ -236,7 +236,12 @@ treg topup
 
 Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose. There is also a per-day ceiling on spend against
-treg's keys, so a runaway agent has a bounded blast radius.
+treg's keys, so a runaway agent has a bounded blast radius. `treg balance` shows the cap, what has
+been spent today, remaining headroom and the 00:00 UTC reset. `treg org daily-cap` shows the
+setting; `treg org daily-cap 15` sets a $15 team ceiling; `treg org daily-cap 0` follows the
+platform default (no limit, by default). Hitting the cap is HTTP **429**
+`error: platform_daily_cap_reached` carrying `spent_today_micro` and `daily_cap_micro`. Connecting
+your own key is not bound by it.
 
 If treg's **own** account for a provider is out, a metered call is refused with HTTP **503**
 `provider_capacity_unavailable` before anything is reserved — nothing is charged, the body names

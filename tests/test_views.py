@@ -201,10 +201,20 @@ AUTOTOPUP_ON = {"enabled": True, "amount_micro": 20_000_000, "threshold_micro": 
                 "monthly_cap_micro": 2_000_000_000, "month_spend_micro": 0}
 
 
+BALANCE_WITH_CAP = {
+    **BALANCE,
+    "daily_cap_micro": 5_000_000,
+    "spent_today_micro": 1_230_000,
+    "remaining_today_micro": 3_770_000,
+    "resets_at": "2026-11-09T00:00:00Z",
+}
+
+
 @pytest.mark.parametrize("body,auto", [
     (BALANCE, AUTOTOPUP_ON),
     (BALANCE, {"enabled": False, "disabled_reason": "the card was declined"}),
     ({**BALANCE, "blocks": [], "holds": [], "entries": {"items": []}}, None),
+    (BALANCE_WITH_CAP, AUTOTOPUP_ON),
 ])
 def test_balance_text_is_what_the_python_cli_prints(monkeypatch, capsys, body, auto):
     """The Python CLI prints `treg balance` itself; the registry's text must not drift from it."""

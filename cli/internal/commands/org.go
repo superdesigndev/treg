@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json/v2"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -23,7 +24,7 @@ func orgCmd(env *Env) *cobra.Command {
 		"treg org ls", `treg org create "Superdesign"`, "treg org use superdesign")
 	cmd.Short = "Manage teams (orgs): create, switch, invite, members, join, leave."
 	cmd.AddCommand(orgCreateCmd(env), orgLsCmd(env), orgUseCmd(env), orgMembersCmd(env),
-		orgAgentNewCmd(env), orgAgentsCmd(env), orgAgentRmCmd(env))
+		orgDailyCapCmd(env), orgAgentNewCmd(env), orgAgentsCmd(env), orgAgentRmCmd(env))
 	return cmd
 }
 
@@ -144,6 +145,91 @@ func orgMembersCmd(env *Env) *cobra.Command {
 		})
 	}
 	return cmd
+}
+
+func orgDailyCapCmd(env *Env) *cobra.Command {
+	cmd := leaf("daily-cap [usd]", "Show or set this team's daily ceiling on spend against treg's keys "+
+		"(admin+ to set). 0 follows the platform default.",
+		"treg org daily-cap", "treg org daily-cap 15", "treg org daily-cap 0")
+	// A negative figure such as `-1` must reach the command: cobra would otherwise
+	// treat it as an unknown shorthand flag, and the Python CLI accepts it as usd.
+	cmd.DisableFlagParsing = true
+	cmd.RunE = func(cmd *cobra.Command, raw []string) error {
+		var args []string
+		for _, a := range raw {
+			if a == "-h" || a == "--help" {
+				return cmd.Help()
+			}
+			args = append(args, a)
+		}
+		if len(args) > 1 {
+			return fmt.Errorf("unrecognized arguments: %s", strings.Join(args[1:], " "))
+		}
+		return env.orgDailyCap(args)
+	}
+	return cmd
+}
+
+func (e *Env) orgDailyCap(args []string) error {
+	var amount *float64
+	if len(args) == 1 {
+		value, err := floatArg("usd", args[0])
+		if err != nil {
+			return err
+		}
+		amount = &value
+	}
+	c := e.Client()
+	orgID, err := e.activeOrgID(c, true)
+	if err != nil {
+		return err
+	}
+	if orgID == 0 {
+		return output.Fail("no active org")
+	}
+	path := fmt.Sprintf("/orgs/%d/settings", orgID)
+	var req api.Request
+	if amount == nil {
+		req = api.Request{Path: path}
+	} else if *amount < 0 {
+		return output.Fail("daily cap must be 0 or more (0 follows the platform default)")
+	} else {
+		req = api.Request{
+			Method: "PATCH", Path: path,
+			Body:   ojson.Compact(ojson.Ordered("daily_cap_micro", int64(math.Round(*amount*1_000_000)))),
+			Header: jsonHeader,
+		}
+	}
+	r, err := e.do(c, req)
+	if err != nil {
+		return err
+	}
+	if e.JSON || r.Status >= 400 {
+		return e.Out.Show(r)
+	}
+	settings := responseObject(r)
+	cap, _ := intOf(settings.Value("daily_cap_micro"))
+	platformDefault, _ := intOf(settings.Value("platform_default_micro"))
+	p := e.Colors()
+	var state, note string
+	if cap <= 0 {
+		state, note = "no limit", "following the platform default"
+	} else {
+		state = output.USD(cap)
+		if ojson.Truthy(settings.Value("daily_cap_set_by_team")) {
+			defaultTxt := "no limit"
+			if platformDefault > 0 {
+				defaultTxt = output.USD(platformDefault)
+			}
+			note = "set by the team; platform default is " + defaultTxt
+		} else {
+			note = "platform default"
+		}
+	}
+	outf("\n  daily cap: %s%s%s  %s(%s)%s\n", p.Accent, state, p.Reset, p.Muted, note, p.Reset)
+	outf("  %stoday's spend and remaining headroom are on `treg balance`. "+
+		"Set a figure with `treg org daily-cap <usd>`; 0 follows the platform default.%s\n\n", p.Muted, p.Reset)
+	return nil
 }
 
 func orgAgentsCmd(env *Env) *cobra.Command {

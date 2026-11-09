@@ -11262,7 +11262,7 @@
     },
     "/orgs/{org_id}/balance": {
       "get": {
-        "description": "The org's prepaid balance. Amounts are integer micro-USD (`*_micro`) with a display-only USD\ntwin — never compute against the USD field (see domain/money on why money is integers here).\n\n**Two audiences, one route.** Any MEMBER sees the figure and the in-flight holds: they are the\nones spending it, every agent is told to run `treg balance` after a call, and a 402 already hands\nthem `balance_micro` anyway — refusing the same number here while shipping it in an error was\nincoherent. The FUNDING DETAIL is admin+: the credit blocks (what was bought, when, what is left\nof each) and the ledger, which together are the org's purchase history, not its wallet.",
+        "description": "The org's prepaid balance. Amounts are integer micro-USD (`*_micro`) with a display-only USD\ntwin — never compute against the USD field (see domain/money on why money is integers here).\n\n**Two audiences, one route.** Any MEMBER sees the figure, the in-flight holds and the\nplatform-key daily cap (spent today, remaining headroom, UTC reset): they are the ones spending\nit, every agent is told to run `treg balance` after a call, and a 402 already hands them\n`balance_micro` anyway — refusing the same number here while shipping it in an error was\nincoherent. The FUNDING DETAIL is admin+: the credit blocks (what was bought, when, what is left\nof each) and the ledger, which together are the org's purchase history, not its wallet.",
         "operationId": "org_balance_orgs__org_id__balance_get",
         "parameters": [
           {

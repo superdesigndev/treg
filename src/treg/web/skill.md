@@ -257,8 +257,10 @@ each call, not the loop.
 - **A "free" tool can still bill** when treg's own account for its provider runs out and the call is
   relayed (`X-Treg-Served-Via: overflow:<name>`): if `catalog_get` shows `overflow_price_usd`, quote
   that price.
-- `treg balance` shows the balance and recent charges, and the dashboard's Activity page shows the
-  settled cost of every call. `treg topup` adds funds or sets up automatic top-ups.
+- `treg balance` shows the balance, the daily cap on treg's keys (spent today, remaining, reset)
+  and recent charges, and the dashboard's Activity page shows the settled cost of every call.
+  `treg topup` adds funds or sets up automatic top-ups. `treg org daily-cap` shows or sets the
+  team's cap (0 follows the platform default).
 
 ## When a call fails
 
@@ -273,6 +275,7 @@ no JSON `detail` is never treg's.
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
 | 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 429 `platform_daily_cap_reached` | no | The body has `spent_today_micro`, `daily_cap_micro`. It resets at 00:00 UTC. Inspect or change the cap with `treg org daily-cap` (shown on `treg balance`). To keep going now without raising it, connect the team's own key. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |

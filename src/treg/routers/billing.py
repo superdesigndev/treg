@@ -1,5 +1,8 @@
 """HTTP routes for prepaid balances and Stripe billing."""
 
+import logging
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..application import billing, view_context
 from ..config import get_settings
 from ..domain import money as ledger
+from ..domain.governance.budgets import _effective_daily_cap
 from ..domain.identity.access import Caller, _role_at_least, require_member
 from ..infra.db import get_session
 from ..models import Org
@@ -40,9 +44,10 @@ async def org_balance(
     """The org's prepaid balance. Amounts are integer micro-USD (`*_micro`) with a display-only USD
     twin — never compute against the USD field (see domain/money on why money is integers here).
 
-    **Two audiences, one route.** Any MEMBER sees the figure and the in-flight holds: they are the
-    ones spending it, every agent is told to run `treg balance` after a call, and a 402 already hands
-    them `balance_micro` anyway — refusing the same number here while shipping it in an error was
+    **Two audiences, one route.** Any MEMBER sees the figure, the in-flight holds and the
+    platform-key daily cap (spent today, remaining headroom, UTC reset): they are the ones spending
+    it, every agent is told to run `treg balance` after a call, and a 402 already hands them
+    `balance_micro` anyway — refusing the same number here while shipping it in an error was
     incoherent. The FUNDING DETAIL is admin+: the credit blocks (what was bought, when, what is left
     of each) and the ledger, which together are the org's purchase history, not its wallet.
     """
@@ -58,11 +63,33 @@ async def org_balance(
     blocks = await ledger.blocks_of(db, org_id)
     holds = await ledger.open_holds_of(db, org_id)
     entries = await ledger.entries_of(db, org_id, limit=limit, offset=offset)
+    cap = _effective_daily_cap(caller.org)
+    # Fail-open, unlike reserve: hiding the wallet because today's counter cannot be read
+    # is worse than omitting the planning fields. Reserve stays fail-closed.
+    try:
+        spent: int | None = await ledger.spent_today(db, org_id)
+    except Exception as exc:  # noqa: BLE001 - hiding the wallet is worse than omitting the planning fields
+        logging.getLogger("treg.ledger").warning(
+            "balance daily-cap spent_today failed for org %s: %s", org_id, exc)
+        spent = None
+    next_reset = (
+        datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        + timedelta(days=1)
+    )
     return {
         "org_id": org_id,
         "balance_micro": balance,
         "balance_usd": ledger.usd(balance),
         "promo_grant_micro": get_settings().promo_grant_micro,
+        # The team-level ceiling on treg-key spend. Same numbers as GET /orgs/{id}/settings
+        # (any member can already read that) plus today's spent/remaining and the UTC reset,
+        # so a caller can plan before they hit `platform_daily_cap_reached`.
+        "daily_cap_micro": cap,  # 0 = no limit
+        "daily_cap_set_by_team": int(caller.org.daily_cap_micro or 0) or None,
+        "platform_default_micro": get_settings().platform_daily_cap_micro,  # 0 = none
+        "spent_today_micro": spent,
+        "remaining_today_micro": None if spent is None or cap <= 0 else max(0, cap - spent),
+        "resets_at": next_reset.strftime("%Y-%m-%dT00:00:00Z"),
         # admin+ only — see the docstring: the wallet is everyone's, the purchase history is not
         "blocks": [] if not detailed else [
             {"id": b.id, "kind": b.kind, "amount_micro": b.amount_micro,

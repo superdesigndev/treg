@@ -169,12 +169,14 @@ account for a provider is out it may serve the *same* endpoint through a treg-ow
 disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it. For common jobs (scraping a page, web search, Google results, finding an email) start with the routed endpoint, such as `treg.web.extract` or `treg.web.search`, rather than a provider you remember by name. On `treg.people.email.find` and `treg.people.phone.find`, `X-Treg-Route-Verify: true` also checks the found address or number in the same call, as its own charge, and says what the check found.
 
 ```bash
-treg balance          # credit left, calls in flight, recent spend
+treg balance          # credit left, calls in flight, recent spend, daily cap
 treg topup            # add funds, or set up automatic top-ups
 ```
 
 Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
-so an agent can act on it without reading prose.
+so an agent can act on it without reading prose. A per-day ceiling on spend against treg's keys
+is HTTP **429** `platform_daily_cap_reached`; `treg balance` shows the cap and `treg org daily-cap`
+sets it (0 follows the platform default). Connecting your own key is not bound by it.
 
 **Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
 vote for the best answer in one click, or watch a sequential waterfall. Capability-compatible

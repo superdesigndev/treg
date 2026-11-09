@@ -477,7 +477,8 @@ class MediaOut(CallOut, total=False):
     """Structured metadata paired with native MCP audio content."""
 
 
-class BalanceOut(TypedDict, total=False):
+class DirectoryBalanceOut(TypedDict, total=False):
+    """Frozen /mcp/v2/ Claude directory `balance` contract. New fields go on BalanceOut for /mcp/."""
     team: str | None
     team_name: str | None           # the display name — a slug alone can't be recognised as wrong
     identity: str | None            # WHOSE grant this is; the answer to "wrong team? whose login?"
@@ -488,6 +489,15 @@ class BalanceOut(TypedDict, total=False):
     detail: str | None
     teams: list[str] | None         # when a person is in several and none is active
     hint: str | None
+
+
+class BalanceOut(DirectoryBalanceOut, total=False):
+    daily_cap_micro: int | None
+    daily_cap_set_by_team: int | None
+    platform_default_micro: int | None
+    spent_today_micro: int | None
+    remaining_today_micro: int | None
+    resets_at: str | None
 
 
 class TeamTool(TypedDict, total=False):
@@ -1809,8 +1819,9 @@ async def resources_list(
 
 @mcp.tool(
     description=(
-        "The team's prepaid balance in USD, and any spend currently in flight. Check it when a call "
-        "is refused for funds, or before a job that will make many calls."
+        "The team's prepaid balance in USD, any spend currently in flight, and today's platform-key "
+        "daily cap (spent, remaining, reset). Check it when a call is refused for funds or for "
+        "platform_daily_cap_reached, or before a job that will make many calls."
     ),
     annotations=_READS,
     structured_output=True
@@ -1819,7 +1830,7 @@ async def balance(ctx: Context) -> BalanceOut:
     return await _balance_impl(ctx, surface=_TEAM_SURFACE)
 
 
-async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
+async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut | DirectoryBalanceOut:
     token = _bearer(ctx)
     if not token:
         return _need_token()
@@ -1834,11 +1845,22 @@ async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
     body = _body(r)
     if r.status_code != 200:
         return {"error": "could not read the balance", "detail": body}
-    return {
+    wallet: DirectoryBalanceOut = {
         **whose,
         "balance_usd": round((body.get("balance_micro") or 0) / 1_000_000, 6),
         "balance_micro": body.get("balance_micro"),
         "holds_micro": body.get("holds_micro"),
+    }
+    if surface is _DIRECTORY_SURFACE:
+        return wallet
+    return {
+        **wallet,
+        "daily_cap_micro": body.get("daily_cap_micro"),
+        "daily_cap_set_by_team": body.get("daily_cap_set_by_team"),
+        "platform_default_micro": body.get("platform_default_micro"),
+        "spent_today_micro": body.get("spent_today_micro"),
+        "remaining_today_micro": body.get("remaining_today_micro"),
+        "resets_at": body.get("resets_at"),
     }
 
 
@@ -2037,7 +2059,7 @@ async def directory_catalog_call_write(
     annotations=_DIRECTORY_BALANCE,
     structured_output=True,
 )
-async def directory_balance(ctx: Context) -> BalanceOut:
+async def directory_balance(ctx: Context) -> DirectoryBalanceOut:
     return await _balance_impl(ctx, surface=_DIRECTORY_SURFACE)
 
 

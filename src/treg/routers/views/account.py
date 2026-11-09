@@ -18,6 +18,26 @@ def usd(micro) -> str:
     return f"{sign}${v:,.2f}" if v >= 1 else f"{sign}${v:.4f}"
 
 
+def daily_cap_line(b: dict) -> str | None:
+    """The daily-cap planning line `treg balance` prints, or None when the payload has no cap
+    fields (an older server)."""
+    if "daily_cap_micro" not in b:
+        return None
+    cap = int(b.get("daily_cap_micro") or 0)
+    spent = b.get("spent_today_micro")
+    if cap <= 0:
+        if spent is None:
+            return "  daily cap    no limit"
+        return f"  daily cap    no limit  ({usd(spent)} used today)"
+    left = b.get("remaining_today_micro")
+    if spent is None:
+        return f"  daily cap    {usd(cap)}  resets 00:00 UTC"
+    if left is None:
+        left = max(0, cap - int(spent))
+    return (f"  daily cap    {usd(cap)}  ({usd(spent)} used today, {usd(left)} left)  "
+            f"resets 00:00 UTC")
+
+
 def home_description(catalog_tools: str | None = None) -> str:
     return f"The tool catalog for your agent. Search and call {catalog_tools or 'its'} tools"
 
@@ -100,6 +120,9 @@ def balance(b: dict, *, team: str, autotopup: dict | None) -> str:
     elif autotopup and autotopup.get("disabled_reason"):
         lines.append(f"  auto top-up off - {autotopup['disabled_reason']}. Run `treg topup --auto on` after "
                      f"fixing your card.")
+    cap_line = daily_cap_line(b)
+    if cap_line:
+        lines.append(cap_line)
     items = (b.get("entries") or {}).get("items") or []
     if not items:
         return "\n".join([*lines, "", "  no ledger activity yet - nothing has been spent.", "", ""])
