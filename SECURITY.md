@@ -49,8 +49,8 @@ provider account and bypass this platform ownership table.
   database access, secret decryption or subprocess execution. No role, CLI profile or executable
   allow-list can enable it.
 - **Signup credit belongs to a verified account, once.** Only an email OTP, provider-verified
-  Google/GitHub email, or inbox-only invitation link marks an identity verified. Legacy `POST /users`
-  and admin-visible invitation codes do not. `claim_signup_promo` atomically consumes the user's
+  Google/GitHub email, or inbox-only invitation link marks an identity verified. Admin-visible
+  invitation codes do not. `claim_signup_promo` atomically consumes the user's
   eligibility in the same transaction as the money grant; team deletion never restores it. Accounts
   predating revision `0033` receive no new automatic grant; their existing balances are unchanged.
   New identities can still be farmed through verified inboxes, so this is not a one-human guarantee.

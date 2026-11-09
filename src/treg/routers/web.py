@@ -18,6 +18,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
                                RedirectResponse, Response)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+import yaml
 
 from ..timeutil import utcnow_naive as _utcnow_naive
 from .. import adsconv, agent_pages, client_ip, oauth_providers
@@ -154,6 +155,30 @@ def _serp_desc(text: str, limit: int = 155) -> str:
 _TITLE_MAX = 65
 
 
+_OG_DEFAULT_ALT = "treg.to: one key for the whole tool catalog, priced per call"
+
+
+def og_image(base: str, path: str, alt: str = "") -> tuple[str, str]:
+    """The page's share image and its alt text: its own card when `scripts/og_images.py` wrote
+    `media/og/<path>.jpg`, else the site-wide `/media/og.png`."""
+    rel = _og_cards().get(path.rstrip("/") or "/")
+    if rel:
+        return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
+    return f"{base}/media/og.png", _OG_DEFAULT_ALT
+
+
+@lru_cache(maxsize=1)
+def _og_cards() -> dict[str, str]:
+    """Page path -> `og/<path>.jpg` for every card on disk. The lookup never builds a file path
+    from the request."""
+    root = _MEDIA_DIR / "og"
+    cards = {}
+    for f in sorted(root.rglob("*.jpg")) if root.is_dir() else ():
+        page = f.relative_to(root).with_suffix("").as_posix()
+        cards["/" if page == "index" else "/" + page] = "og/" + f.relative_to(root).as_posix()
+    return cards
+
+
 def _page(title: str, description: str, path: str, body: str, ld: list[dict],
           *, nav_current: str = "", head_extra: str = "", css: str = "catalog.css") -> HTMLResponse:
     """The shared shell for every server-rendered page. One place that owns <title>, the meta
@@ -178,6 +203,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     the app keeps them and opens sign-in in place (see the boot in index.html), and the page that
     produced the signup is recorded."""
     base = get_settings().public_url.rstrip("/")
+    og_url, og_alt = og_image(base, path, title)
     ref = quote(path.strip("/").replace("/", "-") or "home", safe="")
     t, d = _esc_html(title), _esc_html(description)
     url = _esc_html(base + path)  # `path` reaches attribute context — escape it like title/description
@@ -189,6 +215,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c")
         + "</script>"
         for b in ld)
+    compare_col = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        compare_col = ('\n      <div class="foot-col"><div class="lab">Compare</div>\n        '
+                       + "".join(f'<a href="/compare/{cp.page_slug(k)}">treg vs {_esc_html(cp.short(k))}</a>'
+                                 for k in cp.FOOTER) + '<a href="/compare">All comparisons →</a></div>')
     def navlink(href: str, label: str, extra: str = "") -> str:
         cur = ' aria-current="page"' if href == nav_current else ""
         return f'<a href="{href}"{cur}{extra}>{label}</a>'
@@ -211,14 +243,14 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
-<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image" content="{_esc_html(og_url)}"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta property="og:image:alt" content="{_esc_html(og_alt)}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="{t}"/>
 <meta name="twitter:description" content="{d}"/>
-<meta name="twitter:image" content="{base}/media/og.png"/>
+<meta name="twitter:image" content="{_esc_html(og_url)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
@@ -252,7 +284,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         ><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="foot-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a
-        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>{compare_col}
     </nav>
   </div>
 </footer>
@@ -295,6 +327,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     # not a guarantee this function makes. Escape it where it is used, so a future "slug not found →
     # suggestions" page cannot turn a canonical tag into a reflected XSS.
     url = _esc_html(base + path)
+    og_url, _ = og_image(base, path, title)
     blocks = "\n".join(
         '<script type="application/ld+json">'
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
@@ -309,13 +342,13 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
         f'<meta property="og:url" content="{url}"/>\n'
         f'<meta property="og:title" content="{t}"/>\n'
         f'<meta property="og:description" content="{d}"/>\n'
-        f'<meta property="og:image" content="{base}/media/og.png"/>\n'
+        f'<meta property="og:image" content="{_esc_html(og_url)}"/>\n'
         f'<meta property="og:image:width" content="1200"/>\n'
         f'<meta property="og:image:height" content="630"/>\n'
         f'<meta name="twitter:card" content="summary_large_image"/>\n'
         f'<meta name="twitter:title" content="{t}"/>\n'
         f'<meta name="twitter:description" content="{d}"/>\n'
-        f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
+        f'<meta name="twitter:image" content="{_esc_html(og_url)}"/>\n'
         + blocks
     )
     html = _dashboard_document(index)
@@ -391,8 +424,9 @@ async def catalog_index():
                     'compare the providers that do one job, <a href="/workflows">the workflows</a> '
                     'chain several jobs into one prompt with the price of each step, and '
                     '<a href="/agents">the agent pages</a> show the whole menu for one '
-                    'agent, and <a href="/blog">the blog</a> carries the measured receipts and '
-                    'launch notes.</p>' if _hosted() else "")
+                    'agent, <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes, and <a href="/compare">the comparisons</a> set treg beside other '
+                    'tool gateways for agents.</p>' if _hosted() else "")
                  + "".join(sections)
                  + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
                    f"with its own page: {prov_links}</p>")
@@ -2176,7 +2210,7 @@ details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
 
 
-# The hub's public share page (docs/HUB-DECISIONS.md).
+# The hub's public share page.
 
 # Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
 # names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
@@ -2265,7 +2299,7 @@ def _md_lite(text: str) -> str:
 
 
 async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
-    """The public run log (docs/hub-listing-decisions.md, decision 3): the last `last` runs by
+    """The public run log: the last `last` runs by
     OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
     per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
     `units` is the one integer read out of the stored output, nothing else leaves it."""
@@ -2541,7 +2575,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     blurb = (getattr(reg, "summary", "") or "") if reg else ""
     base_api = (getattr(reg, "base_url", "") or "") if reg else ""
     docs_url = (getattr(reg, "docs_url", "") or "") if reg else ""
-    platform_eps = [e for e in eps if cat.platform_eligible(e)]
+    # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
+    # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
+    served = bool(get_settings().platform_key_for(svc))
+    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
     byok_only = len(eps) - len(platform_eps)
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
@@ -2761,7 +2798,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = cat.platform_eligible(e)
+            eligible = served and cat.platform_eligible(e)
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
             elif key_auth:
@@ -2866,7 +2903,20 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                               f"measured success rate and speed.</p></a>" for js, jsent in used_in)
                     + "</div></div></section>")
 
-    body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
+    cmp_sec = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        if cmp_key := cp.for_provider(svc):
+            cmp_short = _esc_html(cp.short(cmp_key))
+            cmp_sec = (
+                '<section id="compare"><div class="wrap"><div class="seclab">Compare</div>'
+                f"<h2>treg vs {cmp_short}</h2>"
+                f"<p>Calling {esc_d} through treg, or using {cmp_short} on its own? The comparison "
+                "reads both products' public pages side by side: billing, keys, access and limits. "
+                f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
+                "</div></section>")
+    body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
+            + faq + copy_js)
 
     if is_oauth:
         if mcp_intent:
@@ -3440,6 +3490,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
@@ -3524,6 +3575,9 @@ async def sitemap_xml():
         hub = _WEB_DIR / "gtm-engineering.html"
         add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
         add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
+        from . import compare  # imports this module; a top-level import would be circular
+        for path, day in compare.sitemap_paths():
+            add(path, day, "0.7")
     out.append("</urlset>")
     return Response("\n".join(out), media_type="application/xml; charset=utf-8",
                     headers={"Cache-Control": "max-age=3600"})
@@ -3542,22 +3596,39 @@ async def indexnow_key():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-def _install_script(ad_link: str = "") -> PlainTextResponse:
+def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
     """The install script with the serving domain templated in, so it targets whichever host is
     live (dev box or the real domain after deploy), and the short-link code when fetched as
-    `/i/<code>` (empty on the plain URL)."""
-    f = _WEB_DIR / "install.sh"
+    `/i/<code>` (empty on the plain URL). `channel=beta` serves the binary CLI's installer."""
+    f = _WEB_DIR / ("install-bin.sh" if channel == "beta" else "install.sh")
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
-    base = get_settings().public_url.rstrip("/")
-    text = f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+            .replace("{CHANNEL}", channel or "stable")
+            .replace("{POSTHOG_KEY}", settings.posthog_key)
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/")))
     return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
 
 
 @app.get("/install.sh", include_in_schema=False)
-async def install_sh():
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server."""
-    return _install_script()
+async def install_sh(channel: str = ""):
+    """`curl -fsSL {BASE}/install.sh | sh`: installs the treg CLI and points it at this server.
+    `?channel=beta` installs the binary CLI's beta channel instead."""
+    return _install_script(channel="beta" if channel == "beta" else "")
+
+
+@app.get("/install.ps1", include_in_schema=False)
+async def install_ps1(channel: str = ""):
+    """`irm {BASE}/install.ps1 | iex`: installs the binary treg CLI on Windows."""
+    f = _WEB_DIR / "install.ps1"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="install.ps1 not bundled")
+    base = get_settings().public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base)
+            .replace("{CHANNEL}", "beta" if channel == "beta" else "stable"))
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/i/{code}", include_in_schema=False)
@@ -3988,6 +4059,15 @@ async def rea_growth_page(request: Request):
     return _static_page("rea-growth.html", request)
 
 
+@app.get("/social", include_in_schema=False)
+async def social_search_page(request: Request):
+    """Social media on autopilot: the agent spots viral posts, tracks their creators, decodes the
+    structure, reads the comments, posts and A/B tests on connected
+    accounts. The page follows the launch film's design. Served
+    like /rea-growth: canonical, in the sitemap, no-cache."""
+    return _static_page("social-search.html", request)
+
+
 @app.get("/rea-growth.md", include_in_schema=False)
 async def rea_growth_md():
     """The full Lovable report behind /rea-growth as Markdown: what the page's "Copy the playbook"
@@ -4161,6 +4241,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
+     "Spot what goes viral, decode it, auto-post and A/B test. One treg key."),
     ("/rea-growth", "REA for Growth", "2026-10-29",
      "Name a company; your agent takes its distribution apart and hands you plays to copy."),
     ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
@@ -4506,8 +4588,8 @@ public_docs_router = APIRouter()
 app = public_docs_router
 
 
-def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
-    """The bundled skill's frontmatter, read at request time rather than duplicated in code — the
+def _skill_frontmatter(name: str = "skill.md") -> dict:
+    """The bundled skill's frontmatter, read at request time rather than duplicated in code. The
     description is what drives discovery in every registry, and a second copy of it would drift."""
     f = _WEB_DIR / name
     if not f.exists():
@@ -4515,11 +4597,8 @@ def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
     text = _fill_headline(f.read_text(encoding="utf-8"))
     if not text.startswith("---"):
         raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
-    out: dict[str, str] = {}
-    for line in text.split("---", 2)[1].strip().splitlines():
-        key, _, value = line.partition(":")
-        out[key.strip()] = value.strip()
-    return out
+    fm = yaml.safe_load(text.split("---", 2)[1])
+    return fm if isinstance(fm, dict) else {}
 
 
 @app.get("/.well-known/skills/index.json", include_in_schema=False)
@@ -4530,18 +4609,16 @@ async def well_known_skills_index():
     treg from treg.to directly, with no directory, no review queue and no third party in the middle
     — the same skill the plugins ship and `install.sh` drops, reached by whoever asks the domain.
     """
-    fm = _skill_frontmatter()
-    ugc = _skill_frontmatter("skills/make-ugc/SKILL.md")
-    sig = _skill_frontmatter("skills/lead-signals/SKILL.md")
-    web = _skill_frontmatter("skills/web-access/SKILL.md")
-    rec = _skill_frontmatter("skills/recruit/SKILL.md")
-    return JSONResponse({"skills": [
-        {"name": fm.get("name", "treg"), "description": fm.get("description", ""), "files": ["SKILL.md"]},
-        {"name": ugc.get("name", "make-ugc"), "description": ugc.get("description", ""), "files": ["SKILL.md"]},
-        {"name": sig.get("name", "lead-signals"), "description": sig.get("description", ""), "files": ["SKILL.md"]},
-        {"name": web.get("name", "web-access"), "description": web.get("description", ""), "files": ["SKILL.md"]},
-        {"name": rec.get("name", "recruit"), "description": rec.get("description", ""), "files": ["SKILL.md"]},
-    ]})
+    entries = []
+    for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
+                       ("lead-signals", "skills/lead-signals/SKILL.md"),
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+        fm = _skill_frontmatter(path)
+        entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
+        if summary := (fm.get("metadata") or {}).get("summary"):
+            entry["summary"] = summary
+        entries.append(entry)
+    return JSONResponse({"skills": entries})
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)

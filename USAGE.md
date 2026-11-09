@@ -52,13 +52,20 @@ present a per-org token directly.
 | `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
 | `treg logout` | — | clear your stored credentials |
-| `treg onboard` | `--mode guided\|quick` · `--name N` · `--yes` · `--reset` | colourful guided first-run — pick **guided build** (you create the team + invite a teammate, step by step) or **quick demo** (we seed a full demo team + tool + activity), ending on a no-key call. Offered `[Y/n]` after your first login; `--reset` removes demo teammates |
+| `treg onboard` | `--path catalog\|setup\|access\|demo` · `--source local\|global\|both` · `--yes` · `--reset` | guided first-run: **catalog** (find a tool and call it with no key), **setup** (share this project's or your global agent skills and keys), **access** (pull your team's shared skills, then a test call) or **demo**; asked when `--path` is omitted. Offered `[Y/n]` after your first login; `--reset` removes demo teams and example teammates |
 
 ```bash
 treg config --base-url https://treg.to
 treg login                                 # GitHub; or:
 treg login --email you@example.com        # emailed 6-digit code (register-or-login)
 ```
+
+## MCP server (agents)
+
+| Command | What it does |
+|---|---|
+| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login; restart the agent afterward. |
+| `treg mcp install --oauth` | repairs a dead saved key: rewrites those entries to the URL only so each client can authorize itself. Needs no login; restart each agent, then authorize treg in it. |
 
 ## Teams / orgs
 
@@ -76,7 +83,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 | `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |
 | `treg org invite` | `EMAIL`, `--role member\|admin` | (admin+) create a one-time invite **code** to share |
 | `treg org members` | — | (admin+) list members + roles |
-| `treg org join` | `CODE`, `--email EMAIL` | redeem a code: registers you if new, joins, saves the org token |
+| `treg org join` | `CODE`, `--email EMAIL` (optional) | redeem a code while signed in as the invited email: joins, saves the org token |
 
 ```bash
 # owner side
@@ -85,7 +92,8 @@ treg org invite bob@company.com --role member  # prints e.g. inv_7Kd9x2LmQpR4 �
 
 # Bob's side (no email is sent; he gets the code over Slack/DM)
 treg config --base-url https://treg.to
-treg org join inv_7Kd9x2LmQpR4 --email bob@company.com   # joins + mints HIS own token
+treg login --email bob@company.com        # proves Bob owns the invited email
+treg org join inv_7Kd9x2LmQpR4            # joins + mints HIS own token
 treg tool ls            # sees only Team A's tools
 treg org use team-a     # switch orgs anytime; one token per org, never mixed
 ```
@@ -138,7 +146,7 @@ treg tool add google-ads --base-url https://googleads.googleapis.com \
 | `treg catalog search` | `"what you want to do"`, `--new [DAYS]`, `--sort newest` | find endpoints by capability, with the same search agents get (name a provider, "exa search", to put its tools first); `--new` keeps tools added in the last DAYS days (30 when bare, max 365), `--sort newest` lists newest first; with either, the words are optional |
 | `treg catalog get` | `ENDPOINT_ID` | docs, parameters, **the price**, and how you would be served |
 | `treg call ENDPOINT_ID` | `--query K=V`, `--data STR` or `--data @FILE` | call it |
-| `treg --json call ENDPOINT_ID` | same | for scripts: one JSON line `{"result": <body>, "_treg": {http_status, call_id, charged_micro}}` on stdout, nothing on stderr |
+| `treg --json call ENDPOINT_ID` | same | for scripts: one JSON line `{"result": <body>, "_treg": {http_status, call_id, charged_micro}}` on stdout; parse stdout and the exit status, as stderr may carry a note for a person |
 | `treg call ENDPOINT_ID --await` | `--timeout N` (default 900) | a generation call (video/image): submit, poll the provider, print the final response |
 | `treg host FILE` | `--content-type T`, `--json` | host a reference image/audio/video at a public URL a vendor can fetch (30 MB, 7-day TTL, free); prints the URL for `image_urls` / `audio_urls` |
 | `treg catalog request` | `"what's missing"` | searched, not there? file it — requests steer what gets added next |
@@ -247,8 +255,9 @@ then get the 503 above); `treg org overflow` shows the setting. Own keys are nev
 `treg org archive off` takes your team out of treg's archive of answers: no new call of yours is
 answered from a stored answer or recorded into one, so metered calls lose the repeat price (own keys
 stay free as always). `treg org archive` shows the setting; `treg org archive on` opts back in.
-Answers already stored for the team are erased when the team is deleted, or on request; call records
-and async-task completion evidence are kept as before.
+Answers already stored for the team are erased when the team is deleted, or on request. A request
+can include public answers to questions only your team paid for; answers other teams also paid for
+stay. Call records and async-task completion evidence are kept as before.
 
 ### Routed endpoints — let treg choose the provider
 
@@ -268,7 +277,7 @@ returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-S
 vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
 on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
 attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
-stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. When you sent a `domain` and the hit has an email, `X-Treg-Domain-Match` / `_treg.domain_match` says whether the mailbox domain matches — a LinkedIn-only provider often returns a former employer; the hit is still billed and the address is not altered. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
 
 `X-Treg-Route-Verify: true` on `treg.people.email.find` checks a hit with `treg.people.email.verify`
 in the same call: your own verifier key first, then BounceBan, then the usual order. The check is
@@ -297,6 +306,13 @@ carries `_treg.decision: {decided, decided_by, ordered_by}` and `X-Treg-Route-De
 when nobody decides, the first answer comes back as it was. Your own `X-Treg-Route-Prefer` order is
 kept. With `X-Treg-Route-Waterfall: 0`, or on a routed tool without deciding verdict words, the
 header is refused (422, unbilled).
+
+`X-Treg-Route-Complete: 1` keeps looking past a thin hit: one missing a field the contract lists as
+`complete`, or under half the output when it lists none. `treg catalog get <routed id>` shows both
+bars: `stops_at` is the answer a call ends on without the header, `complete` the fields it waits for
+with it. The fullest answer so far is kept if nothing fuller turns up; adapters that cannot map a
+complete answer are asked last. It only runs with the waterfall on (`X-Treg-Route-Waterfall: 0`
+makes the header a no-op).
 
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
@@ -618,3 +634,7 @@ slow or offline delivery may be dropped.
 Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
 no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
 PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.
+
+The `install.sh` installer reports the same way: each run sends whether it started, installed or
+failed (with a fixed reason), the installer it used (uv, pipx or pip3), the CLI version before and
+after, OS and architecture, under the same installation ID. The same two variables turn it off.

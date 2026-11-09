@@ -411,6 +411,25 @@ async def _sixtyfour(c, key):
     return {"value": remaining, "unit": "credits", "note": "Organization credit balance"}
 
 
+async def _leadocean(c, key):
+    d = await _get(c, "https://api.leadocean.io/v1/usage", headers={"x-api-key": key})
+    pace = (d.get("data") or {}).get("pace") if isinstance(d, dict) else None
+    if not isinstance(pace, dict):
+        raise ValueError("LeadOcean returned no pace counters")
+    remaining = []
+    for group in ("search", "enrich"):
+        windows = pace.get(group)
+        if not isinstance(windows, list) or not windows:
+            raise ValueError(f"LeadOcean returned no {group} counters")
+        for window in windows:
+            used, limit = window.get("used"), window.get("limit")
+            if type(used) is not int or type(limit) is not int or used < 0 or limit < 0:
+                raise ValueError("LeadOcean returned an invalid pace counter")
+            remaining.append(max(0, limit - used))
+    return {"value": min(remaining), "unit": "records", "informational": True,
+            "note": "Smallest remaining search/enrichment window; pools are independent"}
+
+
 async def _blitzapi(c, key):
     d = await _get(c, "https://api.blitz-api.ai/v2/account/key-info",
                    headers={"x-api-key": key})
@@ -430,7 +449,7 @@ async def _mobiusengine_jobs(c, key):
     d = await _get(c, "https://jobs-api.arihaan.ai/v1/balance", headers={"x-api-key": key})
     left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
     if left is None or left < 0:
-        raise ValueError("MobiusEngine Jobs Data returned no pay-per-job balance")
+        raise ValueError("MobiusEngine.ai Jobs Data returned no pay-per-job balance")
     return {"value": left, "unit": "USD left",
             "note": "prepaid pay-per-job balance; HTTP 402 insufficient_balance at zero"}
 
@@ -822,6 +841,14 @@ async def _enrow(c, key):
     return {"value": credits, "unit": "credits", "note": ""}
 
 
+async def _filtrat(c, key):
+    d = await _get(c, "https://filtrat.io/v1/credits/balance", headers={"Authorization": f"Bearer {key}"})
+    credits = _finite(d.get("balance")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Filtrat returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
 async def _branddev(c, key):
     # No free account route exists — but a deliberate no-param call is a FREE validation error
     # (400, credits_consumed 0) whose body still carries key_metadata.credits_remaining.
@@ -1073,6 +1100,7 @@ BALANCE_ROUTES = {
     "findymail": _findymail,
     "anymailfinder": _anymailfinder,
     "enrow": _enrow,
+    "filtrat": _filtrat,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
@@ -1100,6 +1128,7 @@ BALANCE_ROUTES = {
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
     "sixtyfour": _sixtyfour,
+    "leadocean": _leadocean,
     "blitzapi": _blitzapi,
     "mobiusengine_jobs": _mobiusengine_jobs,
     "prospeo": _prospeo,
@@ -1128,6 +1157,8 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
+                "field; the prepaid USD balance is visible in the Corpo API dashboard",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "

@@ -6,21 +6,22 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 import json
 import re
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import reconcile
-from ..application import enterprise_sso, evidence_retention
+from ..application import enterprise_sso, evidence_retention, referrals as referral_app
 from ..config import get_settings
 from ..infra import kv
 from ..infra.db import get_admin_read_session, get_admin_session
-from ..domain import money
+from ..domain import money, referrals as referral_domain
 from ..models import ArchiveEndpointStat, ArchiveSnapshot, Bundle, CallRecord, EndpointDayStat, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
@@ -394,10 +395,16 @@ async def admin_errors(
     Evidence and org names may lag when a read database is configured; authorization stays on
     the primary.
     """
+    from ..application import catalog_stats
     cutoff = evidence_retention.cutoff()
     since = _utcnow_naive() - timedelta(days=max(1, min(days, 90)))
+    # The window as an id bound, found by bisection on the primary key, beside the time bound:
+    # the report reads newest first down the primary key and stops at the bound, whatever the
+    # planner makes of a status or provider filter. On the time bound alone, a narrow window with
+    # a status filter was planned as a scan of every row in the window, past the report's timeout.
+    first = await catalog_stats._first_id_at(db, since)
     q = (select(CallRecord)
-         .where(CallRecord.created_at >= since,
+         .where(CallRecord.id >= first, CallRecord.created_at >= since,
                 or_(CallRecord.error_request.is_not(None), CallRecord.error_response.is_not(None)))
          .order_by(CallRecord.id.desc()).limit(max(1, min(limit, 500))))
     if provider:
@@ -745,6 +752,26 @@ async def admin_referrals(
     }
 
 
+@reads_router.get("/admin/referrals/users")
+async def admin_referral_user_by_email(
+    email: str = Query(min_length=3, max_length=320), _: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.get_affiliate(email=email.strip().lower())
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@reads_router.get("/admin/referrals/users/{user_id}")
+async def admin_referral_user(
+    user_id: int = Path(ge=1, le=2_147_483_647), _: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.get_affiliate(user_id=user_id)
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 async def _is_last_active_superadmin(db: AsyncSession, target: User) -> bool:
     """True if `target` is currently the ONLY active (unsuspended) super-admin, so demoting /
     suspending / deleting them would leave the platform with no reachable admin."""
@@ -762,6 +789,39 @@ class BoolIn(BaseModel):
 
 app = APIRouter()
 mutations_router = app
+
+
+class AffiliateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    affiliate: StrictBool
+    expected_version: int = Field(ge=0, le=2_147_483_646, strict=True)
+    reason: str = Field(min_length=1, max_length=1000)
+    operation_id: UUID
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be blank")
+        return value
+
+
+@mutations_router.put("/admin/referrals/users/{user_id}/affiliate")
+async def admin_set_referral_affiliate(
+    body: AffiliateIn, user_id: int = Path(ge=1, le=2_147_483_647),
+    principal: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.set_affiliate(
+            user_id=user_id, affiliate=body.affiliate, expected_version=body.expected_version,
+            reason=body.reason, operation_id=str(body.operation_id), principal=principal,
+        )
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except referral_domain.AffiliateConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.post("/admin/users/{user_id}/superadmin")

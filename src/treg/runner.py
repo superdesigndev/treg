@@ -2,7 +2,7 @@
 the tool's `cli.inject` secrets injected into the child process, and return its output. The caller
 never holds the key; the secret is decrypted here (as it already is for every /call) and placed
 only in the child's environment. Both run tiers read the same `Tool.cli` profile — this module is
-the server-side consumer of it; the local tier's is the /grant path. See docs/CLI-RUN-PLAN.md.
+the server-side consumer of it; the local tier's is the /grant path.
 
 Tier 0 scope (this module): **static-key (`kind="env"`) secrets** injected under their `cli.inject`
 names; a plain subprocess (no container); a per-run throwaway $HOME so concurrent orgs never share a

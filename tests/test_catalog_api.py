@@ -19,6 +19,7 @@ from httpx import AsyncClient
 
 from treg import oauth_providers as P
 from treg.domain.catalog import store as cs
+from treg.domain.catalog.schema import CatalogSchemaError
 
 
 def test_loaded_rows_are_plain_json(tmp_path):
@@ -84,7 +85,7 @@ async def test_platform_detail_groups_the_same_job_across_providers(clients: Asy
     assert ep["method"] == "GET" and ep["path"].startswith("/")
     assert ep["tier"] == "core", "an endpoint with no explicit tier is core, not hidden"
     assert ep["verified"] and ep["has_example"] is True
-    assert ep["cost"]["type"] == "per_success"
+    assert ep["cost"]["type"] == "per_call", "TikHub bills every 2xx, a miss included"
 
 
 async def test_every_listed_endpoint_carries_its_platform(clients: AsyncClient):
@@ -177,7 +178,8 @@ def test_a_job_files_under_the_domain_most_of_its_providers_give_it(tmp_path):
         (tmp_path / f"{prov}.yaml").write_text(
             f"provider: {prov}\nendpoints:\n  - id: {prov}.local\n    platform: google\n"
             f"    capability: google.serp.local\n    domain: {domain}\n    method: GET\n"
-            f"    path: /local\n    summary: Local pack\n    cost: {{usd: {usd}}}\n")
+            f"    path: /local\n    summary: Local pack\n"
+            f"    cost: {{type: per_call, value: {usd}, currency: USD, unit: call}}\n")
     cat = cs.load(directory=tmp_path)
     pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
     [section] = cs.domain_rows(pairs, cat.capabilities, cat.capability_titles)
@@ -472,6 +474,22 @@ async def test_retired_rows_leave_discovery_but_keep_an_actionable_direct_lookup
     assert retired not in {row["id"] for row in search["results"]}
 
 
+async def test_a_rows_note_is_served_on_its_own_detail_only(clients: AsyncClient):
+    """`note` is a caller-facing caveat about the whole tool: `catalog get` shows it, while the
+    lists and search, which compare rows by their summary, leave it out."""
+    ep = next(e for e in cs.load().endpoints if e.get("note") and e["kind"] not in cs.HIDDEN_KINDS)
+    detail = (await clients.get(f"/catalog/endpoints/{ep['id']}")).json()
+    assert detail["endpoint"]["note"] == ep["note"]
+    shelf = (await clients.get(f"/catalog/platforms/{ep['platform']}")).json()
+    listed = [e for c in shelf["capabilities"] for e in c["endpoints"]] + shelf["extended"]
+    assert ep["id"] in {e["id"] for e in listed}
+    assert not any("note" in e for e in listed)
+    provider = (await clients.get(f"/catalog/providers/{ep['provider']}")).json()
+    assert not any("note" in t for p in provider["platforms"] for t in p["tools"])
+    search = (await clients.get("/catalog/search", params={"q": ep["name"] or ep["summary"]})).json()
+    assert search["results"] and not any("note" in r for r in search["results"])
+
+
 async def test_call_template_carries_method_and_body_for_a_post(clients: AsyncClient):
     body = (await clients.get("/catalog/endpoints/dataforseo.web.backlinks.summary")).json()
     tmpl = body["call_template"]
@@ -713,7 +731,7 @@ def test_catalog_validator_rejects_an_unknown_endpoint_array_encoding(tmp_path, 
         cv.CATALOG = original
     output = capsys.readouterr().out
     assert result == 1
-    assert "input.queryArrayEncoding must be one of" in output
+    assert "input.queryArrayEncoding: Input should be 'json', 'comma' or 'repeated'" in output
 
 
 # ---- example responses -------------------------------------------------------------------
@@ -765,6 +783,50 @@ def test_an_extended_file_merges_into_the_same_provider(tmp_path):
     assert tiers["tikhub.tiktok.user.mix"] == "extended"
 
 
+def test_the_core_file_wins_over_its_extended_file(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    row = "  - id: demo.web.page\n    platform: web\n    name: {name}\n    method: GET\n    path: /{name}\n"
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\npricing_url: https://core.example/pricing\nlimits: core limits\n"
+        "source: {docs: https://core.example/docs}\n"
+        "cache: {mode: public, ttl: 1d, licence: core}\n"
+        "ceiling_param: {in: query, name: core_max, unit: usd}\n"
+        "endpoints:\n" + row.format(name="core"))
+    extended = (
+        "provider: demo\npricing_url: https://ext.example/pricing\nlimits: ext limits\n"
+        "source: {docs: https://ext.example/docs}\n"
+        "cache: {mode: forbidden, licence: extended}\n"
+        "ceiling_param: {in: query, name: ext_max, unit: usd}\n"
+        "endpoints:\n"
+        "  - id: demo.web.other\n    platform: web\n    tier: extended\n    method: GET\n    path: /other\n")
+    (tmp_path / "demo.extended.yaml").write_text(extended)
+
+    cat = cs.load(directory=tmp_path)
+    assert cat.provider_meta["demo"]["pricing_url"] == "https://core.example/pricing"
+    assert cat.provider_meta["demo"]["limits"] == "core limits"
+    assert cat.provider_meta["demo"]["docs"] == "https://core.example/docs"
+    assert cat.provider_meta["demo"]["cache"]["licence"] == "core"
+    assert cat.ceiling_params["demo"]["name"] == "core_max"
+    assert cat.by_id["demo.web.other"]["cache"]["licence"] == "core"
+
+    (tmp_path / "demo.extended.yaml").write_text(
+        extended + row.format(name="extended").replace("platform: web", "platform: web\n    tier: extended"))
+    with pytest.raises(CatalogSchemaError, match="duplicate endpoint id demo.web.page"):
+        cs.load(directory=tmp_path)
+
+
+def test_observed_from_reaches_the_loaded_row(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\nendpoints:\n"
+        "  - id: demo.web.page\n    platform: web\n    method: GET\n    path: /a\n"
+        "    observed_from: '2026-01-02'\n"
+        "  - id: demo.web.other\n    platform: web\n    method: GET\n    path: /b\n")
+    cat = cs.load(directory=tmp_path)
+    assert cat.by_id["demo.web.page"]["observed_from"] == "2026-01-02"
+    assert cat.by_id["demo.web.other"]["observed_from"] is None
+
+
 def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_whole(tmp_path):
     (tmp_path / "capabilities.yaml").write_text(
         "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate}\n")
@@ -813,13 +875,16 @@ def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_w
     assert cs.effective_async_descriptor(None, {"id_from": "b"}) == {"id_from": "b"}
 
 
-def test_a_missing_catalog_directory_is_an_empty_catalog_not_a_crash(tmp_path):
+def test_a_missing_catalog_directory_is_empty_and_a_malformed_file_fails_the_load(tmp_path):
     cat = cs.load(directory=tmp_path / "nope")
     assert cat.endpoints == [] and cat.platforms == {}
-    # a half-written dir (no taxonomy, malformed provider file) must degrade the same way
     (tmp_path / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\n")
     (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{no_id: true}]\n")
-    assert cs.load(directory=tmp_path).endpoints == []
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: id: Field required; no_id: Extra inputs"):
+        cs.load(directory=tmp_path)
+    (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{id: broken.x\n")
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: .*YAMLError|broken.yaml: Parser|broken.yaml: Scanner"):
+        cs.load(directory=tmp_path)
 
 
 def test_a_proposed_capability_still_gets_a_description(tmp_path):
@@ -1159,7 +1224,7 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
 def test_generic_display_prices_match_web_and_cli():
     from treg.domain.catalog import store
     from treg.routers.web import _price_label
-    from treg.cli import _cost_usd, _cost_label
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     cat = store.load()
     for quantity, rate in [(25, 2.0), (100, 1.0)]:
         raw = {'type': 'per_result', 'currency': 'USD', 'value': rate, 'per': quantity,
@@ -1192,7 +1257,7 @@ def test_moz_lists_priced_per_returned_row_show_per_result():
     `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
     meter stays `quota_rows` and `usd` stays the price of one row."""
     from treg.application.call.resolve import _platform_estimate_micro
-    from treg.cli import _cost_label, _cost_usd
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     from treg.routers.web import _price_label
 
     cat = cs.load()

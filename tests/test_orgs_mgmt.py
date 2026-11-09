@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from sqlalchemy import text
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup, accept_with_code
 
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
@@ -33,7 +33,7 @@ async def c():
 
 
 async def _register(c: AsyncClient, email: str) -> str:
-    return (await c.post("/users", json={"email": email})).json()["token"]
+    return (await verified_signup(c, json={"email": email})).json()["token"]
 
 
 async def _team_with_member(c: AsyncClient):
@@ -43,7 +43,7 @@ async def _team_with_member(c: AsyncClient):
     org_id = team["org_id"]
     otok = team["token"]
     code = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "m@x.dev", "role": "member"})).json()["code"]
-    mtok = (await c.post("/invites/accept", json={"code": code, "email": "m@x.dev"})).json()["token"]
+    mtok = (await accept_with_code(c, json={"code": code, "email": "m@x.dev"})).json()["token"]
     members = (await c.get(f"/orgs/{org_id}/members", headers=_h(otok))).json()
     owner_uid = next(m["user_id"] for m in members if m["role"] == "owner")
     member_uid = next(m["user_id"] for m in members if m["role"] == "member")
@@ -73,7 +73,7 @@ async def test_invite_and_accept_new_user(c):
     assert inv.status_code == 200, inv.text
     code = inv.json()["code"]
 
-    acc = await c.post("/invites/accept", json={"code": code, "email": "bob@x.dev"})
+    acc = await accept_with_code(c, json={"code": code, "email": "bob@x.dev"})
     assert acc.status_code == 200, acc.text
     bob_token = acc.json()["token"]
     assert acc.json()["role"] == "member"
@@ -85,7 +85,7 @@ async def test_invite_and_accept_new_user(c):
     orgs = {o["slug"] for o in (await c.get("/orgs", headers=_h(bob_token))).json()}
     assert orgs == {"team-a"}
     # the code is one-time: a second accept fails
-    assert (await c.post("/invites/accept", json={"code": code, "email": "bob@x.dev"})).status_code == 404
+    assert (await accept_with_code(c, json={"code": code, "email": "bob@x.dev"})).status_code == 404
 
 
 async def test_invite_and_accept_existing_user(c):
@@ -94,7 +94,7 @@ async def test_invite_and_accept_existing_user(c):
     team = (await c.post("/orgs", headers=_h(owner), json={"name": "Team A"})).json()
     code = (await c.post(f"/orgs/{team['org_id']}/invites", headers=_h(team["token"]),
                          json={"email": "carol@x.dev", "role": "admin"})).json()["code"]
-    acc = await c.post("/invites/accept", json={"code": code, "email": "carol@x.dev"})
+    acc = await accept_with_code(c, json={"code": code, "email": "carol@x.dev"})
     assert acc.status_code == 200 and acc.json()["role"] == "admin"
     assert "personal" not in acc.json()  # existing user already has their own org; none created
     # Carol now has personal + Team A
@@ -107,8 +107,69 @@ async def test_email_mismatch_and_bad_code_rejected(c):
     team = (await c.post("/orgs", headers=_h(owner), json={"name": "Team A"})).json()
     code = (await c.post(f"/orgs/{team['org_id']}/invites", headers=_h(team["token"]),
                          json={"email": "bob@x.dev"})).json()["code"]
-    assert (await c.post("/invites/accept", json={"code": code, "email": "eve@x.dev"})).status_code == 403
-    assert (await c.post("/invites/accept", json={"code": "inv_bogus", "email": "bob@x.dev"})).status_code == 404
+    assert (await accept_with_code(c, json={"code": code, "email": "eve@x.dev"})).status_code == 403
+    assert (await accept_with_code(c, json={"code": "inv_bogus", "email": "bob@x.dev"})).status_code == 404
+
+
+async def test_an_invite_code_never_signs_in_the_invitee(c):
+    """The admin who creates an invite holds its code, so the code alone must never yield the
+    invitee's identity — or an admin could invite any user and act as them in their other teams."""
+    victim = (await c.post("/orgs", headers=_h(await _register(c, "victim@x.dev")),
+                           json={"name": "Victim Team"})).json()
+    attacker = (await c.post("/orgs", headers=_h(await _register(c, "attacker@x.dev")),
+                             json={"name": "Attacker Team"})).json()
+    code = (await c.post(f"/orgs/{attacker['org_id']}/invites", headers=_h(attacker["token"]),
+                         json={"email": "victim@x.dev", "role": "viewer"})).json()["code"]
+
+    anonymous = await c.post("/invites/accept", json={"code": code, "email": "victim@x.dev"})
+    assert anonymous.status_code == 401 and "token" not in anonymous.json()
+    as_attacker = await c.post("/invites/accept", headers=_h(attacker["token"]),
+                               json={"code": code, "email": "victim@x.dev"})
+    assert as_attacker.status_code == 403 and "token" not in as_attacker.json()
+    as_attacker_no_email = await c.post("/invites/accept", headers=_h(attacker["token"]), json={"code": code})
+    assert as_attacker_no_email.status_code == 403
+    members = (await c.get(f"/orgs/{attacker['org_id']}/members", headers=_h(attacker["token"]))).json()
+    assert "victim@x.dev" not in {m["email"] for m in members}
+
+    joined = await accept_with_code(c, json={"code": code, "email": "victim@x.dev"})
+    assert joined.status_code == 200, joined.text
+    victim_members = await c.get(f"/orgs/{victim['org_id']}/members", headers=_h(attacker["token"]))
+    assert victim_members.status_code in (403, 404)
+
+
+async def test_a_team_pinned_key_cannot_act_for_the_account(c):
+    """An Additional key belongs to one team: it cannot join another team or mint another team's
+    Default key for its owner."""
+    home = (await c.post("/orgs", headers=_h(await _register(c, "owner@x.dev")),
+                         json={"name": "Home"})).json()
+    second = (await c.post("/orgs", headers=_h(home["token"]), json={"name": "Second"})).json()
+    additional = (await c.post(f"/orgs/{home['org_id']}/api-keys", headers=_h(home["token"]),
+                               json={"name": "ci"})).json()["secret"]
+    other = (await c.post("/orgs", headers=_h(await _register(c, "other@x.dev")),
+                          json={"name": "Other"})).json()
+    code = (await c.post(f"/orgs/{other['org_id']}/invites", headers=_h(other["token"]),
+                         json={"email": "owner@x.dev", "role": "admin"})).json()["code"]
+    invite_id = (await c.get("/invites/mine", headers=_h(home["token"]))).json()[0]["id"]
+
+    assert (await c.post("/invites/accept", headers=_h(additional), json={"code": code})).status_code == 403
+    assert (await c.post(f"/invites/{invite_id}/accept", headers=_h(additional))).status_code == 403
+    minted = await c.get("/auth/cli-token", headers={**_h(additional), "X-Treg-Org": second["org"]})
+    assert minted.status_code == 403 and "token" not in minted.json()
+    assert (await c.post(f"/invites/{invite_id}/accept", headers=_h(home["token"]))).status_code == 200
+
+
+async def test_an_invite_code_never_creates_an_account(c):
+    from sqlmodel import select
+    from treg.models import User
+
+    owner = (await c.post("/orgs", headers=_h(await _register(c, "owner@x.dev")),
+                          json={"name": "Team A"})).json()
+    code = (await c.post(f"/orgs/{owner['org_id']}/invites", headers=_h(owner["token"]),
+                         json={"email": "nobody-yet@x.dev"})).json()["code"]
+    r = await c.post("/invites/accept", json={"code": code, "email": "nobody-yet@x.dev"})
+    assert r.status_code == 401
+    async with session_maker() as db:
+        assert (await db.execute(select(User).where(User.email == "nobody-yet@x.dev"))).first() is None
 
 
 async def test_member_cannot_invite_but_admin_can(c):
@@ -117,13 +178,13 @@ async def test_member_cannot_invite_but_admin_can(c):
     org_id, otok = team["org_id"], team["token"]
     # add a plain member
     code = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "m@x.dev", "role": "member"})).json()["code"]
-    mtok = (await c.post("/invites/accept", json={"code": code, "email": "m@x.dev"})).json()["token"]
+    mtok = (await accept_with_code(c, json={"code": code, "email": "m@x.dev"})).json()["token"]
     # member cannot invite or list members
     assert (await c.post(f"/orgs/{org_id}/invites", headers=_h(mtok), json={"email": "x@x.dev"})).status_code == 403
     assert (await c.get(f"/orgs/{org_id}/members", headers=_h(mtok))).status_code == 403
     # add an admin, who then CAN invite
     code2 = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "a@x.dev", "role": "admin"})).json()["code"]
-    atok = (await c.post("/invites/accept", json={"code": code2, "email": "a@x.dev"})).json()["token"]
+    atok = (await accept_with_code(c, json={"code": code2, "email": "a@x.dev"})).json()["token"]
     assert (await c.post(f"/orgs/{org_id}/invites", headers=_h(atok), json={"email": "y@x.dev"})).status_code == 200
 
 
@@ -136,7 +197,7 @@ async def test_viewer_can_call_and_read_but_not_register(c):
     await c.post("/tools", headers=_h(otok), json={"name": "echo", "base_url": "http://upstream", "secret_id": sid})
     # invite a viewer
     code = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "vi@x.dev", "role": "viewer"})).json()["code"]
-    acc = await c.post("/invites/accept", json={"code": code, "email": "vi@x.dev"})
+    acc = await accept_with_code(c, json={"code": code, "email": "vi@x.dev"})
     assert acc.status_code == 200 and acc.json()["role"] == "viewer"
     vtok = acc.json()["token"]
 
@@ -158,10 +219,10 @@ async def test_admin_cannot_remove_owner_but_can_remove_member(c):
     owner_uid = next(m["user_id"] for m in (await c.get(f"/orgs/{org_id}/members", headers=_h(otok))).json() if m["role"] == "owner")
     # admin joins
     acode = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "a@x.dev", "role": "admin"})).json()["code"]
-    atok = (await c.post("/invites/accept", json={"code": acode, "email": "a@x.dev"})).json()["token"]
+    atok = (await accept_with_code(c, json={"code": acode, "email": "a@x.dev"})).json()["token"]
     # member joins
     mcode = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "m@x.dev", "role": "member"})).json()["code"]
-    await c.post("/invites/accept", json={"code": mcode, "email": "m@x.dev"})
+    await accept_with_code(c, json={"code": mcode, "email": "m@x.dev"})
     member_uid = next(m["user_id"] for m in (await c.get(f"/orgs/{org_id}/members", headers=_h(otok))).json() if m["role"] == "member")
 
     # admin cannot remove the owner
@@ -230,7 +291,7 @@ async def test_expired_invite_is_rejected(c):
     async with session_maker() as s:
         await s.execute(text("UPDATE invite SET expires_at = '2000-01-01 00:00:00'"))
         await s.commit()
-    r = await c.post("/invites/accept", json={"code": code, "email": "late@x.dev"})
+    r = await accept_with_code(c, json={"code": code, "email": "late@x.dev"})
     assert r.status_code == 410
 
 
@@ -245,11 +306,11 @@ async def test_list_and_revoke_invites(c):
     inv_id = listed[0]["id"]
     # a member cannot list invites
     mcode = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "m@x.dev"})).json()["code"]
-    mtok = (await c.post("/invites/accept", json={"code": mcode, "email": "m@x.dev"})).json()["token"]
+    mtok = (await accept_with_code(c, json={"code": mcode, "email": "m@x.dev"})).json()["token"]
     assert (await c.get(f"/orgs/{org_id}/invites", headers=_h(mtok))).status_code == 403
     # revoke -> the code can no longer be accepted, and it's gone from the list
     assert (await c.delete(f"/orgs/{org_id}/invites/{inv_id}", headers=_h(otok))).status_code == 200
-    assert (await c.post("/invites/accept", json={"code": inv["code"], "email": "p@x.dev"})).status_code == 404
+    assert (await accept_with_code(c, json={"code": inv["code"], "email": "p@x.dev"})).status_code == 404
     remaining = [i["email"] for i in (await c.get(f"/orgs/{org_id}/invites", headers=_h(otok))).json()]
     assert "p@x.dev" not in remaining
 

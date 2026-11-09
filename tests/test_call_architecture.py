@@ -12,7 +12,7 @@ import pytest
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
-from treg.application.call import authorize, overflow, reserve, service, settle
+from treg.application.call import authorize, overflow, reserve, route, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
@@ -95,6 +95,13 @@ _DATAPLANE_DERIVED_WRITES = {
     "async_resource_ownership": (
         (service._execute_call, "async_task_app.remember_platform_resources"),
     ),
+    # `/tasks/{call_id}` follows the task an async answer names for the team that made the call, on
+    # every tier: a team's own key has no hold and no AsyncTaskRecord, and a routed caller holds
+    # the parent's id. One row per root async answer, written after the answer is read whole.
+    "call_task_record": (
+        (service._remember_task, "async_task_app.remember_relayed_task"),
+        (route._remember_pending_task, "async_task_app.remember_routed_task"),
+    ),
     # Shared-key resource lifecycle state is part of the call's security boundary: create must
     # establish ownership before returning the upstream id, and update/delete change local state
     # only after the provider succeeds. All three mutations share the post-relay transaction.
@@ -118,12 +125,14 @@ _DATAPLANE_DERIVED_WRITES = {
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
     ),
-    # Observe mode for a shared rate window: a platform call about to go upstream takes a
-    # self-expiring member of its bucket's window (Redis, after the DB phase ended); nothing refuses.
+    # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
+    # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
     "provider_rate_window": (
         (service._execute_call, "rate_observe.observe"),
         (rate_observe.observe, "provider_rate.admit"),
-        (provider_rate.admit, "store.acquire_slot"),
+        (provider_rate.admit, "store.rate_window"),
+        (rate_observe.release, "provider_rate.release"),
+        (provider_rate._release, "store.release_slot"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -141,6 +150,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "overflow_budget_reservation",
     "async_result_ownership",
     "async_resource_ownership",
+    "call_task_record",
     "provider_resource_ownership",
     "member_daily_cap_slot",
     "provider_concurrency_lease",
@@ -174,19 +184,22 @@ _DERIVED_WRITE_FILES = {
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
-    _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit"},
-    _SRC / "infra" / "provider_rate.py": {"store.acquire_slot"},
+    _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
+    _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "call" / "service.py": {
         "org_endpoint_quota.admit",
         "fair_share.acquire",
         "rate_observe.observe",
+        "rate_observe.release",
         "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
+        "async_task_app.remember_relayed_task",
         "provider_resources.register",
         "provider_resources.rename",
         "provider_resources.tombstone",
     },
+    _SRC / "application" / "call" / "route.py": {"async_task_app.remember_routed_task"},
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
     _SRC / "domain" / "governance" / "publicdemo.py": {
         "ratestore.sweep", "ratestore.rate_check",
@@ -239,6 +252,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "async_task_app.observe_owned_poll"),
     ("application/call/service.py", "_execute_call",
      "async_task_app.remember_platform_resources"),
+    ("application/call/service.py", "_remember_task", "async_task_app.remember_relayed_task"),
+    ("application/call/route.py", "_remember_pending_task", "async_task_app.remember_routed_task"),
     ("application/call/service.py", "_apply_managed_resource_result",
      "provider_resources.register"),
     ("application/call/service.py", "_apply_managed_resource_result",
@@ -251,9 +266,13 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
-    ("application/call/service.py", "before_outbound", "rate_observe.observe"),
+    ("application/call/service.py", "admit_outbound", "rate_observe.observe"),
+    ("application/call/service.py", "_execute_call", "rate_observe.release"),
+    ("application/call/service.py", "admit_outbound", "rate_observe.release"),
     ("domain/capacity/rate_observe.py", "observe", "provider_rate.admit"),
-    ("infra/provider_rate.py", "admit", "store.acquire_slot"),
+    ("domain/capacity/rate_observe.py", "release", "provider_rate.release"),
+    ("infra/provider_rate.py", "admit", "store.rate_window"),
+    ("infra/provider_rate.py", "_release", "store.release_slot"),
     ("domain/capacity/marks.py", "strike", "ratestore.kv_put"),
     ("domain/capacity/marks.py", "clear", "ratestore.kv_pop"),
     ("domain/capacity/marks.py", "clear_sweep_state", "ratestore.kv_put"),

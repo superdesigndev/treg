@@ -402,15 +402,15 @@ async def test_dispute_inside_the_hold_cancels_the_referrers_half(c, monkeypatch
 
 
 async def test_dispute_does_not_touch_the_balance(c, monkeypatch):
-    """The clawback cancels a BONUS, never a top-up. treg has no path that drives a balance
-    negative, and refunding a payment is a human decision — that boundary is deliberate."""
+    """A dispute cancels a pending BONUS but leaves the top-up's credit alone: a won dispute returns
+    the money, and the ledger has no entry that would give revoked credit back."""
     _, _, code = await _ready_referrer(c, monkeypatch)
     bob_org, bob_token = await _signup(c, "bob@example.com", ref=code)
     await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
     async with session_maker() as db:
         before = await ledger.balance_of(db, bob_org)
-    await _deliver(c, {"id": "evt_d1", "type": "charge.refunded", "data": {"object": {
-        "id": "ch_1", "object": "charge", "payment_intent": "pi_bob"}}})
+    await _deliver(c, {"id": "evt_d1", "type": "charge.dispute.created", "data": {"object": {
+        "id": "dp_1", "object": "dispute", "charge": "ch_1", "payment_intent": "pi_bob"}}})
     async with session_maker() as db:
         assert await ledger.balance_of(db, bob_org) == before
 
@@ -590,3 +590,271 @@ async def test_a_referred_team_can_still_be_deleted(c, monkeypatch):
     assert await _referral_rows() == []
     async with session_maker() as s:
         assert await s.get(Org, bob_org) is None
+
+
+async def _affiliate_user(c, monkeypatch, email="ann@superdesign.dev"):
+    monkeypatch.setattr(get_settings(), "admin_token", "affiliate-test-admin")
+    response = await c.get("/admin/referrals/users", params={"email": email},
+                           headers=_h("affiliate-test-admin"))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _affiliate_operation(affiliate=True, version=0, **overrides):
+    from uuid import uuid4
+    return {"affiliate": affiliate, "expected_version": version,
+            "reason": "Approved cap exemption", "operation_id": str(uuid4()), **overrides}
+
+
+async def _set_affiliate(c, user_id, body):
+    return await c.put(f"/admin/referrals/users/{user_id}/affiliate", json=body,
+                       headers=_h("affiliate-test-admin"))
+
+
+async def test_affiliate_enable_revoke_and_terminal_capped_history(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "referral_cap", 1)
+    ann_org, ann_token, code = await _ready_referrer(c, monkeypatch)
+    state = await _affiliate_user(c, monkeypatch)
+    uid = state["user"]["id"]
+    assert state["affiliate"] is False and state["version"] == 0
+    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
+    cat_org, _ = await _signup(c, "cat@example.com", ref=code)
+    await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
+    await _topup(c, monkeypatch, cat_org, pi="pi_cat", fingerprint="fp_cat")
+    enabled = await _set_affiliate(c, uid, _affiliate_operation())
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["cap"] == {"paid": 1, "limit": None, "standard_limit": 1, "affiliate": True}
+    dee_org, _ = await _signup(c, "dee@example.com", ref=code)
+    await _topup(c, monkeypatch, dee_org, pi="pi_dee", fingerprint="fp_dee")
+    assert [r.status for r in sorted(await _referral_rows(), key=lambda r: r.id)] == ["qualified", "capped", "qualified"]
+    assert await _blocks(cat_org, "referral") == []
+    summary = (await c.get("/referrals", headers=_h(ann_token))).json()
+    assert summary["cap"]["limit"] is None and summary["cap"]["affiliate"] is True
+    assert len(await _blocks(dee_org, "referral")) == 1
+    assert await _blocks(ann_org, "referral") == []
+    revoked = await _set_affiliate(c, uid, _affiliate_operation(False, 1))
+    assert revoked.status_code == 200 and revoked.json()["cap"]["limit"] == 1
+    eve_org, _ = await _signup(c, "eve@example.com", ref=code)
+    await _topup(c, monkeypatch, eve_org, pi="pi_eve", fingerprint="fp_eve")
+    await _age_qualification()
+    await c.get("/referrals", headers=_h(ann_token))
+    assert len(await _blocks(ann_org, "referral")) == 2
+    assert await _blocks(eve_org, "referral") == []
+    assert [r.status for r in sorted(await _referral_rows(), key=lambda r: r.id)] == ["paid", "capped", "paid", "capped"]
+
+
+async def test_affiliate_only_bypasses_cap_not_threshold_card_or_suspension(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "referral_cap", 0)
+    _, _, code = await _ready_referrer(c, monkeypatch)
+    state = await _affiliate_user(c, monkeypatch)
+    uid = state["user"]["id"]
+    assert (await _set_affiliate(c, uid, _affiliate_operation())).status_code == 200
+    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
+    await _topup(c, monkeypatch, bob_org, pi="pi_bob_short", cents=500, fingerprint="fp_same")
+    assert (await _referral_rows())[0].status == "pending"
+    await _topup(c, monkeypatch, bob_org, pi="pi_bob_rest", cents=500, fingerprint="fp_same")
+    cat_org, _ = await _signup(c, "cat@example.com", ref=code)
+    await _topup(c, monkeypatch, cat_org, pi="pi_cat", fingerprint="fp_same")
+    async with session_maker() as db:
+        user = await db.get(User, uid)
+        user.suspended = True
+        await db.commit()
+    dee_org, _ = await _signup(c, "dee@example.com", ref=code)
+    await _topup(c, monkeypatch, dee_org, pi="pi_dee", fingerprint="fp_dee")
+    rows = sorted(await _referral_rows(), key=lambda r: r.id)
+    assert [(row.status, row.reject_reason) for row in rows] == [
+        ("qualified", ""), ("rejected", "card_already_used"), ("rejected", "referrer_unavailable")]
+
+
+async def test_affiliate_api_auth_validation_lookup_and_audit_principal(c, monkeypatch):
+    _, token = await _signup(c, "ann@superdesign.dev")
+    state = await _affiliate_user(c, monkeypatch)
+    uid = state["user"]["id"]
+    url = f"/admin/referrals/users/{uid}/affiliate"
+    body = _affiliate_operation()
+    for headers, expected in [({}, 401), (_h(token), 403), (_h("wrong-admin"), 403)]:
+        assert (await c.put(url, json=body, headers=headers)).status_code == expected
+        assert (await c.get(f"/admin/referrals/users/{uid}", headers=headers)).status_code == expected
+    for changes in [{"affiliate": "true"}, {"expected_version": True}, {"expected_version": -1},
+                    {"reason": "  "}, {"reason": "x" * 1001}, {"actor": "pretend-admin"},
+                    {"operation_id": "not-a-uuid"}]:
+        assert (await _set_affiliate(c, uid, {**body, **changes})).status_code == 422
+    assert (await c.get("/admin/referrals/users", params={"email": "ann"},
+                        headers=_h("affiliate-test-admin"))).status_code == 404
+    assert (await c.get("/admin/referrals/users/999999", headers=_h("affiliate-test-admin"))).status_code == 404
+    assert (await _set_affiliate(c, 999999, body)).status_code == 404
+    changed = (await _set_affiliate(c, uid, body)).json()
+    assert changed["event"]["principal"] == "env-admin"
+    async with session_maker() as db:
+        user = await db.get(User, uid)
+        user.is_superadmin = True
+        await db.commit()
+    changed = await c.put(url, json=_affiliate_operation(False, 1), headers=_h(token))
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["event"]["principal"] == "ann@superdesign.dev"
+
+
+async def test_affiliate_operation_replay_does_not_undo_later_revocation(c, monkeypatch):
+    await _signup(c, "ann@superdesign.dev")
+    uid = (await _affiliate_user(c, monkeypatch))["user"]["id"]
+    enable = _affiliate_operation()
+    first = (await _set_affiliate(c, uid, enable)).json()
+    assert first["changed"] is True and first["replayed"] is False
+    duplicate = (await _set_affiliate(c, uid, enable)).json()
+    assert duplicate["replayed"] is True and duplicate["version"] == 1
+    assert len(duplicate["history"]) == 1
+    assert (await _set_affiliate(c, uid, {**enable, "reason": "different approval"})).status_code == 409
+    assert (await _set_affiliate(c, uid, _affiliate_operation(False, 0))).status_code == 409
+    assert (await _set_affiliate(c, uid, _affiliate_operation(False, 1))).status_code == 200
+    duplicate = (await _set_affiliate(c, uid, enable)).json()
+    assert duplicate["affiliate"] is False and duplicate["version"] == 2
+    assert duplicate["event"] == first["event"] and duplicate["replayed"] is True
+    noop = (await _set_affiliate(c, uid, _affiliate_operation(False, 2))).json()
+    assert noop["changed"] is False and noop["version"] == 3
+
+
+async def test_affiliate_history_and_flag_roll_back_together(c, monkeypatch):
+    from treg.models import ReferralAffiliateEvent
+    await _signup(c, "ann@superdesign.dev")
+    uid = (await _affiliate_user(c, monkeypatch))["user"]["id"]
+
+    async def failed_response(*args, **kwargs):
+        raise RuntimeError("synthetic failure after audit flush")
+
+    monkeypatch.setattr(referrals, "affiliate_state", failed_response)
+    with pytest.raises(RuntimeError, match="synthetic failure"):
+        await _set_affiliate(c, uid, _affiliate_operation())
+    async with session_maker() as db:
+        user = await db.get(User, uid)
+        assert user.referral_affiliate is False and user.referral_affiliate_version == 0
+        assert (await db.execute(select(ReferralAffiliateEvent))).scalars().all() == []
+
+
+async def test_concurrent_affiliate_updates_and_retries_are_serialized(c, monkeypatch):
+    import asyncio
+    await _signup(c, "ann@superdesign.dev")
+    uid = (await _affiliate_user(c, monkeypatch))["user"]["id"]
+    operation = _affiliate_operation()
+    results = await asyncio.gather(*[_set_affiliate(c, uid, operation) for _ in range(2)])
+    assert [r.status_code for r in results] == [200, 200]
+    assert sorted(r.json()["replayed"] for r in results) == [False, True]
+    results = await asyncio.gather(*[_set_affiliate(c, uid, _affiliate_operation(False, 1)) for _ in range(2)])
+    assert sorted(r.status_code for r in results) == [200, 409]
+    state = await _affiliate_user(c, monkeypatch)
+    assert state["affiliate"] is False and state["version"] == 2 and len(state["history"]) == 2
+
+
+async def _fund_without_qualifying(org_id, pi):
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, get_settings().referral_min_topup_micro, pi)
+        await db.commit()
+
+
+async def _qualify_in_own_session(org_id, pi, fingerprint):
+    async with session_maker() as db:
+        return await referrals.qualify(db, org_id=org_id, payment_intent=pi,
+                                       amount_micro=get_settings().referral_min_topup_micro,
+                                       fingerprint=fingerprint)
+
+
+async def test_concurrent_qualifications_cannot_exceed_the_final_cap_slot(c, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(get_settings(), "referral_cap", 1)
+    _, _, code = await _ready_referrer(c, monkeypatch)
+    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
+    cat_org, _ = await _signup(c, "cat@example.com", ref=code)
+    await _fund_without_qualifying(bob_org, "pi_bob")
+    await _fund_without_qualifying(cat_org, "pi_cat")
+    await asyncio.gather(_qualify_in_own_session(bob_org, "pi_bob", "fp_bob"),
+                         _qualify_in_own_session(cat_org, "pi_cat", "fp_cat"))
+    assert sorted(row.status for row in await _referral_rows()) == ["capped", "qualified"]
+    assert len(await _blocks(bob_org, "referral")) + len(await _blocks(cat_org, "referral")) == 1
+
+
+async def test_concurrent_affiliate_referrals_cannot_reuse_a_card_across_referrers(c, monkeypatch):
+    import asyncio
+    codes = []
+    for email in ["ann@example.com", "dee@example.com"]:
+        _, token = await _signup(c, email)
+        codes.append((await c.post("/referrals/code", headers=_h(token))).json()["code"])
+        uid = (await _affiliate_user(c, monkeypatch, email))["user"]["id"]
+        assert (await _set_affiliate(c, uid, _affiliate_operation())).status_code == 200
+    bob_org, _ = await _signup(c, "bob@example.com", ref=codes[0])
+    cat_org, _ = await _signup(c, "cat@example.com", ref=codes[1])
+    await _fund_without_qualifying(bob_org, "pi_bob")
+    await _fund_without_qualifying(cat_org, "pi_cat")
+    await asyncio.gather(_qualify_in_own_session(bob_org, "pi_bob", "same_card"),
+                         _qualify_in_own_session(cat_org, "pi_cat", "same_card"))
+    rows = await _referral_rows()
+    assert sorted(row.status for row in rows) == ["qualified", "rejected"]
+    assert next(row for row in rows if row.status == "rejected").reject_reason == "card_already_used"
+
+
+async def test_concurrent_duplicate_qualification_and_sweep_pay_each_side_once(c, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(get_settings(), "referral_hold_days", 0)
+    ann_org, _, code = await _ready_referrer(c, monkeypatch)
+    uid = (await _affiliate_user(c, monkeypatch))["user"]["id"]
+    assert (await _set_affiliate(c, uid, _affiliate_operation())).status_code == 200
+    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
+    await _fund_without_qualifying(bob_org, "pi_bob")
+
+    async def immediate_sweep(db, row):
+        async with session_maker() as sweep_db:
+            await referrals.sweep(sweep_db)
+        await original_grant(db, row)
+
+    original_grant = referrals._grant_referee
+    monkeypatch.setattr(referrals, "_grant_referee", immediate_sweep)
+    await asyncio.gather(*[_qualify_in_own_session(bob_org, "pi_bob", "fp_bob") for _ in range(2)])
+    async with session_maker() as db:
+        assert await referrals.sweep(db) == 0
+    assert len(await _blocks(ann_org, "referral")) == len(await _blocks(bob_org, "referral")) == 1
+
+
+async def test_affiliate_history_does_not_follow_a_reused_user_id(c, monkeypatch):
+    async with session_maker() as db:
+        user = User(email="old@example.com")
+        db.add(user)
+        await db.commit()
+        uid = user.id
+    await _affiliate_user(c, monkeypatch, "old@example.com")
+    operation = _affiliate_operation()
+    assert (await _set_affiliate(c, uid, operation)).status_code == 200
+    async with session_maker() as db:
+        await db.delete(await db.get(User, uid))
+        await db.commit()
+        db.add(User(id=uid, email="new@example.com"))
+        await db.commit()
+    state = await _affiliate_user(c, monkeypatch, "new@example.com")
+    assert state["history"] == [] and state["version"] == 0 and state["affiliate"] is False
+    assert (await _set_affiliate(c, uid, operation)).status_code == 409
+    assert (await _set_affiliate(c, uid, _affiliate_operation())).status_code == 200
+
+
+async def test_a_dispute_cannot_overwrite_a_concurrent_paid_claim(c, monkeypatch):
+    from sqlalchemy.ext.asyncio import AsyncSession
+    ann_org, _, code = await _ready_referrer(c, monkeypatch)
+    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
+    await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
+    await _age_qualification()
+    original_execute = AsyncSession.execute
+    swept = False
+
+    async def sweep_after_dispute_read(db, statement, *args, **kwargs):
+        nonlocal swept
+        result = await original_execute(db, statement, *args, **kwargs)
+        clause = getattr(statement, "whereclause", None)
+        if not swept and clause is not None and "referral.qualifying_payment_intent =" in str(clause):
+            swept = True
+            async with session_maker() as sweep_db:
+                assert await referrals.sweep(sweep_db) == 1
+        return result
+
+    monkeypatch.setattr(AsyncSession, "execute", sweep_after_dispute_read)
+    response = await _deliver(c, {"id": "evt_dispute", "type": "charge.dispute.created",
+                                 "data": {"object": {"id": "dp_1", "payment_intent": "pi_bob"}}})
+    assert response.status_code == 200, response.text
+    assert swept and response.json()["referrals_cancelled"] == 0
+    assert (await _referral_rows())[0].status == "paid"
+    assert len(await _blocks(ann_org, "referral")) == len(await _blocks(bob_org, "referral")) == 1

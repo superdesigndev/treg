@@ -1,4 +1,4 @@
-"""hubtool — one version of a tool a maker published on the hub (docs/HUB-DECISIONS.md)
+"""hubtool — one version of a tool a maker published on the hub
 
 Revision ID: 0041
 Revises: 0040

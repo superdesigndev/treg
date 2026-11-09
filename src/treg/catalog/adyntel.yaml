@@ -9,6 +9,10 @@ pricing_url: https://www.adyntel.com/pricing
 # Adyntel authenticates inside the JSON body. The provider registry injects api_key and email;
 # callers never supply either field. body_allowlist makes this reviewed catalog surface smaller
 # than the raw API while a team's own raw tool remains a faithful relay.
+# Not catalogued: Google Shopping submission and status polling, and TikTok keyword search and ad
+# detail (the documented requests, sample ad id included, answered only 204). Adyntel exposes no
+# balance endpoint, response charge field or remaining-capacity header, so shared-account capacity
+# is replenished by hand, not observed.
 endpoints:
   - id: adyntel.meta-ads.library.advertiser
     capability: meta-ads.library.advertiser

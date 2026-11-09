@@ -1,0 +1,38 @@
+{
+  "datapoint_status": "ok",
+  "data": [
+    {
+      "id": "fs_nof0967d27b51eb7c3261adecf",
+      "category": "financialStatements",
+      "sub_type": "standalone",
+      "name": null,
+      "date": null,
+      "made_up_date": null,
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31"
+      },
+      "url": null
+    },
+    {
+      "id": "fs_nobcadf24be256dae6cf5e3c53",
+      "category": "financialStatements",
+      "sub_type": "consolidated",
+      "name": null,
+      "date": null,
+      "made_up_date": null,
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31"
+      },
+      "url": null
+    }
+  ],
+  "pagination": {
+    "limit": 3,
+    "next_cursor": "eyJvIjogM30",
+    "has_more": true,
+    "total_estimate": 6,
+    "returned": 3
+  }
+}

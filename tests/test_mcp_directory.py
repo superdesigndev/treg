@@ -348,6 +348,19 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_balance == directory_balance
 
 
+async def test_only_the_team_surface_shows_a_rows_note(clients):
+    """The directory surface returns what it was submitted with; `/mcp/` shows the row's note."""
+    from treg.domain.catalog import store
+    ep = next(e for e in store.load().endpoints
+              if e.get("note") and e.get("platform") not in mcp._DIRECTORY_HIDDEN_PLATFORMS)
+    token = clients.headers["X-Treg-Token"]
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+    assert team["endpoint"]["note"] == ep["note"]
+    assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
+
+
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
     from treg import audit
 

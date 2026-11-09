@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from .contracts import Adapter, Contract
+from .plan import bills_miss
 
 ROUTED_KIND = "routed"
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
-                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison"}
+                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
+                   "url": "https://example.com"}
 ROUTED_PROVIDER = "treg"
 
 
@@ -29,18 +31,18 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         return None
     prices = sorted(p for p in ((cost_view(e.get("cost"), e["provider"]) or {}).get("usd") for e in kids) if p is not None)
     lo, hi = (prices[0], prices[-1]) if prices else (None, None)
-    # A child priced per call or per result bills its provider's answer even when treg judges it a
-    # miss and moves on: the caller pays those too. Only per-success and free children are free
-    # on a miss.
-    billed_miss = sorted(e["id"] for e in kids
-                         if ((e.get("cost") or {}).get("type") not in ("per_success", "free", None)))
+    # A child priced per call bills its provider's answer even when treg judges it a miss and moves
+    # on: the caller pays those too. A per-success or per-result child is free on a miss unless its
+    # cost bills one (`plan.bills_miss`), the same rule ranking prices.
+    billed_miss = sorted(e["id"] for e in kids if bills_miss(e.get("cost")))
     max_usd = contract.default_max_cost_usd or 1.00
     body = {}
     variants = " | ".join("{" + ", ".join(v) + "}" for v in contract.identity)
     for variant in contract.identity:
         for k in variant:
             body.setdefault(k, {"type": contract.identity_types.get(k, "str"), "required": False,
-                                "note": "identity"})
+                                "note": "; ".join(["identity"] + ([contract.identity_notes[k]]
+                                                                  if k in contract.identity_notes else []))})
     for k, spec in (contract.filters or {}).items():
         body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
                             "note": "; ".join(["filter"]
@@ -65,9 +67,13 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                   "note": ("Send what you know; treg sends each provider only the fields it accepts "
                            f"({variants})"
                            + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
+                           + (". Omit a field you don't have: a url field holding something else, such as N/A, "
+                              "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "
                            "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
                            "X-Treg-Served-By names the provider."
+                           + (" When you sent a domain, _treg.domain_match says whether the hit's mailbox domain "
+                              "matches it." if contract.advice_domain_mismatch else "")
                            + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
                               "at that call's own price, in _treg.verification." if contract.check else "")
                            + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "

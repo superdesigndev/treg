@@ -26,7 +26,7 @@ from ..application.auth import (
 from ..config import get_settings
 from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
-from ..domain.identity.access import require_identity
+from ..domain.identity.access import require_identity, require_person
 from ..models import User
 from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
 from .web import _esc_html
@@ -50,6 +50,7 @@ class EmailStartIn(BaseModel):
 class EmailVerifyIn(BaseModel):
     email: str
     code: str
+    cli_pairing: bool = False  # sent by the /login?cli= page: this sign-in completes a `treg login`
 
 
 _EMAIL_HTTP_ERRORS = {
@@ -120,8 +121,11 @@ async def auth_email_verify(
     (same path as GitHub login) — one endpoint serves both clients."""
     require_managed_cli(request)
     try:
+        client = _client(request)
+        if client == "browser" and body.cli_pairing:
+            client = "cli_browser"
         verified = await auth_use_cases.verify_email_login(body.email, body.code,
-            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request))
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client=client)
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
     # Only a proven email: stashing at /start would let anyone tie their click to any address.
@@ -217,6 +221,7 @@ _SOCIAL_PAGE_ERRORS = {
     "suspended": ("Account suspended", "This account has been suspended.", False, 403),
     # A page, like `suspended`: a human is in the browser. Names no list and no domain.
     "blocked_domain": ("Sign-in refused", "This address cannot be used to sign in.", False, 403),
+    "check_expired": ("Sign-in expired", "Please start the sign-in again.", False, 400),
 }
 
 
@@ -322,8 +327,80 @@ async def auth_github_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
+
+
+_SOCIAL_CHECK_COOKIE = "treg_social_check"
+_SOCIAL_NAMES = {"github": "GitHub", "google": "Google"}
+
+
+async def _after_social_proof(request: Request, proof):
+    if isinstance(proof, auth_use_cases.SocialCheckPending):
+        resp = RedirectResponse("/auth/social/check", status_code=303)
+        resp.set_cookie(_SOCIAL_CHECK_COOKIE, proof.nonce, httponly=True, max_age=600,
+                        samesite="lax", secure=_is_https(request))
+        return resp
     await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp = _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp.delete_cookie(_SOCIAL_CHECK_COOKIE)
+    return resp
+
+
+_SOCIAL_CHECK_JS = """(function(){
+var f=document.getElementById('go'),b=document.getElementById('btn'),m=document.getElementById('msg'),busy=false,tries=0;
+function go(e){
+  if(e)e.preventDefault();
+  if(busy)return;
+  if(!window.tregCaptcha){f.submit();return;}
+  busy=true;b.disabled=true;tries++;
+  window.tregCaptcha.token('social_start').then(function(t){
+    if(t.charAt(0)==='!'&&tries<2){
+      busy=false;b.disabled=false;
+      m.textContent=t==='!pending'?'Finish the check below, then press Continue.'
+        :'The browser check did not load. Allow challenges.cloudflare.com, then press Continue.';
+      return;
+    }
+    f.captcha_token.value=t;f.submit();
+  });
+}
+f.addEventListener('submit',go);
+b.focus();
+go();
+})();"""
+
+
+@app.get("/auth/social/check")
+async def auth_social_check_page(request: Request):
+    """A provider proved an address no verified user holds yet: run the browser check, then post
+    its token to finish signing in. Without a waiting login (Back after signing in) go on to /app.
+    A check with no token is offered once more, then the sign-in finishes without credit; without
+    script the button finishes it at once."""
+    door = await auth_use_cases.social_check_door(request.cookies.get(_SOCIAL_CHECK_COOKIE, ""))
+    if door is None:
+        return RedirectResponse("/app", status_code=302)
+    name = _SOCIAL_NAMES[door]
+    html = (
+        f"{_AUTH_HEAD.replace('</style>', '.pbtn:disabled{opacity:.55;cursor:progress}</style>')}"
+        f'<body><div class="wrap"><form class="card" id="go" method="post" action="/auth/social/check">'
+        f'<div class="logo">▚ tools-registry</div><h1>Almost there</h1>'
+        f'<input type="hidden" name="captcha_token" value="">'
+        f'<p id="msg" style="margin-bottom:18px">{name} confirmed your address. One quick browser check finishes signing you in.</p>'
+        f'<button class="pbtn" id="btn" type="submit" data-captcha="social_start">Continue</button></form></div>'
+        f'<script src="/captcha.js"></script><script>{_SOCIAL_CHECK_JS}</script></body></html>'
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/social/check")
+async def auth_social_check(request: Request, captcha_token: str = Form("")):
+    try:
+        proof = await auth_use_cases.finish_social_check(
+            request.cookies.get(_SOCIAL_CHECK_COOKIE, ""), captcha_token, _client_ip(request))
+    except auth_use_cases.CliPairingError:
+        return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
+    except auth_use_cases.SocialLoginError as exc:
+        return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
 
 
 @app.get("/auth/google")
@@ -357,8 +434,7 @@ async def auth_google_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
-    await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    return await _after_social_proof(request, proof)
 
 
 app = APIRouter()
@@ -630,7 +706,7 @@ async function sendCode(){err('');const em=document.getElementById('em').value.t
  }catch(e){err(e.message)}finally{b.disabled=false}}
 async function verifyCode(){err('');const em=document.getElementById('em').value.trim(),co=document.getElementById('code').value.trim();
  if(!co)return err('enter the code');
- try{await post('/auth/email/verify',{email:em,code:co});
+ try{await post('/auth/email/verify',{email:em,code:co,cli_pairing:true});
   // The email door just set a session cookie — hide the doors and show the team picker.
   const d=document.getElementById('doors');if(d)d.style.display='none';
   const o=document.getElementById('other-acct');if(o)o.style.display='none';
@@ -1212,7 +1288,7 @@ token_router = app
 async def auth_cli_token(
     response: Response,
     request: Request,
-    user: User = Depends(require_identity),
+    user: User = Depends(require_person),
     x_treg_org: str = Header(default=""),
     x_treg_token: str = Header(default=""),
     treg_session: str = Cookie(default=""),

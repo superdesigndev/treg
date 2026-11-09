@@ -34,7 +34,9 @@ holds those accounts and bills a fraction of a cent per call.
 - **Local coding agent** (Claude Code, Cursor, Codex, opencode on the human's machine): the human
   has authorized the whole flow. If your runtime asks permission for shell commands, ask for `treg`
   once and work straight through. The installer puts in the CLI and the treg skill for every agent it
-  detects.
+  detects. It lists treg's other skills without installing them: tell the human in one sentence
+  each what they do, ask which they want, then run `treg skill bootstrap --skills <name>,<name>`
+  (or `--skills all`).
 
       curl -fsSL {BASE}/install.sh | sh
       treg login    # browser sign-in: GitHub, Google or an emailed code
@@ -109,7 +111,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   another provider. After a 429 or a 5xx, try the next provider of the job and say which one you
   switched to. treg's own refusals say in their body what to do.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
-  anyone sends to it.
+  anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
+  a LinkedIn-only provider often returns a former employer.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.
@@ -146,6 +149,8 @@ catalog search. Over MCP: `hub_create`. The skill below has the whole guide.
 <!--hosted-->
 - [GTM engineering playbook]({BASE}/gtm-engineering.md): from ICP to rollout, each chapter with a
   prompt and a rule.
+- [Comparisons]({BASE}/compare): treg beside other tool gateways, app connectors and data
+  platforms, each read from that product's own pages and dated.
 <!--/hosted-->
 - [README](https://github.com/superdesigndev/treg/blob/main/README.md): overview and architecture.
 - [CLI reference](https://github.com/superdesigndev/treg/blob/main/USAGE.md): every command, with

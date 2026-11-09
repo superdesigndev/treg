@@ -46,8 +46,37 @@ jobs:
           uv run --locked python -m treg.application.replay run "$OUT/corpus.jsonl" \
             "$OUT/candidate.jsonl" --fingerprints "$OUT/candidate.json"
           echo "compare=true" >> "$GITHUB_OUTPUT"
+      - name: The loaded catalog is byte-identical
+        # Only a pull request that changes loader, schema or validator source owes this check. The
+        # head's script runs in each checkout's own environment on the base's catalog, so a pull
+        # request that also changes catalog rows is judged on its code alone; the replay judges
+        # the rows. Paths the body declares in a `dump-declared` block may differ.
+        if: ${{ !cancelled() }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          OUT="$RUNNER_TEMP/replay"
+          BASE="$RUNNER_TEMP/base"
+          if ! git diff --name-only HEAD^1 HEAD | grep -qE '^(src/treg/domain/catalog/|scripts/catalog_validate\.py$|scripts/catalog_dump\.py$|\.github/workflows/replay\.yml$)'; then
+            echo "No loader, schema or validator source changed, so the loaded catalog is not compared." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          mkdir -p "$OUT"
+          [ -d "$BASE" ] || git worktree add --detach "$BASE" HEAD^1
+          (cd "$BASE" && uv sync --locked \
+            && uv run --locked python "$GITHUB_WORKSPACE/scripts/catalog_dump.py" "$OUT/base-catalog.json")
+          uv sync --locked
+          uv run --locked python scripts/catalog_dump.py "$OUT/candidate-catalog.json" \
+            --catalog "$BASE/src/treg/catalog"
+          printf '%s\n' "$PR_BODY" > "$OUT/dump-body.md"
+          status=0
+          uv run --locked python scripts/catalog_dump.py --compare \
+            "$OUT/base-catalog.json" "$OUT/candidate-catalog.json" \
+            --declared-in "$OUT/dump-body.md" > "$OUT/catalog.txt" || status=$?
+          tee -a "$GITHUB_STEP_SUMMARY" < "$OUT/catalog.txt"
+          exit "$status"
       - name: Fail on an undeclared difference
-        if: steps.replay.outputs.compare == 'true'
+        if: ${{ !cancelled() && steps.replay.outputs.compare == 'true' }}
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |

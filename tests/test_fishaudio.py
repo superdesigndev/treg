@@ -88,6 +88,8 @@ async def test_unified_voice_list_uses_byok_and_normalizes_without_holding_db(
 ):
     await clients.post("/secrets", json={"name": "fishaudio", "value": "OWN-FISH-KEY"})
     await audit.drain()
+    # SQLite shares this pool with key metadata writes; finish them before sampling it.
+    await managed_keys.drain_last_used()
     checked_out = []
 
     async def relay(*args, **kwargs):
