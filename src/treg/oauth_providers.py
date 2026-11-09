@@ -4256,6 +4256,31 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+VEILLE = OAuthProvider(
+    service="veille",
+    display_name="Veille",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Veille API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.veille.io",
+    setup_action_label="Get your Veille API key",
+    setup_steps=(
+        "Sign in to Veille and open Settings → API → Keys.",
+        "Copy your API key.",
+    ),
+    setup_note="Each check spends 1 to 5 credits depending on the endpoint; the usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify emails, phones, domains, IPs, EU VAT numbers and IBANs, and get daily exchange rates.",
+    base_url="https://api.veille.io",
+    docs_url="https://docs.veille.io",
+    probe_path="/v1/usage",  # free; an invalid key gets 401 {"error": "Invalid API Key"}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4274,6 +4299,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        VEILLE,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
