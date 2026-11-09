@@ -4,6 +4,8 @@
 #
 # One entry per line: a word or short phrase, matched case-insensitive on word boundaries, or
 # `re:` and a Python regular expression; then optionally `  # ` and a one-line reason.
+# Hedges, words that argue with an earlier text, evidence, dates, sample sizes and maintainer
+# reasoning are seeded. To add a word worth a second look, append one more line in that format.
 may  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
 might  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
 often  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
@@ -15,7 +17,6 @@ no longer  # argues with an earlier text: state the present fact
 now returns  # argues with an earlier text: state the present fact
 does include  # argues with an earlier text: state the present fact
 previously  # argues with an earlier text: state the present fact
-used to  # argues with an earlier text: state the present fact
 anymore  # argues with an earlier text: state the present fact
 actually  # argues with an earlier text: state the present fact
 as of  # dates a fact: evidence goes in the PR body

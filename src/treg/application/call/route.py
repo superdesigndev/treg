@@ -661,7 +661,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if options.prefer:
         ranked = ordered(options.prefer)
     else:
-        default = default_prefer(contract, identity, given)
+        default = default_prefer(contract, identity, given, caller.org_id)
         ranked = ordered(default)
         orders["default"] = _endpoints(ranked)
         if rule is not None:
@@ -1290,6 +1290,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = contributed
                 served = merged_from[0]
+    # Holders of the asked role now first, past holders last (`row.rank_by_role`), merged or not.
+    if plan.contract.row_rank and output and isinstance(output.get(plan.contract.row_of), list):
+        output = {**output, plan.contract.row_of: plan.contract.rank_rows(plan.identity, output[plan.contract.row_of])}
     # Every provider whose rows are in the answer: a merged row from one that ignored a filter
     # answers the looser question too.
     ignored = list(dict.fromkeys(k for c, _, core_i, _ in answers

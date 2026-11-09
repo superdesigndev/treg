@@ -285,14 +285,15 @@ so a wheel operator pins versions in their own requirements.
 
 **Release order.** The served installer installs the CLI from PyPI, so a server change that needs a
 new CLI ships only after that CLI is released. After a release is on PyPI, set `TREG_CLI_LATEST_VERSION` to it so
-older CLIs are told to update; set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
+older CLIs are told to update (a Python version only: a 1.x value has every Python CLI update into the
+Python CLI again); set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
 from working.
 
 **The binary CLI** is released by pushing a `v1.2.3` tag (`v1.3.0-beta.1` for beta), which runs
 the `CLI release` workflow; it needs the `cli-release` environment's `MINISIGN_SECRET_KEY` (an
 unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public key line). A
 channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
-`TREG_CLI_LATEST_VERSION` of 1.0.0 or later for stable) moves only when the operator moves it; one
+`TREG_CLI_STABLE_VERSION` for stable) moves only when the operator moves it; one
 left empty, or at a 0.x value, follows the newest GitHub release
 ([cli-binary](../interface/cli-binary.md)).
 
@@ -352,6 +353,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   off until `TREG_MEDIA_STORE_ENDPOINT`, its keys, `TREG_MEDIA_STAGING_BUCKET` and
   `TREG_MEDIA_PUBLIC_BUCKET` are set (SECURITY.md, "Picture storage"); `TREG_MEDIA_BASE_URL` empty
   means treg serves the bucket at `/media-files/`.
+- **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
+  row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
+  incomplete run; run one instance at a time.
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker
