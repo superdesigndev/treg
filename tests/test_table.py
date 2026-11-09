@@ -305,3 +305,18 @@ def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     wrapped = to_table({"tasks": [{"result": [{"k": 1}, {"k": 2}]}]})
     assert wrapped["shape"] == "list" and wrapped["path"] == "tasks[0].result"
 
+
+
+@pytest.mark.parametrize("payload, shape, rows", [
+    ('{"name":"Ada"}', "flat", [["Ada"]]),
+    ('[{"name":"Ada"},{"name":"Lin"}]', "list", [["Ada"], ["Lin"]]),
+    ('{"name":"雪", "text":"inside\\ufeffvalue"}', "flat", [["雪", "inside\ufeffvalue"]]),
+])
+async def test_utf8_bom_json_is_shaped_as_a_table(clients, platform_on, table_on, monkeypatch, payload, shape, rows):
+    body = b"\xef\xbb\xbf" + payload.encode("utf-8")
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    response = await clients.get(f"/table/{EP}?aweme_id=bom")
+    assert response.status_code == 200
+    table = response.json()
+    assert table["shape"] == shape
+    assert table["rows"] == rows
