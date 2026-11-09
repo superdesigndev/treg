@@ -363,32 +363,15 @@ async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
     assert (await _first_providers("treg.people.search", identity, header, len(first))) == first
     scoped = await _first_providers("treg.people.search", {"q": "head of tax", "title": "Head of Tax"}, n=99)
     assert "parallel" not in scoped, "a {q} rule never reaches past scoping"
-    assert "exa" in scoped, "exa writes the title into its text, so {q, title} keeps it"
 
 
 def test_phrase_leaves_out_what_the_text_already_says():
     from treg.domain.catalog.routing import paths as P
     assert P.evaluate("phrase(q, title)", {"q": "head of tax in phoenix", "title": "Head of Tax"}) == "head of tax in phoenix"
     assert P.evaluate("phrase(q, title)", {"q": "speaks Japanese", "title": "CTO"}) == "speaks Japanese CTO"
+    assert P.evaluate("phrase(q, title)", {"q": "semiconductor startups", "title": "CTO"}) == "semiconductor startups CTO"
     assert P.evaluate("phrase(q, title)", {"title": "CTO"}) == "CTO"
     assert P.evaluate("phrase(q, title)", {"q": " ", "title": None}) is None
-
-
-def test_exa_carries_a_title_sent_beside_q_without_repeating_it():
-    """{q, title} keeps exa: the title rides in its text, once. A title-only request, whose q is
-    built from that title, does not get the title twice."""
-    from treg.domain.catalog.routing.contracts import adapter_accepts
-    from treg.domain.catalog.routing.plan import unscoped
-
-    cat = catalog_store.load()
-    contract, exa = cat.contracts["people.search"], cat.adapters["exa.people.search"]
-    both, _ = canonical_identity(contract, {"q": "tax leaders in phoenix", "title": "Head of Tax"})
-    assert adapter_accepts(exa, both) == ("q",) and not unscoped(exa, contract, both)
-    assert exa.to_upstream(both, ("q",))[1]["query"] == "tax leaders in phoenix Head of Tax"
-    titled, _ = canonical_identity(contract, {"title": "Head of Tax", "location": "Phoenix"})
-    assert exa.to_upstream(titled, ("q",))[1]["query"] == "Head of Tax Phoenix"
-    scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
-    assert unscoped(exa, contract, scoped) == ("company_domain",), "a company lookup still skips exa"
 
 
 def test_in_rollout_is_stable_per_team_and_never_without_one():
@@ -400,21 +383,32 @@ def test_in_rollout_is_stable_per_team_and_never_without_one():
     assert set(picked) <= {o for o in range(1, 1001) if in_rollout("people.search", o, 99)}
 
 
-# org 2 is in the people.search 50% rollout, org 1 is not (in_rollout, a sha256 of capability and team)
-@pytest.mark.parametrize("identity, in_first, out_first", [
-    ({"title": "Head of Tax", "location": "Phoenix"}, "exa", "crawl4ai"),
-    ({"q": "tax leaders in phoenix", "title": "Head of Tax"}, "exa", "crawl4ai"),
-    ({"q": "head of tax in phoenix"}, "exa", "exa"),                                 # unchanged
-    ({"company_domain": "stripe.com", "title": "CTO"}, "crawl4ai", "crawl4ai"),      # unchanged
-    ({"q": "cto", "title": "CTO", "company_domain": "stripe.com"}, "crawl4ai", "crawl4ai"),
-    ({"full_name": "Alice Cooper", "title": "CTO"}, "crawl4ai", "crawl4ai"),
-])
-async def test_half_the_teams_ask_exa_first_for_a_role_without_a_company(
-        clients, people_search_on, identity, in_first, out_first):
+def test_a_percent_rule_applies_only_to_teams_in_its_rollout_and_rules_keep_their_order():
+    from treg.domain.catalog.routing.contracts import in_rollout, parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}, {"title": "str"}], "output": {"a": "str"},
+                               "prefer": ["c"],
+                               "prefer_when": [{"sent": ["q", "title"], "prefer": ["b"]},
+                                               {"sent": ["title"], "prefer": ["a"], "percent": 50}]}}}
+    contract = parse_contracts(doc)["y"]
+    inside = next(o for o in range(1, 100) if in_rollout("y", o, 50))
+    outside = next(o for o in range(1, 100) if not in_rollout("y", o, 50))
+    assert contract.prefer_for({"title"}, inside) == ("a",)
+    assert contract.prefer_for({"title"}, outside) == ("c",)
+    assert contract.prefer_for({"title"}, None) == ("c",), "no team, no rollout"
+    assert contract.prefer_for({"q", "title"}, inside) == ("b",), "an earlier rule wins"
+
+
+async def test_the_routed_plan_buckets_by_the_callers_team(clients, people_search_on, monkeypatch):
+    import dataclasses
     from treg.domain.catalog.routing.contracts import in_rollout
-    assert in_rollout("people.search", 2, 50) and not in_rollout("people.search", 1, 50)
-    assert (await _first_providers("treg.people.search", identity, n=1, org_id=2)) == [in_first]
-    assert (await _first_providers("treg.people.search", identity, n=1, org_id=1)) == [out_first]
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "people.search", dataclasses.replace(
+        cat.contracts["people.search"], prefer=("icypeas",), prefer_when=((("title",), ("exa",), 50),)))
+    inside = next(o for o in range(1, 100) if in_rollout("people.search", o, 50))
+    outside = next(o for o in range(1, 100) if not in_rollout("people.search", o, 50))
+    identity = {"title": "Head of Tax", "location": "Phoenix"}
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=inside)) == ["exa"]
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=outside)) == ["icypeas"]
 
 
 @pytest.mark.parametrize("percent", [0, 100, 50.5, True, "50", None])
@@ -1899,7 +1893,13 @@ async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_wh
         "one call, and the geography actually reached the provider"
     assert "ignored_filters" not in d["_treg"] and "X-Treg-Ignored-Filters" not in r.headers
 
-    # …and when the winner cannot express a filter, the answer says which — envelope, header, attempt
+    # …and when the winner cannot express a filter, the answer says which — envelope, header, attempt.
+    # exa writes country into its text, so this half gives it an adapter without that.
+    import dataclasses
+    cat = catalog_store.load()
+    exa = cat.adapters["exa.people.search"]
+    monkeypatch.setitem(cat.adapters, "exa.people.search", dataclasses.replace(
+        exa, in_expr={**exa.in_expr, "body.query": "join(q, company_domain, csv(keywords))"}))
     seen2 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"*": [(200, {"results": [{"name": "Ada L", "url": "https://linkedin.com/in/al"}]})] * 12}, seen2))

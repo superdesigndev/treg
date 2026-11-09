@@ -76,10 +76,14 @@ def join(*parts: Any) -> str | None:
 
 def phrase(*parts: Any) -> str | None:
     """`phrase(q, title)` → the parts as one text, each part left out when the text so far already
-    says it (case-insensitive): a title the caller also wrote into `q`, or a `q` built from it."""
+    says it as whole words (case-insensitive): a title the caller also wrote into `q`, or a `q`
+    built from it. "CTO" is not said by "semiconductor"."""
     words: list[str] = []
     for p in parts:
-        if isinstance(p, str) and p.strip() and p.strip().lower() not in " ".join(words).lower():
+        if not (isinstance(p, str) and p.strip()):
+            continue
+        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
+        if not said:
             words.append(p.strip())
     return " ".join(words) if words else None
 

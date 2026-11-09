@@ -391,12 +391,8 @@ contracts:
     idempotent: true
     prefer: [crawl4ai]
     # A free-text `q` is a semantic question: ask the semantic searches first.
-    # A role and place with no company or name ({title}, {q, title}) is the same question: on an
-    # outside role + location test (exa-people sample-100b, 2026-11-07) the structured providers
-    # this shape reached scored about 19 points under Exa. Half the teams get exa first
-    # (`in_rollout`), so the two orders are compared on live calls before every team gets it; the
-    # rest keep the old order. Company and name searches are listed first so they never reach
-    # these rules.
+    # A role with no company or name ({title}, {q, title}) is one too: half the teams ask exa first
+    # (`in_rollout`) so the two orders compare on live calls. Company and name rules come first.
     prefer_when:
       - {sent: [q, title, company_domain], prefer: [crawl4ai]}
       - {sent: [q, title, full_name], prefer: [crawl4ai]}
