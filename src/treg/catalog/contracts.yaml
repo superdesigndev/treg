@@ -195,6 +195,20 @@ contracts:
     # Never `verified`: a live line is not proof it is this person's number.
     verdict: {from: live_status, words: [live, dead, unknown]}
 
+  # One Enrichlayer child; settle needs a verified miss predicate for per_success all-null bodies.
+  people.profile.from_phone:
+    summary: "Find social profiles from a contact phone number — Enrichlayer reverse phone; miss judging only, never routed"
+    routed: false
+    identity:
+      - {phone: str}
+    filters: {}
+    output:
+      linkedin_url: {type: url, note: "LinkedIn profile when the provider found one"}
+      twitter_url: {type: url}
+      facebook_url: {type: url}
+    miss: "coalesce(linkedin_url, twitter_url, facebook_url) == null"
+    idempotent: true
+
   people.phone.verify:
     summary: "Validate a phone number's format and numbering-plan validity; not a live-line check"
     identity:
@@ -1054,6 +1068,24 @@ contracts:
     # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
     miss: "ads == []"
     idempotent: true
+
+  linkedin.search.ads:
+    summary: "LinkedIn Ad Library ads for one company domain, LinkedIn page id, or keyword — provider-native ad rows in `ads`"
+    identity:
+      - {company_domain: str}
+      - {linkedin_page_id: str}
+      - {keyword: str}
+    filters: {}
+    output:
+      ads: {type: list, required: true, note: "the provider's own ad rows (creative type, advertiser, commentary…) — shapes differ per provider; raw is the same body"}
+      page_id: {type: str}
+      count: {type: int}
+      next_cursor: {type: str}
+    # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
+    # routed: false — admission/settle only until more children verify; do not mint treg.linkedin.search.ads yet.
+    miss: "ads == []"
+    idempotent: true
+    routed: false
 
   google.maps.reviews:
     summary: "The reviews Google Maps shows for one place, by place id — provider-native review rows in `reviews`"

@@ -306,6 +306,7 @@ capabilities:
   people.email.find.personal: "Find a person's personal email address"
   people.phone.verify: "Validate and format a phone number"
   people.phone.live: "Check whether a phone number is live on its network"
+  people.profile.from_phone: "Find social profiles from a contact phone number"
   linkedin.profile.from_email: "Find a person's LinkedIn profile from their email address"
   creators.socials.connected: "List a creator's accounts on other platforms"
 
