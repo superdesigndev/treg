@@ -1178,8 +1178,6 @@ def test_observed_cost_only_trusts_a_real_number():
     assert call_settle._observed_cost_micro(_mk("exa"), b'{"costDollars": {"total": "0.007"}}') is None
     assert call_settle._observed_cost_micro(_mk("exa"), b'{"costDollars": 0.007}') is None
     assert call_settle._observed_cost_micro(_mk("exa"), b'{"results": []}') is None
-    assert call_settle._observed_cost_micro(_mk("scrapecreators"), b'{"credits_charged": 2}') == 2 * EP_CALL_MICRO
-    assert call_settle._observed_cost_micro(_mk("scrapecreators"), b'{"success": true}') is None
     # akta reports `credits_consumed` — the field that makes its per-section enrich billable at
     # actuals rather than the catalog's upper-bound estimate. $0.05/credit (fx.yaml).
     assert call_settle._observed_cost_micro(_mk("akta"), b'{"credits_consumed": 0.5}') == 25_000

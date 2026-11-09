@@ -6,6 +6,18 @@ source:
 limits: "billed per credit, 100 free credits on signup"
 pricing_url: https://scrapecreators.com/pricing
 
+# Both tiers. ScrapeCreators bills the call whether or not it finds anything: the answer's
+# `credits_charged` is the bill, zero included, on a 2xx or a 4xx; a 2xx without a readable one
+# settles at the hold, a miss or an embedded error envelope included.
+defaults:
+  settle: {reported: {path: response.credits_charged, unit: credit}}
+  bill: {miss: charged, error: charged}
+  provenance:
+    source: rate_card_api
+    source_url: https://docs.scrapecreators.com/openapi.json
+    checked: '2026-07-28'
+    confidence: verified
+
 endpoints:
   # --- Account ------------------------------------------------------------------------------
   - id: scrapecreators.account.usage
@@ -21,7 +33,8 @@ endpoints:
       queryParams: {}
     test_request:
       queryParams: {}
-    cost: {type: free, value: 0, currency: USD, unit: call}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.account.usage.json
@@ -43,7 +56,9 @@ endpoints:
       note: "one of handle | user_id"
     test_request:
       queryParams: {handle: "stoolpresidente"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.user.uniqueId, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.user.profile.json
@@ -63,7 +78,9 @@ endpoints:
         get_transcript: {type: boolean, required: false, note: "Get transcript of the video"}
     test_request:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.aweme_detail, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.detail.json
@@ -83,7 +100,9 @@ endpoints:
         cursor: {type: number, required: false, note: "Cursor to get more comments. Get 'cursor' from previous response.", example: 20}
     test_request:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.comments.json
@@ -107,7 +126,10 @@ endpoints:
         trim: {type: boolean, required: false, note: "Set to true for a trimmed response"}
     test_request:
       queryParams: {query: "ai", date_posted: "all-time"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when: [{path: response.search_item_list, op: present}, {path: response.search_item_list, op: empty}]
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.search.videos.json
@@ -127,7 +149,9 @@ endpoints:
         handle: {type: string, required: true, note: "Instagram handle", example: "natgeo"}
     test_request:
       queryParams: {handle: "natgeo"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.user.username, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.profile.json
@@ -147,7 +171,9 @@ endpoints:
         next_max_id: {type: string, required: false, note: "Cursor to get next page of results."}
     test_request:
       queryParams: {handle: "natgeo"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.items, op: present}, {path: response.items, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.posts.json
@@ -167,7 +193,9 @@ endpoints:
         cursor: {type: string, required: false, note: "The cursor to get more comments. Get 'cursor' from previous response."}
     test_request:
       queryParams: {url: "https://www.instagram.com/reel/DOq6eV6iIgD"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.post.comments.json
@@ -190,7 +218,9 @@ endpoints:
       note: "one of channelId | handle | url"
     test_request:
       queryParams: {channelId: "UC-9-kyTW8ZkZNDHQJ6FgpwQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.name, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.channel.profile.json
@@ -209,7 +239,9 @@ endpoints:
         url: {type: string, required: true, note: "YouTube video or short URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
     test_request:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.id, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.detail.json
@@ -229,7 +261,9 @@ endpoints:
         order: {type: string, required: false, note: "Order of comments", example: "top"}
     test_request:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.comments.json
@@ -249,7 +283,9 @@ endpoints:
         handle: {type: string, required: true, note: "Twitter handle", example: "levelsio"}
     test_request:
       queryParams: {handle: "levelsio"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.core.screen_name, op: absent}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.profile.json
@@ -268,7 +304,9 @@ endpoints:
         handle: {type: string, required: true, note: "Twitter handle", example: "levelsio"}
     test_request:
       queryParams: {handle: "levelsio"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.tweets, op: present}, {path: response.tweets, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.posts.json
@@ -277,9 +315,6 @@ endpoints:
   # --- LinkedIn -----------------------------------------------------------------------------------
   - id: scrapecreators.linkedin.user.profile
     capability: linkedin.user.profile
-    miss:
-      status: 404
-      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     platform: linkedin
     scope: any_account
     method: GET
@@ -291,7 +326,11 @@ endpoints:
         url: {type: string, required: true, note: "The URL of the LinkedIn profile to get", example: "https://www.linkedin.com/in/parrsam/"}
     test_request:
       queryParams: {url: "https://www.linkedin.com/in/parrsam/"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      status: [404]
+      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.linkedin.user.profile.json
@@ -312,7 +351,9 @@ endpoints:
         sort: {type: string, required: false, note: "Sort order"}
     test_request:
       queryParams: {subreddit: "news"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.subreddit.posts.json
@@ -342,7 +383,7 @@ endpoints:
       note: "Prefer sort=relevance for posts matching the query. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts — not \"recent posts about X\". Brand/token queries may also match colloquial substrings under new."
     test_request:
       queryParams: {query: "ai", sort: "relevance"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.search.posts.json
@@ -364,7 +405,12 @@ endpoints:
         cache_max_age: {type: string, required: false, note: "Return a cached result if one is at most this old (0 credits): 1d | 3d | 7d | 14d | 30d", example: "7d"}
     test_request:
       queryParams: {platform: "x", handle: "adrian_horning_"}
-    cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
+    price: {value: '10', currency: credit, per: 1, unit: call}
+    provenance:
+      source: rate_card_api
+      source_url: https://docs.scrapecreators.com/openapi.json
+      checked: '2026-08-27'
+      confidence: verified
     note: "An uncharged 503 means every declared link-in-bio page failed and nothing else resolved: retry later rather than treat it as a miss."
     verified: '2026-08-27'
     added: '2026-08-26'

@@ -303,7 +303,6 @@ adapters:
           following: "coalesce(data.user.edge_follow.count, data.user.following_count)",
           posts_count: "coalesce(data.user.edge_owner_to_timeline_media.count, data.user.media_count)",
           is_verified: data.user.is_verified, is_private: data.user.is_private, biography: data.user.biography}
-    miss: "data.user.username == null"
   scrapecreators.x.v1-instagram-basic-profile:
     accepts: [[user_id]]
     in:  {user_id: queryParams.userId}
@@ -312,7 +311,6 @@ adapters:
           following: "coalesce(edge_follow.count, following_count)",
           posts_count: "coalesce(edge_owner_to_timeline_media.count, media_count)",
           is_verified: is_verified, is_private: is_private, biography: biography}
-    miss: "username == null"
   serpapi.x.instagram-profile:
     accepts: [[username]]
     in:  {username: queryParams.profile_id}
@@ -332,7 +330,6 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: posts, count: "len(posts)", next_cursor: cursor}
-    miss: "posts == []"
   justoneapi.x.instagram-search-hashtag-posts-v1:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
@@ -348,7 +345,6 @@ adapters:
     accepts: [[username]]
     in:  {username: queryParams.handle}
     out: {posts: tweets}
-    miss: "tweets == []"
   justoneapi.x.twitter-get-user-posts-v1:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
@@ -377,7 +373,6 @@ adapters:
     out: {username: user.uniqueId, user_id: user.id, sec_uid: user.secUid, nickname: user.nickname,
           followers: stats.followerCount, following: stats.followingCount, likes: stats.heartCount,
           videos_count: stats.videoCount, is_verified: user.verified, biography: user.signature}
-    miss: "user.uniqueId == null"
   tikhub.x.tiktok-analytics-fetch-creator-info-and-milestones:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
@@ -751,7 +746,6 @@ adapters:
     accepts: [[username]]
     in:  {username: queryParams.handle}
     out: {posts: items, next_cursor: next_max_id}
-    miss: "items == []"
   justoneapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.username}
@@ -799,7 +793,6 @@ adapters:
     in:  {username: queryParams.handle}
     out: {username: core.screen_name, name: core.name, followers: legacy.followers_count, following: legacy.friends_count,
           posts_count: legacy.statuses_count, is_verified: is_blue_verified, description: legacy.description}
-    miss: "core.screen_name == null"
 
   # ---- google.keywords.ideas ----------------------------------------------------------------
   dataforseo.google.keywords.ideas:
@@ -855,7 +848,6 @@ adapters:
     in:  {q: queryParams.query}
     in_expr: {queryParams.region: "upper(country)"}
     out: {results: results, count: "len(results)"}
-    miss: "results == []"
 
   # Similar-company adapters checked against existing saved upstream fixtures.
   tomba.companies.similar:
@@ -1508,7 +1500,6 @@ adapters:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.url}
     out: {full_name: name, location: location, followers: followers, connections: connections, about: about}
-    miss: "name == null"
   # tikhub.x.linkedin-web-get-user-profile is retired (web → web_v2); web_v2's captured example has data: null,
   # so its out cannot be verified.
 
@@ -1588,7 +1579,6 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {reels: reels, next_cursor: next_page}
-    miss: "reels == []"
 
   # ---- tiktok.video.comments (batch 5) ---------------------------------------------------------
   justoneapi.tiktok.video.comments:
@@ -1610,7 +1600,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {comments: comments}
-    miss: "comments == []"
 
   # ---- tiktok.video.detail (batch 5) -----------------------------------------------------------
   justoneapi.tiktok.video.detail:
@@ -1645,14 +1634,12 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {video: aweme_detail}
-    miss: "aweme_detail == null"
 
   # ---- youtube.channel.profile / search.videos (batch 5) ---------------------------------------
   scrapecreators.youtube.channel.profile:
     accepts: [[channel_id]]
     in:  {channel_id: queryParams.channelId}
     out: {name: name, channel_id: channelId, handle: handle, description: description, subscribers: subscriberCount}
-    miss: "name == null"
   tikhub.x.youtube-web-get-channel-info:
     accepts: [[channel_id]]
     in:  {channel_id: queryParams.channel_id}
@@ -1708,7 +1695,6 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {users: profiles, next_cursor: cursor}
-    miss: "profiles == []"
     row: {id: id, username: username, full_name: full_name, url: url, follower_count: follower_count, following_count: following_count, media_count: media_count, biography: biography, category_name: category_name, external_url: external_url, is_verified: is_verified, is_private: is_private, is_business_account: is_business_account, is_professional_account: is_professional_account, matched_from: matched_from, google_title: google_title, google_description: google_description}
   tikhub.x.instagram-v2-search-users:
     accepts: [[q]]
@@ -1798,7 +1784,6 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {videos: search_item_list, next_cursor: cursor, has_more: has_more}
-    miss: "search_item_list == []"
   tikhub.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
@@ -1813,7 +1798,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {comments: comments, next_cursor: cursor}
-    miss: "comments == []"
   tikhub.x.instagram-v2-fetch-post-comments:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code_or_url}
@@ -1841,7 +1825,6 @@ adapters:
     accepts: [[subreddit]]
     in:  {subreddit: queryParams.subreddit}
     out: {posts: posts, next_cursor: after}
-    miss: "posts == []"
   tikhub.x.reddit-app-fetch-subreddit-feed:
     accepts: [[subreddit]]
     in:  {subreddit: queryParams.subreddit_name}
@@ -1866,7 +1849,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {video_id: id, title: title, description: description, views: viewCountInt, published: publishDateText}
-    miss: "id == null"
   # tiktok.search.hashtags, google.domain.overview: one verifiable provider each — no waterfall yet.
   # reddit.post.comments: tikhub's commentForest.trees and justoneapi's postInfoById are truncated/null in
   # the fixtures; scrapecreators has no example.
@@ -1881,7 +1863,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {comments: comments, next_cursor: cursor}
-    miss: "comments == []"
 
   serpapi.x.amazon-product:
     accepts: [[asin]]
@@ -1907,7 +1888,6 @@ adapters:
     in:  {linkedin_url: queryParams.url}
     out: {name: name, description: description, website: website, followers: followers, employees: employeeCount,
           location: "join(location.city, location.country)", linkedin_url: url}
-    miss: "name == null"
   tikhub.x.linkedin-web-v2-get-company-profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.url}
@@ -1951,7 +1931,6 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {reels: items, has_more: paging_info.more_available}
-    miss: "items == []"
   tikhub.x.instagram-v1-fetch-user-reels:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
@@ -2033,7 +2012,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {comments: comments, next_cursor: continuationToken}
-    miss: "comments == []"
   tikhub.youtube.video.comments:
     accepts: [[video_id]]
     in:  {video_id: queryParams.video_id}
@@ -2050,7 +2028,6 @@ adapters:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.url}
     out: {posts: posts}
-    miss: "posts == []"
 
   justoneapi.x.amazon-search-products-v1:
     accepts: [[q]]
@@ -2073,7 +2050,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {posts: posts, next_cursor: cursor}
-    miss: "posts == []"
 
   brightdata.x.facebook-profiles:
     accepts: [[url]]
@@ -2088,7 +2064,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {name: name, id: id, url: url}
-    miss: "name == null"
   serpapi.x.facebook-profile:
     accepts: [[profile_id]]
     in:  {profile_id: queryParams.profile_id}
@@ -2225,7 +2200,6 @@ adapters:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {post: ".", title: name, text: description, likes: likeCount, comments: commentCount}
-    miss: "name == null"
   tikhub.x.linkedin-web-v2-get-post-detail:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -3635,7 +3609,6 @@ adapters:
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: cursor}
-    miss: "coalesce(results, []) == []"
   crawl4ai.facebook.user.posts:
     accepts: [[url]]
     in: {url: body.page}

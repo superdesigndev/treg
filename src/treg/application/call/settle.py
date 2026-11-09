@@ -442,7 +442,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     more, which `ledger.settle` handles as an overrun).
 
     Providers that volunteer the number, in two different denominations:
-      - scrapecreators (`credits_charged`), akta and leadmagic (`credits_consumed`): provider
+      - akta and leadmagic (`credits_consumed`): provider
         credits, converted through the provider's credit rate (fx.yaml) — the same conversion
         `cost_view` uses, so a settle can't disagree with the catalog's price. Akta is the one that
         NEEDS this: its enrich route is priced per SECTION requested and its news route adds a
@@ -748,8 +748,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(total, (int, float)) and not isinstance(total, bool) and total >= 0:
             return int(total * 1_000_000 + 0.5)
         return None
-    if provider in ("scrapecreators", "akta", "leadmagic"):
-        credits = doc.get("credits_charged" if provider == "scrapecreators" else "credits_consumed")
+    if provider in ("akta", "leadmagic"):
+        credits = doc.get("credits_consumed")
         rate = catalog_store.load().credit_rates.get(provider)
         if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
             return int(credits * rate * 1_000_000 + 0.5)
