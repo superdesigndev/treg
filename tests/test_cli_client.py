@@ -101,7 +101,7 @@ async def test_relay_without_posthog_key_drops(clients, monkeypatch):
 @pytest.fixture
 def release_settings(monkeypatch):
     s = get_settings()
-    monkeypatch.setattr(s, "cli_latest_version", "", raising=False)
+    monkeypatch.setattr(s, "cli_stable_version", "", raising=False)
     monkeypatch.setattr(s, "cli_beta_version", "", raising=False)
     monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/v{version}", raising=False)
     github_releases._cache.clear()
@@ -109,7 +109,7 @@ def release_settings(monkeypatch):
 
 
 async def test_latest_answers_each_channel_from_settings(clients, release_settings):
-    release_settings.cli_latest_version = "1.2.0"
+    release_settings.cli_stable_version = "1.2.0"
     release_settings.cli_beta_version = "1.3.0"
     stable = (await clients.get("/cli/latest", params={"os": "darwin", "arch": "arm64"})).json()
     assert stable == {"version": "1.2.0", "channel": "stable", "os": "darwin", "arch": "arm64",
@@ -122,7 +122,7 @@ async def test_latest_answers_each_channel_from_settings(clients, release_settin
 
 
 async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, release_settings, monkeypatch):
-    release_settings.cli_latest_version = "0.31.0"
+    release_settings.cli_stable_version = "0.31.0"
     asked = []
 
     async def github(repo):
@@ -148,7 +148,7 @@ async def test_latest_refuses_unknown_platforms_and_missing_releases(clients, re
 
 
 async def test_latest_download_redirects_to_the_platforms_archive(clients, release_settings, monkeypatch):
-    release_settings.cli_latest_version = "1.2.0"
+    release_settings.cli_stable_version = "1.2.0"
     release_settings.cli_beta_version = "1.3.0"
     r = await clients.get("/cli/latest/darwin-arm64", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "https://dl.example/v1.2.0/treg_1.2.0_darwin_arm64.tar.gz"

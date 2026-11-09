@@ -203,8 +203,8 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   versions compare as semantic versions (a pre-release before its release).
 - `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
   `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
-  a CLI on that channel and platform runs: `TREG_CLI_LATEST_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
-  (beta falls back to stable), else the newest GitHub release of `cli_release_repo` tagged
+  a CLI on that channel and platform runs: `TREG_CLI_STABLE_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
+  (beta falls back to stable; either may name a pre-release), else the newest GitHub release of `cli_release_repo` tagged
   `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
   `TREG_CLI_DOWNLOAD_BASE_URL`. On a channel the operator names, publishing a release moves no
