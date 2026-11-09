@@ -3387,6 +3387,15 @@ adapters:
     out: {platform: result.platform, username: result.username, url: result.url, full_name: result.fullname, followers: result.followers}
     miss: "result.platform == null"
 
+  # Judge-only: per_success settle zeros when every social URL is null (the documented miss body).
+  enrichlayer.contacts.reverse-phone:
+    route: false
+    accepts: [[phone]]
+    in: {phone: queryParams.phone_number}
+    out: {linkedin_url: linkedin_profile_url, twitter_url: twitter_profile_url,
+          facebook_url: facebook_profile_url}
+    miss: "coalesce(linkedin_profile_url, twitter_profile_url, facebook_profile_url) == null"
+
   # Enrichlayer's routed profiles use only the documented one-credit cache option.
   enrichlayer.person.profile:
     accepts: [[linkedin_url]]
@@ -3628,6 +3637,16 @@ adapters:
   adyntel.google.ads.transparency:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
+    out: {ads: ads, count: "len(ads)", next_cursor: continuation_token}
+    miss: "coalesce(ads, []) == []"
+  adyntel.linkedin.search.ads.company:
+    accepts: [[company_domain], [linkedin_page_id]]
+    in: {company_domain: body.company_domain, linkedin_page_id: body.linkedin_page_id}
+    out: {ads: ads, page_id: page_id, count: "len(ads)", next_cursor: continuation_token}
+    miss: "coalesce(ads, []) == []"
+  adyntel.linkedin.search.ads.keyword:
+    accepts: [[keyword]]
+    in: {keyword: body.keyword}
     out: {ads: ads, count: "len(ads)", next_cursor: continuation_token}
     miss: "coalesce(ads, []) == []"
   scrapecreators.x.v1-facebook-adlibrary-company-ads:
