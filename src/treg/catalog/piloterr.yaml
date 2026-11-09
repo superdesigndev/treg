@@ -445,8 +445,11 @@ endpoints:
     currency: credit
     per: 1
     unit: call
+    note: A 404 for an unknown id or URL is billed at the same price.
   added: '2026-11-09'
   docs_url: https://www.piloterr.com/library
+  bill:
+    miss: charged
 - id: piloterr.ebay.search.products
   capability: ebay.search.products
   platform: ebay
@@ -540,8 +543,11 @@ endpoints:
     currency: credit
     per: 1
     unit: call
+    note: A 404 for an unknown id or URL is billed at the same price.
   added: '2026-11-09'
   docs_url: https://www.piloterr.com/library
+  bill:
+    miss: charged
 - id: piloterr.zillow.property.detail
   capability: zillow.property.detail
   platform: zillow
@@ -566,5 +572,8 @@ endpoints:
     currency: credit
     per: 1
     unit: call
+    note: A 404 for an unknown id or URL is billed at the same price.
   added: '2026-11-09'
   docs_url: https://www.piloterr.com/library
+  bill:
+    miss: charged
