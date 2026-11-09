@@ -211,7 +211,8 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
-  served installer that way. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
+  served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
+  `--skills` when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
   shell has no signature tool; the binary verifies signatures on update), installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints
