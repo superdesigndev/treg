@@ -1965,7 +1965,7 @@ NACE = OAuthProvider(
     auth_kind="key",
     token_label="API key",
     token_placeholder="nace_sk_…",
-    setup_url="https://console.nace.ai",
+    setup_url="https://console.nace.ai/dashboard/api-keys",
     setup_action_label="Get your Nace API key",
     setup_steps=(
         "Sign in to the Nace console and open API Keys.",
