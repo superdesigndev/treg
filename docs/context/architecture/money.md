@@ -7,6 +7,7 @@ sources:
   - src/treg/catalog/tinyfish.yaml
   - tests/test_tinyfish.py
   - src/treg/domain/money/__init__.py
+  - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
@@ -175,6 +176,17 @@ application lock: N concurrent callers against a balance that affords K get exac
 first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable
 liability, so spending promo first keeps the refundable pool small.
+
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only`
+(video generation) is paid from purchased credit alone: `_platform_reserve` passes
+`purchased_only=True` (`_purchased_only` in `application/call/reserve.py`), and
+`reserve_in_transaction` runs `_purchased_gate` before the balance gate. The gate locks the org's
+purchased blocks in primary-key order, subtracts its open `Hold.purchased_only` holds, and raises
+`PurchasedCreditShort` (an `InsufficientBalance`) when the rest cannot cover the charge; the call
+is refused with 402 `free_credit_excludes_video`, before any upstream request and with nothing
+held. The flag is stored on the hold, so every settle path (the call, the async worker, a batch
+close) draws only purchased blocks in `_consume_blocks`; an overrun past them is a recorded
+`block_shortfall_micro`, never taken from free credit. A $0 call passes the gate.
 
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.

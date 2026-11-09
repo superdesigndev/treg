@@ -271,6 +271,13 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                 })
 
 
+def _purchased_only(endpoint_id: str) -> bool:
+    """The endpoint's platform declares `purchased_credit_only` (capabilities.yaml)."""
+    catalog = catalog_store.load()
+    platform = (catalog.by_id.get(endpoint_id) or {}).get("platform")
+    return bool((catalog.platforms.get(platform) or {}).get("purchased_credit_only"))
+
+
 async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
     """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
     mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
@@ -341,7 +348,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                             db, caller.org_id, mk.endpoint_id, mk.estimate_micro,
                             meta={"tier": "oauth" if mk.billed_oauth else "platform",
                                   "provider": mk.provider, "cost_type": mk.cost_type},
-                            tags=meta.tags, call_id=call_ref)
+                            tags=meta.tags, call_id=call_ref,
+                            purchased_only=_purchased_only(mk.endpoint_id))
                 except ledger.InsufficientBalance:
                     await db.rollback()
                     # A refused call asks for a refill too, or a team at $0 with auto top-up on would stay
@@ -361,6 +369,23 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     org = await db.get(Org, caller.org_id)
             if org is not None:
                 billing.maybe_schedule_autotopup(org)
+    except ledger.PurchasedCreditShort as exc:
+        if refused_org is not None:
+            billing.maybe_schedule_autotopup(refused_org)
+        raise ReservationFailed("free_credit_excludes_video", status_code=402, detail={
+            "error": "free_credit_excludes_video",
+            "message": (f"Free credit does not cover video generation. {mk.endpoint_id} would cost "
+                        f"~${ledger.usd(exc.required_micro):g} and this team has "
+                        f"${ledger.usd(exc.purchased_micro):g} of purchased credit for it. "
+                        f"Add funds to the team's balance to use it: "
+                        f"{get_settings().public_url}/app#billing. Nothing was charged."),
+            "balance_micro": exc.balance_micro,
+            "purchased_balance_micro": exc.purchased_micro,
+            "estimated_cost_micro": exc.required_micro,
+            "topup_url": "/app#billing",
+            "provider": mk.provider,
+            "endpoint_id": mk.endpoint_id,
+        }) from exc
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
