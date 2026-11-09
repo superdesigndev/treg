@@ -1307,6 +1307,31 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+RANKABILITY = OAuthProvider(
+    service="rankability",
+    display_name="Rankability",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="rk_live_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.rankability.com/settings",
+    setup_action_label="Create a Rankability API key",
+    setup_steps=(
+        "Sign in with an active paid subscription and open Settings → API keys as an organization Admin.",
+        "Create a key with only the scopes your workflow needs, then copy the secret shown once.",
+    ),
+    setup_note="Uses your own organization's saved data and plan allowances. The usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Read saved AI visibility, keyword research, content and audit evidence from your workspace.",
+    base_url="https://app.rankability.com/api/agent/v1",
+    docs_url="https://help.rankability.com/api/api-getting-started",
+    probe_path="/usage",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -4272,7 +4297,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, RANKABILITY, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
