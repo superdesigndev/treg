@@ -613,6 +613,16 @@ async def test_catalog_get_answers_for_a_hub_id_and_hides_what_the_maker_hides(c
     assert (await clients.get("/catalog/endpoints/nobody.nothing")).status_code == 404
 
 
+async def test_catalog_gets_view_of_a_hub_id_is_its_contract(clients: AsyncClient, hub_on, platform_on):
+    from toon_format import decode
+    tool_id = await _publish_live(clients)
+    r = await clients.get(f"/catalog/endpoints/{tool_id}", headers={"X-Treg-View": "1"})
+    assert r.status_code == 200 and r.headers["X-Treg-View"] == "1"
+    page = decode(r.json()["text"])
+    assert page["id"] == tool_id and page["maker"] == r.json()["data"]["endpoint"]["provider"]
+    assert page["call"].startswith(f"treg call {tool_id} --data") and page["health"].startswith("live")
+
+
 async def test_catalog_get_on_a_hub_id_with_the_flag_off_is_a_plain_404(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     tool_id = await _publish_live(clients)
     monkeypatch.setenv("TREG_HUB_ENABLED", "0")

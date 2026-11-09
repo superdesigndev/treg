@@ -1,0 +1,74 @@
+{
+  "id": "co_nof5b7aea66497082b6bdc0e3d",
+  "jurisdiction": "no",
+  "company_number": "923609016",
+  "company_number_scheme": "NO-ORGNR",
+  "legal_name": "EQUINOR ASA",
+  "display_name": null,
+  "legal_name_english": null,
+  "legal_form_code": "ASA",
+  "status": "active",
+  "registration_date": "1972-09-18",
+  "dissolution_date": null,
+  "address": {
+    "line1": "Forusbeen 50",
+    "city": "STAVANGER",
+    "postcode": "4035",
+    "region": "STAVANGER",
+    "country": "NO",
+    "raw": "Forusbeen 50 4035 STAVANGER"
+  },
+  "is_natural_person": false,
+  "restricted": false,
+  "officers_availability": "free",
+  "identifiers": [
+    {
+      "scheme": "NO-ORGNR",
+      "value": "923609016",
+      "is_primary": true,
+      "valid_check": true
+    },
+    {
+      "scheme": "NO-VAT",
+      "value": "NO923609016MVA",
+      "is_primary": false,
+      "valid_check": true
+    }
+  ],
+  "activity": [
+    {
+      "scheme": "SN2007",
+      "code": "06.100",
+      "description": "Utvinning av råolje",
+      "is_primary": true
+    },
+    {
+      "scheme": "SN2007",
+      "code": "06.200",
+      "description": "Utvinning av naturgass",
+      "is_primary": false
+    }
+  ],
+  "other_names": [
+    {
+      "name": "Den norske stats oljeselskap a.s",
+      "kind": "previous",
+      "start_date": "1995-03-12",
+      "end_date": "2001-05-11"
+    },
+    {
+      "name": "STATOIL ASA",
+      "kind": "previous",
+      "start_date": "2009-11-02",
+      "end_date": "2018-05-16"
+    }
+  ],
+  "legal_form": {
+    "id": "no:ASA",
+    "code": "ASA",
+    "name_local": "Allmennaksjeselskap",
+    "name_en": null
+  },
+  "lei": null,
+  "links": []
+}

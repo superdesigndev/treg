@@ -29,6 +29,8 @@ sources:
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
+  - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
+  - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
@@ -59,6 +61,9 @@ sources:
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
   - tests/test_org_flow_control_schema.py
+  - src/treg/alembic/versions/0096_route_rule_version.py
+  - src/treg/alembic/versions/0097_referral_affiliate.py
+  - tests/test_referral_affiliate_schema.py
   - src/treg/alembic/versions/0075_ad_click_stash.py
   - src/treg/alembic/versions/0079_enterprise_sso.py
   - src/treg/alembic/versions/0082_oauth_sso_provenance.py
@@ -133,7 +138,7 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |
-| `Referral` | `domain/referrals.py`; its money goes through `ledger.grant` |
+| `Referral`, `ReferralAffiliateEvent` | `domain/referrals.py`; its money goes through `ledger.grant` |
 
 Rollups and analytics tables are optional read models: they never determine a money transaction.
 
@@ -159,6 +164,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
   double charge. The audit writer locks the task row before inserting the submission `CallRecord`,
   so a poll finishing first still gives that row its `hit`/`verdict`; when the audit row wins, the
   finalizer queues a background correction. Both key on the original `call_ref`.
+- **`CallTask`** names the provider task of every root async answer, on any tier, by the call id the
+  caller holds (a routed pending answer by its parent's). It is no money record; `/tasks/` reads
+  it by primary key ([tasks](tasks.md)).
 - **`EndpointStatDirty`**: marker writes never commit on their own; audit marks the day in the
   same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
 - **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
@@ -193,6 +201,14 @@ updates. `org_id` has no foreign key, keeping the table independent of locks on 
 so `cascade_delete_org` removes this history explicitly, and the writer must validate Org existence
 and coordinate saves with Org deletion. A schema downgrade deletes the saved history.
 
+## Route rule storage
+
+`RouteRuleVersion` is keyed by `version` alone: one global rule set. The schema enforces positive
+versions, a reviewer on every reviewed row, a publisher on every published row, and refuses any
+publication state on a version that is not approved. Allocating versions, validating the rule JSON
+and keeping snapshots immutable are the private admin's job; the call path never reads the table
+([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
+
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
 `CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
@@ -208,7 +224,9 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   `Membership.calls_today`. A team's busiest rows sit on every page of the day, so even an
   `(org_id, created_at)` index scan is too slow on the money path.
 - Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'grant'`, `kind = 'local_run'`)
-  are matched only when the query states the predicate as a constant, never a parameter.
+  are matched only when the query states the predicate as a constant, never a parameter. The
+  spend rollup's per-team recount (`key_spend_rollup`) and the billing reads state it with
+  `literal_column`.
 - `SELECT DISTINCT` over a team's rows in a large index reads every one of them: Postgres before 18
   cannot skip through an index. The distinct values are walked instead, one probe per value
   (`money.tag_dims`, a recursive CTE asking for the next value after the last).
@@ -217,6 +235,10 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   subquery must stay for snapshot consistency, the read turns JIT off for its transaction
   (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
   back.
+- Statistics end before today, so a `created_at >= today` bound is estimated at one row and picks
+  the `(org_id, created_at)` index even for a team with a full day behind it. The usage tail
+  (`call_usage.rows`) bounds itself by its UTC day expression instead, leaving `(org_id, id)` to
+  find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
 - A database that predates Alembic was stamped at the baseline and may lack baseline indexes
@@ -281,12 +303,17 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `idempotency_response_too_large` is kept instead.
 - The per-call expired-label sweep deletes at most `IDEMPOTENCY_SWEEP_BATCH` rows with
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
+- `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
+  `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
+  `archive.bytes_on_file` confirms and whose own sha256 matches. The row keeps `archive_key_hash` /
+  `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
+  closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
 
 ## Caller tags (`X-Treg-Meta`)
 
 `TagSpend` is written only by `domain/money` inside the money transaction; `TagBudget` rows are
-auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord` and
-`AsyncResourceRecord` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
+auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord`,
+`AsyncResourceRecord` and `CallTask` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
 snapshots are invisible to pinned readers. The reserve entry's `LedgerEntry.meta.tags` freezes
 attribution, allowing scoped ledger-only reads after audit loss. Design: [money](money.md).
 
@@ -307,6 +334,12 @@ and `qualifying_payment_intent` (one payment funds one qualification). Every ter
 kept, never deleted. `User.referral_code` is on the user, not the org, because anyone may create
 unlimited orgs. `Referral.card_fingerprint` is Stripe's opaque per-card id, not card data, and
 lives only here so `Org` keeps its no-card-data posture.
+
+`User.referral_affiliate` defaults false in both model and database; its version starts at zero.
+`ReferralAffiliateEvent` is durable operation history, committed with the flag, independent of
+best-effort call audit. It stores the authenticated principal, reason, old/new flag, operation UUID
+and version. User id plus user creation time identifies the account incarnation; no foreign key
+allows history to survive deletion without being attributed to a later SQLite account reusing its id.
 
 ## Async DB (`src/treg/infra/db.py`)
 

@@ -13,7 +13,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, accept_with_code
 
 from treg import crypto
 from treg.api import app
@@ -119,7 +119,7 @@ async def test_invite_carries_access_onto_membership(env):
                            json={"email": "new@x.dev", "role": "member",
                                  "tool_access": ["alpha"], "local_run_enabled": False})
     assert inv.status_code == 200, inv.text
-    acc = await env.c.post("/invites/accept", json={"code": inv.json()["code"], "email": "new@x.dev"})
+    acc = await accept_with_code(env.c, json={"code": inv.json()["code"], "email": "new@x.dev"})
     assert acc.status_code == 200, acc.text
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "new@x.dev"))).scalar_one()

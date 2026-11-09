@@ -10,6 +10,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.datastructures import MutableHeaders
 
+from . import client_notice
 from .config import LEGACY_PUBLIC_HOSTS, get_settings
 from .domain.identity import session as sess
 
@@ -94,6 +95,35 @@ class _SecurityHeadersMiddleware:
             await send(message)
 
         return await self.app(scope, receive, send_with_security_headers)
+
+
+class _ClientNoticeMiddleware:
+    """Answers a CLI that sends `X-Treg-Client-Version` with `X-Treg-Client-Notice` when the
+    operator's `cli_latest_version` or `cli_min_version` says it is behind (client_notice.py)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        settings = get_settings()
+        if not (settings.cli_latest_version or settings.cli_min_version):
+            return await self.app(scope, receive, send)
+        version = next((v.decode("latin-1") for k, v in scope.get("headers", [])
+                        if k == b"x-treg-client-version"), "")
+        text = client_notice.notice(version, latest=settings.cli_latest_version,
+                                    minimum=settings.cli_min_version)
+        if not text:
+            return await self.app(scope, receive, send)
+
+        async def send_with_notice(message):
+            if message["type"] == "http.response.start":
+                message = dict(message, headers=list(message.get("headers", [])))
+                MutableHeaders(scope=message)[client_notice.NOTICE_HEADER] = text
+            await send(message)
+
+        return await self.app(scope, receive, send_with_notice)
 
 
 class _DevTitleMiddleware:

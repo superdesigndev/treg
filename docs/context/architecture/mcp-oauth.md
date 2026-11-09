@@ -58,7 +58,7 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms |
+| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
 | calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
@@ -151,8 +151,9 @@ through the real routes without a socket. The enforcement rules (deny rules, pin
 access, the credential ladder, metering) live in those routes; a path that read the database
 directly would be a second implementation of each, drifting quietly. Those requests carry the
 caller's credential (for an OAuth bearer, the identity it is exchanged for), so the call tools
-refuse an `endpoint_id` with an empty, `.` or `..` segment at any depth of percent-encoding (a
-trailing slash excepted): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
+refuse an `endpoint_id` with a `.` or `..` segment at any depth of percent-encoding (a trailing
+slash and a mid-path empty segment excepted — percent-encoded URLs inside one segment must still
+reach the upstream encoded): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
 management route. `_call_url` also checks the final path stays under the call route. The catalog is the one
 exception, read straight from `catalog_store` for speed, not permission.
 
@@ -433,6 +434,13 @@ are reported with the exact manual step, never written.
   on a 401, and treg returns 200 for a valid header. The key carries its team and needs no second
   header. `curl {BASE}/install.sh | sh -s -- --token <key>` installs, signs in and runs
   `treg mcp install` in one paste.
+- **`treg mcp install --oauth` repairs a dead saved header.** Session-secret rotation,
+  `revoke-tokens` and Default-key rotation kill the bearer written into each agent while the CLI
+  recovers with `treg login`, and Claude Code and Codex refuse OAuth fallback while
+  `headers.Authorization` is set. `--oauth` needs no valid token: it rewrites every managed entry to
+  the URL only (Claude without `--header`, JSON without `headers`, Codex without `http_headers`) and
+  says how each client authorizes. `_resolve_org` names this repair on the unpinned 401 and on a
+  pinned `/orgs` 401; a 200 that does not list the team keeps the "no longer available" wording.
 
 A builder proxying MCP sets `X-Treg-Meta` once per session on their own HTTP client; the model never
 sees it.

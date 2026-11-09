@@ -84,6 +84,12 @@ def render(view: dict[str, Any], help_lines: list[str] | None = None,
     return "\n\n".join(paragraphs)
 
 
+def printed(view: dict[str, Any], help_lines: list[str] | None = None,
+            groups: list[tuple[str, ...]] | None = None) -> str:
+    """The view as the CLI writes it to stdout."""
+    return render(view, help_lines, groups) + "\n"
+
+
 def _verbatim(key: str, value: Any) -> str:
     """A command as typed where TOON reads it back unchanged; a block of JSON literals as written,
     so `"76662"` reads as a string. Keys still follow TOON's quoting (`"person_titles[]"`), or a

@@ -20,7 +20,6 @@ source:
   - https://github.com/dataforseo/OpenApiDocumentation/blob/master/openapi_specification.yaml
 endpoints:
 - id: dataforseo.x.ai-optimization-ai-keyword-data-keywords-search-volume-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/ai_keyword_data/keywords_search_volume/live
@@ -67,16 +66,13 @@ endpoints:
       - iphone
       - seo
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-ai-keyword-data-keywords-search-volume-live.json
-  observed_cost: 0.0102
+  price: {value: '0.0102', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.keywords.volume
 - id: dataforseo.x.ai-optimization-llm-mentions-historical-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/historical/live
@@ -143,16 +139,13 @@ endpoints:
         search_scope:
         - answer
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-historical-live.json
-  observed_cost: 0.101
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.historical
 - id: dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/multi_target_metrics/live
@@ -261,16 +254,13 @@ endpoints:
         - 10
       internal_list_limit: 5
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live.json
-  observed_cost: 0.104
+  price: {value: '0.104', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.multi_target
 - id: dataforseo.x.ai-optimization-llm-mentions-search-mentions-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/search_mentions/live
@@ -365,16 +355,13 @@ endpoints:
       offset: 0
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-search-mentions-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.search
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/target_metrics/live
@@ -451,16 +438,13 @@ endpoints:
         - 10
       internal_list_limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-target-metrics-live.json
-  observed_cost: 0.101
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/target_metrics_lite/live
@@ -545,16 +529,13 @@ endpoints:
         - 10
       limit: 6
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live.json
-  observed_cost: 0.101
+  price: {value: '0.101', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
 - id: dataforseo.x.ai-optimization-llm-mentions-timeseries-delta-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/timeseries_delta/live
@@ -631,16 +612,13 @@ endpoints:
       date_to: '2025-12-01'
       group_range: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-timeseries-delta-live.json
-  observed_cost: 0.105
+  price: {value: '0.105', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.timeseries_delta
 - id: dataforseo.x.ai-optimization-llm-mentions-timeseries-new-lost-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/timeseries_new_lost/live
@@ -717,16 +695,13 @@ endpoints:
       date_to: '2025-12-01'
       group_range: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-timeseries-new-lost-live.json
-  observed_cost: 0.105
+  price: {value: '0.105', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.timeseries_new_lost
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_brand_categories/live
@@ -833,16 +808,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brand_categories
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-lite-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_brand_categories_lite/live
@@ -949,16 +921,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brand-categories-lite-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brand_categories
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_brands/live
@@ -1065,16 +1034,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brands
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-lite-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_brands_lite/live
@@ -1181,16 +1147,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-brands-lite-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_brands
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_domains/live
@@ -1303,16 +1266,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_domains
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-lite-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_domains_lite/live
@@ -1425,16 +1385,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-domains-lite-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_domains
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_pages/live
@@ -1547,16 +1504,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/llm_mentions/top_mentioned_pages_lite/live
@@ -1669,16 +1623,13 @@ endpoints:
       limit: 3
       internal_list_limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live.json
-  observed_cost: 0.103
+  price: {value: '0.103', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
 - id: dataforseo.x.dataforseo-labs-amazon-bulk-search-volume-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/bulk_search_volume/live
@@ -1728,16 +1679,13 @@ endpoints:
       location_code: 2840
       language_code: en
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-bulk-search-volume-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 0.51
 - id: dataforseo.x.dataforseo-labs-amazon-product-competitors-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/product_competitors/live
@@ -1797,15 +1745,12 @@ endpoints:
       location_code: 2840
       language_code: en
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-competitors-live.json
-  observed_cost: 0.01968
+  price: {value: '0.01968', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-amazon-product-keyword-intersections-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/product_keyword_intersections/live
@@ -1875,16 +1820,13 @@ endpoints:
       language_name: English
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-keyword-intersections-live.json
-  observed_cost: 0.012
+  price: {value: '0.012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 1.22
 - id: dataforseo.x.dataforseo-labs-amazon-product-rank-overview-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/product_rank_overview/live
@@ -1932,16 +1874,13 @@ endpoints:
       language_name: English
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-product-rank-overview-live.json
-  observed_cost: 0.01224
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 0.42
 - id: dataforseo.x.dataforseo-labs-amazon-ranked-keywords-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/ranked_keywords/live
@@ -2005,15 +1944,12 @@ endpoints:
       location_code: 2840
       language_code: en
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-ranked-keywords-live.json
-  observed_cost: 0.01548
+  price: {value: '0.01548', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-amazon-related-keywords-live
-  tier: extended
   platform: amazon
   method: POST
   path: /dataforseo_labs/amazon/related_keywords/live
@@ -2081,17 +2017,14 @@ endpoints:
       limit: 5
       include_seed_keyword: true
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-related-keywords-live.json
-  observed_cost: 0.0126
+  price: {value: '0.0126', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.merchant-amazon-asin-live-advanced
   capability: amazon.product.variants
   platform: amazon
-  tier: extended
   method: POST
   path: /merchant/amazon/asin/live/advanced
   name: "Amazon ASINs for all variations of a product, live"
@@ -2141,28 +2074,29 @@ endpoints:
       location_code: 2840
       asin: B0756FCPPN
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-asin-live-advanced.json
-  observed_cost: 0.005
+  price: {value: '0.005', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 22.57
 - id: dataforseo.x.merchant-amazon-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: amazon
   method: GET
   path: /merchant/amazon/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Amazon location codes by country"
   summary: You will receive the list of supported Amazon locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/merchant/amazon/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.merchant-amazon-products-live-advanced
-  tier: extended
   platform: amazon
   method: POST
   path: /merchant/amazon/products/live/advanced
@@ -2245,18 +2179,15 @@ endpoints:
       location_code: 2840
       keyword: shoes
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-products-live-advanced.json
-  observed_cost: 0.0033
+  price: {value: '0.0033', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 23.64
 - id: dataforseo.x.merchant-amazon-sellers-live-advanced
   capability: amazon.product.sellers
   platform: amazon
-  tier: extended
   method: POST
   path: /merchant/amazon/sellers/live/advanced
   name: "Amazon sellers of a product by ASIN, live"
@@ -2306,17 +2237,14 @@ endpoints:
       location_code: 2840
       asin: B07D528W98
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-amazon-sellers-live-advanced.json
-  observed_cost: 0.0033
+  price: {value: '0.0033', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   observed_time: 105.51
 - id: dataforseo.x.app-data-apple-app-info-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: app-store
   kind: utility
   method: GET
@@ -2330,18 +2258,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-apple-app-info-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-apple-app-info-task-post
-  tier: extended
   platform: app-store
   method: POST
   path: /app_data/apple/app_info/task_post
@@ -2401,13 +2328,12 @@ endpoints:
       location_code: 2840
       language_code: en
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-info-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-apple-app-info-task-get-advanced
@@ -2454,7 +2380,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.app-data-apple-app-list-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: app-store
   kind: utility
   method: GET
@@ -2468,18 +2393,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-apple-app-list-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-apple-app-list-task-post
-  tier: extended
   platform: app-store
   method: POST
   path: /app_data/apple/app_list/task_post
@@ -2551,13 +2475,12 @@ endpoints:
       depth: 200
       app_category: games
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-list-task-post.json
-  observed_cost: 0.0024
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-apple-app-list-task-get-advanced
@@ -2603,7 +2526,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.app-data-apple-app-listings-search-live
-  tier: extended
   platform: app-store
   method: POST
   path: /app_data/apple/app_listings/search/live
@@ -2675,26 +2597,18 @@ endpoints:
         - 4.5
       limit: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-listings-search-live.json
-  cost:
-    type: per_call
-    value: 0.6
+  price:
+    value: '0.6'
     currency: USD
     per: 1
     unit: call
-    source: observed
-    confidence: verified
-    checked: '2026-10-02'
     note: 'DataForSEO bills by apps returned, not per call: over the 14 days to 2026-10-02 real charges ran $0.60 median and $1.10 at the top (limit 1000), so keep `limit` small. The response `cost` is the exact charge and settles the call.'
-  observed_cost: 0
+  provenance: {source: observed, checked: '2026-10-02', confidence: verified}
 - id: dataforseo.x.app-data-apple-app-reviews-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: app-store
   kind: utility
   method: GET
@@ -2708,18 +2622,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-apple-app-reviews-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-apple-app-reviews-task-post
-  tier: extended
   platform: app-store
   method: POST
   path: /app_data/apple/app_reviews/task_post
@@ -2789,13 +2702,12 @@ endpoints:
       language_code: en
       depth: 200
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-reviews-task-post.json
-  observed_cost: 0.006
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-apple-app-reviews-task-get-advanced
@@ -2842,7 +2754,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.app-data-apple-app-searches-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: app-store
   kind: utility
   method: GET
@@ -2856,18 +2767,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-apple-app-searches-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-apple-app-searches-task-post
-  tier: extended
   platform: app-store
   method: POST
   path: /app_data/apple/app_searches/task_post
@@ -2933,13 +2843,12 @@ endpoints:
       language_code: en
       depth: 200
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-searches-task-post.json
-  observed_cost: 0.0024
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-apple-app-searches-task-get-advanced
@@ -2985,7 +2894,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.dataforseo-labs-apple-app-competitors-live
-  tier: extended
   platform: app-store
   method: POST
   path: /dataforseo_labs/apple/app_competitors/live
@@ -3047,15 +2955,12 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-app-competitors-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-app-intersection-live
-  tier: extended
   platform: app-store
   method: POST
   path: /dataforseo_labs/apple/app_intersection/live
@@ -3121,15 +3026,12 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-app-intersection-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-bulk-app-metrics-live
-  tier: extended
   platform: app-store
   method: POST
   path: /dataforseo_labs/apple/bulk_app_metrics/live
@@ -3177,15 +3079,12 @@ endpoints:
       language_name: English
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-bulk-app-metrics-live.json
-  observed_cost: 0.01224
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-apple-keywords-for-app-live
-  tier: extended
   platform: app-store
   method: POST
   path: /dataforseo_labs/apple/keywords_for_app/live
@@ -3247,28 +3146,29 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-apple-keywords-for-app-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-baidu-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: baidu
   method: GET
   path: /serp/baidu/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Baidu location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/baidu/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-baidu-organic-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: baidu
   kind: utility
   method: GET
@@ -3282,18 +3182,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-baidu-organic-task-get-advanced
       param: id
 - id: dataforseo.x.serp-baidu-organic-task-post
-  tier: extended
   platform: baidu
   method: POST
   path: /serp/baidu/organic/task_post
@@ -3391,13 +3290,12 @@ endpoints:
       tag: some_string_123
       priority: 2
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-baidu-organic-task-post.json
-  observed_cost: 0.0012
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: baidu.serp.organic
   resource_ownership:
     produces:
@@ -3446,11 +3344,15 @@ endpoints:
 - id: dataforseo.x.keywords-data-bing-audience-estimation-industries
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: bing
   method: GET
   path: /keywords_data/bing/audience_estimation/industries
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Bing Ads industries for audience targeting"
   summary: By calling this API you will receive the list of industries with industry_id supported by Bing Ads Audience Estimation endpoint.
   docs_url: https://docs.dataforseo.com/v3/keywords_data/bing/audience_estimation/industries/
@@ -3458,17 +3360,20 @@ endpoints:
 - id: dataforseo.x.keywords-data-bing-audience-estimation-job-functions
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: bing
   method: GET
   path: /keywords_data/bing/audience_estimation/job_functions
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Bing Ads job functions for audience targeting"
   summary: By calling this API you will receive the list of job functions with job_function_id supported by Bing Ads Audience Estimation endpoint.
   docs_url: https://docs.dataforseo.com/v3/keywords_data/bing/audience_estimation/job_functions/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.keywords-data-bing-audience-estimation-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/audience_estimation/live
@@ -3546,16 +3451,13 @@ endpoints:
       job_function:
       - '806298607'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-audience-estimation-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.audience.estimate
 - id: dataforseo.x.keywords-data-bing-keyword-performance-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/keyword_performance/live
@@ -3617,16 +3519,13 @@ endpoints:
       - seo
       - ranking
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keyword-performance-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.performance
 - id: dataforseo.x.keywords-data-bing-keywords-for-keywords-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/keywords_for_keywords/live
@@ -3704,16 +3603,13 @@ endpoints:
       - adsense blank ads how long
       - leads and prospects
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keywords-for-keywords-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.ideas
 - id: dataforseo.x.keywords-data-bing-keywords-for-site-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/keywords_for_site/live
@@ -3785,16 +3681,13 @@ endpoints:
       location_code: 2840
       target: dataforseo.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-keywords-for-site-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.for_site
 - id: dataforseo.x.keywords-data-bing-search-volume-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/search_volume/live
@@ -3868,16 +3761,13 @@ endpoints:
       - silicon valley
       - spider man
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-search-volume-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.volume
 - id: dataforseo.x.keywords-data-bing-search-volume-history-live
-  tier: extended
   platform: bing
   method: POST
   path: /keywords_data/bing/search_volume_history/live
@@ -3943,28 +3833,29 @@ endpoints:
       keywords:
       - 10 minute timer
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-bing-search-volume-history-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: bing.keywords.volume_history
 - id: dataforseo.x.serp-bing-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: bing
   method: GET
   path: /serp/bing/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Bing location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/bing/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-bing-organic-live-advanced
-  tier: extended
   platform: bing
   method: POST
   path: /serp/bing/organic/live/advanced
@@ -4068,16 +3959,18 @@ endpoints:
       location_code: 2840
       keyword: flight ticket new york san francisco
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-bing-organic-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
   capability: bing.serp.organic
 - id: dataforseo.x.serp-bing-organic-live-regular
-  tier: extended
   platform: bing
   method: POST
   path: /serp/bing/organic/live/regular
@@ -4165,16 +4058,18 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-bing-organic-live-regular.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
   capability: bing.serp.organic
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-responses-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/chat_gpt/llm_responses/live
@@ -4263,16 +4158,13 @@ endpoints:
       web_search_city: Paris
       user_prompt: provide information on how relevant the amusement park business is in France now
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-responses-live.json
-  observed_cost: 0.0292488
+  price: {value: '0.0292488', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.answer
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/chat_gpt/llm_scraper/live/advanced
@@ -4319,28 +4211,29 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.scrape
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: ai-search
   method: GET
   path: /ai_optimization/chat_gpt/llm_scraper/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "ChatGPT search location codes by country"
   summary: You will receive the list of locations by this API call.
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.ai-optimization-claude-llm-responses-live
   added: '2026-07-28'
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/claude/llm_responses/live
@@ -4429,27 +4322,17 @@ endpoints:
       web_search_country_iso_code: FR
       user_prompt: provide information on how relevant the amusement park business is in France now
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   unverified: "captured example_response was HTTP 200 with task status 40501 Invalid Field: 'model_name' for claude-opus-4-0, not a successful call. Catalog example and test_request now use claude-sonnet-4-5; a success payload was not recaptured (no live spend)."
-  cost:
-    type: per_call
-    value: 0.0245
+  price:
+    value: '0.0245'
     currency: USD
     per: 1
     unit: call
-    display:
-      unit: call
-      variable: true
-    source: observed
-    confidence: verified
-    checked: '2026-10-02'
+    display: {unit: call, variable: true}
     note: 'DataForSEO bills the model''s tokens, so the price moves with prompt and answer length: over the 14 days to 2026-10-02 real charges ran $0.0245 median, $0.056 at p90 and $0.29 at the top. Cap it with `max_output_tokens`. The response `cost` is the exact charge and settles the call.'
-  observed_cost: 0
+  provenance: {source: observed, checked: '2026-10-02', confidence: verified}
   capability: ai-search.claude.answer
 - id: dataforseo.x.ai-optimization-gemini-llm-responses-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/gemini/llm_responses/live
@@ -4526,16 +4409,13 @@ endpoints:
       web_search: true
       user_prompt: provide information on how relevant the amusement park business is in France now
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-responses-live.json
-  observed_cost: 0.036256
+  price: {value: '0.036256', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.answer
 - id: dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/gemini/llm_scraper/live/advanced
@@ -4582,17 +4462,14 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.scrape
 - id: dataforseo.x.business-data-google-extended-reviews-task-get
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -4606,18 +4483,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-google-extended-reviews-task-get
       param: id
 - id: dataforseo.x.business-data-google-extended-reviews-task-post
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/extended_reviews/task_post
@@ -4688,13 +4564,12 @@ endpoints:
       language_name: english
       cid: '17626775537598922320'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-extended-reviews-task-post.json
-  observed_cost: 0.0015
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.business-data-google-extended-reviews-task-get
@@ -4740,7 +4615,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.business-data-google-hotel-info-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/hotel_info/live/advanced
@@ -4823,15 +4697,12 @@ endpoints:
       location_name: New York,New York,United States
       hotel_identifier: CgoI-KWyzenM_MV3EAE
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-hotel-info-live-advanced.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-hotel-searches-live
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/hotel_searches/live
@@ -4955,27 +4826,28 @@ endpoints:
       sort_by: highest_rating
       tag: example
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-hotel-searches-live.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /business_data/google/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google Business location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/business_data/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.business-data-google-my-business-info-live
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/my_business_info/live
@@ -5023,16 +4895,13 @@ endpoints:
       location_name: New York,New York,United States
       keyword: RustyBrick, Inc.
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-my-business-info-live.json
-  observed_cost: 0.0054
+  price: {value: '0.0054', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-my-business-updates-task-get
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -5046,18 +4915,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-google-my-business-updates-task-get
       param: id
 - id: dataforseo.x.business-data-google-my-business-updates-task-post
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/my_business_updates/task_post
@@ -5121,13 +4989,12 @@ endpoints:
       location_name: New York,New York,United States
       keyword: RustyBrick, Inc.
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-my-business-updates-task-post.json
-  observed_cost: 0.00225
+  price: {value: '0.00225', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.business-data-google-my-business-updates-task-get
@@ -5173,7 +5040,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.business-data-google-questions-and-answers-live
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/questions_and_answers/live
@@ -5225,16 +5091,13 @@ endpoints:
       location_name: Los Angeles,California,United States
       keyword: The Last Bookstore
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-questions-and-answers-live.json
-  observed_cost: 0.0054
+  price: {value: '0.0054', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-google-reviews-task-get
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -5248,18 +5111,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-google-reviews-task-get
       param: id
 - id: dataforseo.x.business-data-google-reviews-task-post
-  tier: extended
   platform: google
   method: POST
   path: /business_data/google/reviews/task_post
@@ -5339,13 +5201,12 @@ endpoints:
       depth: 50
       sort_by: highest_rating
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-reviews-task-post.json
-  observed_cost: 0.00375
+  price: {value: '0.00375', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.business-data-google-reviews-task-get
@@ -5391,7 +5252,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.dataforseo-labs-google-app-competitors-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/app_competitors/live
@@ -5453,15 +5313,12 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-app-competitors-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-app-intersection-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/app_intersection/live
@@ -5527,27 +5384,28 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-app-intersection-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-available-history
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /dataforseo_labs/google/available_history
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Available dates for domain metrics history"
   summary: By calling this endpoint, you will find obtain a list of dates available for setting in the first_date and second_date fields of the Domain Metrics by Categories endpoint.
   docs_url: https://docs.dataforseo.com/v3/dataforseo_labs/google/available_history/live/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.dataforseo-labs-google-bulk-app-metrics-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/bulk_app_metrics/live
@@ -5595,15 +5453,12 @@ endpoints:
       language_name: English
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-app-metrics-live.json
-  observed_cost: 0.01224
+  price: {value: '0.01224', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-bulk-keyword-difficulty-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/bulk_keyword_difficulty/live
@@ -5653,15 +5508,12 @@ endpoints:
       - pizza brooklyn
       - car dealer los angeles
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-keyword-difficulty-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-bulk-traffic-estimation-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/bulk_traffic_estimation/live
@@ -5725,15 +5577,12 @@ endpoints:
       - organic
       - paid
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-traffic-estimation-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-categories-for-domain-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/categories_for_domain/live
@@ -5821,15 +5670,12 @@ endpoints:
       - local_pack
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-categories-for-domain-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-categories-for-keywords-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/categories_for_keywords/live
@@ -5869,15 +5715,12 @@ endpoints:
       - pizza brooklyn
       - car dealer los angeles
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-categories-for-keywords-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-competitors-domain-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/competitors_domain/live
@@ -5975,15 +5818,12 @@ endpoints:
       location_code: 2840
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-competitors-domain-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-intersection-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/domain_intersection/live
@@ -6069,15 +5909,12 @@ endpoints:
       include_serp_info: true
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-intersection-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-metrics-by-categories-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/domain_metrics_by_categories/live
@@ -6179,15 +6016,12 @@ endpoints:
       second_date: '2026-06-24'
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-metrics-by-categories-live.json
-  observed_cost: 0.1236
+  price: {value: '0.1236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-domain-rank-overview-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/domain_rank_overview/live
@@ -6243,15 +6077,12 @@ endpoints:
       language_name: English
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-domain-rank-overview-live.json
-  observed_cost: 0.01212
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-bulk-traffic-estimation-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/historical_bulk_traffic_estimation/live
@@ -6327,15 +6158,12 @@ endpoints:
       - organic
       - paid
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-bulk-traffic-estimation-live.json
-  observed_cost: 0.1236
+  price: {value: '0.1236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-keyword-data-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/historical_keyword_data/live
@@ -6381,15 +6209,12 @@ endpoints:
       keywords:
       - iphone
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-keyword-data-live.json
-  observed_cost: 0.01212
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-rank-overview-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/historical_rank_overview/live
@@ -6457,28 +6282,18 @@ endpoints:
       date_from: '2026-04-24'
       date_to: '2026-06-24'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-rank-overview-live.json
-  cost:
-    type: per_call
-    value: 0.15
+  price:
+    value: '0.15'
     currency: USD
     per: 1
     unit: call
-    display:
-      unit: call
-      variable: true
-    source: observed
-    confidence: verified
-    checked: '2026-11-03'
+    display: {unit: call, variable: true}
     note: 'DataForSEO bills by monthly rows returned, not per call: most observed charges fit about $0.12 plus $0.0012 per month in the `date_from`..`date_to` window (3 months $0.1236, the default 6 months about $0.128, 24-25 months $0.149-$0.15, the full history from 2020-10-01 about $0.21). The response `cost` is the exact charge and settles the call, so a long window can settle above this $0.15 estimate. `X-Treg-Route-Max-Cost` is checked against the estimate before the call, not against the settled charge; narrow `date_from` to stay under a cap.'
-  observed_cost: 0.1236
+  provenance: {source: observed, checked: '2026-11-03', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-historical-serps-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/historical_serps/live
@@ -6534,15 +6349,12 @@ endpoints:
       date_from: '2026-04-24'
       date_to: '2026-06-24'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-serps-live.json
-  observed_cost: 0.00012
+  price: {value: '0.00012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-ideas-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keyword_ideas/live
@@ -6630,15 +6442,12 @@ endpoints:
       include_serp_info: true
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-ideas-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-overview-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keyword_overview/live
@@ -6696,15 +6505,12 @@ endpoints:
       keywords:
       - iphone
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-overview-live.json
-  observed_cost: 0.02412
+  price: {value: '0.02412', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keyword-suggestions-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keyword_suggestions/live
@@ -6794,15 +6600,12 @@ endpoints:
       include_seed_keyword: true
       limit: 1
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-suggestions-live.json
-  observed_cost: 0.01212
+  price: {value: '0.01212', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-app-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keywords_for_app/live
@@ -6864,15 +6667,12 @@ endpoints:
       location_code: 2840
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-app-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-categories-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keywords_for_categories/live
@@ -6960,15 +6760,12 @@ endpoints:
       include_serp_info: true
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-categories-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-site-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/keywords_for_site/live
@@ -7058,15 +6855,12 @@ endpoints:
       - 0
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keywords-for-site-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-page-intersection-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/page_intersection/live
@@ -7162,15 +6956,12 @@ endpoints:
       include_serp_info: true
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-page-intersection-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-relevant-pages-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/relevant_pages/live
@@ -7265,15 +7056,12 @@ endpoints:
         - 0
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-relevant-pages-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-search-intent-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/search_intent/live
@@ -7315,15 +7103,12 @@ endpoints:
       - elon musk
       - milk store new york
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-search-intent-live.json
-  observed_cost: 0.01248
+  price: {value: '0.01248', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-serp-competitors-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/serp_competitors/live
@@ -7399,15 +7184,12 @@ endpoints:
       - organic
       limit: 5
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-serp-competitors-live.json
-  observed_cost: 0.0126
+  price: {value: '0.0126', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-subdomains-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/subdomains/live
@@ -7499,15 +7281,12 @@ endpoints:
         - <>
         - 0
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-subdomains-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-top-searches-live
-  tier: extended
   platform: google
   method: POST
   path: /dataforseo_labs/google/top_searches/live
@@ -7579,15 +7358,12 @@ endpoints:
       location_code: 2840
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-top-searches-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-ad-traffic-by-keywords-live
-  tier: extended
   platform: google
   method: POST
   path: /keywords_data/google_ads/ad_traffic_by_keywords/live
@@ -7665,15 +7441,12 @@ endpoints:
       keywords:
       - seo marketing
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-ad-traffic-by-keywords-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-keywords-for-keywords-live
-  tier: extended
   platform: google
   method: POST
   path: /keywords_data/google_ads/keywords_for_keywords/live
@@ -7743,15 +7516,12 @@ endpoints:
       - phone
       - cellphone
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-keywords-for-keywords-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-keywords-for-site-live
-  tier: extended
   platform: google
   method: POST
   path: /keywords_data/google_ads/keywords_for_site/live
@@ -7821,21 +7591,23 @@ endpoints:
     - location_code: 2840
       target: dataforseo.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-ads-keywords-for-site-live.json
-  observed_cost: 0.09
+  price: {value: '0.09', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-ads-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /keywords_data/google_ads/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google Ads location codes by country"
   summary: We use Google Geographical Targeting.
   docs_url: https://docs.dataforseo.com/v3/keywords_data/google_ads/locations/
@@ -7848,7 +7620,6 @@ endpoints:
         example: de
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.keywords-data-google-trends-explore-live
-  tier: extended
   platform: google
   method: POST
   path: /keywords_data/google_trends/explore/live
@@ -7921,21 +7692,23 @@ endpoints:
       keywords:
       - rugby
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-google-trends-explore-live.json
-  observed_cost: 0.011
+  price: {value: '0.011', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-google-trends-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /keywords_data/google_trends/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google Trends location codes by country"
   summary: GoogleTrendsLocationsCountry
   docs_url: https://docs.dataforseo.com/v3/keywords_data/google_trends/locations/
@@ -7943,18 +7716,21 @@ endpoints:
 - id: dataforseo.x.merchant-google-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /merchant/google/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google Shopping location codes by country"
   summary: MerchantGoogleLocationsCountry
   docs_url: https://docs.dataforseo.com/v3/merchant/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.merchant-google-product-info-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -7968,18 +7744,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.merchant-google-product-info-task-get-advanced
       param: id
 - id: dataforseo.x.merchant-google-product-info-task-post
-  tier: extended
   platform: google
   method: POST
   path: /merchant/google/product_info/task_post
@@ -8055,13 +7830,12 @@ endpoints:
       location_code: 2840
       product_id: '1113158713975221117'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-product-info-task-post.json
-  observed_cost: 0.001
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.merchant-google-product-info-task-get-advanced
@@ -8108,7 +7882,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.merchant-google-products-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -8122,18 +7895,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.merchant-google-products-task-get-advanced
       param: id
 - id: dataforseo.x.merchant-google-products-task-post
-  tier: extended
   platform: google
   method: POST
   path: /merchant/google/products/task_post
@@ -8231,13 +8003,12 @@ endpoints:
       keyword: iphone
       price_min: 5
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-products-task-post.json
-  observed_cost: 0.001
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.merchant-google-products-task-get-advanced
@@ -8285,18 +8056,22 @@ endpoints:
 - id: dataforseo.x.merchant-google-sellers-ad-url-shop-ad-aclk
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /merchant/google/sellers/ad_url/{shop_ad_aclk}
-  cost: {type: per_call, value: 0.000001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
+  price: {value: '0.000001', currency: USD, per: 1, unit: call, note: read from our own account rate card}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-08-07'
+    confidence: verified
+  expect: null
   name: "Resolve a Google Shopping ad to its full URL"
   summary: Google Shopping Sellers Ad URL is designed to provide you with a full URL of the advertisement containing all additional parameters set by the seller.
   docs_url: https://docs.dataforseo.com/v3/merchant/google/sellers/ad_url/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.merchant-google-sellers-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -8310,18 +8085,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.merchant-google-sellers-task-get-advanced
       param: id
 - id: dataforseo.x.merchant-google-sellers-task-post
-  tier: extended
   platform: google
   method: POST
   path: /merchant/google/sellers/task_post
@@ -8413,13 +8187,12 @@ endpoints:
       location_code: 2840
       product_id: '1113158713975221117'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-sellers-task-post.json
-  observed_cost: 0.001
+  price: {value: '0.001', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.merchant-google-sellers-task-get-advanced
@@ -8466,7 +8239,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.serp-ai-summary
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
-  tier: extended
   platform: google
   method: POST
   path: /serp/ai_summary
@@ -8508,16 +8280,13 @@ endpoints:
       include_links: true
       fetch_content: true
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-ai-summary.json
-  observed_cost: 0.01
+  price: {value: '0.01', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-ads-advertisers-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -8531,18 +8300,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-google-ads-advertisers-task-get-advanced
       param: id
 - id: dataforseo.x.serp-google-ads-advertisers-task-post
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/ads_advertisers/task_post
@@ -8595,13 +8363,12 @@ endpoints:
     - location_code: 2840
       keyword: apple
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-advertisers-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.serp-google-ads-advertisers-task-get-advanced
@@ -8648,7 +8415,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.serp-google-ads-search-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -8662,18 +8428,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-google-ads-search-task-get-advanced
       param: id
 - id: dataforseo.x.serp-google-ads-search-task-post
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/ads_search/task_post
@@ -8756,13 +8521,12 @@ endpoints:
       - AR13752565271262920705
       - AR02439908557932462081
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-search-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.serp-google-ads-search-task-get-advanced
@@ -8810,7 +8574,6 @@ endpoints:
 - id: dataforseo.x.serp-google-ai-mode-live-advanced
   capability: google.serp.ai_mode
   platform: google
-  tier: extended
   method: POST
   path: /serp/google/ai_mode/live/advanced
   name: "Google AI Mode results for a keyword, live"
@@ -8880,15 +8643,12 @@ endpoints:
       location_code: 2840
       keyword: what is google ai mode
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ai-mode-live-advanced.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-autocomplete-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/autocomplete/live/advanced
@@ -8941,15 +8701,12 @@ endpoints:
       keyword: albert einstein
       client: gws-wiz-serp
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-autocomplete-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-dataset-info-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/dataset_info/live/advanced
@@ -8988,15 +8745,12 @@ endpoints:
     body:
     - dataset_id: L2cvMTFqbl85ZHN6MQ==
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-dataset-info-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-dataset-search-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/dataset_search/live/advanced
@@ -9077,17 +8831,14 @@ endpoints:
       - natural_sciences
       - geo
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-dataset-search-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-events-live-advanced
   status: broken
   status_note: "DataForSEO's Google Events live function answers an internal error or 'This function temporarily unavailable' (50000/50304) on every task, so no call returns events. Use dataforseo.google.serp.organic or another events source until it is restored."
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/events/live/advanced
@@ -9154,15 +8905,12 @@ endpoints:
       location_name: Los Angeles,California,United States
       date_range: today
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-events-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-explore-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/finance_explore/live/advanced
@@ -9211,15 +8959,12 @@ endpoints:
     - location_code: 2840
       language_name: English
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-explore-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-markets-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/finance_markets/live/advanced
@@ -9268,15 +9013,12 @@ endpoints:
     - location_code: 2840
       language_name: English
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-markets-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-quote-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/finance_quote/live/advanced
@@ -9331,15 +9073,12 @@ endpoints:
       location_code: 2840
       language_name: English
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-quote-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-finance-ticker-search-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/finance_ticker_search/live/advanced
@@ -9388,15 +9127,12 @@ endpoints:
       category: all
       keyword: DJ
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-finance-ticker-search-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-images-live-advanced
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/images/live/advanced
@@ -9467,16 +9203,13 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-images-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-google-jobs-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -9490,18 +9223,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-google-jobs-task-get-advanced
       param: id
 - id: dataforseo.x.serp-google-jobs-task-post
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/jobs/task_post
@@ -9572,13 +9304,12 @@ endpoints:
       location_code: 2840
       keyword: .net developer
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-jobs-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.serp-google-jobs-task-get-advanced
@@ -9626,7 +9357,6 @@ endpoints:
 - id: dataforseo.x.serp-google-local-finder-live-advanced
   capability: google.serp.local
   platform: google
-  tier: extended
   method: POST
   path: /serp/google/local_finder/live/advanced
   name: "Google Local Finder results for a keyword, live"
@@ -9696,21 +9426,28 @@ endpoints:
       min_rating: 4.5
       time_filter: monday
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-local-finder-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
 - id: dataforseo.x.serp-google-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google
   method: GET
   path: /serp/google/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google SERP location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/google/locations/
@@ -9725,7 +9462,6 @@ endpoints:
 - id: dataforseo.x.serp-google-maps-live-advanced
   capability: google.serp.maps
   platform: google
-  tier: extended
   method: POST
   path: /serp/google/maps/live/advanced
   name: "Google Maps results for a keyword and location, live"
@@ -9799,17 +9535,19 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-maps-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
 - id: dataforseo.x.serp-google-news-live-advanced
   capability: google.serp.news
   platform: google
-  tier: extended
   method: POST
   path: /serp/google/news/live/advanced
   name: "Google News results for a keyword, live"
@@ -9891,17 +9629,19 @@ endpoints:
       location_code: 2840
       keyword: android
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-news-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
 - id: dataforseo.x.serp-google-organic-live-advanced
   capability: google.serp.organic
   platform: google
-  tier: extended
   method: POST
   path: /serp/google/organic/live/advanced
   name: "Google organic results for a keyword — full SERP features"
@@ -10037,16 +9777,19 @@ endpoints:
       keyword: albert einstein
       calculate_rectangles: true
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-organic-live-advanced.json
-  observed_cost: 0.004
+  note: "When an organic item's domain is google.com, its url is a google.com/goto wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination host; any other breadcrumb means the answer does not hold it."
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
 - id: dataforseo.x.serp-google-search-by-image-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google
   kind: utility
   method: GET
@@ -10060,18 +9803,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-google-search-by-image-task-get-advanced
       param: id
 - id: dataforseo.x.serp-google-search-by-image-task-post
-  tier: extended
   platform: google
   method: POST
   path: /serp/google/search_by_image/task_post
@@ -10162,13 +9904,12 @@ endpoints:
       location_code: 2840
       image_url: https://dataforseo.com/wp-content/uploads/2016/11/data_for_seo_light_429.png
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-search-by-image-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.serp-google-search-by-image-task-get-advanced
@@ -10215,7 +9956,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.serp-screenshot
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
-  tier: extended
   platform: google
   method: POST
   path: /serp/screenshot
@@ -10257,16 +9997,13 @@ endpoints:
     - task_id: 06211235-0696-0139-1000-36727fbd3c90
       browser_screen_scale_factor: 0.5
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-screenshot.json
-  observed_cost: 0.004
+  price: {value: '0.004', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.app-data-google-app-info-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google-play
   kind: utility
   method: GET
@@ -10280,18 +10017,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-google-app-info-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-google-app-info-task-post
-  tier: extended
   platform: google-play
   method: POST
   path: /app_data/google/app_info/task_post
@@ -10351,13 +10087,12 @@ endpoints:
       location_code: 2840
       language_code: en
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-info-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-google-app-info-task-get-advanced
@@ -10404,7 +10139,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.app-data-google-app-list-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google-play
   kind: utility
   method: GET
@@ -10418,18 +10152,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-google-app-list-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-google-app-list-task-post
-  tier: extended
   platform: google-play
   method: POST
   path: /app_data/google/app_list/task_post
@@ -10503,13 +10236,12 @@ endpoints:
       language_code: en
       depth: 100
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-list-task-post.json
-  observed_cost: 0.0012
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-google-app-list-task-get-advanced
@@ -10555,7 +10287,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.app-data-google-app-listings-search-live
-  tier: extended
   platform: google-play
   method: POST
   path: /app_data/google/app_listings/search/live
@@ -10627,16 +10358,13 @@ endpoints:
         - 4.5
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-listings-search-live.json
-  observed_cost: 0.11
+  price: {value: '0.11', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.app-data-google-app-reviews-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google-play
   kind: utility
   method: GET
@@ -10650,18 +10378,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-google-app-reviews-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-google-app-reviews-task-post
-  tier: extended
   platform: google-play
   method: POST
   path: /app_data/google/app_reviews/task_post
@@ -10735,13 +10462,12 @@ endpoints:
       language_code: en
       depth: 150
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-reviews-task-post.json
-  observed_cost: 0.00075
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-google-app-reviews-task-get-advanced
@@ -10788,7 +10514,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.app-data-google-app-searches-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: google-play
   kind: utility
   method: GET
@@ -10802,18 +10527,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.app-data-google-app-searches-task-get-advanced
       param: id
 - id: dataforseo.x.app-data-google-app-searches-task-post
-  tier: extended
   platform: google-play
   method: POST
   path: /app_data/google/app_searches/task_post
@@ -10879,13 +10603,12 @@ endpoints:
       language_code: en
       depth: 30
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-searches-task-post.json
-  observed_cost: 0.0012
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: poll:dataforseo.x.app-data-google-app-searches-task-get-advanced
@@ -10933,18 +10656,21 @@ endpoints:
 - id: dataforseo.x.app-data-google-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: google-play
   method: GET
   path: /app_data/google/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Google Play location codes by country"
   summary: By calling this endpoint you will receive the list of Google locations supported in App Data API.
   docs_url: https://docs.dataforseo.com/v3/app_data/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-naver-organic-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: naver
   kind: utility
   method: GET
@@ -10958,18 +10684,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-naver-organic-task-get-advanced
       param: id
 - id: dataforseo.x.serp-naver-organic-task-post
-  tier: extended
   platform: naver
   method: POST
   path: /serp/naver/organic/task_post
@@ -11057,13 +10782,12 @@ endpoints:
       postback_url: https://your-server.com/postbackscript.php
       postback_data: regular
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-naver-organic-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: naver.serp.organic
   resource_ownership:
     produces:
@@ -11110,7 +10834,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.ai-optimization-perplexity-llm-responses-live
-  tier: extended
   platform: ai-search
   method: POST
   path: /ai_optimization/perplexity/llm_responses/live
@@ -11183,29 +10906,32 @@ endpoints:
       model_name: sonar
       user_prompt: provide information on how relevant the amusement park business is in France now
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.ai-optimization-perplexity-llm-responses-live.json
-  observed_cost: 0.005861
+  price: {value: '0.005861', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.tasks.0.result.0.items.0.sections.0.text, op: absent}}
   capability: ai-search.perplexity.answer
 - id: dataforseo.x.serp-seznam-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: seznam
   method: GET
   path: /serp/seznam/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Seznam location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/seznam/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-seznam-organic-task-get-advanced
   added: '2026-10-15'
-  tier: extended
   platform: seznam
   kind: utility
   method: GET
@@ -11219,18 +10945,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.serp-seznam-organic-task-get-advanced
       param: id
 - id: dataforseo.x.serp-seznam-organic-task-post
-  tier: extended
   platform: seznam
   method: POST
   path: /serp/seznam/organic/task_post
@@ -11334,13 +11059,12 @@ endpoints:
       location_code: 2203
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-seznam-organic-task-post.json
-  observed_cost: 0.0006
+  price: {value: '0.0006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: seznam.serp.organic
   resource_ownership:
     produces:
@@ -11389,18 +11113,21 @@ endpoints:
 - id: dataforseo.x.business-data-tripadvisor-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: tripadvisor
   method: GET
   path: /business_data/tripadvisor/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Tripadvisor location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/business_data/tripadvisor/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.business-data-tripadvisor-reviews-task-get
   added: '2026-10-15'
-  tier: extended
   platform: tripadvisor
   kind: utility
   method: GET
@@ -11414,18 +11141,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-tripadvisor-reviews-task-get
       param: id
 - id: dataforseo.x.business-data-tripadvisor-reviews-task-post
-  tier: extended
   platform: tripadvisor
   method: POST
   path: /business_data/tripadvisor/reviews/task_post
@@ -11515,13 +11241,12 @@ endpoints:
       pingback_url: https://your-server.com/pingback.php?id=$id&tag=$tag
       tag: some_string_123
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-reviews-task-post.json
-  observed_cost: 0.00075
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: tripadvisor.business.reviews
   resource_ownership:
     produces:
@@ -11569,7 +11294,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.business-data-tripadvisor-search-task-get
   added: '2026-10-15'
-  tier: extended
   platform: tripadvisor
   kind: utility
   method: GET
@@ -11583,18 +11307,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-tripadvisor-search-task-get
       param: id
 - id: dataforseo.x.business-data-tripadvisor-search-task-post
-  tier: extended
   platform: tripadvisor
   method: POST
   path: /business_data/tripadvisor/search/task_post
@@ -11646,13 +11369,12 @@ endpoints:
       location_code: 1003854
       depth: 30
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-search-task-post.json
-  observed_cost: 0.00075
+  price: {value: '0.00075', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: tripadvisor.search.businesses
   resource_ownership:
     produces:
@@ -11700,7 +11422,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.business-data-trustpilot-reviews-task-get
   added: '2026-10-15'
-  tier: extended
   platform: trustpilot
   kind: utility
   method: GET
@@ -11714,18 +11435,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-trustpilot-reviews-task-get
       param: id
 - id: dataforseo.x.business-data-trustpilot-reviews-task-post
-  tier: extended
   platform: trustpilot
   method: POST
   path: /business_data/trustpilot/reviews/task_post
@@ -11771,13 +11491,12 @@ endpoints:
     - domain: www.thepearlsource.com
       depth: 40
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-reviews-task-post.json
-  observed_cost: 0.0015
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: trustpilot.business.reviews
   resource_ownership:
     produces:
@@ -11825,7 +11544,6 @@ endpoints:
     interval: 20
 - id: dataforseo.x.business-data-trustpilot-search-task-get
   added: '2026-10-15'
-  tier: extended
   platform: trustpilot
   kind: utility
   method: GET
@@ -11839,18 +11557,17 @@ endpoints:
         required: true
         note: tasks[].id from the submission's answer
         example: 00000000-0000-0000-0000-000000000000
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
   resource_ownership:
     requires:
       kind: poll:dataforseo.x.business-data-trustpilot-search-task-get
       param: id
 - id: dataforseo.x.business-data-trustpilot-search-task-post
-  tier: extended
   platform: trustpilot
   method: POST
   path: /business_data/trustpilot/search/task_post
@@ -11892,13 +11609,12 @@ endpoints:
     - keyword: pizza restaurant
       depth: 20
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-search-task-post.json
-  observed_cost: 0.0015
+  price: {value: '0.0015', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   capability: trustpilot.search.businesses
   resource_ownership:
     produces:
@@ -11945,7 +11661,6 @@ endpoints:
       ttl_note: 30 days
     interval: 20
 - id: dataforseo.x.backlinks-bulk-backlinks-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_backlinks/live
@@ -11988,15 +11703,12 @@ endpoints:
       - https://stackoverflow.com/
       - www.trustpilot.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-backlinks-live.json
-  observed_cost: 0.02436
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-new-lost-backlinks-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_new_lost_backlinks/live
@@ -12045,25 +11757,17 @@ endpoints:
       - www.trustpilot.com
       date_from: '2021-01-01'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-new-lost-backlinks-live.json
-  cost:
-    type: per_call
-    value: 0.0241
+  price:
+    value: '0.0241'
     currency: USD
     per: 1
     unit: call
-    source: observed
-    confidence: verified
-    checked: '2026-10-02'
     note: 'Not free, although the verification call was billed nothing: every charged call over the 14 days to 2026-10-02 cost about $0.024. The response `cost` is the exact charge and settles the call.'
-  observed_cost: 0
+  provenance: {source: observed, checked: '2026-10-02', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-new-lost-referring-domains-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_new_lost_referring_domains/live
@@ -12112,25 +11816,17 @@ endpoints:
       - www.trustpilot.com
       date_from: '2023-09-01'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-new-lost-referring-domains-live.json
-  cost:
-    type: per_call
-    value: 0.0241
+  price:
+    value: '0.0241'
     currency: USD
     per: 1
     unit: call
-    source: observed
-    confidence: verified
-    checked: '2026-10-02'
     note: 'Not free, although the verification call was billed nothing: every charged call over the 14 days to 2026-10-02 cost about $0.024. The response `cost` is the exact charge and settles the call.'
-  observed_cost: 0
+  provenance: {source: observed, checked: '2026-10-02', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-pages-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_pages_summary/live
@@ -12165,15 +11861,12 @@ endpoints:
       - https://dataforseo.com/solutions
       - https://dataforseo.com/about-us
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-pages-summary-live.json
-  observed_cost: 0.024072
+  price: {value: '0.024072', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-referring-domains-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_referring_domains/live
@@ -12217,15 +11910,12 @@ endpoints:
       - https://stackoverflow.com/
       - www.trustpilot.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-referring-domains-live.json
-  observed_cost: 0.02436
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-bulk-spam-score-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/bulk_spam_score/live
@@ -12269,15 +11959,12 @@ endpoints:
       - https://stackoverflow.com/
       - www.trustpilot.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-spam-score-live.json
-  observed_cost: 0.02436
+  price: {value: '0.02436', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-intersection-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/domain_intersection/live
@@ -12370,15 +12057,12 @@ endpoints:
       - 1.backlinks,desc
       exclude_internal_backlinks: true
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-intersection-live.json
-  observed_cost: 0.02418
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-pages-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/domain_pages/live
@@ -12460,15 +12144,12 @@ endpoints:
         - like
         - '%sites%'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-pages-live.json
-  observed_cost: 0.02418
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-domain-pages-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/domain_pages_summary/live
@@ -12542,15 +12223,12 @@ endpoints:
       order_by:
       - backlinks,desc
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-domain-pages-summary-live.json
-  observed_cost: 0.024144
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-history-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/history/live
@@ -12589,26 +12267,27 @@ endpoints:
       date_from: '2020-01-01'
       date_to: '2021-01-01'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-history-live.json
-  observed_cost: 0.024324
+  price: {value: '0.024324', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-index
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: web
   method: GET
   path: /backlinks/index
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Backlink index totals"
   summary: This endpoint will provide you with the total number of backlinks, domains, and pages our database contains for the moment when you make a request.
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.backlinks-page-intersection-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/page_intersection/live
@@ -12710,15 +12389,12 @@ endpoints:
         - '='
         - true
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-page-intersection-live.json
-  observed_cost: 0.02418
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-referring-networks-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/referring_networks/live
@@ -12816,15 +12492,12 @@ endpoints:
       - '>'
       - 100
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-referring-networks-live.json
-  observed_cost: 0.02418
+  price: {value: '0.02418', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-timeseries-new-lost-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/timeseries_new_lost_summary/live
@@ -12870,15 +12543,12 @@ endpoints:
       date_to: '2026-06-24'
       group_range: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-timeseries-new-lost-summary-live.json
-  observed_cost: 0.024108
+  price: {value: '0.024108', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.backlinks-timeseries-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /backlinks/timeseries_summary/live
@@ -12928,15 +12598,12 @@ endpoints:
       date_to: '2026-06-24'
       group_range: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-timeseries-summary-live.json
-  observed_cost: 0.024108
+  price: {value: '0.024108', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-business-listings-categories-aggregation-live
-  tier: extended
   platform: web
   method: POST
   path: /business_data/business_listings/categories_aggregation/live
@@ -13011,15 +12678,12 @@ endpoints:
         - 3
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-business-listings-categories-aggregation-live.json
-  observed_cost: 0.01308
+  price: {value: '0.01308', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-business-listings-search-live
-  tier: extended
   platform: web
   method: POST
   path: /business_data/business_listings/search/live
@@ -13102,15 +12766,12 @@ endpoints:
         - 3
       limit: 3
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-business-listings-search-live.json
-  observed_cost: 0.01308
+  price: {value: '0.01308', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.business-data-social-media-pinterest-live
-  tier: extended
   platform: pinterest
   method: POST
   path: /business_data/social_media/pinterest/live
@@ -13142,15 +12803,12 @@ endpoints:
       - https://www.allrecipes.com/recipe/255263/sicilian-roasted-chicken/
       tag: some_string_123
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-social-media-pinterest-live.json
-  observed_cost: 0.00012
+  price: {value: '0.00012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-category-trends-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/category_trends/live
@@ -13212,15 +12870,12 @@ endpoints:
       date_from: '2026-04-24'
       date_group: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-category-trends-live.json
-  observed_cost: 0.024144
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-phrase-trends-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/phrase_trends/live
@@ -13286,15 +12941,12 @@ endpoints:
       date_from: '2026-04-24'
       date_group: month
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-phrase-trends-live.json
-  observed_cost: 0.024144
+  price: {value: '0.024144', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-rating-distribution-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/rating_distribution/live
@@ -13354,15 +13006,12 @@ endpoints:
       search_mode: as_is
       internal_list_limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-rating-distribution-live.json
-  observed_cost: 0.024
+  price: {value: '0.024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-search-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/search/live
@@ -13454,15 +13103,12 @@ endpoints:
       - content_info.sentiment_connotations.anger,desc
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-search-live.json
-  observed_cost: 0.024036
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-sentiment-analysis-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/sentiment_analysis/live
@@ -13516,15 +13162,12 @@ endpoints:
     - keyword: logitech
       internal_list_limit: 1
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-sentiment-analysis-live.json
-  observed_cost: 0.024036
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.content-analysis-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /content_analysis/summary/live
@@ -13592,15 +13235,12 @@ endpoints:
       internal_list_limit: 8
       positive_connotation_threshold: 0.5
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.content-analysis-summary-live.json
-  observed_cost: 0.024036
+  price: {value: '0.024036', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-aggregation-technologies-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/aggregation_technologies/live
@@ -13698,15 +13338,12 @@ endpoints:
       - groups_count,desc
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-aggregation-technologies-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domain-technologies-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/domain_technologies/live
@@ -13726,15 +13363,12 @@ endpoints:
     body:
     - target: dataforseo.com
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domain-technologies-live.json
-  observed_cost: 0.012
+  price: {value: '0.012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domains-by-html-terms-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/domains_by_html_terms/live
@@ -13792,15 +13426,12 @@ endpoints:
       limit: 10
       offset: 0
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domains-by-html-terms-live.json
-  observed_cost: 0.024
+  price: {value: '0.024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-domains-by-technology-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/domains_by_technology/live
@@ -13884,37 +13515,33 @@ endpoints:
       - last_visited,desc
       limit: 10
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domains-by-technology-live.json
-  cost:
-    type: per_call
-    value: 0.0384
+  price:
+    value: '0.0384'
     currency: USD
     per: 1
     unit: call
-    source: observed
-    confidence: verified
-    checked: '2026-10-02'
     note: 'DataForSEO bills by domains returned, not per call: over the 14 days to 2026-10-02 real charges ran $0.038 median and $2.41 at the top (large `limit`), so keep `limit` small. The response `cost` is the exact charge and settles the call.'
-  observed_cost: 0.024
+  provenance: {source: observed, checked: '2026-10-02', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-technologies
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: web
   method: GET
   path: /domain_analytics/technologies/technologies
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Website technology list"
   summary: This endpoint will provide you with the full list of available technologies structured by technology groups and categories each particular technology belongs to.
   docs_url: https://docs.dataforseo.com/v3/domain_analytics/technologies/technologies/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.domain-analytics-technologies-technologies-summary-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/technologies_summary/live
@@ -13990,15 +13617,12 @@ endpoints:
         - '>'
         - 800
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-technologies-summary-live.json
-  observed_cost: 0.0132
+  price: {value: '0.0132', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-technologies-technology-stats-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/technologies/technology_stats/live
@@ -14034,15 +13658,12 @@ endpoints:
       date_from: '2026-04-24'
       date_to: '2026-06-24'
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-technology-stats-live.json
-  observed_cost: 0.0144
+  price: {value: '0.0144', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.domain-analytics-whois-overview-live
-  tier: extended
   platform: web
   method: POST
   path: /domain_analytics/whois/overview/live
@@ -14091,15 +13712,12 @@ endpoints:
         - - client_transfer_prohibited
           - client_update_prohibited
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-whois-overview-live.json
-  observed_cost: 0.1224
+  price: {value: '0.1224', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-bulk-search-volume-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/clickstream_data/bulk_search_volume/live
@@ -14141,15 +13759,12 @@ endpoints:
       - youtube
       - youtub
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-bulk-search-volume-live.json
-  observed_cost: 0.01236
+  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-dataforseo-search-volume-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/clickstream_data/dataforseo_search_volume/live
@@ -14205,15 +13820,12 @@ endpoints:
       - youtube
       - youtub
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-dataforseo-search-volume-live.json
-  observed_cost: 0.18
+  price: {value: '0.18', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-clickstream-data-global-search-volume-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/clickstream_data/global_search_volume/live
@@ -14245,15 +13857,12 @@ endpoints:
       - youtube
       - youtub
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-clickstream-data-global-search-volume-live.json
-  observed_cost: 0.18
+  price: {value: '0.18', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-demography-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/dataforseo_trends/demography/live
@@ -14313,17 +13922,14 @@ endpoints:
       type: web
       location_name: United States
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-demography-live.json
-  observed_cost: 0.0024
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-explore-live
   capability: google.keywords.trends
   platform: google
-  tier: extended
   method: POST
   path: /keywords_data/dataforseo_trends/explore/live
   name: "DataForSEO Trends keyword popularity over time"
@@ -14376,27 +13982,33 @@ endpoints:
       - samsung s23
       location_code: 2840
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-explore-live.json
-  observed_cost: 0.0012
+  price: {value: '0.0012', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
 - id: dataforseo.x.keywords-data-dataforseo-trends-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: web
   method: GET
   path: /keywords_data/dataforseo_trends/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Keyword trend location codes"
   summary: You will receive the list of DataForSEO Trends locations by calling this API.
   docs_url: https://docs.dataforseo.com/v3/keywords_data/dataforseo_trends/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.keywords-data-dataforseo-trends-merged-data-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/dataforseo_trends/merged_data/live
@@ -14456,15 +14068,12 @@ endpoints:
       type: web
       location_name: United States
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-merged-data-live.json
-  observed_cost: 0.006
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.keywords-data-dataforseo-trends-subregion-interests-live
-  tier: extended
   platform: web
   method: POST
   path: /keywords_data/dataforseo_trends/subregion_interests/live
@@ -14524,15 +14133,12 @@ endpoints:
       type: web
       location_name: United States
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-subregion-interests-live.json
-  observed_cost: 0.0024
+  price: {value: '0.0024', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.on-page-content-parsing
-  tier: extended
   platform: web
   method: POST
   path: /on_page/content_parsing
@@ -14562,13 +14168,11 @@ endpoints:
     - url: https://dataforseo.com/blog/a-versatile-alternative-to-google-trends-exploring-the-power-of-dataforseo-trends-api
       id: 11161551-1535-0216-0000-500b3f307f92
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-content-parsing.json
-  observed_cost: 0
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   resource_ownership:
     requires:
       kind: on_page_task
@@ -14576,7 +14180,8 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-content-parsing-live
   added: '2026-07-28'
-  tier: extended
+  price: null
+  expect: null
   platform: web
   method: POST
   path: /on_page/content_parsing/live
@@ -14651,11 +14256,15 @@ endpoints:
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-duplicate-content
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/duplicate_content
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Duplicate page content"
   summary: This endpoint returns a list of pages that have content similar to the page specified in the request.
   docs_url: https://docs.dataforseo.com/v3/on_page/duplicate_content/
@@ -14697,11 +14306,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-duplicate-tags
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/duplicate_tags
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Duplicate title or meta tags"
   summary: This endpoint returns a list of pages that contain duplicate title or description tags.
   docs_url: https://docs.dataforseo.com/v3/on_page/duplicate_tags/
@@ -14744,11 +14357,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-keyword-density
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/keyword_density
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Page keyword density"
   summary: This endpoint will provide you with keyword density and keyword frequency data for terms appearing on the specified website or web page.
   docs_url: https://docs.dataforseo.com/v3/on_page/keyword_density/
@@ -14800,18 +14417,23 @@ endpoints:
 - id: dataforseo.x.on-page-lighthouse-audits
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: web
   method: GET
   path: /on_page/lighthouse/audits
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Available Lighthouse checks"
   summary: The OnPage Lighthouse API is based on Google’s open-source Lighthouse project and provides data on the quality of web pages.
   docs_url: https://docs.dataforseo.com/v3/on_page/lighthouse/audits/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.on-page-lighthouse-live-json
   added: '2026-07-28'
-  tier: extended
+  price: null
+  expect: null
   platform: web
   method: POST
   path: /on_page/lighthouse/live/json
@@ -14887,11 +14509,15 @@ endpoints:
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-links
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/links
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Crawl links"
   summary: This endpoint will provide you with a list of internal and external links detected on a target website.
   docs_url: https://docs.dataforseo.com/v3/on_page/links/
@@ -14950,7 +14576,8 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-microdata
   added: '2026-07-28'
-  tier: extended
+  price: null
+  expect: null
   platform: web
   method: POST
   path: /on_page/microdata
@@ -14983,11 +14610,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-non-indexable
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/non_indexable
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Non-indexable pages"
   summary: This endpoint returns a list of pages that are blocked from being indexed by Google and other search engines through robots.txt, HTTP headers, or meta tags settings.
   docs_url: https://docs.dataforseo.com/v3/on_page/non_indexable/
@@ -15030,11 +14661,17 @@ endpoints:
 - id: dataforseo.x.on-page-page-screenshot
   added: '2026-07-28'
   capability: web.screenshot
-  tier: extended
   platform: web
   method: POST
   path: /on_page/page_screenshot
-  cost: {type: per_result, value: 0.0048, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
+  price: {value: '0.0048', currency: USD, per: 1, unit: call, note: read from our own account rate card}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-08-07'
+    confidence: verified
+  reserve: {entities: {from: body.*, max: 1}}
+  expect: null
   name: "Full-page screenshot of any URL"
   summary: Using this endpoint, you can capture a full high-quality screenshot of any webpage.
   docs_url: https://docs.dataforseo.com/v3/on_page/page_screenshot/
@@ -15090,11 +14727,15 @@ endpoints:
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-pages
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/pages
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Crawled page checks"
   summary: This endpoint returns a list of crawled pages with on-page check-ups and other metrics related to the page performance.
   docs_url: https://docs.dataforseo.com/v3/on_page/pages/
@@ -15150,11 +14791,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-pages-by-resource
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/pages_by_resource
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Pages using a resource"
   summary: This endpoint will return the list of pages where a specific resource is located.
   docs_url: https://docs.dataforseo.com/v3/on_page/page_by_resource/
@@ -15200,11 +14845,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-raw-html
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/raw_html
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Crawled page HTML"
   summary: This endpoint returns the HTML of a page you indicate in the request.
   docs_url: https://docs.dataforseo.com/v3/on_page/raw_html/
@@ -15230,11 +14879,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-redirect-chains
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/redirect_chains
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Redirect chains"
   summary: Redirect chains occur when there are at least two redirects between the initial URL and the destination URL.
   docs_url: https://docs.dataforseo.com/v3/on_page/redirect_chains/
@@ -15276,11 +14929,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-resources
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/resources
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Crawl resources"
   summary: This endpoint will provide you with a list of resources, including images, scripts, stylesheets, and broken elements.
   docs_url: https://docs.dataforseo.com/v3/on_page/resources/
@@ -15344,11 +15001,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-summary-id
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: GET
   path: /on_page/summary/{id}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Site audit summary"
   summary: Using this function, you can get the overall information on a website as well as drill down into exact on-page issues of a website that has been scanned.
   docs_url: https://docs.dataforseo.com/v3/on_page/summary/
@@ -15364,7 +15025,6 @@ endpoints:
         required: true
         note: tasks[].id from dataforseo.x.on-page-task-post
 - id: dataforseo.x.on-page-task-post
-  tier: extended
   platform: web
   method: POST
   path: /on_page/task_post
@@ -15564,24 +15224,27 @@ endpoints:
       tag: some_string_123
       pingback_url: https://your-server.com/pingscript?id=$id&tag=$tag
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20100
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-task-post.json
-  observed_cost: 0.018
+  price: {value: '0.018', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20100}
   resource_ownership:
     produces:
     - kind: on_page_task
       path: tasks.*.id
 - id: dataforseo.x.on-page-uncrawlable-resources
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/uncrawlable_resources
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Uncrawlable resources"
   summary: This endpoint returns a list of resources detected on the target website that could not be crawled due to a content type inconsistency.
   input:
@@ -15626,11 +15289,15 @@ endpoints:
       in: body
 - id: dataforseo.x.on-page-waterfall
   added: '2026-07-28'
-  tier: extended
   platform: web
   method: POST
   path: /on_page/waterfall
-  cost: {type: free, value: 0, currency: USD, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Page load waterfall"
   summary: This endpoint is designed to provide you with the page speed insights.
   docs_url: https://docs.dataforseo.com/v3/on_page/waterfall/
@@ -15661,17 +15328,20 @@ endpoints:
 - id: dataforseo.x.serp-yahoo-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: yahoo
   method: GET
   path: /serp/yahoo/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "Yahoo location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/yahoo/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-yahoo-organic-live-advanced
-  tier: extended
   platform: yahoo
   method: POST
   path: /serp/yahoo/organic/live/advanced
@@ -15763,16 +15433,18 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-yahoo-organic-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
   capability: yahoo.serp.organic
 - id: dataforseo.x.serp-yahoo-organic-live-regular
-  tier: extended
   platform: yahoo
   method: POST
   path: /serp/yahoo/organic/live/regular
@@ -15864,28 +15536,34 @@ endpoints:
       location_code: 2840
       keyword: albert einstein
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-yahoo-organic-live-regular.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      - {path: response.tasks.0.result.0.items, op: present}
+      - {path: response.tasks.0.result.0.items, op: empty}
   capability: yahoo.serp.organic
 - id: dataforseo.x.serp-youtube-locations-country
   added: '2026-07-28'
   kind: utility
-  tier: extended
   platform: youtube
   method: GET
   path: /serp/youtube/locations/{country}
-  cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', note: 'DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered'}
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  expect: null
   name: "YouTube location codes by country"
   summary: You will receive the list of locations by this API call.
   docs_url: https://docs.dataforseo.com/v3/serp/youtube/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-youtube-organic-live-advanced
-  tier: extended
   platform: youtube
   method: POST
   path: /serp/youtube/organic/live/advanced
@@ -15945,15 +15623,12 @@ endpoints:
       location_code: 2840
       keyword: audi
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-organic-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-comments-live-advanced
-  tier: extended
   platform: youtube
   method: POST
   path: /serp/youtube/video_comments/live/advanced
@@ -16009,15 +15684,12 @@ endpoints:
       location_code: 2840
       video_id: vQXvyV0zIP4
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-comments-live-advanced.json
-  observed_cost: 0.002
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-info-live-advanced
-  tier: extended
   platform: youtube
   method: POST
   path: /serp/youtube/video_info/live/advanced
@@ -16069,15 +15741,12 @@ endpoints:
       location_code: 2840
       video_id: vQXvyV0zIP4
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-info-live-advanced.json
-  observed_cost: 0.006
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.serp-youtube-video-subtitles-live-advanced
-  tier: extended
   platform: youtube
   method: POST
   path: /serp/youtube/video_subtitles/live/advanced
@@ -16137,10 +15806,8 @@ endpoints:
       location_code: 2840
       video_id: Y8Wu4rSNJms
     bodyType: json
-  expect:
-    json_path: tasks.0.status_code
-    equals: 20000
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-youtube-video-subtitles-live-advanced.json
-  observed_cost: 0.006
+  price: {value: '0.006', currency: USD, per: 1, unit: call}
+  provenance: {source: observed, checked: '2026-07-28', confidence: verified}

@@ -139,7 +139,7 @@ _RATE_LIMITS: dict[str, dict] = {
     # No published provider-wide limit. The shared-key smoother uses the documented
     # balance-check allowance as a conservative policy ceiling for all routes.
     "sixtyfour": {"limit": 60, "window_s": 60, "source": "policy"},
-    "leadocean": {"limit": 25, "window_s": 1, "source": "docs"},
+    "leadocean": {"limit": 200, "window_s": 1, "source": "policy"},
     # The allowance is independent per endpoint; this is the fallback for uncatalogued calls.
     "blitzapi": {"limit": 10, "window_s": 1, "source": "policy"},
     "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},

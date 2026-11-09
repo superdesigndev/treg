@@ -1,0 +1,66 @@
+{
+  "datapoint_status": "ok",
+  "root": {
+    "id": "co_96CC1BF8987311B3AED33EDC68",
+    "jurisdiction": "gb",
+    "company_number": "00445790",
+    "legal_name": "TESCO PLC",
+    "status": "active",
+    "registration_date": "1947-11-27",
+    "address": {
+      "line1": "TESCO HOUSE, SHIRE PARK",
+      "city": "WELWYN GARDEN CITY",
+      "postcode": "AL7 1GA",
+      "region": null,
+      "country": "GB",
+      "raw": "TESCO HOUSE, SHIRE PARK, KESTREL WAY, WELWYN GARDEN CITY, UNITED KINGDOM, AL7 1GA"
+    },
+    "match_score": null,
+    "matched_on": null
+  },
+  "nodes": [
+    {
+      "node_id": "gb:00445790",
+      "type": "company",
+      "name": "TESCO PLC",
+      "depth": 0,
+      "company": {
+        "id": "co_96CC1BF8987311B3AED33EDC68",
+        "jurisdiction": "gb",
+        "company_number": "00445790",
+        "legal_name": "TESCO PLC",
+        "status": "active",
+        "registration_date": "1947-11-27",
+        "address": {
+          "line1": "TESCO HOUSE, SHIRE PARK",
+          "city": "WELWYN GARDEN CITY",
+          "postcode": "AL7 1GA",
+          "region": null,
+          "country": "GB",
+          "raw": "TESCO HOUSE, SHIRE PARK, KESTREL WAY, WELWYN GARDEN CITY, UNITED KINGDOM, AL7 1GA"
+        },
+        "match_score": null,
+        "matched_on": null
+      },
+      "person": null,
+      "total_ownership": {
+        "lower_percentage": 100.0,
+        "upper_percentage": 100.0
+      },
+      "path_count": 1,
+      "status": "found",
+      "stopped_reason": "no_data",
+      "detail": null
+    }
+  ],
+  "edges": [],
+  "calculated_ubo": [],
+  "stopped_reason": "completed",
+  "continuation": {
+    "truncated": false,
+    "frontier_node_ids": [],
+    "hint": null,
+    "max_depth": 2,
+    "max_nodes": 10
+  }
+}

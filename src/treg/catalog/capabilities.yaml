@@ -102,6 +102,7 @@ platforms:
   douyin-xingtu: {label: "Xingtu — Douyin's creator marketplace (influencer rates, audience data)", category: "Advertising", summary: "Influencer rates, audience breakdowns and campaign performance."}
   xiaohongshu-pugongying: {label: "Pugongying — Xiaohongshu's creator marketplace", category: "Advertising", summary: "Creator pricing, audience and note performance from Xiaohongshu's creator marketplace."}
   qq-huxuan: {label: "QQ Huxuan — Tencent's creator marketplace", category: "Advertising", summary: "Creator and placement data from Tencent's Huxuan marketplace."}
+  ugc: {label: "UGC clips", category: "Advertising", summary: "Search and license UGC video clips for ads and organic posts."}
 
   # --- Community -------------------------------------------------------------------------------
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}
@@ -305,6 +306,7 @@ capabilities:
   people.email.find.personal: "Find a person's personal email address"
   people.phone.verify: "Validate and format a phone number"
   people.phone.live: "Check whether a phone number is live on its network"
+  people.profile.from_phone: "Find social profiles from a contact phone number"
   linkedin.profile.from_email: "Find a person's LinkedIn profile from their email address"
   creators.socials.connected: "List a creator's accounts on other platforms"
 

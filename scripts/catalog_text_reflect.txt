@@ -1,0 +1,30 @@
+# Words and phrases that make a catalog summary or note worth a second look
+# (docs/context/architecture/catalog-schema.md, "Summary and note"). scripts/catalog_validate.py
+# warns on each match, naming the entry and its reason, and the author decides.
+#
+# One entry per line: a word or short phrase, matched case-insensitive on word boundaries, or
+# `re:` and a Python regular expression; then optionally `  # ` and a one-line reason.
+# Hedges, words that argue with an earlier text, evidence, dates, sample sizes and maintainer
+# reasoning are seeded. To add a word worth a second look, append one more line in that format.
+may  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+might  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+often  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+sometimes  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+likely  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+usually  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+typically  # a hedge: write what the probes show, and a case that holds only sometimes as "when X, Y"
+no longer  # argues with an earlier text: state the present fact
+now returns  # argues with an earlier text: state the present fact
+does include  # argues with an earlier text: state the present fact
+previously  # argues with an earlier text: state the present fact
+anymore  # argues with an earlier text: state the present fact
+actually  # argues with an earlier text: state the present fact
+as of  # dates a fact: evidence goes in the PR body
+observed  # evidence: it goes in the PR body
+probed  # evidence: it goes in the PR body
+because we  # maintainer reasoning: a YAML comment or the PR body
+so that  # maintainer reasoning: a YAML comment or the PR body
+per_call so  # maintainer reasoning: a YAML comment or the PR body
+per_success so  # maintainer reasoning: a YAML comment or the PR body
+re:\b(?:19|20)\d\d-(?:0[1-9]|1[0-2])-\d\d\b  # a date: evidence goes in the PR body
+re:\b\d[\d,]*\s+(?:samples|calls|requests|probes|runs)\b  # a sample size (N samples, calls, requests, probes or runs): evidence goes in the PR body

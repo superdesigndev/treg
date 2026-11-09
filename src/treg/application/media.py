@@ -5,7 +5,7 @@ public URLs their fetcher downloads. An agent on a laptop has no host, and every
 failed a vendor probe at least once (catbox unreachable from fal, tmpfiles answering HTML, uguu
 timing out). This keeps the bytes in treg and serves them from an opaque token.
 
-Deliberately not metered: hosting is a courtesy like polling, so money's five entries stay untouched.
+Deliberately not metered: hosting is a courtesy like polling, so money's entries stay untouched.
 Bounded instead: a size cap per file, a daily byte quota per org, a TTL, and a media-only type list.
 
 Bytes go to the archive's bucket under a random `hosted-media/v1/<hex>` key when `media_body_write`
