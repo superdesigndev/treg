@@ -422,7 +422,8 @@ TEXT: dict[str, dict] = {
         "summary": "List the latest reels of a public Instagram account, newest first, with plays, likes, "
                    "comments and thumbnail.",
         "input": {"username": "the account: @name or an instagram.com URL",
-                  "user_id": "the account's numeric id, in place of `username`",
+                  "user_id": "the account's numeric id; without a login, which treg does not send, the reels are "
+                             "read by `username`",
                   "limit": "at most 12: a larger limit gives the same 12, marked partial"},
     },
     "instagram-search": {
