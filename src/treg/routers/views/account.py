@@ -100,7 +100,10 @@ def balance(b: dict, *, team: str, autotopup: dict | None) -> str:
     elif autotopup and autotopup.get("disabled_reason"):
         lines.append(f"  auto top-up off - {autotopup['disabled_reason']}. Run `treg topup --auto on` after "
                      f"fixing your card.")
-    items = (b.get("entries") or {}).get("items") or []
+    entries = b.get("entries") or {}
+    items = entries.get("items") or []
+    if not items and entries.get("withheld"):
+        return "\n".join([*lines, "", "  the ledger is shown to team admins - `treg calls` lists this team's calls.", "", ""])
     if not items:
         return "\n".join([*lines, "", "  no ledger activity yet - nothing has been spent.", "", ""])
     lines += ["", "  recent ledger"]
