@@ -52,8 +52,8 @@ One token reaches two kinds of tool, and treg injects the credential on the serv
 hold it:
 
 - **The catalog**: curated tools treg calls for you, each by id.
-- **Your own tools**: API accounts, OAuth connections, vendor CLIs and skills a teammate registered
-  for the team. Never billed, with one exception: an X connection made through treg's own X
+- **Your own tools**: API accounts, OAuth connections and skills a teammate registered for the
+  team. Never billed, with one exception: an X connection made through treg's own X
   app is billed per call, because X bills the app owner; the answer reports the price.
 
 ## First: check where you stand
@@ -375,25 +375,6 @@ token, also send `X-Treg-Org: <team-slug>`; a team token does not need it. treg 
 injects the team's credential on the server, and relays method, query, headers and body unchanged;
 your `X-Treg-Token` is removed before the provider sees the request. `GET https://treg.to/tools` lists the
 tools as JSON.
-
-**Command-line tools** (stripe, gh, vercel, gcloud and others) run with the team's credential and
-without you logging in:
-
-- `treg <command>` is the simplest: `treg claude`, `treg node server.js`, `treg with -- npm test`
-  run that one command with the team's credentials, and nothing else changes. Calls to a registered
-  host are credentialed by the server; every other address goes out untouched. Node before version
-  24 ignores proxy settings in its built-in `fetch`, so such a call goes out with no credential: use
-  a client that reads the environment (axios, got, undici `ProxyAgent`) or Node 24+. curl, git,
-  Python requests and httpx, and Deno are covered at any version.
-- `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the default) runs it on this
-  machine, isolated under a dedicated user once an admin has run `sudo treg setup-local-run`;
-  server-side execution (`--server`) is disabled globally.
-- `treg shell start` opens a subshell where registered CLIs get their credentials by themselves;
-  `--proxy` also credentials HTTPS calls your own code makes to a registered API. `treg serve` runs
-  the same proxy as a background service. A certificate-pinned client refuses the interception: use
-  `treg run` or `treg call` for it.
-
-[Import and shell](https://treg.to/tutorial-import-shell.md) has the full walkthrough.
 
 **Connecting a key for catalog calls.** `treg connections connect --provider <provider>` connects a
 provider the catalog knows: a consent screen for OAuth providers; for key-based ones a hidden
