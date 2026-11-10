@@ -254,7 +254,8 @@ the reserve, replacing only the network trip. The response carries `X-Treg-Cache
 is declared last in the model to match ALTER TABLE's append position). A hit is not an
 observation: no snapshot, no learning, only a fire-and-forget `last_requested_at` touch, the
 demand signal refresh reads. `lookup` uses the API pool on purpose so it never queues behind the
-archive's own background writes.
+archive's own background writes. A metered hit leaves through the live answer's hand-off, so
+`strip_reported_charge` removes the provider's reported charge from it as from a live answer.
 
 Freshness: `ttl_for(entry)` gives fixed starting guesses by capability prefix; a positive learned
 `ttl_s` replaces them. Serving takes the minimum of the learned TTL, the vendor
@@ -367,7 +368,10 @@ hashes depend on.
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
 plus the answer; a hash-only version reports `stored: false`. `GET /calls/{id}/result` exposes it
 to members of the row's org; what makes it safe is that the row belongs to the team and names
-bytes that team already received. A routed parent has no link of its own and lists its
+bytes that team already received. A metered answer is returned as its caller received it: with
+`strip_reported_charge` on, without the provider's reported charge unless the request keeps it
+([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
+provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
 `children`, audited before the parent, so the lookup reads the hour before the parent's row.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).

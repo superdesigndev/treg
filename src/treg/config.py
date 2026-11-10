@@ -286,6 +286,10 @@ class Settings(BaseSettings):
     spool_max_bytes: int = Field(default=64 * 1024 * 1024, ge=1)
     spool_budget_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
     spool_parse_concurrency: int = Field(default=2, ge=1, le=16)
+    # On, a metered 2xx answer reaches the caller without the member its row's settlement reads the
+    # provider's own charge from (domain/catalog/reported_charge.py), after settlement and outcome;
+    # a call sending X-Treg-Keep-Reported-Charge keeps it. The archive keeps the answer whole.
+    strip_reported_charge: bool = False
     # Fair share of a provider's concurrency on treg's own keys (domain/capacity/fair_share.py):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).

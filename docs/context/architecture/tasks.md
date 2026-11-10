@@ -34,7 +34,8 @@ descriptor, status 2xx. One writer module, `application.asynctasks` (`remember_r
 answer treg relayed, `remember_routed_task` for a routed pending one), on its own short session
 after the answer is read whole, so no connection is held while the provider is talking.
 
-- **treg's key.** The body settlement already read (overflow-served and spooled answers excepted).
+- **treg's key.** The body settlement already read (overflow-served and spooled answers excepted),
+  as the caller receives it ([proxy-model](proxy-model.md), "The provider's reported charge").
 - **A team's own key.** The answer is read whole up to `_TASK_ANSWER_MAX` (gzip or deflate decoded
   for reading only) and relayed byte for byte; a larger one streams untouched and gets no record.
 - **A routed pending answer** (202). The parent's call id names the child's task: its endpoint,

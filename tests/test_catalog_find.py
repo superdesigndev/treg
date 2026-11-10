@@ -247,9 +247,10 @@ def test_v2_rules_in_order():
     # a name the catalog does not carry, and nothing kept: a gap
     gap = _decide("zzqx widgets", {}, name=0.95)[0]
     assert (gap.verdict, gap.reason, gap.kept) == (F.NONE, F.GAP, [])
-    # no platform, confidently: a gap under 0.6, else capped at closest - never strong
+    # no platform, confidently: a gap when nothing is kept, else capped at closest - never strong
     q = "find a work email"
-    assert _decide(q, {"people.email.find": 0.5}, plat=("none", 0.8))[0].reason == F.GAP
+    assert _decide(q, {"people.email.find": 0.3}, plat=("none", 0.8))[0].reason == F.GAP
+    assert _decide(q, {"people.email.find": 0.5}, plat=("none", 0.8))[0].verdict == F.CLOSEST
     assert _decide(q, {"people.email.find": 0.9}, plat=("none", 0.8))[0].verdict == F.CLOSEST
     assert _decide(q, {"people.email.find": 0.9}, plat=("none", 0.3))[0].verdict == F.STRONG
     assert _decide(q, {"people.email.find": 0.5})[0].verdict == F.CLOSEST
