@@ -788,8 +788,9 @@ row.
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
   spelling records a free miss, so the call record and the stats fallback read it alike. A charged
   answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
-  maximum, not at the hold: `reserve.rows.max` or `reserve.entities.max` units at the unit price,
-  a reserve plugin's `max`, one unit without a `reserve`; its `usage` meters, which may exceed the
+  maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
+  unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
+  `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
   hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a

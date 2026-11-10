@@ -309,15 +309,20 @@ def test_a_count_settle_counts_non_null_items_capped_at_the_declared_max():
     assert call(many, answer={"items": [{"id": 1}, {"id": None}, {}]})[1].actual_micro == 20000
 
 
-def test_a_count_settle_without_a_declared_max_is_capped_at_one_unit_or_ten_thousand_entities(monkeypatch):
+def test_a_count_settle_without_a_declared_max_is_capped_at_the_hold(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.rows = lambda request, answer: answer.body["n"]
     monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
     single = row(settle={"plugin": "demo.rows"})
-    entities = row(price={"value": "0.001"}, reserve={"entities": {"from": "body.domains"}},
+    undeclared = row(price={"value": "0.001"}, reserve={"entities": {"from": "body.domains"}},
+                     settle={"plugin": "demo.rows"})
+    declared = row(price={"value": "0.001"}, reserve={"entities": {"from": "body.domains", "max": 4}},
                    settle={"plugin": "demo.rows"})
-    assert call(single, answer={"n": 5})[1].actual_micro == 20000
-    assert call(entities, {"domains": ["a"]}, answer={"n": 20000})[1].actual_micro == 10_000_000
+    assert call(single, answer={"n": 5})[1].actual_micro == 20000                  # no reserve: the hold
+    assert call(undeclared, {"domains": ["a"]}, answer={"n": 3})[1].actual_micro == 1000
+    assert call(undeclared, {"domains": ["a"]}, answer={"n": 0})[1].actual_micro == 0
+    assert call(declared, {"domains": ["a"]}, answer={"n": 3})[1].actual_micro == 3000  # above the hold
+    assert call(declared, {"domains": ["a"]}, answer={"n": 9})[1].actual_micro == 4000  # the declared max
 
 
 def test_usage_meters_settle_from_the_frozen_basis_and_may_exceed_the_hold():

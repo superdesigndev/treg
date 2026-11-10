@@ -238,9 +238,9 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
         hold = amount(terms, units)
-        top = (reserve["rows"]["max"] if "rows" in reserve
-               else reserve["entities"].get("max", 10_000) if "entities" in reserve else 1)
-        terms["count_max_micro"] = amount(terms, int(top))
+        top = (reserve.get("rows") or reserve.get("entities") or {}).get("max")
+        if top is not None:
+            terms["count_max_micro"] = amount(terms, int(top))
     scalar = (price_.get("value") if price_.get("value") is not None
               else (price_.get("fallback") or {}).get("value"))
     unit = _micro_up(Decimal(scalar) * rate) if scalar is not None else 0
@@ -316,7 +316,7 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,
               answer: plugins.Answer | None) -> int | None:
     """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
-    maximum (its `reserve` max at the unit price; one unit without a `reserve`), not at the hold."""
+    maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
     found = _uncapped(terms, doc, request, answer)
     cap = terms.get("count_max_micro")
     return None if found is None else min(found, hold if cap is None else int(cap))
