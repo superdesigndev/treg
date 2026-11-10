@@ -1040,7 +1040,7 @@ returned and never documented as stable. An output field may say where it lands 
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
   field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 2000).
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
@@ -1055,7 +1055,8 @@ returned and never documented as stable. An output field may say where it lands 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
+call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to

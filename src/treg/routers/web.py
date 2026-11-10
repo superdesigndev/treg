@@ -3608,7 +3608,8 @@ def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
     text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
             .replace("{CHANNEL}", channel or "stable")
             .replace("{POSTHOG_KEY}", settings.posthog_key)
-            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/")))
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/"))
+            .replace("{BINARY_PERCENT}", str(settings.cli_binary_install_percent)))
     return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
 
 
