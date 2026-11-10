@@ -609,10 +609,16 @@ _PAGE_ID_KEYS = frozenset({"pageid"})
 
 
 def _name_keys(text: str) -> set[str]:
-    """Comparable forms of a page or company name: the ASCII fold, plus a Unicode-preserving
-    casefold so a name in a non-Latin script (`腾讯`) still meets itself."""
+    """Comparable forms of a page or company name: a Unicode-preserving casefold, so a name in a
+    non-Latin script (`腾讯`) still meets itself, plus the ASCII fold only when folding drops
+    nothing but accents. A mixed-script name (`腾讯 Cloud`) keeps just its Unicode form, so a shared
+    Latin word alone never makes two different names meet."""
     import unicodedata
-    keys = {_fold(text), " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFKC", text).casefold()).split())}
+    full = " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFKC", text).casefold()).split())
+    keys = {full}
+    bare = "".join(c for c in unicodedata.normalize("NFKD", full) if not unicodedata.combining(c))
+    if bare.isascii():
+        keys.add(_fold(text))
     keys.discard("")
     return keys
 

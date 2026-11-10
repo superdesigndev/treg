@@ -1950,6 +1950,15 @@ def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_que
     # Non-Latin company name, different non-Latin page name: miss.
     ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
      [{"pageName": "阿里巴巴", "pageId": "2"}], True),
+    # Mixed-script names sharing only a Latin word are different names: miss.
+    ({"company_name": "腾讯 Cloud", "company_domain": "tencent.com"}, None,
+     [{"pageName": "阿里巴巴 Cloud", "pageId": "3"}], True),
+    # The identical mixed-script name still meets itself: hit.
+    ({"company_name": "腾讯 Cloud", "company_domain": "tencent.com"}, None,
+     [{"pageName": "腾讯 Cloud", "pageId": "4"}], False),
+    # An accented Latin name still meets its unaccented spelling: hit.
+    ({"company_name": "Café Société", "company_domain": "cafesociete.fr"}, None,
+     [{"pageName": "Cafe Societe", "pageId": "5"}], False),
     # Ad-library links are not a page URL; they do not corroborate a Facebook identity.
     ({"facebook_url": "https://www.facebook.com/nike"}, "Nike",
      [{"page_name": "Nike", "ad_url": "https://www.facebook.com/ads/library/?id=1"}], True),
