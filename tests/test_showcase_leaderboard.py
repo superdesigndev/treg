@@ -532,8 +532,7 @@ async def test_only_active_keys_of_the_team_and_only_its_owner_or_admin(clients)
          ).scalar_one().role = "member"
         await db.commit()
     assert (await clients.put(f"/showcase/apps/{app_id}/usage", json={"source": "team"})).status_code == 403
-    member_view = (await clients.get(f"/showcase/teams/{org_id}/apps")).json()
-    assert member_view[0]["usage"] == {"source": "team"}
+    assert (await clients.get(f"/showcase/teams/{org_id}/apps")).status_code == 403
 
 
 async def test_a_rotated_key_keeps_counting_for_its_app(clients):

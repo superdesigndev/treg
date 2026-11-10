@@ -57,7 +57,7 @@ def _options(v):
 
 
 _COMMON = {
-    "os": _text(r"[A-Za-z0-9_]{1,32}"),
+    "os": _text(r"[A-Za-z0-9_.-]{1,40}"),
     "arch": _text(r"[A-Za-z0-9_]{1,16}"),
     "channel": _text(r"stable|beta"),
 }

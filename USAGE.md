@@ -398,6 +398,9 @@ treg runs --limit 20
 
 ## Catching your own calls
 
+The Python CLI only: the binary CLI has no `treg <command>`, `treg with`, `treg shell --proxy` or
+`treg serve`. For an HTTP call your code makes, use `treg call` or the `/call/` URL instead.
+
 `treg run` covers a vendor **CLI**, and `treg call` covers an HTTP call you ask treg to make. Neither
 helps when a program makes its own request to `api.stripe.com` — treg is invisible to it and it has no
 key.

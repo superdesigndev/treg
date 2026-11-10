@@ -1040,14 +1040,23 @@ returned and never documented as stable. An output field may say where it lands 
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
   field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 2000).
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
+  rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
+  held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
+  they held it. Only a row with a work history (`since`, `past` or `ended` set) is judged: a bare
+  `title` may be a headline ("Former Developer Evangelist"), so it stays unmarked. Words keep any
+  script and `+`, `#` and an inner `.` ("C++", "C#" and "C" are three roles). The provider's order
+  stands within each group and no row is dropped. A semantic search matches the whole work history,
+  so without it a former holder ranks with current ones.
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
+call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
@@ -1116,12 +1125,16 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals (`_GLOBAL_REFUSALS`) and treg's own team-level transient refusals (`_TEAM_BUSY`: a
-    busy money queue, an unreadable daily-cap or tag budget) are terminal: the caller gets treg's
-    refusal with its `Retry-After`, never `route_failed`. Provider-level ones (`share_busy`,
-    `provider_rate_limited`, `trial_allowance_unavailable`) still fall back. When Confirm, Decisive
+    refusals (`_GLOBAL_REFUSALS`) are terminal. treg's own team-level transient refusals
+    (`_TEAM_BUSY`: a busy money queue, an unreadable daily-cap or tag budget) are `skipped`, spend
+    no error allowance, and are tried on at most `MAX_TEAM_BUSY_TRIES` candidates; when only they
+    stopped the call the caller gets treg's refusal with its `Retry-After`, never `route_failed`.
+    Provider-level ones (`share_busy`, `provider_rate_limited`, `trial_allowance_unavailable`)
+    still fall back as errors. When Confirm, Decisive
     or Min-Results already holds a paid answer, a terminal refusal ends the walk instead: that answer
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
+    A `call_admission` refusal of treg's money skips that candidate without
+    spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
