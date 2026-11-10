@@ -38,7 +38,7 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
-  filtrat.people.email.find.resolve_catchall:
+  filtrat-finder.people.email.find:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
     const: {body.resolve_catchall: true}
