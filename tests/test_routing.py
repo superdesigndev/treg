@@ -3348,6 +3348,11 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+    for limit in ("5", "0" * 5000 + "4", "9" * 5000):
+        over = await call_route.build_plan(ep, {"domain": "canva.com", "limit": limit}, _Caller(), options)
+        assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped, limit[:8]
+    under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": "03"}, _Caller(), options)
+    assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 
 def test_a_per_result_child_is_ranked_free_on_a_miss_unless_its_cost_bills_one():

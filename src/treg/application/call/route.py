@@ -432,6 +432,14 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _above(value: object, cap: int) -> bool:
+    """A filter value above a provider's cap: a number, or a string of ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        return len(digits) > len(str(cap)) or int(digits or "0") > cap
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
@@ -558,7 +566,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     capped = []
     for e, ad, v in raw:
         over = [f"{k} <= {m}" for k, m in (getattr(ad, "filter_max", None) or {}).items()
-                if isinstance(identity.get(k), (int, float)) and not isinstance(identity.get(k), bool) and identity[k] > m]
+                if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
         else:
