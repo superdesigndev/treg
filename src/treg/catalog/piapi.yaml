@@ -65,8 +65,8 @@ endpoints:
             resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p], example: 480p}
             aspect_ratio: {type: string, required: false, default: "16:9", enum: ["21:9", "16:9", "9:16", "4:3", "1:1", "3:4"], example: "16:9"}
             image_urls: {type: array, required: false, note: "Up to 9 public image URLs. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
-            video_urls: {type: array, required: false, note: "Up to 3 public video URLs."}
-            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total."}
+            video_urls: {type: array, required: false, note: "Up to 3 public video URLs. The path must end in .mp4 or .mov (Seedance checks the extension, not Content-Type). `treg host <file>` prints a URL that satisfies this."}
+            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total. The path must end in .mp3 or .wav (Seedance checks the extension, not Content-Type). `treg host <file>` prints a URL that satisfies this."}
       bodyType: json
     test_request:
       body: {model: seedance, task_type: seedance-2.5, input: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 5, resolution: 480p, aspect_ratio: "16:9"}}
@@ -111,8 +111,8 @@ endpoints:
             resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p], example: 480p}
             aspect_ratio: {type: string, required: false, default: "16:9", enum: ["21:9", "16:9", "9:16", "4:3", "1:1", "3:4"], example: "9:16"}
             image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 9 public image URLs. A real person's face must be pre-approved in the Private Asset Library of the connected account. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
-            video_urls: {type: array, required: false, note: "Up to 3 public video URLs."}
-            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total."}
+            video_urls: {type: array, required: false, note: "Up to 3 public video URLs. The path must end in .mp4 or .mov (Seedance checks the extension, not Content-Type). `treg host <file>` prints a URL that satisfies this."}
+            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total. The path must end in .mp3 or .wav (Seedance checks the extension, not Content-Type). `treg host <file>` prints a URL that satisfies this."}
       bodyType: json
     test_request:
       body: {model: seedance, task_type: seedance-2.5-less-restriction, input: {prompt: "The subject in @image1 slowly turns toward the camera.", duration: 5, resolution: 480p, aspect_ratio: "9:16", image_urls: ["https://picsum.photos/seed/treg-aigc/720/1280"]}}
