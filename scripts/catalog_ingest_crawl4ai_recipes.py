@@ -15,6 +15,10 @@ it rewrites only the two marked blocks (proposed capabilities, endpoints) and ke
 Recipes that only run as jobs (`run: job`) are left out: the catalog row is a single call. A
 recipe input marked `secret` (a caller's own login cookies) is never declared, and
 `body_allowlist` keeps any undeclared field from being relayed.
+
+A row's summary, note and parameter notes come from TEXT, written to the catalog's rules for them
+(docs/context/architecture/catalog-schema.md, "Summary and note") from the recipe's description.
+A recipe TEXT does not name yet gets its description's first sentence, and the run says so.
 """
 from __future__ import annotations
 
@@ -132,8 +136,6 @@ CAPABILITY = {
     "youtube-video": "youtube.video.detail",
     "zillow-property": "zillow.property.detail",
 }
-# Example inputs replaced where the recipe's own example trips the catalog's credential scan (a
-# Facebook pfbid post id reads like a token); the replacement is a public post of the same page.
 # treg's account price per call, in credits, for recipes priced on their own (the rest: DEFAULT_PRICE).
 PRICE = {
     "x-profile": 0.2,
@@ -191,7 +193,558 @@ PRICE = {
 }
 DEFAULT_PRICE = 0.15
 
+# Example inputs replaced where the recipe's own example trips the catalog's credential scan (a
+# Facebook pfbid post id reads like a token); the replacement is a public post of the same page.
 EXAMPLE = {("facebook-post", "post"): "https://www.facebook.com/NASA/posts/1110592997763013"}
+# A recipe whose `session` input is required cannot run on a call treg relays: the input is secret,
+# so it is never declared.
+NEEDS_LOGIN = "Needs the caller's own {} login, which treg does not send: every call answers 400 bad_input, free."
+LINKEDIN_PROFILE = "the public identifier (williamhgates) or the linkedin.com/in/ URL, not the internal ACoAA… id"
+TEXT: dict[str, dict] = {
+    "airbnb-listing": {
+        "summary": "Get one Airbnb listing: type of place, location, capacity, rating, description and photos.",
+        "note": "The answer has no price: Airbnb prices a stay by its dates.",
+        "input": {"listing": "the listing's URL or its id (the number after /rooms/)"},
+    },
+    "amazon-product": {
+        "summary": "Get one Amazon product: title, price, star rating, review count, brand, availability and "
+                   "feature bullets.",
+        "input": {"product": "the 10-character ASIN or any URL of the product",
+                  "country": "the store: us, uk, de, fr, jp, in, …"},
+    },
+    "amazon-reviews": {
+        "summary": "List customer reviews of one product on amazon.com with star rating, title, text, date, "
+                   "verified purchase and helpful votes.",
+        "input": {"product": "the ASIN or a product URL",
+                  "limit": "at most 100; past the 8 to 13 reviews on the product page, the rest come from a "
+                           "slower source and the run takes 2 to 4 minutes"},
+    },
+    "amazon-search": {
+        "summary": "Search Amazon products by keyword and get ASIN, title, price, star rating, review count and "
+                   "the sponsored flag.",
+        "input": {"country": "the store: us, uk, de, fr, jp, in, …",
+                  "limit": "a results page holds up to about 60"},
+    },
+    "app-store-app": {
+        "summary": "Get one iPhone or iPad app from Apple's App Store: developer, price, rating, categories, current "
+                   "version and description.",
+        "input": {"app": "the App Store URL or the app's numeric id (the number after /id)",
+                  "country": "the two-letter store (us, gb, de, …); price, rating and text follow it"},
+    },
+    "app-store-search": {
+        "summary": "Search Apple's App Store for iPhone and iPad apps, in Apple's order, with developer, price, "
+                   "rating, version and description.",
+        "input": {"country": "the two-letter store (us, gb, de, …)", "limit": "1 to 50"},
+    },
+    "arxiv-search": {
+        "summary": "Search arXiv papers and get title, authors, the start of the abstract, PDF link, submission "
+                   "time and primary category.",
+        "input": {"sort": "relevance or date", "category": "one arXiv category, such as cs.LG",
+                  "limit": "at most 100"},
+    },
+    "booking-hotel": {
+        "summary": "Get one Booking.com hotel: stars, address, guest score per category, facilities, check-in "
+                   "times, nearby places and photos.",
+        "note": "The answer has no room prices: Booking.com prices a stay by its dates.",
+        "input": {"hotel": "the hotel's Booking.com URL"},
+    },
+    "chatgpt-answer": {
+        "summary": "Get ChatGPT's answer to one question as a logged-out visitor sees it, with the sources it "
+                   "cited: for brand and AI-search visibility checks.",
+        "note": "A run takes 30 s to 2 minutes: allow the call that long.",
+        "input": {"web_search": "lets ChatGPT search the web before it answers",
+                  "country": "the country the question is asked from, like us"},
+    },
+    "coingecko-markets": {
+        "summary": "Get live coin prices from CoinGecko with rank, 24-hour change, high and low, market cap, "
+                   "volume and all-time high.",
+        "input": {"coins": "a comma list of CoinGecko ids (bitcoin,ethereum); empty for the top coins by market cap",
+                  "currency": "the quote currency: usd, eur, …", "limit": "at most 250"},
+    },
+    "crunchbase-company": {
+        "summary": "Get one company's Crunchbase profile: description, website, headquarters, employee range, "
+                   "founders, funding rounds, investors and acquisitions.",
+        "note": "Funding rounds carry no amounts or dates: Crunchbase shows those to paying members only.",
+        "input": {"company": "the company's Crunchbase URL or the name in it "
+                             "(crunchbase.com/organization/anthropic gives anthropic)"},
+    },
+    "ebay-product": {
+        "summary": "Get one eBay listing: title, price, sale format, condition, stock and sold count, seller "
+                   "feedback, item specifics and images.",
+        "input": {"item": "the listing's URL or its item number"},
+    },
+    "etsy-search": {
+        "summary": "Search Etsy listings by keyword and get title, link, price, star rating, shop, free shipping "
+                   "and the Bestseller badge.",
+        "input": {"limit": "a results page holds up to 64"},
+    },
+    "facebook-event": {
+        "summary": "Get one public Facebook event: name, start and end time, place, host, description and whether "
+                   "it is online or cancelled.",
+        "input": {"event": "the event's URL or its id (the number after /events/)"},
+    },
+    "facebook-marketplace-item": {
+        "summary": "Get one Facebook Marketplace listing: title, price, condition, category, description, "
+                   "location, listing time, sold status and photos.",
+        "input": {"item": "the listing's URL or its id (the number after /marketplace/item/)"},
+    },
+    "facebook-page-posts": {
+        "summary": "List a public Facebook page's latest posts with text, time, reactions, comments and shares.",
+        "input": {"page": "the page name or URL", "limit": "at most 20, from the page's first load (no paging)"},
+    },
+    "facebook-post": {
+        "summary": "Get one public Facebook post: author, text, time, reactions by type, comments, shares, photos "
+                   "and videos.",
+        "input": {"post": "the post's facebook.com URL: a /posts/, permalink.php, photo, videos, reel or share link"},
+    },
+    "facebook-profile": {
+        "summary": "Get one public Facebook profile or page: name, category, intro, followers, contact details, "
+                   "rating and verified badge.",
+        "input": {"profile": "the name after facebook.com/, a profile.php?id= number, or the URL"},
+    },
+    "github-file": {
+        "summary": "Read files from a public GitHub repository, one file or every file under a folder, with path, "
+                   "size, language and text.",
+        "input": {"url": "a github.com /blob/ or /tree/ URL, a raw URL, or owner/name for the root folder",
+                  "ref": "replaces the URL's branch, tag or commit", "path": "replaces the URL's path",
+                  "max_chars": "cuts each file's text at this many characters",
+                  "max_files": "caps the files read from a folder"},
+    },
+    "github-issues": {
+        "summary": "List a GitHub repository's issues with number, title, state, author, labels, comment count "
+                   "and the start of the body.",
+        "input": {"repo": "owner/name or the repository URL", "state": "open, closed or all",
+                  "labels": "a comma list every issue must carry",
+                  "sort": "created, updated or comments, newest or most first",
+                  "pull_requests": "true keeps the pull requests GitHub lists among issues; false drops them, so "
+                                   "a page can give fewer rows than `limit`"},
+    },
+    "github-repo": {
+        "summary": "Get one GitHub repository's stars, forks, open issues, language, license and topics, followed "
+                   "by its latest releases.",
+        "input": {"repo": "owner/name or the repository URL",
+                  "releases": "how many release rows follow the repository row; 0 for none"},
+    },
+    "github-trending": {
+        "summary": "List the repositories trending on GitHub with description, language, stars and the stars "
+                   "gained in the period.",
+        "input": {"since": "daily, weekly or monthly"},
+    },
+    "glassdoor-jobs": {
+        "summary": "List the jobs on Glassdoor's first search page for a query: title, employer and rating, "
+                   "location, pay range and posting age.",
+        "input": {"remote": "true keeps remote jobs only; the recipe takes no other place",
+                  "limit": "at most 30 (one page)"},
+    },
+    "glassdoor-reviews": {
+        "summary": "List the employee reviews on one page of a company's Glassdoor reviews: rating, title, job "
+                   "title, pros, cons and advice.",
+        "note": "A run takes one to two minutes, as Glassdoor answers only a browser: allow the call that long.",
+        "input": {"company": "the reviews page's path part, like Microsoft-Reviews-E1651, or its URL"},
+    },
+    "google-maps-places": {
+        "summary": "Search Google Maps for places, in Google's order, with category, address, map point, rating, "
+                   "phone, website and hours.",
+        "input": {"query": "what you would type in Google Maps, like coffee",
+                  "location": "the city or area, like Austin, TX; leave it empty to name the place in `query`",
+                  "limit": "at most 100"},
+    },
+    "google-maps-reviews": {
+        "summary": "List the reviews Google Maps shows for one place with stars, text, date, reviewer, likes and "
+                   "the owner's reply.",
+        "input": {"place": "the place's Google Maps link, its place id (ChIJ...) or its cid (the number in a "
+                           "maps?cid= link)",
+                  "sort": "relevant (Google's order) or newest",
+                  "limit": "past the first 5 to 8 reviews, an owner reply carries no date"},
+    },
+    "google-news": {
+        "summary": "Get Google News headlines for a query with source, link, publication time and a short summary.",
+        "input": {"lang": "the edition's language", "country": "the edition's country", "limit": "at most 100"},
+    },
+    "google-shopping-product": {
+        "summary": "Get one Google Shopping product: title, brand, price, every store's offer, delivery, "
+                   "specifications and images.",
+        "input": {"product": "the product's Google Shopping link, starting https://www.google.com/search?ibp=oshop "
+                             "(open the product on Google Shopping and copy the address)"},
+    },
+    "hackernews-front": {
+        "summary": "List the stories on the Hacker News front page with rank, title, link, points, author and "
+                   "comment count.",
+        "input": {"limit": "at most 90 (three pages)"},
+    },
+    "hackernews-search": {
+        "summary": "Search Hacker News stories or comments through the Algolia API and get title, link, points, "
+                   "author and comment count.",
+        "input": {"tags": "story, comment, ask_hn, show_hn or poll", "sort": "relevance or date",
+                  "limit": "at most 100"},
+    },
+    "hn-hiring": {
+        "summary": "Find the job posts in a Hacker News 'Who is hiring?' thread that name a keyword, one row per "
+                   "company with the post's link.",
+        "input": {"keyword": "matched as a whole word",
+                  "thread": "an older month's story id or link; empty for this month's thread",
+                  "remote": "keeps remote posts only",
+                  "summarize": "an LLM reads the first 5 posts for role, location and salary, which are null "
+                               "without it"},
+    },
+    "indeed-jobs": {
+        "summary": "Search Indeed's US job listings (www.indeed.com) and get title, company, location, salary "
+                   "text, job type and posting age.",
+        "input": {"location": "a city, state or Remote; empty for anywhere",
+                  "start": "the result offset: Indeed pages by 10, up to 990",
+                  "limit": "at most 50, from one results page"},
+    },
+    "instagram-comments": {
+        "summary": "List the top-level comments of one Instagram post or reel with author, text, likes, reply "
+                   "count and time.",
+        "note": NEEDS_LOGIN.format("Instagram"),
+        "input": {"post": "the post URL, the reel URL or the short code", "limit": "at most 100",
+                  "sort": "popular (Instagram's order) or recent"},
+    },
+    "instagram-hashtag": {
+        "summary": "List the posts on an Instagram hashtag page with caption, likes, comments, time, author and "
+                   "media type.",
+        "note": NEEDS_LOGIN.format("Instagram"),
+        "input": {"tag": "the hashtag without the #", "limit": "at most 50; the page holds about 30"},
+    },
+    "instagram-posts": {
+        "summary": "List the latest posts of a public Instagram account, newest first, with caption, likes, "
+                   "comments, time and media links.",
+        "input": {"username": "the account: @name or an instagram.com URL",
+                  "limit": "at most 12: a larger limit gives the same 12, marked partial"},
+    },
+    "instagram-profile": {
+        "summary": "Get one public Instagram account: full name, biography, follower, following and post counts, "
+                   "verified flag and external link.",
+        "input": {"username": "the account: @name or an instagram.com URL"},
+    },
+    "instagram-reels": {
+        "summary": "List the latest reels of a public Instagram account, newest first, with plays, likes, "
+                   "comments and thumbnail.",
+        "input": {"username": "the account: @name or an instagram.com URL",
+                  "limit": "at most 12: a larger limit gives the same 12, marked partial"},
+    },
+    "instagram-search": {
+        "summary": "Search Instagram for users, hashtags and places as its search box shows them, with follower "
+                   "or post counts and links.",
+        "note": NEEDS_LOGIN.format("Instagram"),
+        "input": {"kind": "users, hashtags, places or all (Instagram's blended list)"},
+    },
+    "linkedin-company": {
+        "summary": "Get one LinkedIn company page: tagline, industry, size, headquarters, website, followers and "
+                   "About text.",
+        "input": {"company": "the slug (microsoft) or the linkedin.com/company/ URL"},
+    },
+    "linkedin-jobs": {
+        "summary": "Search LinkedIn's public job listings and get title, company, location, posting date, link "
+                   "and salary when shown.",
+        "input": {"location": "a place or Remote", "posted": "day, week or month: keeps the jobs posted within it",
+                  "start": "LinkedIn's result offset, in steps of 25 up to 975; a page holds up to 60 cards"},
+    },
+    "linkedin-people-search": {
+        "summary": "Find public LinkedIn members by first and last name, with profile URL, headline, location, "
+                   "companies and schools.",
+    },
+    "linkedin-post-comments": {
+        "summary": "List the top-level comments on one LinkedIn post with author, profile link, text, time and "
+                   "likes.",
+        "note": "Returns the post's top comments, about 10, without headline or reply count: LinkedIn shows no "
+                "more to a visitor.",
+        "input": {"post": "the post URL (…-activity-<id>-… or …/feed/update/urn:li:activity:<id>) or the "
+                          "activity urn"},
+    },
+    "linkedin-profile": {
+        "summary": "Get one LinkedIn profile: name, headline, location, About text, current company, school and "
+                   "followers.",
+        "input": {"profile": LINKEDIN_PROFILE},
+    },
+    "linkedin-profile-posts": {
+        "summary": "List one LinkedIn member's recent posts and reposts, newest first, with text, time, likes and "
+                   "comments.",
+        "note": "Returns the member's recent public posts, about 10, without repost counts or media: LinkedIn "
+                "shows no more to a visitor.",
+        "input": {"profile": LINKEDIN_PROFILE},
+    },
+    "medium-posts": {
+        "summary": "List the latest posts of a Medium tag, author or publication from its RSS feed, with title, "
+                   "link, author and summary.",
+        "input": {"tag": "a tag slug such as rust; set one of `tag`, `author` or `publication` (`tag` wins)",
+                  "author": "a Medium username without the @", "publication": "a publication slug",
+                  "limit": "the feed carries about 10 items, so a larger limit gives no more"},
+    },
+    "meta-ads-advertiser": {
+        "summary": "List the ads one Facebook page runs, from the Meta Ad Library, with dates, platforms, text, "
+                   "media, and spend for political ads.",
+        "input": {"page": "the page id, its Ad Library or Facebook URL, a company name (Tolteck) or web domain "
+                          "(tolteck.com); the warnings name the page a name or domain matched, or that none did",
+                  "country": "ALL or two letters; empty takes an Ad Library URL's value, else ALL",
+                  "active_status": "active or all; empty takes an Ad Library URL's value, else active"},
+    },
+    "meta-ads-search": {
+        "summary": "Search the Meta Ad Library by keyword and get each ad's page, dates, platforms, text and "
+                   "media, with spend for political ads.",
+        "input": {"country": "ALL or two letters (US, GB, DE)", "active_status": "active or all",
+                  "limit": "at most 100; past the 30 ads one view shows, the search is split by media type, out "
+                           "of the Library's order"},
+    },
+    "open-meteo-forecast": {
+        "summary": "Get the daily weather forecast for a place from Open-Meteo: conditions, high and low "
+                   "temperature, precipitation, wind, sunrise and sunset.",
+        "input": {"place": "a city name; wins over `latitude` and `longitude`",
+                  "latitude": "with `longitude`, in place of `place`",
+                  "longitude": "with `latitude`, in place of `place`", "days": "1 to 16"},
+    },
+    "package-info": {
+        "summary": "Get facts about an npm, PyPI or crates.io package: latest version and date, description, "
+                   "license, repository and dependency count.",
+        "input": {"ecosystem": "npm, pypi or crates"},
+    },
+    "play-store-app": {
+        "summary": "Get one Android app from Google Play: developer, rating, installs, price, category, version, "
+                   "description and screenshots.",
+        "input": {"app": "the Play URL or the package id (com.whatsapp)", "hl": "the page language",
+                  "gl": "the store country, which sets price and currency"},
+    },
+    "producthunt-product": {
+        "summary": "Get one Product Hunt product: tagline, description, website, rating, followers, categories "
+                   "and its launches with scores.",
+        "input": {"slug": "the product's Product Hunt URL or the name in it "
+                          "(producthunt.com/products/higgsfield gives higgsfield)"},
+    },
+    "producthunt-today": {
+        "summary": "List today's launches on Product Hunt's home page in rank order, with tagline, vote score, "
+                   "topic and link.",
+    },
+    "producthunt-today-detailed": {
+        "summary": "List today's Product Hunt launches, each product page read by an LLM for its category, "
+                   "pricing, website and a one-line summary.",
+    },
+    "reddit-post-comments": {
+        "summary": "List every comment Reddit sends for one post, in reading order, with author, score, text, "
+                   "depth and parent.",
+        "input": {"url": "the post's page or its id", "sort": "top, best, new, controversial or old",
+                  "limit": "at most about 500"},
+    },
+    "reddit-search": {
+        "summary": "Search Reddit posts site-wide or in one subreddit and get title, link, author, time and the "
+                   "start of the text.",
+        "note": "Score, comment count and flair are null: Reddit's public search feed, read without a login, "
+                "carries none.",
+        "input": {"subreddit": "searches this subreddit only", "sort": "relevance, hot, top, new or comments",
+                  "t": "the time window for sort top", "limit": "at most 250"},
+    },
+    "reddit-subreddit": {
+        "summary": "List the posts of one subreddit with title, link, author, time and the start of the text.",
+        "note": "Score, comment count and flair are null: the subreddit's public feed, read without a login, "
+                "carries none.",
+        "input": {"sort": "hot, new, top or rising", "t": "the time window for sort top",
+                  "limit": "at most 250, 100 posts per page"},
+    },
+    "reddit-user": {
+        "summary": "List what one Reddit account posted and commented, with title, link, subreddit, score, time "
+                   "and the start of the text.",
+        "input": {"user": "the name, u/name or the profile URL", "kind": "posts, comments or both",
+                  "sort": "new, hot or top", "limit": "at most 250 per kind"},
+    },
+    "remoteok-jobs": {
+        "summary": "List the remote jobs on Remote OK with title, company, tags, location, salary range, date and "
+                   "apply link.",
+        "input": {"tag": "keeps jobs with this tag (rust, design, …)",
+                  "keyword": "keeps jobs whose title, company or tags mention it"},
+    },
+    "rss-feed": {
+        "summary": "Read the items of any RSS 2.0 or Atom feed: title, link, publication time, author and summary.",
+        "input": {"limit": "at most 200"},
+    },
+    "shopify-products": {
+        "summary": "List the products a Shopify store publishes at /products.json with title, vendor, type, price "
+                   "range, stock, variants and tags.",
+        "note": "Prices are the store's own text with no currency code: read them in the store's default currency.",
+        "input": {"store": "the store's host (allbirds.com) or its URL, with a market path (www.x.com/en-ca) when "
+                           "the store has one",
+                  "limit": "products per page, at most 250"},
+    },
+    "stackoverflow-questions": {
+        "summary": "List Stack Overflow questions with a tag and get title, link, score, answer count, views, the "
+                   "accepted flag and time.",
+        "input": {"sort": "activity, votes, creation, hot, week or month", "limit": "at most 100"},
+    },
+    "steam-app": {
+        "summary": "Get one Steam game: price and discount, developers, release date, genres, tags, Metacritic "
+                   "score and review verdict.",
+        "input": {"app": "the Steam app id or a store URL", "country": "the price region (us, de, …)"},
+    },
+    "substack-posts": {
+        "summary": "List the latest posts of a Substack publication with subtitle, link, date, author, likes, "
+                   "comments and the paywall flag.",
+        "input": {"publication": "the host (name.substack.com or a custom domain) or any of its URLs",
+                  "limit": "at most 50"},
+    },
+    "telegram-channel": {
+        "summary": "Read the latest messages of a public Telegram channel, newest first, with text, time, views "
+                   "and link.",
+        "input": {"channel": "the name in t.me/<channel>", "limit": "the page carries about 20 messages"},
+    },
+    "threads-profile": {
+        "summary": "List the posts on a Threads profile page with text, likes, replies, reposts and time, plus "
+                   "the profile's followers and bio.",
+        "input": {"username": "the handle, with or without @, or the profile URL",
+                  "limit": "the page holds about 10 posts, the newest threads with their replies; no paging"},
+    },
+    "tiktok-comments": {
+        "summary": "List the top-level comments of one public TikTok post, most relevant first, with text, time, "
+                   "likes and reply count.",
+        "input": {"post": "the post's URL or its id",
+                  "limit": "at most 500; TikTok shows a visitor about 350 to 450 per post"},
+    },
+    "tiktok-post": {
+        "summary": "Get one public TikTok video: text, hashtags, author, plays, likes, comments, shares, length, "
+                   "sound and subtitles.",
+        "input": {"post": "the post's URL or its id (the long number after /video/)"},
+    },
+    "tiktok-profile": {
+        "summary": "Get one TikTok account's public profile: display name, bio, exact follower, like and video "
+                   "counts, and verified badge.",
+        "input": {"username": "the handle, with or without @, or the profile URL"},
+    },
+    "tiktok-search": {
+        "summary": "Search TikTok videos by keyword and get text, hashtags, author, plays, likes, comments, shares "
+                   "and length, in TikTok's order.",
+        "input": {"limit": "at most 100; when the search finds fewer than half of it, a second source adds the "
+                           "rest in 15 to 40 s, or 2 to 5 minutes above 20"},
+    },
+    "tiktok-shop-product": {
+        "summary": "Get one TikTok Shop (US) product: price, units sold, rating, variants with prices, store, "
+                   "description and images.",
+        "note": "A run takes 1 to 3 minutes: allow the call that long.",
+        "input": {"product": "the product's TikTok Shop URL or its id (the long number in the URL)"},
+    },
+    "tiktok-user-videos": {
+        "summary": "List the latest videos of a public TikTok account, newest first, with text, plays, likes, "
+                   "comments, shares and length.",
+        "input": {"account": "the @handle, the profile URL, or TikTok's secUid (MS4wLjABAAAA…, one call less)",
+                  "limit": "at most 100"},
+    },
+    "trustpilot-reviews": {
+        "summary": "List a company's Trustpilot reviews, newest first, with rating, title, text, dates, reviewer "
+                   "country and verified flag.",
+        "input": {"domain": "the company's site as Trustpilot names it (www.notion.so)",
+                  "stars": "asks for reviews with at least this rating", "page": "a later page of 20"},
+    },
+    "walmart-product": {
+        "summary": "Get one Walmart product: brand, price, stock, rating breakdown, seller, specifications, "
+                   "variants and latest reviews.",
+        "note": "Prices and stock are those of Walmart's default store, not of a chosen location.",
+        "input": {"product": "the product's URL or its Walmart item id (the number at the end of the URL)"},
+    },
+    "walmart-seller": {
+        "summary": "Get one Walmart Marketplace seller: description, business email, phone and address, rating, "
+                   "review count and active status.",
+        "input": {"seller": "the seller's Walmart URL or its id (the number after /seller/)"},
+    },
+    "weworkremotely-jobs": {
+        "summary": "List the newest jobs in a We Work Remotely category with title, company, link, region, job "
+                   "type and time.",
+        "input": {"category": "programming, design, devops, support, sales, product, management, other or all; "
+                              "other gives no rows (a Cloudflare challenge)",
+                  "keyword": "keeps jobs whose title or company mentions it", "limit": "at most 100"},
+    },
+    "wikipedia-article": {
+        "summary": "Get one Wikipedia article's short description, summary paragraph, link, thumbnail, top-level "
+                   "sections and last edit time.",
+        "input": {"title": "the article's name", "lang": "the Wikipedia edition (en, de, ja, …)"},
+    },
+    "wikipedia-search": {
+        "summary": "Search Wikipedia articles and get title, link, a snippet around the match, word count and "
+                   "last edit time.",
+        "input": {"lang": "the Wikipedia edition (en, de, ja, …), letters only", "limit": "at most 50"},
+    },
+    "x-profile": {
+        "summary": "Get one X (Twitter) account: name, bio, follower, following and post counts, join date, "
+                   "location, website and verified badge.",
+        "input": {"username": "the handle (nasa or @nasa) or the profile URL"},
+    },
+    "x-search": {
+        "summary": "Read one X (Twitter) account's timeline through a from: search, newest first, with text, time, "
+                   "counts, views, language and media.",
+        "note": "Only a from:<account> query with `mode` latest is answered (since: and until: allowed); any other "
+                "query answers 400 bad_input, free.",
+        "input": {"query": "X search text, like from:nasa since:YYYY-MM-DD", "limit": "at most 100"},
+    },
+    "x-tweet-replies": {
+        "summary": "List the replies to one X (Twitter) post, most relevant first, with author, text, time, "
+                   "likes, reposts and views.",
+        "note": NEEDS_LOGIN.format("X"),
+        "input": {"tweet": "the post's URL or its id",
+                  "limit": "at most 100; X gives about 9 to 12 replies a page and a run reads at most 8 pages"},
+    },
+    "x-user-tweets": {
+        "summary": "List the latest posts of one X (Twitter) account with text, likes, reposts, replies, quotes, "
+                   "time and the repost flag.",
+        "input": {"username": "the handle (nasa or @nasa), the profile URL or X's numeric user id (11348282)",
+                  "limit": "at most 100; a run reads at most two pages of about 15 to 20 posts"},
+    },
+    "yahoo-company": {
+        "summary": "Get a public company's Yahoo Finance profile: exchange, sector, industry, employees, business "
+                   "summary, officers, risk scores and market cap.",
+        "input": {"symbol": "a Yahoo ticker (AAPL, 7203.T, SAP.DE) or a Yahoo Finance quote or profile URL"},
+    },
+    "yahoo-quote": {
+        "summary": "Get the latest Yahoo Finance quote for up to 10 tickers: price, change against the previous "
+                   "close, day and 52-week range and volume.",
+        "input": {"symbols": "a comma list of up to 10 Yahoo tickers (AAPL, BRK-B, ^GSPC, EURUSD=X)"},
+    },
+    "yelp-business": {
+        "summary": "Get one Yelp business: rating, review count, price range, categories, phone, website, "
+                   "address, description and photos.",
+        "input": {"business": "the business's Yelp URL or its alias (the part after /biz/)"},
+    },
+    "yelp-reviews": {
+        "summary": "List the recommended reviews on a Yelp business page, in Yelp's order, with stars, date, "
+                   "text, reviewer and reactions.",
+        "note": "Returns at most 10 reviews, the ones Yelp shows on the business's page.",
+        "input": {"business": "the business's Yelp URL or its alias (the part after /biz/)"},
+    },
+    "youtube-captions": {
+        "summary": "Get one YouTube video's captions in one language: the full transcript, timed lines and the "
+                   "caption languages the video has.",
+        "input": {"video": "the watch URL, a youtu.be or shorts link, or the 11-character id",
+                  "language": "a code such as en, es or pt-BR, or any for the default captions; a person's track "
+                              "comes before an auto-generated one"},
+    },
+    "youtube-channel": {
+        "summary": "Get one YouTube channel's about page: handle, description, subscribers, video and view "
+                   "counts, join date, country and links.",
+        "input": {"channel": "a channel URL (/@handle, /channel/UC…, /c/name, /user/name), a @handle or a UC… id"},
+    },
+    "youtube-channel-videos": {
+        "summary": "List the latest videos of a YouTube channel, newest first, with title, link, publish time, "
+                   "views and thumbnail.",
+        "input": {"channel": "a channel id (UC…), a handle (@name or name) or a channel URL",
+                  "limit": "at most 30"},
+    },
+    "youtube-comments": {
+        "summary": "List the top-level comments of one public YouTube video, in top-comments order, with text, "
+                   "author, likes and reply count.",
+        "input": {"video": "the watch URL, a youtu.be link or the 11-character id", "limit": "at most 500"},
+    },
+    "youtube-search": {
+        "summary": "Search YouTube videos and get title, link, channel, views, publish age, length and a short "
+                   "description.",
+        "input": {"limit": "at most 20"},
+    },
+    "youtube-video": {
+        "summary": "Get one YouTube video's details: title, channel, length, views, likes, publish date, category "
+                   "and keywords.",
+        "note": "A run takes 8 to 45 s, as the page needs a browser: allow the call that long.",
+        "input": {"video": "the watch URL, a youtu.be link or the 11-character id"},
+    },
+    "zillow-property": {
+        "summary": "Get one Zillow home: status, price and Zestimate, address, beds, baths, living area, year "
+                   "built, price history and photos.",
+        "input": {"home": "the home's Zillow URL or its zpid (the number before _zpid)"},
+    },
+}
 TYPES = {"string": "string", "integer": "integer", "int": "integer", "number": "number", "float": "number",
          "boolean": "boolean", "bool": "boolean", "list": "array[string]",
          "array": "array[string]", "object": "object"}
@@ -245,14 +798,33 @@ def _short(value, depth=0, people=False):
     return value
 
 
-def endpoint(r: dict, cap: str, today: str, captured: dict | None) -> dict:
+def _first_sentence(text: str) -> str:
+    text = " ".join(text.split())
+    return re.split(r"(?<=[.!?])\s+(?=[A-Z`(])", text, maxsplit=1)[0]
+
+
+def text_of(r: dict) -> dict:
+    """The recipe's TEXT entry, or its description's first sentence as the summary, said on stderr."""
+    if r["name"] in TEXT:
+        text = TEXT[r["name"]]
+        declared = {k for k, v in (r.get("inputs") or {}).items() if not v.get("secret")}
+        for name in set(text.get("input") or {}) - declared:
+            print(f"{r['name']}: TEXT notes input {name!r}, which the recipe does not declare", file=sys.stderr)
+        return text
+    print(f"{r['name']}: no TEXT entry; the summary is the description's first sentence", file=sys.stderr)
+    return {"summary": _first_sentence(str(r.get("description") or r.get("title") or r["name"]))}
+
+
+def endpoint(r: dict, text: dict, cap: str, today: str, captured: dict | None) -> dict:
     inputs = {k: v for k, v in (r.get("inputs") or {}).items() if not v.get("secret")}
     body = {}
     for name, spec in inputs.items():
         field = {"type": TYPES.get(str(spec.get("type")), "string"), "required": bool(spec.get("required"))}
-        note = spec.get("about") or spec.get("description") or spec.get("note")
-        if spec.get("default") is not None:
-            note = f"{note + '; ' if note else ''}default {spec['default']}"
+        note = (text.get("input") or {}).get(name) or spec.get("about") or spec.get("description") or spec.get("note")
+        default = spec.get("default")
+        if default is not None and default != "":
+            default = str(default).lower() if isinstance(default, bool) else default
+            note = f"{note + '; ' if note else ''}default {default}"
         if note:
             field["note"] = str(note)
         spec = {**spec, "example": EXAMPLE.get((r["name"], name), spec.get("example"))}
@@ -260,10 +832,6 @@ def endpoint(r: dict, cap: str, today: str, captured: dict | None) -> dict:
         if spec.get("example") is not None:
             field["example"] = spec["example"]
         body[name] = field
-    columns = ", ".join(r.get("output") or [])
-    summary = " ".join(str(r.get("description") or r.get("title") or "").split())
-    if columns:
-        summary += f" Columns: {columns}."
     ep: dict = {
         "id": f"crawl4ai.{cap}",
         "async": False,
@@ -273,7 +841,8 @@ def endpoint(r: dict, cap: str, today: str, captured: dict | None) -> dict:
         "method": "POST",
         "path": f"/recipes/{r['name']}",
         "name": _name(str(r.get("title") or r["name"])),
-        "summary": summary,
+        "summary": text["summary"],
+        **({"note": text["note"]} if text.get("note") else {}),
         "body_allowlist": True,
         "input": {"bodyType": "json", "body": body},
         "cost": {
@@ -336,7 +905,10 @@ def main(argv: list[str]) -> int:
     endpoints: list[dict] = []
     verified = dict(re.findall(r"- id: (crawl4ai\.\S+)\n(?:    .*\n)*?    verified: '([\d-]+)'", OUT.read_text()))
     seen: set[str] = set()
-    for r in sorted(recipes(args.src), key=lambda r: CAPABILITY.get(r["name"], "~")):
+    listed = recipes(args.src)
+    for name in sorted(set(TEXT) - {r["name"] for r in listed}):
+        print(f"{name}: TEXT names a recipe the list does not carry", file=sys.stderr)
+    for r in sorted(listed, key=lambda r: CAPABILITY.get(r["name"], "~")):
         if r.get("run") == "job":
             continue
         cap = CAPABILITY.get(r["name"])
@@ -350,7 +922,8 @@ def main(argv: list[str]) -> int:
         seen.add(cap)
         if cap not in known:
             proposed[cap] = str(r.get("title") or r["name"])
-        draft = endpoint(r, cap, today, None)
+        prose = text_of(r)
+        draft = endpoint(r, prose, cap, today, None)
         captured = None
         if not args.capture and (EXAMPLES / f"{draft['id']}.json").exists() and draft["id"] in verified:
             captured = {"ok": True, "verified": verified[draft["id"]]}
@@ -360,7 +933,7 @@ def main(argv: list[str]) -> int:
             if captured.get("ok"):
                 (EXAMPLES / f"{draft['id']}.json").write_text(json.dumps(captured["doc"], indent=2, ensure_ascii=False) + "\n")
             print(f"{r['name']:28} {'ok ' + str(captured.get('cost')) if captured.get('ok') else captured.get('why')}")
-        endpoints.append(endpoint(r, cap, today, captured))
+        endpoints.append(endpoint(r, prose, cap, today, captured))
     text = OUT.read_text()
     added = dict(re.findall(r"- id: (crawl4ai\.\S+)\n(?:    .*\n)*?    added: '([\d-]+)'", text))
     for ep in endpoints:
