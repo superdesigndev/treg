@@ -19,8 +19,8 @@ source:
 #     about the price — a cost can only be observed on a target never queried on this key before.
 #
 # Billing: Hunter meters two SEPARATE credit pools against the plan — "searches" (Domain Search and
-# Email Finder) and "verifications" (Email Verifier) — so `cost.value` is null and the pool is named
-# in `cost.note`. Four rules worth knowing:
+# Email Finder) and "verifications" (Email Verifier) — and each row's `price.note` names its pool.
+# Four rules worth knowing:
 #   - Domain Search charges 1 search credit per 1-10 emails RETURNED, so `limit` is the price dial.
 #   - Email Finder charges nothing when it finds nothing.
 #   - Email Verifier is 0.5 verification credits, i.e. HALF a credit — two verifications to a credit.
@@ -37,6 +37,10 @@ source:
 
 limits: "monthly credit pool; 429 once exhausted"
 pricing_url: https://hunter.io/pricing  # Finding an email costs 1 credit; verifying costs 0.5. Annual billing ~30% cheaper.; free tier: 50 credits/month
+# Both tiers. Every price, the free ones included, was transcribed from Hunter's documentation in
+# the 2026-07-28 sweep; the two rows whose charge was measured on a live call carry their own.
+defaults:
+  provenance: {source: docs, source_url: 'https://hunter.io/pricing', checked: '2026-07-28', confidence: documented}
 endpoints:
   - id: hunter.people.email.find
     cache:
@@ -61,17 +65,19 @@ endpoints:
       note: "one of domain | company | linkedin_handle, plus either full_name or first_name + last_name (or linkedin_handle alone). The response carries a confidence score, the sources the address was seen on, and an automatic verification of the address it found"
     test_request:
       queryParams: {domain: "stripe.com", full_name: "Patrick Collison"}
-    cost:
-      type: per_success
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 1
       unit: call
-      source: docs
-      source_url: https://hunter.io/pricing
-      checked: '2026-07-28'
-      confidence: documented
       note: 1 SEARCH credit, charged only when an email is found; a miss is free.
+    # An answer that names an email field but leaves it empty is free, even beside an error
+    # envelope; every other answer, an envelope included, costs the credit.
+    bill:
+      error: charged
+      free_when: &hunter-no-email {any: [{path: response.data.email, op: empty}, {path: response.data.email, op: in, value: [0, false]}]}
+    error: {plugin: hunter.finder_unanswered}
+    miss: {when: *hunter-no-email}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.people.email.find.json
@@ -92,17 +98,15 @@ endpoints:
       note: "returns status (valid | invalid | accept_all | webmail | disposable | unknown), a score, and the individual SMTP/MX/gibberish checks behind it. May answer HTTP 202 while the check is still running — poll the same URL until it settles. Rate limit 10 req/s and 300 req/min, lower than the other routes"
     test_request:
       queryParams: {email: "steli@close.io"}
-    cost:
-      type: per_call
-      value: 0.5
+    price:
+      value: '0.5'
       currency: credit
       per: 1
       unit: call
-      source: docs
-      source_url: https://hunter.io/pricing
-      checked: '2026-07-28'
-      confidence: documented
       note: 0.5 VERIFICATION credits per call — half a credit, a separate pool from search credits. Re-verifying the same address within the plan period is not re-charged.
+    bill: {miss: charged, error: charged}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.status, op: absent}}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.people.email.verify.json
@@ -137,19 +141,20 @@ endpoints:
       note: "one of domain | company is required. Mapped to people.search because what it actually returns is a filtered list of PEOPLE at that company"
     test_request:
       queryParams: {domain: "stripe.com", limit: 1}
-    cost:
-      type: per_result
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 10
+      round: up
       unit: record
-      source: observed
-      source_url: https://hunter.io/pricing
-      checked: '2026-07-31'
-      confidence: verified
       note: '1 SEARCH credit per 10 emails returned (rounded up); a domain with no results is free. OBSERVED 2026-07-31 — a `limit` of 1 on a domain never queried on this key returned 1 email and moved requests.credits.used by exactly 1.000, confirming the per-10 rounding — one email costs the same whole credit as ten, so a limit below 10 buys nothing.'
-      # Reserve still uses the per-email slice; catalog_get / usd_per_call quote one SEARCH credit.
       display: {unit: emails, grouped: true, round_up: true}
+    provenance: {source: observed, source_url: 'https://hunter.io/pricing', checked: '2026-07-31', confidence: verified}
+    reserve: {rows: {param: query.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {plugin: hunter.emails_returned}
+    bill: {miss: charged, error: charged}
+    error: {plugin: hunter.domain_search_unanswered}
+    miss: {when: [{path: response.data.emails, op: present}, {path: response.data.emails, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.companies.emails.json
@@ -158,9 +163,6 @@ endpoints:
   - id: hunter.people.enrich
     domain: contacts
     capability: people.enrich
-    miss:
-      status: 404
-      means: "no person on record for this identifier — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
@@ -175,17 +177,21 @@ endpoints:
       note: "one of email | linkedin_handle is required (Hunter answers 400 when neither is sent; treg does not pre-check this). To go the other way (name → email) use hunter.people.email.find, which costs a full search credit. GET /combined/find?email=… returns the person AND their company in one call at the same 0.2 rate"
     test_request:
       queryParams: {email: "steli@close.io"}
-    cost:
-      type: per_success
-      value: 0.2
+    price:
+      value: '0.2'
       currency: credit
       per: 1
       unit: call
-      source: docs
-      source_url: https://hunter.io/pricing
-      checked: '2026-07-28'
-      confidence: documented
       note: 0.2 credits, billed CONDITIONALLY — charged only when email, full name AND position all come back. A 404 or a partial record is free.
+    # A JSON answer naming no person is an error outcome, and free; an error envelope beside a
+    # named person is charged.
+    bill:
+      error: charged
+      free_when: &hunter-no-person [{path: response, op: present}, {path: response.data.name.fullName, op: absent}]
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, *hunter-no-person]}}
+    miss:
+      status: [404]
+      means: "no person on record for this identifier — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same identifier"
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.people.enrich.json
@@ -196,9 +202,6 @@ endpoints:
       ignore_paths: ["data.indexedAt"]
     domain: companies
     capability: companies.enrich
-    miss:
-      status: 404
-      means: "no company on record for this domain — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same domain"
     platform: companies
     scope: any_account
     method: GET
@@ -212,17 +215,22 @@ endpoints:
       note: "the combined variant GET /combined/find?email=… returns the person AND their company in one call at the same rate"
     test_request:
       queryParams: {domain: "stripe.com"}
-    cost:
-      type: per_success
-      value: 0.2
+    price:
+      value: '0.2'
       currency: credit
       per: 1
       unit: call
-      source: observed
-      source_url: https://hunter.io/pricing
-      checked: '2026-07-31'
-      confidence: verified
       note: 0.2 credits, billed CONDITIONALLY — charged only when company name, category/description/tags, location or country code AND company size all come back. A 404 or a partial record is free. Still the cheapest companies.enrich in this catalog. OBSERVED 2026-07-31 — a call on a domain never queried on this key moved GET /account's requests.credits.used by exactly 0.200; the same call repeated on an already-queried domain moved it by 0.000 (cached, not free).
+    provenance: {source: observed, source_url: 'https://hunter.io/pricing', checked: '2026-07-31', confidence: verified}
+    # A JSON answer naming no company is an error outcome, and free; an error envelope beside a
+    # named company is charged.
+    bill:
+      error: charged
+      free_when: &hunter-no-company [{path: response, op: present}, {path: response.data.name, op: absent}]
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, *hunter-no-company]}}
+    miss:
+      status: [404]
+      means: "no company on record for this domain — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same domain"
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.companies.enrich.json
@@ -240,7 +248,11 @@ endpoints:
     input:
       note: "no parameters — the key rides in the X-API-KEY header"
     test_request: {queryParams: {}}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: free — consumes no search or verification credits; this is the registry's health probe}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: free — consumes no search or verification credits; this is the registry's health probe
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/hunter.account.usage.json

@@ -2626,7 +2626,7 @@ def test_every_declared_miss_status_names_its_meaning():
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
     declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
-    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    assert "aviato.people.phone.find" in declared and "aviato.companies.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
         assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
