@@ -4219,21 +4219,6 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
-MAILDIGNITY = OAuthProvider(
-    service="maildignity",
-    display_name="MailDignity",
-    auth_kind="key",
-    token_label="API key",
-    token_placeholder="md_live_…",
-    setup_url="https://maildignity.com/login",
-    setup_action_label="Get your MailDignity API key",
-    setup_steps=(
-        "Sign in to MailDignity and open Settings → API Keys.",
-        "Create or copy your live API key (md_live_...)",
-    ),
-    setup_note=(
-        "Email audits consume check credits (50 free trial checks, then plans starting from $9/mo). "
-        "Account status and probe checks are free."
 CORPOAPI = OAuthProvider(
     service="corpoapi",
     display_name="Corpo API",
@@ -4259,10 +4244,6 @@ CORPOAPI = OAuthProvider(
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="Enrichment",
-    summary="Audit email drafts for pushiness, presumptions, and flattery, and generate respectful rewrites.",
-    base_url="https://maildignity.com/api/public/v1",
-    docs_url="https://maildignity.com/docs",
-    probe_path="/me",
     summary=(
         "Company data from official business registers in 86 jurisdictions: search, register "
         "record, officers, shareholders and UBOs, filings, financials, KYB verification and EU VAT."
@@ -4273,6 +4254,32 @@ CORPOAPI = OAuthProvider(
     # usage totals; "ck_live_" plus 32 zeros and "garbage" both get HTTP 401 application/problem+json
     # with code "invalid_api_key"; no key gets 401 "missing_api_key".
     probe_path="/v1/usage",
+)
+
+MAILDIGNITY = OAuthProvider(
+    service="maildignity",
+    display_name="MailDignity",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="md_live_…",
+    setup_url="https://maildignity.com/login",
+    setup_action_label="Get your MailDignity API key",
+    setup_steps=(
+        "Sign in to MailDignity and open Settings → API Keys.",
+        "Create or copy your live API key (md_live_...)",
+    ),
+    setup_note=(
+        "Email audits consume check credits (50 free trial checks, then plans starting from $9/mo). "
+        "Account status and probe checks are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Audit email drafts for pushiness, presumptions, and flattery, and generate respectful rewrites.",
+    base_url="https://maildignity.com/api/public/v1",
+    docs_url="https://maildignity.com/docs",
+    probe_path="/me",
 )
 
 REGISTRY: dict[str, OAuthProvider] = {
@@ -4295,11 +4302,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE, MAILDIGNITY,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, MAILDIGNITY,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
