@@ -40,6 +40,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lk5ns7kz21pck8jpis, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -52,6 +53,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Instagram - Posts' dataset
         example: gd_lk5ns7kz21pck8jpis
+        enum: [gd_lk5ns7kz21pck8jpis]
       format:
         type: string
         required: false
@@ -124,6 +126,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lyclm20il4r5helnj, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -136,6 +139,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Instagram - Reels' dataset
         example: gd_lyclm20il4r5helnj
+        enum: [gd_lyclm20il4r5helnj]
       format:
         type: string
         required: false
@@ -162,6 +166,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l1villgoiiidt09ci, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -174,6 +179,7 @@ endpoints:
         required: true
         note: pinned to the documented 'TikTok - Profiles' dataset
         example: gd_l1villgoiiidt09ci
+        enum: [gd_l1villgoiiidt09ci]
       format:
         type: string
         required: false
@@ -207,6 +213,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lu702nij2f790tmv9h, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -219,6 +226,7 @@ endpoints:
         required: true
         note: pinned to the documented 'TikTok - Posts' dataset
         example: gd_lu702nij2f790tmv9h
+        enum: [gd_lu702nij2f790tmv9h]
       format:
         type: string
         required: false
@@ -285,6 +293,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_m45m1u911dsa4274pi, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -297,6 +306,7 @@ endpoints:
         required: true
         note: pinned to the documented 'TikTok Shop' dataset
         example: gd_m45m1u911dsa4274pi
+        enum: [gd_m45m1u911dsa4274pi]
       format:
         type: string
         required: false
@@ -324,6 +334,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l1vikfnt1wgvvqz95w, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -336,6 +347,7 @@ endpoints:
         required: true
         note: pinned to the documented 'LinkedIn company information' dataset
         example: gd_l1vikfnt1wgvvqz95w
+        enum: [gd_l1vikfnt1wgvvqz95w]
       format:
         type: string
         required: false
@@ -363,6 +375,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lyy3tktm25m4avu764, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -375,6 +388,7 @@ endpoints:
         required: true
         note: pinned to the documented 'LinkedIn posts' dataset
         example: gd_lyy3tktm25m4avu764
+        enum: [gd_lyy3tktm25m4avu764]
       format:
         type: string
         required: false
@@ -402,6 +416,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lpfll7v5hcqtkxl6l, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -414,6 +429,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Linkedin job listings information' dataset
         example: gd_lpfll7v5hcqtkxl6l
+        enum: [gd_lpfll7v5hcqtkxl6l]
       format:
         type: string
         required: false
@@ -439,6 +455,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_mf0urb782734ik94dz, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -451,6 +468,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Facebook - Profiles' dataset
         example: gd_mf0urb782734ik94dz
+        enum: [gd_mf0urb782734ik94dz]
       format:
         type: string
         required: false
@@ -524,6 +542,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lyclm1571iy3mv57zw, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -536,6 +555,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Facebook - Posts by post URL' dataset
         example: gd_lyclm1571iy3mv57zw
+        enum: [gd_lyclm1571iy3mv57zw]
       format:
         type: string
         required: false
@@ -603,6 +623,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lvt9iwuh6fbcwmx1a, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -615,6 +636,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Facebook Marketplace' dataset
         example: gd_lvt9iwuh6fbcwmx1a
+        enum: [gd_lvt9iwuh6fbcwmx1a]
       format:
         type: string
         required: false
@@ -642,6 +664,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l7q7dkf244hwjntr0, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -654,6 +677,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Amazon products' dataset
         example: gd_l7q7dkf244hwjntr0
+        enum: [gd_l7q7dkf244hwjntr0]
       format:
         type: string
         required: false
@@ -724,6 +748,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lhotzucw1etoe5iw1k, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -736,6 +761,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Amazon sellers info' dataset
         example: gd_lhotzucw1etoe5iw1k
+        enum: [gd_lhotzucw1etoe5iw1k]
       format:
         type: string
         required: false
@@ -762,6 +788,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lwxmeb2u1cniijd7t4, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -774,6 +801,7 @@ endpoints:
         required: true
         note: pinned to the documented 'X (formerly Twitter) - Profiles' dataset
         example: gd_lwxmeb2u1cniijd7t4
+        enum: [gd_lwxmeb2u1cniijd7t4]
       format:
         type: string
         required: false
@@ -806,6 +834,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lwxkxvnf1cynvib9co, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -818,6 +847,7 @@ endpoints:
         required: true
         note: pinned to the documented 'X (formerly Twitter) - Posts' dataset
         example: gd_lwxkxvnf1cynvib9co
+        enum: [gd_lwxkxvnf1cynvib9co]
       format:
         type: string
         required: false
@@ -844,6 +874,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lk538t2k2p1k3oos71, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -856,6 +887,7 @@ endpoints:
         required: true
         note: pinned to the documented 'YouTube - Channels' dataset
         example: gd_lk538t2k2p1k3oos71
+        enum: [gd_lk538t2k2p1k3oos71]
       format:
         type: string
         required: false
@@ -888,6 +920,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lk56epmy2i5g7lzu0k, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -900,6 +933,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Youtube - Videos posts' dataset
         example: gd_lk56epmy2i5g7lzu0k
+        enum: [gd_lk56epmy2i5g7lzu0k]
       format:
         type: string
         required: false
@@ -967,6 +1001,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lvz8ah06191smkebj4, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -979,6 +1014,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Reddit - Posts' dataset
         example: gd_lvz8ah06191smkebj4
+        enum: [gd_lvz8ah06191smkebj4]
       format:
         type: string
         required: false
@@ -1045,6 +1081,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l95fol7l1ru6rlo116, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1057,6 +1094,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Walmart - products' dataset
         example: gd_l95fol7l1ru6rlo116
+        enum: [gd_l95fol7l1ru6rlo116]
       format:
         type: string
         required: false
@@ -1124,6 +1162,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_ltr9mjt81n0zzdk1fb, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1136,6 +1175,7 @@ endpoints:
         required: true
         note: pinned to the documented 'eBay' dataset
         example: gd_ltr9mjt81n0zzdk1fb
+        enum: [gd_ltr9mjt81n0zzdk1fb]
       format:
         type: string
         required: false
@@ -1163,6 +1203,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lgugwl0519h1p14rwk, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1175,6 +1216,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Yelp businesses overview' dataset
         example: gd_lgugwl0519h1p14rwk
+        enum: [gd_lgugwl0519h1p14rwk]
       format:
         type: string
         required: false
@@ -1281,6 +1323,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lsk382l8xei8vzm4u, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1293,6 +1336,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Google Play Store' dataset
         example: gd_lsk382l8xei8vzm4u
+        enum: [gd_lsk382l8xei8vzm4u]
       format:
         type: string
         required: false
@@ -1363,6 +1407,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_lsk9ki3u2iishmwrui, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1375,6 +1420,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Apple App Store' dataset
         example: gd_lsk9ki3u2iishmwrui
+        enum: [gd_lsk9ki3u2iishmwrui]
       format:
         type: string
         required: false
@@ -1441,6 +1487,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l1vikf2h1a4t6x8qzu, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1453,6 +1500,7 @@ endpoints:
         required: true
         note: pinned to the documented 'IMDB media' dataset
         example: gd_l1vikf2h1a4t6x8qzu
+        enum: [gd_l1vikf2h1a4t6x8qzu]
       format:
         type: string
         required: false
@@ -1480,6 +1528,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_mde7jg3ld2h3hnnf2, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1492,6 +1541,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Threads - Profiles' dataset
         example: gd_mde7jg3ld2h3hnnf2
+        enum: [gd_mde7jg3ld2h3hnnf2]
       format:
         type: string
         required: false
@@ -1520,6 +1570,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l1vijqt9jfj7olije, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1532,6 +1583,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Crunchbase companies information' dataset
         example: gd_l1vijqt9jfj7olije
+        enum: [gd_l1vijqt9jfj7olije]
       format:
         type: string
         required: false
@@ -1559,6 +1611,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /datasets/v3/scrape
+  platform_request: {queryParams.dataset_id: gd_l7j0bx501ockwldaqf, queryParams.type: null}
   resource_ownership:
     produces:
     - {kind: snapshot, path: snapshot_id}
@@ -1571,6 +1624,7 @@ endpoints:
         required: true
         note: pinned to the documented 'Glassdoor companies overview information' dataset
         example: gd_l7j0bx501ockwldaqf
+        enum: [gd_l7j0bx501ockwldaqf]
       format:
         type: string
         required: false
