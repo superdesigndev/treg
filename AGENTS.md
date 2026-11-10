@@ -160,7 +160,9 @@ agents then built against a constitution that was wrong.
   team, an exact count or money. See `docs/context/architecture/showcase.md`.
 - **The call runtime is self-contained.** `src/treg/application/call/` depends on no management
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
-  credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
+  credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
+  the team's first owner and whether it ever bought credit), and writes only what
+  `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
@@ -183,6 +185,11 @@ agents then built against a constitution that was wrong.
   the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
+- **Call admission.** Before treg's own money pays for a call (its key or its pay-per-use OAuth
+  app), an installed policy extension may refuse it through the `call_admission` decision point: a
+  403 before any hold and before the provider is reached, `funds_required` for a team that never
+  bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
+  slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.

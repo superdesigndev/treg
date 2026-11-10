@@ -36,6 +36,7 @@ async def test_handler_decides(decision):
 
 @pytest.fixture
 def faults(monkeypatch):
+    monkeypatch.setattr(policy, "_failed_logged", {})
     seen = []
     monkeypatch.setattr(policy.analytics, "capture_fault", lambda **kw: seen.append(kw))
     return seen
@@ -88,6 +89,68 @@ def test_one_handler_per_point():
     registry = _registry(handler)
     with pytest.raises(RuntimeError, match="already registered"):
         registry.on_signup_credit(handler)
+    registry.on_call_admission(handler)
+    with pytest.raises(RuntimeError, match="already registered"):
+        registry.on_call_admission(handler)
+
+
+CALL = policy.CallAdmissionContext(
+    org_id=2, user_id=1, caller_email="w@agents.treg.local", owner_email="a@gmail.com",
+    org_has_paid=False, org_created_at=None, api_key_id=None, endpoint_id="p.video-gen.x",
+    provider="p", platform="video-gen", funding="platform", estimate_micro=100_000,
+)
+
+
+def _call_registry(handler) -> policy.PolicyRegistry:
+    registry = policy.PolicyRegistry()
+    registry.on_call_admission(handler)
+    return registry
+
+
+async def test_call_admission_allows_without_a_handler():
+    registry = policy.PolicyRegistry()
+    assert registry.asks_call_admission is False
+    assert await registry.call_admission(CALL) is policy.CallDecision.ALLOW
+
+
+@pytest.mark.parametrize("decision", list(policy.CallDecision))
+async def test_call_admission_handler_decides(decision):
+    async def handler(ctx):
+        assert ctx == CALL
+        return decision
+    registry = _call_registry(handler)
+    assert registry.asks_call_admission is True
+    assert await registry.call_admission(CALL) is decision
+
+
+async def _slow(ctx):
+    await asyncio.sleep(1)
+    return policy.CallDecision.DENY
+
+
+async def _raises(ctx):
+    raise ValueError("rule-name-123")
+
+
+async def _answers_a_string(ctx):
+    return "deny"
+
+
+def _sync(ctx):
+    return policy.CallDecision.DENY
+
+
+@pytest.mark.parametrize(("handler", "error"), [
+    (_slow, "TimeoutError"), (_raises, "ValueError"), (_answers_a_string, "BadOutcome"), (_sync, "TypeError"),
+])
+async def test_call_admission_failure_allows_and_is_reported(monkeypatch, caplog, faults, handler, error):
+    monkeypatch.setattr(policy, "CALL_ADMISSION_BUDGET_S", 0.01)
+    with caplog.at_level(logging.WARNING, logger="treg"):
+        assert await _call_registry(handler).call_admission(CALL) is policy.CallDecision.ALLOW
+    assert f"event=policy_failed point=call_admission error={error} outcome=allow" in caplog.text
+    assert faults == [{"component": "policy", "fault_type": "PolicyFailed",
+                       "value": f"call_admission {error}"}]
+    assert "rule-name-123" not in caplog.text + repr(faults)
 
 
 def _entry_points(monkeypatch, **extensions):
@@ -228,3 +291,21 @@ async def test_no_transaction_is_open_while_the_extension_decides(clients, monke
     token = await verified_identity(clients, "pool@example.org")
     await _team(clients, token, "pool-team")
     assert open_during_decision == [False]
+
+
+async def test_a_failing_point_logs_at_most_once_per_window(monkeypatch, caplog, faults):
+    clock = [100.0]
+    monkeypatch.setattr(policy.time, "monotonic", lambda: clock[0])
+    registry = _call_registry(_raises)
+    with caplog.at_level(logging.WARNING, logger="treg"):
+        for _ in range(3):
+            assert await registry.call_admission(CALL) is policy.CallDecision.ALLOW
+        clock[0] += policy._FAILED_LOG_EVERY_S
+        assert await registry.call_admission(CALL) is policy.CallDecision.ALLOW
+    lines = [r.getMessage() for r in caplog.records if "event=policy_failed" in r.getMessage()]
+    assert lines == [
+        "event=policy_failed point=call_admission error=ValueError outcome=allow suppressed=0",
+        "event=policy_failed point=call_admission error=ValueError outcome=allow suppressed=2",
+    ]
+    assert len(faults) == 4, "every failure still reaches the fault rollup"
+

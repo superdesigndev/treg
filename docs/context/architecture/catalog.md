@@ -1040,7 +1040,7 @@ returned and never documented as stable. An output field may say where it lands 
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
   field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 2000).
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
@@ -1124,7 +1124,8 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    refusals are terminal. A `call_admission` refusal of treg's money skips that candidate without
+    spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
