@@ -13,8 +13,8 @@ One token reaches two kinds of tool, and treg injects the credential on the serv
 hold it:
 
 - **The catalog**: curated tools treg calls for you, each by id.
-- **Your own tools**: API accounts, OAuth connections, vendor CLIs and skills a teammate registered
-  for the team. Never billed, with one exception: an X connection made through treg's own X
+- **Your own tools**: API accounts, OAuth connections and skills a teammate registered for the
+  team. Never billed, with one exception: an X connection made through treg's own X
   app is billed per call, because X bills the app owner; the answer reports the price.
 
 ## First: check where you stand
@@ -357,13 +357,6 @@ token, also send `X-Treg-Org: <team-slug>`; a team token does not need it. treg 
 injects the team's credential on the server, and relays method, query, headers and body unchanged;
 your `X-Treg-Token` is removed before the provider sees the request. `GET {BASE}/tools` lists the
 tools as JSON.
-
-**Command-line tools** (stripe, gh, vercel, gcloud and others) run with the team's credential and
-without you logging in: `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the
-default) runs it on this machine, isolated under a dedicated user once an admin has run
-`sudo treg setup-local-run`; server-side execution (`--server`) is disabled globally.
-
-[Import and shell]({BASE}/tutorial-import-shell.md) has the full walkthrough.
 
 **Connecting a key for catalog calls.** `treg connections connect --provider <provider>` connects a
 provider the catalog knows: a consent screen for OAuth providers; for key-based ones a hidden
