@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import contracts as C
+from treg.domain.catalog.routing import paths as P
 
 from test_bounceban_async import (  # noqa: F401
     EMAIL, STATUS, VERIFY, VERIFYING, Upstream, _finished, _tasks, bounceban_on, fast_polls)
@@ -259,10 +261,62 @@ def test_an_array_body_identity_reads_back_through_a_bare_expression():
     body = json.dumps([{"url": "https://www.linkedin.com/in/aperson/"}]).encode()
     given = ev.vendor_identity(adapter, contract, [("dataset_id", "x"), ("format", "json")], body)
     assert given == {"linkedin_url": "https://www.linkedin.com/in/aperson/"}
-    # A computed expression (`e164_digits(phone)`) is not inverted.
-    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    # A computed expression (`e164_digits(phone)`) is not inverted; only `in_read` reads it back.
+    adapter = C.Adapter(endpoint_id="x", accepts=(("phone",),), in_map={}, out_map={}, miss="",
+                        in_expr={"body.telephone_number": "e164_digits(phone)"})
     body = json.dumps({"telephone_number": "15550100"}).encode()
-    assert ev.vendor_identity(hlr, cat.contracts["people.phone.live"], [], body) == {}
+    assert ev.vendor_identity(adapter, cat.contracts["people.phone.live"], [], body) == {}
+
+
+def test_a_verifier_records_the_number_it_checked_in_the_finders_spelling():
+    cat = catalog_store.load()
+    live = cat.contracts["people.phone.live"]
+    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    digits = json.dumps({"telephone_number": "16175550142", "usa_status": "YES"}).encode()
+    national = json.dumps({"telephone_number": "6175550142", "input_format": "USA"}).encode()
+    assert ev.vendor_identity(hlr, live, [], digits) == {"phone": "+16175550142"}
+    # A national number is the provider's to read with input_format; treg does not guess it.
+    assert ev.vendor_identity(hlr, live, [], national) == {}
+    validate = cat.adapters["hlrlookup.people.phone.validate"]
+    assert ev.vendor_identity(validate, cat.contracts["people.phone.verify"], [], digits) == {"phone": "+16175550142"}
+    owner = cat.contracts["people.contact.verify"]
+    trestle = cat.adapters["trestleiq.people.contact.verify"]
+    given = ev.vendor_identity(trestle, owner, [("name", "Ann Lee"), ("phone", "(617) 555-0142")], None)
+    assert given == {"phone": "+16175550142", "full_name": "Ann Lee"}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        checked, _ = ev.input_columns(owner, given)
+        live_cols, _ = ev.input_columns(live, ev.vendor_identity(hlr, live, [], digits))
+        found = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "+1 617 555 0142"})
+    get_settings.cache_clear()
+    assert checked["input_keys"]["phone"] == live_cols["input_keys"]["phone"] == found["answer_keys"]["phone"]
+    assert checked["input_type"] == "full_name+phone"
+    assert checked["input_meta"] == live_cols["input_meta"] == {"calling_code": "1"}
+    assert found["answer_values"] == {"phone_calling_code": "1"}
+
+
+def test_phone_verifiers_record_their_verdicts():
+    cat = catalog_store.load()
+    examples = Path(catalog_store.__file__).parents[2] / "catalog" / "examples"
+    assert examples.is_dir()
+    owner = json.loads((examples / "trestleiq.people.contact.verify.json").read_text())
+    core = cat.adapters["trestleiq.people.contact.verify"].from_upstream(owner)
+    assert ev.answer_columns(cat.contracts["people.contact.verify"], core)["answer_values"] == {
+        "name_match": "true", "contact_grade": "A", "phone_valid": "true", "line_type": "Mobile",
+        "activity_score": "100"}
+    live = json.loads((examples / "hlrlookup.people.phone.verify.json").read_text())
+    core = cat.adapters["hlrlookup.people.phone.verify"].from_upstream(live)
+    values = ev.answer_columns(cat.contracts["people.phone.live"], core)["answer_values"]
+    assert set(values) == {"live_status", "line_type", "ported"}
+
+
+@pytest.mark.parametrize("number,code", [("+1 617 555 0142", "1"), ("+7 912 345 6789", "7"),
+                                         ("+44 7700 900123", "44"), ("+353 85 123 4567", "353"),
+                                         ("+86 138 0013 8000", "86"), ("+971 50 123 4567", "971"),
+                                         ("6175550142", None)])
+def test_calling_code(number, code):
+    assert P.calling_code(number) == code
 
 
 def test_ref_parts():
@@ -360,7 +414,7 @@ def test_a_found_phone_joins_its_live_check_in_one_spelling():
         live, _ = ev.input_columns(cat.contracts["people.phone.live"], {"phone": "+16175550142"})
     get_settings.cache_clear()
     assert found["answer_keys"]["phone"] == other["answer_keys"]["phone"] == live["input_keys"]["phone"]
-    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US"}
+    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US", "phone_calling_code": "1"}
     # without a country code the digits could be another country's number, so no key
     assert national["answer_keys"] is None
     assert ev.normalize("phone", "6175550142") is None

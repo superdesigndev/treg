@@ -396,6 +396,24 @@ def e164_digits(v: Any) -> str | None:
     return digits if 7 <= len(digits) <= 15 else None
 
 
+# ITU country calling codes are prefix-free: one digit for 1 and 7, these two-digit codes, and
+# three digits for every other country.
+_CC2 = frozenset({"20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46",
+                  "47", "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63",
+                  "64", "65", "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98"})
+
+
+def calling_code(v: Any) -> str | None:
+    """`+44 7790 606023` → `44`, `+1 617…` → `1`: the country calling code of an international
+    number (shared by every country of one plan, so `1` is the US, Canada and the Caribbean)."""
+    digits = e164_digits(v)
+    if digits is None:
+        return None
+    if digits[0] in "17":
+        return digits[0]
+    return digits[:2] if digits[:2] in _CC2 else digits[:3]
+
+
 # A national number is trusted only with a country whose numbering plan it fits exactly.
 _NATIONAL_PLANS = {"US": ("1", re.compile(r"[2-9]\d{9}")), "CA": ("1", re.compile(r"[2-9]\d{9}"))}
 

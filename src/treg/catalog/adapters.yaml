@@ -487,6 +487,9 @@ adapters:
     accepts: [[phone]]
     in_expr: {body.telephone_number: "e164_digits(phone)",
               body.usa_status: "choose(starts_with(e164_digits(phone), '1'), 'YES', 'NO')"}
+    # Digits without input_format are international (the provider's own reading); a national
+    # number with input_format stays unread rather than guessed.
+    in_read: &hlr_read {phone: "choose(coalesce(body.input_format, '') == '', fmt('+{}', body.telephone_number), null)"}
     const: {body.save_to_cache: PRIVATE, body.cache_days_global: 0, body.cache_days_private: 0}
     test_identity: {phone: "+447540822872"}
     out: {live_status: "results[0].live_status", phone: "results[0].detected_telephone_number",
@@ -497,6 +500,35 @@ adapters:
     # Only LIVE and DEAD are answers about the line; the rest say HLR could not tell.
     verdicts: {absent_subscriber: unknown, no_teleservice_provisioned: unknown, not_available_network_only: unknown,
                no_coverage: unknown, inconclusive: unknown, not_applicable: unknown}
+
+  # Not router candidates: these rows exist so a direct call records the number it checked.
+  hlrlookup.people.phone.validate:
+    route: false
+    accepts: [[phone]]
+    in_expr: {body.telephone_number: "e164_digits(phone)"}
+    in_read: *hlr_read
+    test_identity: {phone: "+447540822872"}
+    out: {valid: "choose(results[0].error == 'NONE', true, choose(results[0].error == 'BAD_FORMAT', false, null))",
+          line_type: "results[0].telephone_number_type", carrier: "results[0].original_network_details.name"}
+    miss: "results[0].error != 'NONE'"
+  trestleiq.people.phone.verify:
+    route: false
+    accepts: [[phone]]
+    in: {phone: queryParams.phone}
+    # Trestle reads a national number as North American; so does the read-back.
+    in_read: {phone: "with_country_code(queryParams.phone, 'US')"}
+    out: {valid: is_valid, phone: phone_number, country_code: country_code, line_type: line_type, carrier: carrier}
+    miss: "is_valid == null"
+
+  # ---- people.contact.verify ----------------------------------------------------------------
+  trestleiq.people.contact.verify:
+    route: false
+    accepts: [[full_name, phone]]
+    in: {phone: queryParams.phone, full_name: queryParams.name}
+    in_read: {phone: "with_country_code(queryParams.phone, 'US')"}
+    out: {name_match: phone.name_match, contact_grade: phone.contact_grade, phone_valid: phone.is_valid,
+          line_type: phone.line_type, activity_score: phone.activity_score}
+    miss: "phone.name_match == null"
 
   # ---- people.email.verify ------------------------------------------------------------------
   orbisearch.people.email.verify:
