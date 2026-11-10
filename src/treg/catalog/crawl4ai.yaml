@@ -2497,6 +2497,7 @@ endpoints:
         user_id:
           type: string
           required: false
+          note: the account's numeric id, in place of `username`
           example: '528817151'
         username:
           type: string

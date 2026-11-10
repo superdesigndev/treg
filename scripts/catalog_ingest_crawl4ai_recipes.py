@@ -18,7 +18,7 @@ recipe input marked `secret` (a caller's own login cookies) is never declared, a
 
 A row's summary, note and parameter notes come from TEXT, written to the catalog's rules for them
 (docs/context/architecture/catalog-schema.md, "Summary and note") from the recipe's description.
-A recipe TEXT does not name yet gets its description's first sentence, and the run says so.
+A recipe TEXT does not name yet is skipped, and the run says so.
 """
 from __future__ import annotations
 
@@ -422,6 +422,7 @@ TEXT: dict[str, dict] = {
         "summary": "List the latest reels of a public Instagram account, newest first, with plays, likes, "
                    "comments and thumbnail.",
         "input": {"username": "the account: @name or an instagram.com URL",
+                  "user_id": "the account's numeric id, in place of `username`",
                   "limit": "at most 12: a larger limit gives the same 12, marked partial"},
     },
     "instagram-search": {
@@ -798,23 +799,6 @@ def _short(value, depth=0, people=False):
     return value
 
 
-def _first_sentence(text: str) -> str:
-    text = " ".join(text.split())
-    return re.split(r"(?<=[.!?])\s+(?=[A-Z`(])", text, maxsplit=1)[0]
-
-
-def text_of(r: dict) -> dict:
-    """The recipe's TEXT entry, or its description's first sentence as the summary, said on stderr."""
-    if r["name"] in TEXT:
-        text = TEXT[r["name"]]
-        declared = {k for k, v in (r.get("inputs") or {}).items() if not v.get("secret")}
-        for name in set(text.get("input") or {}) - declared:
-            print(f"{r['name']}: TEXT notes input {name!r}, which the recipe does not declare", file=sys.stderr)
-        return text
-    print(f"{r['name']}: no TEXT entry; the summary is the description's first sentence", file=sys.stderr)
-    return {"summary": _first_sentence(str(r.get("description") or r.get("title") or r["name"]))}
-
-
 def endpoint(r: dict, text: dict, cap: str, today: str, captured: dict | None) -> dict:
     inputs = {k: v for k, v in (r.get("inputs") or {}).items() if not v.get("secret")}
     body = {}
@@ -915,6 +899,13 @@ def main(argv: list[str]) -> int:
         if cap is None:
             print(f"skip {r['name']}: no capability mapped; add it to CAPABILITY", file=sys.stderr)
             continue
+        prose = TEXT.get(r["name"])
+        if prose is None:
+            print(f"skip {r['name']}: no summary written; add it to TEXT", file=sys.stderr)
+            continue
+        declared = {k for k, v in (r.get("inputs") or {}).items() if not v.get("secret")}
+        for name in set(prose.get("input") or {}) - declared:
+            print(f"{r['name']}: TEXT notes input {name!r}, which the recipe does not declare", file=sys.stderr)
         if cap.split(".")[0] not in platforms:
             raise SystemExit(f"{r['name']}: platform {cap.split('.')[0]!r} is not in capabilities.yaml platforms")
         if cap in seen:
@@ -922,7 +913,6 @@ def main(argv: list[str]) -> int:
         seen.add(cap)
         if cap not in known:
             proposed[cap] = str(r.get("title") or r["name"])
-        prose = text_of(r)
         draft = endpoint(r, prose, cap, today, None)
         captured = None
         if not args.capture and (EXAMPLES / f"{draft['id']}.json").exists() and draft["id"] in verified:
