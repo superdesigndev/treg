@@ -431,6 +431,26 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _empty_output(contract) -> dict:
+    """The contract's output shape for a miss / pending / no-core answer.
+
+    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    and callers (and the miss rule `results == []`) treat null as a broken response rather than an
+    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
+    """
+    out = {}
+    for k, spec in contract.output.items():
+        t = (spec or {}).get("type")
+        if t == "list":
+            out[k] = []
+        elif t == "int" and k == "count":
+            out[k] = 0
+        else:
+            out[k] = None
+    return out
+
+
 def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
@@ -1045,7 +1065,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     "status": descriptor.get("status") or {},
                 }
                 body_out = {
-                    "output": {k: None for k in plan.contract.output},
+                    "output": _empty_output(plan.contract),
                     "raw": json.loads(kickoff_raw),
                     "_treg": {
                         "served_by": cand.endpoint["id"], "provider": cand.endpoint["provider"],
@@ -1280,7 +1300,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
                    and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
         if outcome == "miss":
-            body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
+            body_out = {"output": _empty_output(plan.contract), "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                                   **({"verification": _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
@@ -1394,7 +1414,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 
     output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
 
-    body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
+    body_out = {"output": output or _empty_output(plan.contract), "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
                           **({"next_cursor": long_cursor} if long_cursor else {}),
