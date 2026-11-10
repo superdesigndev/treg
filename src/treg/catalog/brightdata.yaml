@@ -38,6 +38,15 @@ source:
 
 
 pricing_url: https://brightdata.com/pricing
+# Bright Data reports no charge: the plugin counts the records the answer delivers, and every 2xx,
+# a miss or an error envelope included, is billed by that count. A scrape holds one record per
+# input object, whether the body is the bare array or wrapped as {input: [...]}.
+defaults:
+  provenance: {source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented}
+  reserve: {entities: {from: [body.*, body.input.*], max: 100}}
+  settle: {plugin: brightdata.records}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  bill: {miss: charged, error: charged}
 endpoints:
   - id: brightdata.web.scrape.structured
     capability: web.scrape.structured
@@ -64,7 +73,7 @@ endpoints:
     test_request:
       queryParams: {dataset_id: "gd_l1vikfch901nx3by4", format: "json"}
       body: [{"url": "https://www.instagram.com/instagram"}]
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: '$1.50 per 1000 records delivered, pay-per-success — blocked or failed requests are not charged. Free allowance ~5000 records/month; volume plans drop toward $0.75/1000'}
+    price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — blocked or failed requests are not charged. Free allowance ~5000 records/month; volume plans drop toward $0.75/1000"}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.web.scrape.structured.json
@@ -103,7 +112,7 @@ endpoints:
     test_request:
       queryParams: {dataset_id: "gd_l1vikfch901nx3by4"}
       body: [{"url": "https://www.instagram.com/instagram"}]
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: '$1.50 per 1000 records delivered, pay-per-success; the trigger call itself settles at zero — the job''s records are billed when brightdata.web.scrape.job.results downloads them'}
+    price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success; the trigger call itself settles at zero — the job's records are billed when brightdata.web.scrape.job.results downloads them"}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.web.scrape.job.start.json
@@ -126,7 +135,7 @@ endpoints:
       note: "status is one of starting | running | ready | failed; only `ready` means the snapshot can be downloaded. 404 means the snapshot id is unknown to this account. No `expect` is set: every one of those statuses is a correct answer, so the only success condition is HTTP 2xx"
     test_request:
       pathParams: {snapshot_id: "sd_ms4lyair2704eraq24"}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: management API — polling a job is not billed; you pay for the records the job delivers}
+    price: {value: '0', currency: USD, unit: call, note: "management API — polling a job is not billed; you pay for the records the job delivers"}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.web.scrape.job.status.json
@@ -154,7 +163,9 @@ endpoints:
     test_request:
       pathParams: {snapshot_id: "sd_ms4lyair2704eraq24"}
       queryParams: {format: "json"}
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-08-24', confidence: documented, note: 'THIS is where an async job''s records are billed to the caller — the trigger and the >60s sync fallback settle at zero, and treg counts the rows this download returns ($1.50 per 1000 records, pay-per-success). Bright Data itself charged the records when the job ran, so RE-downloading the same snapshot bills the caller again: download once, or use batch_size/part to fetch each slice once'}
+    price: {value: '0.0015', currency: USD, unit: record, note: "THIS is where an async job's records are billed to the caller — the trigger and the >60s sync fallback settle at zero, and treg counts the rows this download returns ($1.50 per 1000 records, pay-per-success). Bright Data itself charged the records when the job ran, so RE-downloading the same snapshot bills the caller again: download once, or use batch_size/part to fetch each slice once"}
+    provenance: {source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-08-24', confidence: documented}
+    reserve: {rows: {default: {value: 20, source: legacy}, max: 100}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.web.scrape.job.results.json
@@ -182,7 +193,8 @@ endpoints:
     test_request:
       queryParams: {dataset_id: "gd_l1vikfch901nx3by4", format: "json"}
       body: [{"url": "https://www.instagram.com/instagram"}]
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: $1.50 per 1000 records — one profile is one record; pay-per-success}
+    price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records — one profile is one record; pay-per-success"}
+    miss: {when: {path: response.0.account, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.instagram.user.profile.json
@@ -210,7 +222,8 @@ endpoints:
     test_request:
       queryParams: {dataset_id: "gd_l1viktl72bvl7bjuj0", format: "json"}
       body: [{"url": "https://www.linkedin.com/in/satyanadella"}]
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: $1.50 per 1000 records — one profile is one record; pay-per-success}
+    price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records — one profile is one record; pay-per-success"}
+    miss: {when: {path: response.0.name, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.linkedin.user.profile.json
@@ -228,7 +241,7 @@ endpoints:
     input:
       note: "how you discover the dataset_id every other endpoint here needs, without hardcoding ids from blog posts. Returns id, name and size per dataset, covering the Web Scraper API datasets across 250+ domains. NOTE the path sits outside the /datasets/v3/ family the rest of this file uses, and differs from the /datasets/v3/datasets guess recorded as brightdata's probe_path in oauth_providers.py — reconcile the two once a token is available"
     test_request: {queryParams: {}}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: management API — listing datasets does not bill}
+    price: {value: '0', currency: USD, unit: call, note: "management API — listing datasets does not bill"}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/brightdata.account.datasets.list.json

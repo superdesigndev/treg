@@ -279,4 +279,5 @@ rejected:
   - {at: fiber-ai.people.contacts.reveal.personal, path: states, reason: verified and untestable at once; one state per row}
 
 # v2 rows whose reserve.rows has no param: a frozen legacy hold waiting for a person to pick it.
-legacy_holds: []
+legacy_holds:
+  - brightdata.web.scrape.job.results

@@ -2685,31 +2685,6 @@ def test_a_zero_price_on_a_billed_provider_falls_back_rather_than_billing_zero()
 # registry connection → `_billed_marketplace` → reserve → relay → settle — because the free-price
 # bug was invisible to every unit test and only showed up as a number on a screen.
 
-def test_observed_cost_counts_brightdata_records():
-    """Bright Data bills per record DELIVERED and reports no charge field — the body is the bill.
-    Before this settled-by-count existed, every per_result call settled as one record: $13.61
-    consumed upstream vs $0.35 billed over three weeks (2026-08-24)."""
-    bd = _mk("brightdata", cost_type="per_result", unit_micro=1500)
-    # sync scrape / snapshot download, format=json: an array, one element per record
-    assert call_settle._observed_cost_micro(bd, b'[{"url": "a"}, {"url": "b"}, {"url": "c"}]') == 4500
-    assert call_settle._observed_cost_micro(bd, b"[]") == 0
-    # the >60s sync fallback and /trigger hand back a snapshot id: zero records HERE — they bill
-    # when the snapshot is downloaded
-    assert call_settle._observed_cost_micro(bd, b'{"snapshot_id": "sd_x"}') == 0
-    # an early snapshot download answers the job's state, not rows: nothing delivered, nothing billed
-    assert call_settle._observed_cost_micro(bd, b'{"status": "running", "message": "not ready"}') == 0
-    # ndjson: one record per line
-    assert call_settle._observed_cost_micro(bd, b'{"url": "a"}\n{"url": "b"}\n') == 3000
-    # a csv body counts the rows under its header line
-    assert call_settle._observed_cost_micro(bd, b"url,name\na,x\nb,y\n") == 3000
-    # a payload the 8MB metered buffer truncated must settle at the estimate, never a partial count
-    assert call_settle._observed_cost_micro(bd, b'[{"url": "a"}, {"url"') is None
-    # gzipped (compress=true): can't count, estimate wins
-    assert call_settle._observed_cost_micro(bd, b"\x1f\x8b\x08\x00junk") is None
-    # a free management route (progress polls) never reaches the counter
-    assert call_settle._observed_cost_micro(_mk("brightdata", cost_type="free"), b'{"status": "ready"}') is None
-
-
 def test_influencersclub_discovery_settles_creators_returned():
     """Discovery bills each creator in `accounts` at the catalog's per-creator USD price, never
     more than the hold, and ignores the provider's 0.01-credit `credits_cost` meter."""

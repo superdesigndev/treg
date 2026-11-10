@@ -1051,7 +1051,6 @@ adapters:
     out: {username: "[0].account", user_id: "[0].id", full_name: "[0].full_name", followers: "[0].followers",
           following: "[0].following", posts_count: "[0].posts_count", is_verified: "[0].is_verified",
           is_private: "[0].is_private", biography: "[0].biography"}
-    miss: "[0].account == null"
   brightdata.x.tiktok-profiles:
     accepts: [[username]]
     in:  {}
@@ -1062,7 +1061,6 @@ adapters:
     out: {username: "[0].account_id", user_id: "[0].id", sec_uid: "[0].secu_id", nickname: "[0].nickname",
           followers: "[0].followers", following: "[0].following", likes: "[0].likes", videos_count: "[0].videos_count",
           is_verified: "[0].is_verified", biography: "[0].biography"}
-    miss: "[0].account_id == null"
   brightdata.x.instagram-posts:
     accepts: [[url]]
     in:  {url: body.url}
@@ -1070,7 +1068,6 @@ adapters:
     const: {queryParams.dataset_id: gd_lk5ns7kz21pck8jpis, queryParams.format: json}
     out: {id: "[0].post_id", shortcode: "[0].shortcode", caption: "[0].description", likes: "[0].likes",
           comments: "[0].num_comments", owner_username: "[0].user_posted"}
-    miss: "[0].post_id == null"
   lusha.people.enrich:
     accepts: [[first_name, last_name, domain], [full_name, domain]]
     in:  {}
@@ -1511,7 +1508,6 @@ adapters:
     out: {full_name: "[0].name", first_name: "[0].first_name", last_name: "[0].last_name", headline: "[0].position",
           location: "[0].city", followers: "[0].followers", connections: "[0].connections", about: "[0].about",
           linkedin_url: "[0].url"}
-    miss: "[0].name == null"
   fiber-ai.linkedin.user.profile:
     accepts: [[linkedin_handle]]
     in:  {linkedin_handle: body.identifier}
@@ -2087,7 +2083,6 @@ adapters:
     const: {queryParams.dataset_id: gd_mf0urb782734ik94dz, queryParams.format: json}
     test_identity: {url: "https://www.facebook.com/facebook"}
     out: {name: "[0].name", id: "[0].id", url: "[0].url"}
-    miss: "[0].name == null"
   scrapecreators.x.v1-facebook-profile:
     accepts: [[url]]
     in:  {url: queryParams.url}
