@@ -16,13 +16,13 @@ def _emails(rows: object) -> Answer:
     return _answer({"data": {"domain": "x.com", "emails": rows}})
 
 
-@pytest.mark.parametrize("count,billed", [(0, 0), (1, 10), (9, 10), (10, 10), (11, 20), (100, 100), (101, 110)])
-def test_emails_returned_rounds_the_returned_emails_up_to_a_whole_ten(count, billed):
-    assert hunter.emails_returned(REQUEST, _emails([{"value": f"p{i}@x.com"} for i in range(count)])) == billed
+@pytest.mark.parametrize("count", [0, 1, 9, 10, 11, 50, 100, 101])
+def test_emails_returned_is_the_number_of_returned_emails(count):
+    assert hunter.emails_returned(REQUEST, _emails([{"value": f"p{i}@x.com"} for i in range(count)])) == count
 
 
 def test_emails_returned_counts_every_returned_row():
-    assert hunter.emails_returned(REQUEST, _emails([None] * 11)) == 20
+    assert hunter.emails_returned(REQUEST, _emails([None] * 11)) == 11
 
 
 @pytest.mark.parametrize("doc", [{"data": {"emails": None}}, {"data": {"emails": ""}}, {"data": {}}, {"data": None},

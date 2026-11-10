@@ -1004,6 +1004,7 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
+    max: {limit: 100}
     out: {people: data.emails, count: meta.results}
     row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:

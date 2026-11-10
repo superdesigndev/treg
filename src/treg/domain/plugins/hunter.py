@@ -18,13 +18,11 @@ def _data(answer: Answer) -> object:
 
 
 def emails_returned(request: Request, answer: Answer) -> int | None:
-    """Domain Search's billed emails: those it returned, rounded up to a whole ten, because Hunter
-    takes one search credit for every ten it starts. None when the answer carries no email list."""
+    """Domain Search's billed emails: every row it returned, null ones included; the row's price
+    rounds them up to whole credits. None when the answer carries no email list."""
     data = answer.body.get("data") if isinstance(answer.body, dict) else None
     emails = data.get("emails") if isinstance(data, dict) else None
-    if not isinstance(emails, list):
-        return None
-    return -(-len(emails) // 10) * 10
+    return len(emails) if isinstance(emails, list) else None
 
 
 def finder_unanswered(request: Request, answer: Answer) -> bool:

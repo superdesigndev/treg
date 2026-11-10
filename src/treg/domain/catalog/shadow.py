@@ -28,7 +28,7 @@ from typing import Any
 
 from . import outcome
 from .routing import paths as P
-from .routing.contracts import Adapter, adapter_accepts, parse_adapters
+from .routing.contracts import Adapter, adapter_accepts, answer_of, parse_adapters
 from .schema.v2 import is_v2
 
 # Fields compared by similarity rather than equality: a name written two ways is still one name.
@@ -114,7 +114,7 @@ def _hit(adapter: Adapter, body: Any) -> bool:
     from .store import load
 
     endpoint = load().by_id.get(adapter.endpoint_id) or {}
-    return not is_v2(endpoint) or outcome.judge(endpoint, 200, body).state == "hit"
+    return not is_v2(endpoint) or outcome.judge(endpoint, 200, body, answer=answer_of(body)).state == "hit"
 
 
 def normalize(value: Any) -> str:

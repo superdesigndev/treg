@@ -152,6 +152,7 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
     assert call(blocks, {})[0] == 200000                                # the default: 100 rows
     assert call(blocks, {"limit": 99999})[0] == 20000000                # clamped at max
     assert call(blocks, {"limit": "x"})[0] == 200000                    # not a count: the default
+    assert call(blocks, {"limit": "0" * 5000 + "15"})[0] == 40000       # leading zeros: still 15 rows
 
 
 @pytest.mark.parametrize("query,body,refused", [
@@ -166,6 +167,8 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
     ([("limit", " 5")], None, "query.limit"), ([("limit", "5.0")], None, "query.limit"),
     ([("limit", "-5")], None, "query.limit"), ([("limit", "\u0661\u0662")], None, "query.limit"),
     ([("limit", "9" * 30)], None, "query.limit"),
+    ([("limit", "0" * 5000 + "5")], None, None), ([("limit", "0" * 5000 + "101")], None, "query.limit"),
+    ([("limit", "0" * 5000)], None, "query.limit"),
 ])
 def test_a_request_repeating_a_single_value_or_with_an_unreadable_count_is_refused(query, body, refused):
     from treg.application.call.types import ResolutionFailed

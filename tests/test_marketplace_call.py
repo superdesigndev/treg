@@ -1453,6 +1453,7 @@ async def test_hunter_domain_search_settles_whole_credits_per_ten_emails_returne
 @pytest.mark.parametrize("params", [
     {"domain": "x.com", "limit": ["5", "50"]}, {"domain": ["x.com", "y.com"]},
     {"domain": "x.com", "limit": "101"}, {"domain": "x.com", "limit": "abc"}, {"domain": "x.com", "limit": ""},
+    pytest.param({"domain": "x.com", "limit": "0" * 5000 + "101"}, id="zero-padded-above-max"),
 ])
 async def test_hunter_domain_search_refuses_a_count_it_cannot_read_before_any_hold(
     clients: AsyncClient, monkeypatch, hunter_platform_on, params,

@@ -114,14 +114,14 @@ def _rows(rule: dict, request: dict) -> int | None:
     value = found[0] if found else None
     raw = str(value).strip() if value is not None and not isinstance(value, list) else ""
     if raw.isdigit():
-        return top if len(raw.lstrip("0")) > len(str(top)) else max(1, min(int(raw), top))
+        return top if len(raw.lstrip("0")) > len(str(top)) else max(1, min(int(raw.lstrip("0") or "0"), top))
     return int(rule["default"]["value"]) if rule.get("default") else None
 
 
 def _whole(value: object, top: int) -> bool:
     """A count parameter's value is a whole number from 1 to `top`: a JSON integer, or ASCII digits."""
     if isinstance(value, str) and value.isascii() and value.isdigit():
-        return len(value.lstrip("0")) <= len(str(top)) and 1 <= int(value) <= top
+        return len(value.lstrip("0")) <= len(str(top)) and 1 <= int(value.lstrip("0") or "0") <= top
     return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= top
 
 
