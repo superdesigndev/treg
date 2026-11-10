@@ -80,7 +80,9 @@ def request_identity(adapter: Adapter, query: dict, body: Any) -> dict[str, Any]
             value = (query or {}).get(target.split(".", 1)[1])
         else:
             value = P.get_path(doc, target)
-        if value not in (None, ""):
+        if isinstance(value, list) and len(value) == 1:
+            value = value[0]  # a one-domain list is that domain, not the text "['x.com']"
+        if value not in (None, "", []):
             out[name] = value
     return out
 

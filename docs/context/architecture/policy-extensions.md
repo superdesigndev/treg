@@ -1,85 +1,87 @@
 ---
-title: Policy extensions — decision points a private abuse policy can plug into
+title: Policy extensions - decision points a private abuse policy can plug into
 status: shipped
 sources:
   - src/treg/policy.py
   - src/treg/bootstrap.py
   - src/treg/application/signup.py
+  - src/treg/application/call/admission.py
   - src/treg/domain/identity/promotions.py
   - tests/test_policy.py
 ---
 
 # Policy extensions
 
-## Why
-
-Every defense mechanism in treg is public, and self-hosters need all of them: the rate limiter,
-the email-domain blocklist, Turnstile, the one-credit-per-inbox claim. The values those mechanisms
-are tuned with are another matter. A public threshold is a target: a farm script can pace itself
-just under it. So a hosted deployment may keep its abuse policy (thresholds, lists, scoring)
-outside this repository and plug it in through a fixed set of decision points.
-
-**treg.to does this.** It installs a private extension with its own abuse rules. The extension sees
-only what a decision point hands it and can only answer with that point's outcomes, so it can
-restrict, never more: it cannot grant anything treg would refuse, move money, or change a public
-limit. Self-hosted deployments run without it and get treg's default at every point, which is the
-behavior described everywhere else in these docs.
+Every defense mechanism is public, but the values it is tuned with need not be: a public threshold
+is a target a farm script can pace under. A deployment may therefore keep its abuse policy
+(thresholds, lists, scoring) in a private extension that plugs into fixed decision points.
+An extension sees only what a point hands it and answers only with that point's outcomes, so it can
+restrict but never grant what treg would refuse, move money or change a public limit. Without an
+extension every point takes its public default, which is the behavior the rest of these docs describe.
 
 ## Contract (`src/treg/policy.py`)
 
-`treg.policy` is the only treg module an extension may import. It is versioned by
-`POLICY_API_VERSION`; an incompatible change bumps it.
+- `treg.policy` is the only treg module an extension may import; an incompatible change bumps
+  `POLICY_API_VERSION`.
+- `create_app` loads every `treg.extensions` entry point last. A version mismatch, a failing
+  `install`, or a name in `TREG_REQUIRED_EXTENSIONS` that is not installed refuses startup, so a broken
+  build never serves without the policy its operator relies on.
+- One handler per point; a second registration is an error.
+- A slow, raising or out-of-range handler falls back to the point's public default. An extension
+  failure is the operator's bug, not something a caller can provoke, so it must cost users nothing
+  beyond treg's default. It is reported (`event=policy_failed`, fault component `policy`) with the
+  exception type only, never the message, which might name a private rule. An extension that wants to
+  be strict when its own state is missing decides that itself and answers normally.
+- The budget cancels a handler at its next `await`; a handler that blocks the event loop is not
+  interrupted, so handlers must not block.
+- Refusals show and log only the point's public outcome, never which rule fired.
 
-- **Loading.** An extension is an object under the `treg.extensions` entry-point group with an
-  integer `api_version` and `install(app, registry)`. `create_app` loads every installed one, last,
-  into a fresh `PolicyRegistry` and records their names on `app.state.extensions`. A version
-  mismatch or a failing `install` refuses startup. `TREG_REQUIRED_EXTENSIONS` (comma-separated
-  entry-point names) also refuses startup when a named extension is not installed, so a broken
-  build never serves without the policy its operator relies on. Empty, the default, requires
-  nothing.
-- **One handler per point.** Registering a second handler for a point is an error.
-- **treg owns failure handling, and a failure falls back to the default.** When a handler is slow,
-  raises or returns something outside the point's outcomes, treg uses the point's public default.
-  An extension failure is almost always the operator's own bug or misconfiguration, not something a
-  caller can provoke, so it should cost users nothing beyond what treg without the extension would
-  do. It is reported instead: a log line `event=policy_failed point=<point> error=<exception type>
-  outcome=<default>` and a `PolicyFailed` fault event (component `policy`) for alerting, both with
-  the exception type only, never the message, which might name a private rule. An extension that
-  wants to be strict when its own state is missing decides that itself and answers normally.
-- **Handlers must not block.** The budget cancels a handler at its next `await`; a handler that
-  blocks the event loop is not interrupted.
-- **One registry per process.** `policy.registry` holds the handlers of the most recent
-  `load_extensions`; tests that build several apps restore it themselves.
-- **Refusals do not reveal the rule.** treg logs and shows only the point's public outcome. Which
-  rule fired stays with the extension.
+## `signup_credit`
 
-## Decision points
+Outcomes `grant` or `defer`; on failure `grant`. Asked from `signup._grant_signup_promo` before the
+claim, only for a user who could claim now (`promotions.signup_promo_email`) and a grant above zero:
+once per team creation, and once on the sign-in that first verifies a user who already owns a team.
+The eligibility read is committed before asking, so no database connection waits on the extension.
 
-| Point           | Called in                                                | Outcomes          | Budget | On timeout, error or bad outcome |
-| --------------- | -------------------------------------------------------- | ----------------- | ------ | -------------------------------- |
-| `signup_credit` | `signup._grant_signup_promo`, before `claim_signup_promo` | `grant`, `defer` | 300 ms | `grant`, reported                |
+`defer` writes nothing (no claim row, no ledger entry) and leaves the user eligible, so the point is
+asked again at their next team creation; a later `grant` is the release path and needs no new ledger
+entry type. A first-proof deferral is never re-asked, since a first proof happens once.
 
-### `signup_credit`
+Failure grants because the other signup-credit defenses (one credit per inbox, the human check, the
+domain blocklist) still apply, so a broken extension returns to the public baseline instead of
+withholding credit from every new user.
 
-Asked once per team creation, and once on the sign-in that first verifies a user who already owns
-a team (`signup.grant_signup_promo_on_proof`, for the oldest such team), only for a user who could
-claim right now
-(`promotions.signup_promo_email`: verified, still eligible, not suspended, not demo), and only
-when the grant amount is above zero. The context is the user and team IDs, the login email and its
-canonical inbox (`promo_inbox`). The eligibility read's transaction is committed before the
-decision, so no database connection waits on the extension.
+## `call_admission`
 
-`defer` writes nothing: no claim row, no ledger entry, and `signup_promo_available` stays true. The
-team (or the sign-in) proceeds as usual. The point is asked again when the same user creates their
-next team, so a later `grant` is the release path and needs no new ledger entry type. A first
-proof happens once, so a deferral there is never re-asked by a later sign-in. treg logs
-`event=signup_credit_deferred org=<id> user=<id>`. After a grant the user is no longer eligible
-and is never asked again.
+Outcomes `allow` or `deny`; on failure `allow`; budget 20 ms. Asked from `_execute_call` through
+`application/call/admission.py` once a call has resolved to treg's own money (`mk.metered`: its key, or
+its pay-per-use OAuth app), before anything reaches the provider on that account: the public-resource
+check, the direct reserve and an overflow-only attempt all come after it. A call on the team's own
+credential never asks, and a deployment without a handler reads nothing extra
+(`PolicyRegistry.asks_call_admission`).
 
-A failure grants, as treg without an extension would. The other signup-credit defenses (one
-credit per inbox, the human check, the domain blocklist) keep applying, so a broken extension
-returns the deployment to its public baseline rather than withholding credit from every new user
-until someone notices.
+The context carries what treg already knows about the call (team, caller, key, endpoint, provider, the
+catalog row's `platform`, `funding`, the raw estimate) plus one read made only for this point on the
+session the call already holds: the team's first owner (the person behind every agent identity) and
+whether the team bought credit it was not refunded for (a purchased block with no `revoke`). That
+session is committed before asking, so no pooled connection waits on the extension, and the reserve's
+own commit that follows has nothing left to send.
 
-A user who believes their signup credit was withheld in error contacts the deployment's support;
-an operator can grant credit through the ordinary admin grant.
+The decision covers the whole call. An archive hit is refused too: it spends the team's credit on
+treg's account even though no provider is reached. An overflow attempt rides the same decision, and
+the context names the provider the call asked for, not the aggregator that might serve it.
+
+`deny` is a 403 of kind `admission_denied`. Its body names the endpoint, the provider and the remedy,
+never the rule: `funds_required` with the top-up URL and the own-key alternative for a team that never
+bought credit, `own_key_required` with only the own-key alternative for one that did, since adding funds
+could not help it. Nothing is reserved; the audit row reads `refused_by=policy`, charged 0. On MCP the
+top-up URL and link are stripped like a 402's, and `hint` states the fact. A routed job skips a refused
+candidate without spending its error allowance (another candidate may run on the team's own key); when
+nothing ran and a candidate was refused, it answers that refusal for the routed endpoint, with `tried`,
+not a 502 or a cost-ceiling 402.
+
+Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which still
+bound the spend, instead of refusing every metered call. Failures arrive at the call rate, so the
+`event=policy_failed` line is written at most once per point and error every 10 s with a `suppressed`
+count; the fault event rolls up on its own. The budget cancels a handler only at an await, so a handler
+deciding from memory is never cut short by a busy event loop.

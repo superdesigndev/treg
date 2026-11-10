@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "treg",
-      "source": "./",
+      "source": "./plugins/treg",
       "category": "developer-tools",
       "tags": [
         "api",
@@ -19,6 +19,42 @@
         "enrichment",
         "scraping"
       ]
+    },
+    {
+      "name": "jev-memory",
+      "source": "./plugins/workflows/jev-memory",
+      "description": "Use when the user wants Claude Code to remember their preferences across sessions, asks for a memory mod or memory harness for Claude Code, mentions the Jev memory classifier or a \"classifier on every turn\" mod, or wants to build a Claude Code mod on treg and Jev. Installs a ready-made Claude Code mod that has Jev judge each prompt after the turn and saves lasting preferences to .claude/jev-memory.md, or builds the same mod from one prompt.",
+      "category": "productivity"
+    },
+    {
+      "name": "lead-signals",
+      "source": "./plugins/workflows/lead-signals",
+      "description": "Use when the user wants to find buyers, warm or hot leads, or in-market accounts; asks about buying signals, intent signals or trigger events; wants to know who is complaining about a problem, engaging with a post, hiring for a role, changing jobs, raising money or adopting a tool; or wants to monitor a topic, a competitor or a list of accounts for people ready to buy.",
+      "category": "productivity"
+    },
+    {
+      "name": "make-ugc",
+      "source": "./plugins/workflows/make-ugc",
+      "description": "Make AI UGC videos end to end through treg. Pull the trending TikTok and Instagram videos in a vertical, extract the hook patterns, create a character with the same vibe as a presenter the user picks, generate 5-10 talking-head hook clips on Seedance 2.5 (less-restriction route), add a voiced demo clip, burn captions, and report the bill per clip. Use when the user asks for UGC ads, creator-style product videos, TikTok/Reels hooks, or an AI presenter for their product.",
+      "category": "productivity"
+    },
+    {
+      "name": "rea-growth",
+      "source": "./plugins/workflows/rea-growth",
+      "description": "Use when the user wants to know how a company gets its users, reverse engineer a competitor's growth or distribution, copy what a winning company does on each channel, or study a brand's content strategy (titles, thumbnails, covers, captions, graphics) on YouTube, TikTok, Instagram, X, LinkedIn or Reddit. Also for \"how did X grow\", \"teardown of X's marketing\", \"what content works for X\".",
+      "category": "productivity"
+    },
+    {
+      "name": "recruit",
+      "source": "./plugins/workflows/recruit",
+      "description": "Use when the user wants candidates for a role; they paste a LinkedIn job post (or a job description) and want the people who fit it, ranked, with a reason for each and a personal email and phone to reach them. Also for \"source candidates\", \"find people for this job\", \"build a shortlist\", or turning a job post into a contactable candidate list.",
+      "category": "productivity"
+    },
+    {
+      "name": "web-access",
+      "source": "./plugins/workflows/web-access",
+      "description": "Use only when the agent's own web tools can't do the job. Use what you already have first (built-in web search and fetch, a browser, MCP servers the user installed); come here when none of them covers it, such as a page they can't read, structured data from a platform they have no tool for (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers), or when the user asks for treg. Not for localhost, staging, internal pages or public docs your own fetch can read. Starts free, and treg falls back to the next vendor when one fails.",
+      "category": "productivity"
     }
   ]
 }

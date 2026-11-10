@@ -116,6 +116,7 @@ endpoints:
       currency: credit
       per: 1
       unit: result
+      bills_miss: true
       source: rate_card_api
       source_url: https://www.lusha.com/pricing/
       checked: '2026-09-04'

@@ -23,23 +23,26 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index
+from .application import arena, find_index, media
 from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
+    _ClientNoticeMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
 from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
+from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import background_session_maker, verify_db
+from .infra.db import ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
 )
 from .routers import call as call_routes
+from .routers import view as view_routes
 
 
 AppRole = Literal["all", "dataplane", "control"]
@@ -133,6 +136,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),
     ('/auth/google/callback', ('GET',), 'auth_google_callback'),
+    ('/auth/social/check', ('GET',), 'auth_social_check_page'),
+    ('/auth/social/check', ('POST',), 'auth_social_check'),
     ('/auth/cli/start', ('POST',), 'auth_cli_start'),
     ('/auth/cli/poll', ('GET',), 'auth_cli_poll'),
     ('/auth/cli/orgs', ('GET',), 'auth_cli_orgs'),
@@ -160,6 +165,12 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sitemap.xml', ('GET',), 'sitemap_xml'),
     ('/7c2e4a91b5d3f8e6treg2026.txt', ('GET',), 'indexnow_key'),
     ('/install.sh', ('GET',), 'install_sh'),
+    ('/install.ps1', ('GET',), 'install_ps1'),
+    ('/cli/latest', ('GET',), 'cli_latest'),
+    ('/cli/latest/{platform}', ('GET',), 'cli_latest_download'),
+    ('/cli/events', ('POST',), 'cli_events'),
+    ('/i/{code}', ('GET',), 'install_sh_linked'),
+    ('/i', ('POST',), 'ad_link_mint'),
     ('/selfhost.sh', ('GET',), 'selfhost_sh'),
     ('/quickstart.md', ('GET',), 'quickstart_md'),
     ('/tutorial.md', ('GET',), 'tutorial_md'),
@@ -174,6 +185,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
+    ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
     ('/favicon.svg', ('GET',), 'favicon'),
@@ -198,6 +210,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/gpt6', ('GET',), 'gpt6_page'),
     ('/ugc', ('GET',), 'ugc_page'),
     ('/aeo', ('GET',), 'aeo_page'),
+    ('/rea-growth', ('GET',), 'rea_growth_page'),
+    ('/rea-growth.md', ('GET',), 'rea_growth_md'),
+    ('/social', ('GET',), 'social_search_page'),
     ('/showcase', ('GET',), 'showcase_page'),
     ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
     ('/showcase/votes/me', ('GET',), 'showcase_my_votes'),
@@ -220,6 +235,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/showcase/teams/{org_id}', ('GET',), 'staff_team'),
     ('/rankings', ('GET',), 'rankings_page'),
     ('/rankings/data/{board}', ('GET',), 'rankings_board'),
+    ('/compare', ('GET',), 'compare_hub'),
+    ('/compare/{slug}', ('GET',), 'compare_page'),
     ('/admin/images/{kind}', ('POST',), 'staff_upload'),
     ('/admin/images/staging/{key:path}', ('GET',), 'staff_staged_image'),
     ('/images/{kind}', ('POST',), 'upload_image'),
@@ -260,11 +277,11 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tutorial', ('GET',), 'tutorial_page'),
     ('/auth/cli-token', ('GET',), 'auth_cli_token'),
     ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
-    ('/users', ('POST',), 'register_user'),
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
     ('/orgs', ('GET',), 'list_orgs'),
+    ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
     ('/invites/accept', ('POST',), 'accept_invite'),
     ('/invites/mine', ('GET',), 'my_invites'),
@@ -274,11 +291,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/onboard/team', ('POST',), 'onboard_team'),
     ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
     ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
-    ('/stripe/webhook', ('POST',), 'stripe_webhook'),
-    ('/landing/stripe-feed', ('GET',), 'landing_stripe_feed'),
     ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
-    ('/skills/samples', ('GET',), 'skill_samples'),
-    ('/skills/{name}/install.sh', ('GET',), 'skill_install'),
     ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
     ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
     ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
@@ -417,6 +430,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/archive/body', ('GET',), 'admin_archive_body'),
     ('/admin/archive/panel', ('GET',), 'admin_archive_panel'),
     ('/admin/referrals', ('GET',), 'admin_referrals'),
+    ('/admin/referrals/users', ('GET',), 'admin_referral_user_by_email'),
+    ('/admin/referrals/users/{user_id}', ('GET',), 'admin_referral_user'),
+    ('/admin/referrals/users/{user_id}/affiliate', ('PUT',), 'admin_set_referral_affiliate'),
     ('/catalog/endpoints/{endpoint_id}/access', ('GET',), 'catalog_endpoint_access'),
     ('/run', ('POST',), 'run_tool_server'),
 })
@@ -426,6 +442,8 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
     ("/table/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "table_tool"),
+    ("/tasks/{call_id}", ("POST",), "task_submission"),
+    ("/tasks/{call_id}", ("GET",), "task_look"),
     # MCP is calling traffic, so its mount and its RFC 9728 resource metadata belong to the
     # dataplane. Token issuance (consent, /oauth/*) stays on control; the dataplane only validates.
     ('/.well-known/oauth-protected-resource/mcp', ('GET',), 'oauth_protected_resource'),
@@ -535,7 +553,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
     for route in routes:
         cloned = copy(route)
         cloned.dependency_overrides_provider = app
-        cloned.app = request_response(cloned.get_route_handler())
+        cloned.app = view_routes.wrap(cloned.endpoint, request_response(cloned.get_route_handler()))
         app.router.routes.append(cloned)
 
 
@@ -727,11 +745,16 @@ def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            media.validate_configuration()
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
                 logging.getLogger("treg").warning("kv configured but unreachable at startup")
+            # Published route rules (docs/context/architecture/route-rules.md) are read once before
+            # serving, so a new worker's first calls do not fall back to the YAML order.
+            from .application.call import route_rules as route_rules_app
+            await route_rules_app.warm()
 
             limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
             app.state.http = httpx.AsyncClient(
@@ -748,6 +771,7 @@ def _lifespan(role: AppRole):
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
+            stall_watch = start_loop_stall_watch()
             # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
             # and a zero daily cap disables it without touching serving. Same discipline as the ads
             # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
@@ -766,8 +790,23 @@ def _lifespan(role: AppRole):
             # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
             # instead of by the first find after a deploy; off without an embedding key.
             find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
+            from .domain.capacity import rate_observe
+            rate_task = asyncio.create_task(rate_observe.flush_worker()) if rate_observe.enabled() else None
+            for name in rate_observe.unknown_enforced_names():
+                logging.getLogger("treg").warning("event=provider_rate_enforce_unknown name=%s", name)
             endpoint_observations = app.state.endpoint_observation_reader
             routed_call.configure_endpoint_observation_reader(endpoint_observations)
+            # Measured verdict quality for X-Treg-Route-Decisive; unset settings keep price order.
+            from .infra import route_quality
+            try:
+                quality_reader = route_quality.from_settings(get_settings())
+            except Exception:  # a bad quality config must never stop serving; the header keeps price order
+                logging.getLogger("treg").warning("event=route_quality_disabled", exc_info=True)
+                quality_reader = None
+            routed_call.configure_route_quality_reader(quality_reader)
+            if quality_reader is not None:
+                from .domain.catalog import store as catalog_store
+                quality_reader.warm(catalog_store.load().contracts)
             mcp_reader_bound = role != "control" and _mcp is not None
             if mcp_reader_bound:
                 _mcp.configure_endpoint_observation_reader(endpoint_observations)
@@ -788,7 +827,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -798,6 +837,7 @@ def _lifespan(role: AppRole):
                     if mcp_reader_bound:
                         _mcp.clear_endpoint_observation_reader(endpoint_observations)
                     routed_call.clear_endpoint_observation_reader(endpoint_observations)
+                    routed_call.configure_route_quality_reader(None)
                     await arena.shutdown()
                     await endpoint_observations.aclose()
                     # analytics LAST: it is the sink the other two report their losses into, and a
@@ -807,14 +847,21 @@ def _lifespan(role: AppRole):
                     await call_events.drain()
                     if gauge_task is not None:
                         _emit_money_timings()
+                    if rate_task is not None:
+                        rate_observe.flush()
                     await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .infra import provider_rate
+                    await provider_rate.drain()
                     await kv.close()
+                    from .infra import org_endpoint_quota
+                    await org_endpoint_quota.close()
                 finally:
                     if traffic_reporting:
                         org_traffic.stop_reporting()
                     try:
+                        await stop_loop_stall_watch(stall_watch)
                         await stop_money_trace(trace_runner)
                     finally:
                         analytics.remove_fault_handler(fault_handler)
@@ -853,6 +900,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     # Registration order is part of the compatibility surface. add_middleware prepends entries.
     app.add_middleware(_LegacyHostRedirectMiddleware)
     app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_ClientNoticeMiddleware)
     app.add_middleware(_BodyDecodeMiddleware)
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
@@ -860,6 +908,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
     _include_role_routes(app, api_module, role)

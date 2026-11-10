@@ -3,12 +3,14 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker idempotency prune [--dry-run]       # expired completed replay answers
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
     treg-worker catalog repair-status --manifest <path>  # check the saved applied target list
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
+    treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
@@ -16,6 +18,9 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
+    treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
+    treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
     treg-worker enterprise cleanup [--org <id>]            # remove WorkOS setup after paid SSO ends
     treg-worker enterprise purge-audit [--days 400]        # delete expired SSO audit evidence
@@ -25,7 +30,7 @@ outbound calls to third parties, so they run as Render cron jobs with the server
 dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
 complete a hold opened by the request path, settling or releasing it with full call and org attribution.
 
-The two analytics commands exist so that no web process walks `callrecord` next to the money path:
+The audit-table analytics commands exist so that no web process walks `callrecord` next to the money path:
 each is a bounded incremental pass over the audit table that a cron repeats, and the request path
 reads only what they published.
 """
@@ -263,7 +268,7 @@ async def _asynctasks_settle(args) -> int:
 
 
 async def _hub_check(args) -> int:
-    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
     import httpx
@@ -442,6 +447,40 @@ async def _spend_rollup(args) -> int:
     return 0
 
 
+async def _billing_reconcile(args) -> int:
+    """Exit 1 and alert when a paid top-up is missing from the ledger; exit 0 when every one matches."""
+    from datetime import datetime, timedelta, timezone
+    from .application import billing
+    from .config import get_settings
+    from .infra import slack
+    from .infra.db import verify_db
+
+    webhook = get_settings().ops_slack_webhook_url
+    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
+    try:
+        await verify_db()
+        report = await billing.reconcile_topups(since=until - timedelta(hours=args.hours), until=until)
+    except Exception as exc:
+        if webhook:
+            await slack.post(webhook, f"treg-worker billing reconcile failed: {type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(report, sort_keys=True))
+    if not report["gaps"]:
+        return 0
+    if webhook:
+        await slack.post(webhook, billing.reconcile_alert(report))
+    return 1
+
+
+async def _usage_rollup(args) -> int:
+    from .infra.db import verify_db
+    from .application.call_usage_rollup import refresh
+
+    await verify_db()
+    print(json.dumps(await refresh(max_rows=args.max_rows), sort_keys=True))
+    return 0
+
+
 async def _jev_xboost(args) -> int:
     import httpx
 
@@ -485,19 +524,41 @@ async def _admin_purge_ad_clicks(args) -> int:
 
 async def _admin_erase_archive(args) -> int:
     """Erase what one opted-out team stored in the archive (application/archive_erasure): the
-    answer to an erasure request. Refuses a team still in the archive; opt it out first."""
+    answer to an erasure request. Refuses a team still in the archive; opt it out first.
+    `--dry-run` counts what would go, opted out or not, and touches neither rows nor objects.
+    Progress after each committed batch goes to stderr as one JSON line; the result to stdout."""
     from . import bootstrap
     from .application import archive_erasure
     from .infra.db import verify_db
 
     await verify_db()
+    sole_public = getattr(args, "include_sole_public", False)
+    if getattr(args, "dry_run", False):
+        print(json.dumps(await archive_erasure.count_org(args.org, include_sole_public=sole_public),
+                         sort_keys=True))
+        return 0
+    def progress(totals: dict) -> None:
+        print(json.dumps({"progress": totals}, sort_keys=True), file=sys.stderr, flush=True)
+
     try:
         async with bootstrap.archive_object_store():
-            result = await archive_erasure.erase_org(args.org)
+            result = await archive_erasure.erase_org(args.org, include_sole_public=sole_public,
+                                                     progress=progress)
     except archive_erasure.NotOptedOut as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
     print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+async def _admin_revoke_refund(args) -> int:
+    """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
+    missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    print(json.dumps(await billing.revoke_refunded_payment(args.payment_intent), sort_keys=True))
     return 0
 
 
@@ -609,6 +670,30 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+async def _idempotency_prune(args) -> int:
+    from dataclasses import asdict
+    import logging
+
+    from .infra.db import verify_db
+    from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
+
+    await verify_db()
+    logging.basicConfig(level=logging.INFO)
+    result = await prune_expired_idempotency(
+        batch_size=args.batch_size, pause_s=args.pause_seconds,
+        max_batches=args.max_batches, dry_run=args.dry_run,
+    )
+    out = asdict(result)
+    trim = None
+    if not getattr(args, "skip_trim", False):
+        # Live rows whose answer the archive holds byte for byte drop their own copy.
+        trim = await trim_archived_answers(
+            batch_size=args.batch_size, pause_s=args.pause_seconds,
+            max_batches=args.max_batches, dry_run=args.dry_run,
+        )
+        out["trim"] = asdict(trim)
+    print(json.dumps(out, default=str, sort_keys=True))
+    return 0 if result.complete and (trim is None or trim.complete) else 1
 
 
 async def _run_command(args) -> int:
@@ -625,6 +710,10 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
+                    from .domain.capacity import rate_observe
+                    from .infra import provider_rate
+                    rate_observe.flush()
+                    await provider_rate.drain()
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
@@ -736,6 +825,20 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    bill = sub.add_parser("billing", help="prepaid balance top-ups")
+    billsub = bill.add_subparsers(dest="cmd", required=True)
+    breconcile = billsub.add_parser("reconcile", help="check every top-up Stripe collected against the ledger")
+    breconcile.add_argument("--hours", type=_positive_int, default=48,
+                            help="how far back to look, ending --grace-minutes ago")
+    breconcile.add_argument("--grace-minutes", type=_positive_int, default=30,
+                            help="leave the newest payments to their in-flight webhook")
+    breconcile.set_defaults(fn=_billing_reconcile)
+    usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
+    usagesub = usage.add_subparsers(dest="cmd", required=True)
+    urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")
+    urollup.add_argument("--max-rows", type=_positive_int, default=500_000,
+                         help="audit rows to fold in one run; the next run resumes from the cursor")
+    urollup.set_defaults(fn=_usage_rollup)
     jev = sub.add_parser("jev", help="the /jev landing-page demos")
     jevsub = jev.add_subparsers(dest="cmd", required=True)
     xb = jevsub.add_parser("xboost", help="launch posts on X from the last 24h -> forensics -> jev; stores the run for /jev")
@@ -753,7 +856,14 @@ def main(argv: list[str] | None = None) -> int:
     clicks.set_defaults(fn=_admin_purge_ad_clicks)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
+    erase.add_argument("--dry-run", action="store_true",
+                       help="count the keys, snapshots, bodies and marks that would go; delete nothing")
+    erase.add_argument("--include-sole-public", action="store_true",
+                       help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
+    revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
+    revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
+    revoke.set_defaults(fn=_admin_revoke_refund)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")
@@ -765,6 +875,16 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
+    idemsub = idem.add_subparsers(dest="cmd", required=True)
+    prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.add_argument("--batch-size", type=int, default=200)
+    prune.add_argument("--pause-seconds", type=float, default=0.25)
+    prune.add_argument("--max-batches", type=int, default=10000)
+    prune.add_argument("--skip-trim", action="store_true",
+                       help="only delete expired rows; keep live rows' copies of archived answers")
+    prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(_run_command(args))

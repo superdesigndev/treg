@@ -291,8 +291,7 @@ def test_top_ai_models_adds_up_a_model_across_its_vendors():
     (model,) = [m for m in board["models"] if m["model"] == cap.split(".")[1]]
     assert model["calls"] == 1_000 and model["change"] == 400.0
     assert model["vendors"][0] == store.provider_label(a["provider"]) and len(model["vendors"]) == 2
-    assert {t["provider"] for t in board["tools"]} >= {a["provider"], b["provider"]}
-    assert set(board) == {"models", "tools"}
+    assert set(board) == {"models"}
 
 
 def test_a_model_has_one_key_and_a_readable_name_at_every_vendor():
@@ -329,8 +328,13 @@ def test_a_model_that_moved_vendor_compares_with_all_its_earlier_calls():
         board = rankings.build(rows, cat, LAST)["ai_models"]["7d"]
         (model,) = board["models"]
         assert model["calls"] == 1_600 and model["change"] == 60.0   # against all 1,000 the week before
-        (rep,) = [t for t in board["tools"] if t["provider"] == "replicate"]
-        assert rep["models"] == 1
     finally:
         for ep in added:
             cat.endpoints.remove(ep); cat.by_id.pop(ep["id"])
+
+
+def test_a_decision_model_is_its_own_type_and_counts_in_all():
+    (jev,) = [e for e in store.load().endpoints if e["platform"] == "ai-judge" and store.browsable(e)]
+    board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
+    (model,) = board["models"]
+    assert model["type"] == "Decision" and model["calls"] == 50

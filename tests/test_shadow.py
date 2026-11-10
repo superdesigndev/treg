@@ -71,6 +71,7 @@ async def test_collect_pairs_served_calls_with_the_candidate_and_keeps_no_values
     await _served_call("acme.example", {"data": {"name": "Acme Inc", "domain": "acme.example",
                                                   "category": {"industry": "Software"}}})
     await _served_call("ghost.example", {"data": {"name": None}})
+    await _served_call("busy.example", {"data": {"name": "Busy Ltd", "domain": "busy.example"}})
     seen = []
 
     def candidate(request: httpx.Request) -> httpx.Response:
@@ -79,16 +80,19 @@ async def test_collect_pairs_served_calls_with_the_candidate_and_keeps_no_values
             return httpx.Response(200, headers={"x-units": "1"}, json={"data": {
                 "name": "ACME", "domain": "acme.example", "industry": "Software",
                 "people": [{"email": "a@acme.example"}, {"email": None}]}})
+        if request.url.params.get("domain") == "busy.example":
+            return httpx.Response(429, json={"error": "rate limit"})
         return httpx.Response(404, json={"error": "no such company"})
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(candidate))
     result = await service.collect(session_factory=session_maker, client=client, max_seconds=10)
-    assert result["paired"] == 2
+    assert result["paired"] == 3
     assert sorted(seen) == [("/company", "acme.example", "Bearer candidate-key"),
+                            ("/company", "busy.example", "Bearer candidate-key"),
                             ("/company", "ghost.example", "Bearer candidate-key")]
     async with session_maker() as db:
         pairs = (await db.execute(select(ShadowPair).order_by(ShadowPair.id))).scalars().all()
-    hit, miss = pairs
+    hit, miss, _refused = pairs
     assert (hit.served_found, hit.shadow_found, hit.shadow_with_email, hit.shadow_units) == (True, True, 1, 1.0)
     assert hit.fields == {"domain": True, "industry": True, "name": True}
     assert (miss.served_found, miss.shadow_found, miss.shadow_status) == (False, False, 404)
@@ -98,7 +102,9 @@ async def test_collect_pairs_served_calls_with_the_candidate_and_keeps_no_values
     assert again["paired"] == 0
     report = await service.report(session_factory=session_maker)
     row = report["rows"][0]
-    assert (row["pairs"], row["served_hit_pct"], row["shadow_hit_pct"], row["shadow_hit_with_email_pct"]) == (2, 50.0, 50.0, 50.0)
+    # The 429 is no answer: it counts as an error and stays out of the hit rates.
+    assert (row["pairs"], row["answered"], row["shadow_error_pct"]) == (3, 2, 33.3)
+    assert (row["served_hit_pct"], row["shadow_hit_pct"], row["shadow_hit_with_email_pct"]) == (50.0, 50.0, 50.0)
     assert row["agreement_pct"] == {"domain": 100.0, "industry": 100.0, "name": 100.0}
     await client.aclose()
 
@@ -107,3 +113,13 @@ async def test_collect_is_off_without_the_setting(clients, monkeypatch):
     monkeypatch.delenv("TREG_SHADOW_PROVIDER", raising=False)
     get_settings.cache_clear()
     assert await service.collect(session_factory=session_maker) == {"status": "off"}
+
+
+def test_role_words_become_seniority_and_department_and_one_item_lists_unwrap():
+    assert P.evaluate("role_seniority(t)", {"t": ["CMO", "VP Marketing", "Head of Growth"]}) == ["c_level", "vp", "director"]
+    assert P.evaluate("role_department(t)", {"t": ["CMO", "VP Marketing", "Head of Growth"]}) == ["marketing"]
+    assert P.evaluate("role_seniority(t)", {"t": "Software Engineer"}) is None
+    assert P.evaluate("scalar(d)", {"d": ["acme.example"]}) == "acme.example"
+    identity = rules.request_identity(store.load().adapters["quickenrich.people.search"], {},
+                                      {"company_url": {"include": ["acme.example"]}, "title": {"include": ["CMO"]}})
+    assert identity == {"company_domain": "acme.example", "title": "CMO"}

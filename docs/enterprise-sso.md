@@ -1,25 +1,15 @@
 # Enterprise SSO setup
 
 This integration uses WorkOS for a customer's SAML or OIDC connection. treg remains responsible for
-accounts, team roles, browser sessions, and API keys. The team owner purchases a monthly Stripe
-subscription and opens WorkOS setup from **Team → SSO**. The link is generated when clicked and
-expires after five minutes. The owner can invite an IT admin by email through WorkOS, or open the
-short-lived setup link directly. The owner can copy the employee sign-in link from **Team → SSO**;
-on any treg sign-in dialog, employees can choose **Company SSO**, enter their work email, and
-select **Continue with SSO**. Email code remains the default sign-in method.
-The lookup routes them to a verified company connection. It does not authenticate or join them.
-Their first successful sign-in joins the existing team as a member.
-The owner can change roles in **Members**.
-Team display names may repeat; the link name is the unique slug in the employee sign-in URL
-(for example, a second team named `Test` receives `test-2`). Employees can use the owner's exact
-link if email discovery returns no match or several teams. When several teams match, the dialog
-lists their names and unique link names so the employee can choose. Email is a routing hint, not
-access proof. Existing verified treg users sign in normally once before linking their company
-identity; treg resumes that pending SSO attempt in the same browser.
+accounts, team roles, browser sessions and API keys. Email code remains the default sign-in method;
+**Company SSO** on any sign-in dialog takes a work email, which is a routing hint, not access proof:
+the lookup routes to a verified company connection and neither authenticates nor joins. Employees
+can also use the team's sign-in link, named by the team's unique slug (team display names may
+repeat), when discovery returns no match or several teams.
 
 ## Configure the deployment
 
-1. Apply Alembic migrations through `0085` before running the new code.
+1. Apply Alembic migrations (`python -m treg upgrade`); the server refuses to boot on an older schema.
 2. In the WorkOS environment, create an API key and find the client ID. Set
    `TREG_WORKOS_API_KEY` and `TREG_WORKOS_CLIENT_ID` on the server. Set a stable
    `TREG_SECRET_KEY` and `TREG_SESSION_SECRET` for the state and browser cookies.
@@ -32,7 +22,6 @@ identity; treg resumes that pending SSO attempt in the same browser.
    Run `treg-worker enterprise reconcile` periodically to repair missed webhook deliveries.
    Also run `treg-worker enterprise cleanup` periodically after subscriptions end. It removes
    WorkOS SSO connections and directories; monitor its nonzero exit status and retry failures.
-   It reads the complete WorkOS roster before changing access; monitor failures.
 5. Configure Stripe's existing `TREG_STRIPE_SECRET_KEY` and `TREG_STRIPE_WEBHOOK_SECRET`. Create
    one reusable USD monthly Stripe Product/Price per offered plan in the same test or live
    account as the secret key. Set `TREG_ENTERPRISE_SSO_BUNDLE_PRICE_ID` for the bundle and,
@@ -43,9 +32,8 @@ identity; treg resumes that pending SSO attempt in the same browser.
    `TREG_ENTERPRISE_SSO_BUNDLE_MIN_PRICE_USD` and `TREG_ENTERPRISE_SSO_ONLY_MIN_PRICE_USD`
    reject a Stripe Price below each plan's deployment-specific minimum; both default to zero.
    Existing subscribers can manage SSO when Stripe's Price API is temporarily unavailable.
-   A price change requires a new Price ID;
-   existing subscriptions keep their old
-   Price until explicitly migrated. Send
+   A price change requires a new Price ID; existing subscriptions keep their old Price until
+   explicitly migrated. Send
    `checkout.session.completed`, `customer.subscription.created`,
    `customer.subscription.updated`, and `customer.subscription.deleted` to the existing
    `/billing/stripe/webhook` endpoint. The same Stripe account can handle tool balance top-ups and
@@ -62,23 +50,12 @@ treg returns the employee to its sign-in dialog with an explanation.
 
 ## Owner and employee flow
 
-The team owner chooses **SSO** or **SSO + Directory Sync** at the monthly amount configured in
-Stripe. The default
-`TREG_ENTERPRISE_SSO_BUNDLE_ONLY=true` displays only the bundle; set it to `false` to offer both.
-Each checkout uses the configured reusable Stripe Price rather than creating a new Product and
-Price for every team.
-After Stripe reports an active subscription, the owner follows the checked setup cards in
-**Team → SSO**. **Set up company SSO** opens WorkOS; on the bundle, **Set up Directory Sync**
-opens the directory setup. The owner should complete a real test sign-in before clicking
-**Require SSO**. That control only becomes available after a successful
-WorkOS sign-in.
-
-The owner may enter an IT admin email to have WorkOS send setup instructions; the recipient does
-not need a treg owner account. The Admin Portal button remains for owners doing setup themselves.
-The SSO tab is always available to the team owner. Other members see it only after a paid SSO
-connection is ready; the tab lets them copy the employee sign-in link rather than sending their
-already signed-in browser through SSO again. The Team heading also offers the link without
-opening SSO settings. Non-owners do not fetch Stripe plan prices.
+The team owner subscribes to **SSO** or **SSO + Directory Sync** in **Team -> SSO**
+(`TREG_ENTERPRISE_SSO_BUNDLE_ONLY`, default `true`, shows only the bundle). Once Stripe reports an
+active subscription, the owner opens WorkOS setup from there (the link is generated on click and
+expires after five minutes) or has WorkOS email an IT admin, who needs no treg account. **Require
+SSO** becomes available only after a successful WorkOS sign-in. Non-owners see the SSO tab, to
+copy the sign-in link, only once a paid connection is ready.
 
 An employee who signs in through the team's WorkOS organization gets a team membership with the
 `member` role. A regular email or social sign-in does not satisfy SSO enforcement for that team,

@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "data": [
+    {
+      "first_name": "Peter",
+      "last_name": "Jackson",
+      "email": [
+        {"email": "peter.jackson@company.com", "qualification": "nominative@pro"}
+      ],
+      "company": "Company",
+      "website": "www.company.com"
+    }
+  ]
+}

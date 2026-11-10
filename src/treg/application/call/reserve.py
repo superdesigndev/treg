@@ -69,7 +69,14 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
     check — a team with its own key is never throttled by the trial it does not use.
 
     FAIL-CLOSED like the platform cap: the quota being protected is the shared vendor key, and
-    serving blind when the count cannot be read is how the pool dies for everyone."""
+    serving blind when the count cannot be read is how the pool dies for everyone.
+
+    The count reads every audit row of the team's day, and a busy team has a large day. A day's
+    count only grows, so a team found at its allowance is remembered in this process until 00:00
+    UTC and refused without counting again; the calls that still count are the few below it. The
+    team is remembered with its creation time, since SQLite gives a deleted team's id to the next
+    one. `used_today` is the count when the team was found at its allowance: a lower bound, as the
+    audit lag already made it."""
     catalog = catalog_store.load()
     allowance = catalog.trial_pools.get(provider)
     if not allowance:
@@ -83,29 +90,51 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
     ]
     day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0,
                                                    tzinfo=None)
+    spent_key = (caller.org_id, caller.org.created_at, provider, day_start.date().isoformat())
+    used = _spent_trials.get(spent_key, 0)
+    if used < allowance:
+        used = await _trial_calls_today(caller, provider, paid_endpoint_ids, day_start, db)
+        if used >= allowance:
+            _remember_spent_trial(spent_key, used)
+    if used >= allowance:
+        raise ReservationFailed("trial_allowance_reached", status_code=429, detail={
+            "error": "trial_allowance_reached", "provider": provider,
+            "allowance_per_day": allowance, "used_today": int(used),
+            "message": (f"this team has used its free {provider} trial for today "
+                        f"(at least {used} of {allowance} calls). It resets at 00:00 UTC — or connect your "
+                        f"own {provider} key for unmetered calls at your plan's limits: "
+                        "treg connections connect"),
+        })
+
+
+_spent_trials: dict[tuple[int, datetime, str, str], int] = {}
+_SPENT_TRIALS_KEPT = 10_000
+
+
+def _remember_spent_trial(key: tuple[int, datetime, str, str], used: int) -> None:
+    if len(_spent_trials) >= _SPENT_TRIALS_KEPT:
+        _spent_trials.clear()
+    for stale in [k for k in _spent_trials if k[3] != key[3]]:
+        del _spent_trials[stale]
+    _spent_trials[key] = used
+
+
+async def _trial_calls_today(caller: Caller, provider: str, paid_endpoint_ids: list[str],
+                             day_start: datetime, db: AsyncSession) -> int:
     try:
-        used = (await db.execute(
+        return int((await db.execute(
             select(func.count(CallRecord.id)).where(
                 CallRecord.org_id == caller.org_id,
                 CallRecord.credential_tier == "platform",
                 CallRecord.tool_name.in_(paid_endpoint_ids),  # type: ignore[union-attr]
                 CallRecord.status_code >= 200, CallRecord.status_code < 300,
-                CallRecord.created_at >= day_start))).scalar_one()
+                CallRecord.created_at >= day_start))).scalar_one())
     except Exception as exc:  # cannot verify the pool ⇒ do not drain it
         logging.getLogger("treg.ledger").warning(
             "trial-allowance check failed for org %s / %s: %s", caller.org_id, provider, exc)
         raise ReservationFailed("trial_allowance_unavailable", status_code=429, detail=(
             f"cannot verify today's {provider} trial usage right now — retry shortly, or use "
             "your own key: treg connections connect")) from exc
-    if used >= allowance:
-        raise ReservationFailed("trial_allowance_reached", status_code=429, detail={
-            "error": "trial_allowance_reached", "provider": provider,
-            "allowance_per_day": allowance, "used_today": int(used),
-            "message": (f"this team has used its free {provider} trial for today "
-                        f"({used}/{allowance} calls). It resets at 00:00 UTC — or connect your "
-                        f"own {provider} key for unmetered calls at your plan's limits: "
-                        "treg connections connect"),
-        })
 
 
 async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncSession) -> None:
@@ -242,15 +271,47 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                 })
 
 
+async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
+    """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
+    mk.payer_org_id = caller.org_id
+    mk.reserved_micro = 0
+    mk.reserved_at = time.monotonic()
+    if budget_policy._effective_daily_cap(caller.org) > 0:
+        async with session_maker() as db:
+            await _enforce_platform_daily_cap(caller, 0, db)
+
+
+def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
+    """Whose money a metered call spends, and the line naming the way off that meter."""
+    wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
+    # For a billed OAuth call "connect your own key" is not the fix: the connection already exists,
+    # and the way off the meter is bringing your OWN developer app to /oauth/start.
+    alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) - those calls are never metered"
+           if mk.billed_oauth else
+           f"  or use your own key: treg connections connect --provider {mk.provider}")
+    return wallet, alt
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
-                            call_ref: str | None = None) -> None:
+                            call_ref: str | None = None, *, allow_holdless: bool = False) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
     `meta` is the caller's parsed X-Treg-Meta bag, passed explicitly rather than hung off `mk`:
     attribution decides who a reselling builder bills, and it belongs to the request, not to the
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
-    dimension here would be a second place that could disagree about who pays."""
+    dimension here would be a second place that could disagree about who pays.
+
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
+    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    balance row. A tagged call keeps its hold,
+    because the tag rows written with it count toward `calls_per_day`."""
+    if (allow_holdless and mk.holdless_eligible and not meta.tags
+            and caller.org_id in get_settings().holdless_free_org_ids):
+        await _holdless_reserve(mk, caller)
+        return
+    mk.holdless = False
     charged = ledger.with_margin(mk.estimate_micro)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)
@@ -314,12 +375,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
-        wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
-        # For a billed OAuth call "connect your own key" is not the fix — the connection already
-        # exists; the way off the meter is bringing your OWN developer app to /oauth/start.
-        alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) — those calls are never metered"
-               if mk.billed_oauth else
-               f"  or use your own key: treg connections connect --provider {mk.provider}")
+        wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
         # otherwise the natural reading of "add funds" is that auto top-up is broken.

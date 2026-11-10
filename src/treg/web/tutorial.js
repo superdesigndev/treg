@@ -1,7 +1,7 @@
 /* tools-registry - the interactive tutorial, as data.
  *
  * SINGLE SOURCE OF TRUTH for the walkthrough. Both the in-dashboard Help view
- * (src/treg/web/index.html) and the standalone page (docs/tutorial.html) render
+ * (frontend/src/pages/HelpPage.vue) and the standalone page (src/treg/web/tutorial.html) render
  * from `window.TREG_TUTORIAL` and highlight with `window.tregHL`, so they never drift.
  *
  * Each step: { part, who, title, explain, cmd, out, notice }.
@@ -62,7 +62,7 @@
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Find a tool by what it DOES",
       explain: "Tom has just installed the CLI. He has no team, no keys, nothing registered — and he can already work. He does not need to know which vendor sells backlink data; he searches by the <b>job</b>. Each hit shows what it costs, so nothing is a surprise.",
       cmd: `treg catalog search "backlinks for a domain"`,
-      out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.links.summary                     web        Moz          $0.0025/call\n  majestic.backlinks.list               web        Majestic     $0.010/call\n  …`,
+      out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.web.backlinks.summary             web        Moz          $0.013334/call (2 quota rows)\n  majestic.web.backlinks.list           web        Majestic     $0.02/call (5000 analysis units)\n  …`,
       notice: "Several providers usually serve one capability at different prices. treg shows them side by side — <b>choosing is yours</b>; it does not silently pick or fail over for you." },
 
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Read the price before you spend",
@@ -131,11 +131,11 @@
       out: `{\n  "code": "ZTeW5ss-cXiyvzeMs3em-…",\n  "email": "alice@superdesign.dev",\n  "role": "viewer",\n  "org_id": 2,\n  "expires_at": "2026-07-09T…"\n}`,
       notice: "This time we <b>keep the code</b> - Alice uses it directly next." },
 
-    { part: "Part 4 · Alice joins (code door)", who: "alice", title: "Alice joins by code (no login first)",
-      explain: "The contrast with Bob: Alice <b>never runs</b> <code>login</code>. The code itself proves her email, so <code>join</code> creates her, adds her to Superdesign, and saves her token - all in one command.",
-      cmd: `HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-… --email alice@superdesign.dev`,
-      out: `{\n  "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",\n  "token": "<alice's superdesign token>",\n  "personal": { "org": "alice-superdesign-dev", "org_id": 4, "role": "owner",\n                "token": "<alice's personal token>" }\n}`,
-      notice: "One command created Alice, gave her a personal org, and made her a viewer - Tom never handled her token." },
+    { part: "Part 4 · Alice joins (code door)", who: "alice", title: "Alice signs in, then joins by code",
+      explain: "The contrast with Bob: Alice uses the <b>code</b> instead of browsing her invites. The code only names the invite - Tom holds it too - so Alice still proves her email with <code>login</code> first. Then <code>join</code> adds her to Superdesign and saves her token.",
+      cmd: `HOME=~/.treg-personas/alice treg login --email alice@superdesign.dev\nHOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-…`,
+      out: `We sent a 6-digit code to alice@superdesign.dev.\nEnter code: 304917\n✓ Logged in as alice@superdesign.dev.\n{\n  "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",\n  "token": "<alice's superdesign token>"\n}`,
+      notice: "The code picked the invite; Alice's own sign-in proved who she is. Tom never handled her token." },
 
     { part: "Part 4 · Alice joins (code door)", who: "alice", title: "The viewer role has teeth",
       explain: "Alice can read and call, but a viewer <b>cannot register</b> anything. Watch her get stopped.",

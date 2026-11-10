@@ -1,0 +1,13 @@
+{
+  "name": "web-access",
+  "version": "0.30.0",
+  "description": "Use only when the agent's own web tools can't do the job. Use what you already have first (built-in web search and fetch, a browser, MCP servers the user installed); come here when none of them covers it, such as a page they can't read, structured data from a platform they have no tool for (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers), or when the user asks for treg. Not for localhost, staging, internal pages or public docs your own fetch can read. Starts free, and treg falls back to the next vendor when one fails.",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0"
+}

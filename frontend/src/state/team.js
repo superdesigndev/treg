@@ -25,7 +25,7 @@ async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgI
       // the same roster (an agent IS a membership). The optional ones fall back to empty.
       try{ const [members, invites, projects, deny, cliDeny, agents, observed]=await Promise.all([
              get('/members'), get('/invites'), get('/projects'), get('/deny'),
-             get('/policy/cli-deny').catch(()=>[]), get('/agents').catch(()=>[]), get('/agents/observed').catch(()=>[]), keys]);
+             get('/policy/cli-deny').catch(()=>[]), get('/agents').catch(()=>[]), this.reportApi('/orgs/'+id+'/agents/observed').catch(()=>[]), keys]);
            if(!live()) return;
            this.orgMembers=members; this.orgMembersLoaded=true; this.orgInvites=invites;
            this.projects=projects; this.denyRules=deny; this.cliDeny=cliDeny; this.agents=agents;

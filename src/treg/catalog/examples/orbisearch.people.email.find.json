@@ -1,0 +1,20 @@
+{
+  "status": "safe",
+  "substatus": "deliverable",
+  "explanation": "Safe to email. The mailbox exists and is deliverable.",
+  "confidence": 99,
+  "credits_consumed": 1,
+  "email_provider": "Microsoft Outlook",
+  "mx_record": "microsoft-com.mail.protection.outlook.com",
+  "is_domain_catch_all": false,
+  "is_secure_email_gateway": false,
+  "is_disposable": false,
+  "is_role_account": false,
+  "is_free": false,
+  "first_name": "Example",
+  "last_name": "Person",
+  "domain": "example.com",
+  "email_domain": "example.com",
+  "linkedin_url": null,
+  "email": "example.person@example.com"
+}

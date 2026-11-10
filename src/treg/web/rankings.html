@@ -186,6 +186,8 @@
   .sm-list { max-height: 300px; overflow: auto; margin: 0; padding: 5px; list-style: none; outline: none; }
   .sm-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink); font-size: 13.5px; white-space: nowrap; cursor: pointer; }
   .sm-list li.active { background: var(--card); }
+  .sm-list { overflow-x: hidden; }
+  .sm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sm-ico:empty { display: none; }
   .sm-ico { display: inline-flex; flex: none; color: var(--ink2); }
   .sm-ico svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -406,10 +408,9 @@
 
     <section class="board" id="aimodels">
       <div class="bh">
-        <div><h2>Top AI models</h2><p>Image, video and audio generation, per model across all vendors.</p></div>
+        <div><h2>Top AI models</h2><p>AI models, each across all the vendors that serve it.</p></div>
         <div class="ctl"><div class="sm" data-type="aimodels"></div><div class="seg" data-win="aimodels"><button data-v="7d" class="on">Last 7 days</button><button data-v="30d">Last 30 days</button></div></div>
       </div>
-      <div class="ctl" style="margin:-4px 0 14px"><div class="seg" data-kind="aimodels"><button data-v="models" class="on">Models</button><button data-v="tools">Providers</button></div></div>
       <div class="list" id="aimodels-list"></div>
       <div class="more" data-more="aimodels" hidden><button>Show more</button></div>
     </section>
@@ -485,6 +486,8 @@
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+      <!--hosted--><div class="bf-col"><div class="lab">Compare</div>
+        <a href="/compare/treg-vs-clay">treg vs Clay</a><a href="/compare/treg-vs-apollo">treg vs Apollo</a><a href="/compare/treg-vs-composio">treg vs Composio</a><a href="/compare/treg-vs-zapier">treg vs Zapier MCP</a><a href="/compare/treg-vs-apify">treg vs Apify</a><a href="/compare/treg-vs-openrouter">treg vs OpenRouter</a><a href="/compare">All comparisons →</a></div><!--/hosted-->
     </nav>
   </div>
   <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
@@ -619,7 +622,7 @@
     const paintButton = () => { button.querySelector(".sm-ico").replaceWith(icon(current())); button.querySelector(".sm-value").textContent = current().label; button.setAttribute("aria-label", label + ": " + current().label); };
     const paintList = () => {
       const list = pop.querySelector("ul"), rows = shown();
-      list.innerHTML = rows.length ? rows.map((o, i) => `<li id="${id}-${i}" role="option" aria-selected="${o.value === value}" class="${i === active ? "active" : ""}" data-i="${i}"><span class="sm-ico"></span><span>${esc(o.label)}</span>${o.value === value ? '<svg class="sm-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>' : ""}</li>`).join("")
+      list.innerHTML = rows.length ? rows.map((o, i) => `<li id="${id}-${i}" role="option" aria-selected="${o.value === value}" class="${i === active ? "active" : ""}" data-i="${i}" title="${esc(o.label)}"><span class="sm-ico"></span><span class="sm-label">${esc(o.label)}</span>${o.value === value ? '<svg class="sm-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>' : ""}</li>`).join("")
         : `<li class="sm-none" role="presentation">No matches</li>`;
       list.querySelectorAll("li[data-i]").forEach((li) => li.querySelector(".sm-ico").replaceWith(icon(rows[+li.dataset.i])));
       list.setAttribute("aria-activedescendant", rows.length ? `${id}-${active}` : "");
@@ -680,7 +683,7 @@
   // per board: what is chosen, whether "Show more" was pressed, and whether its data is here
   const state = { tools: { win: "7d", all: false }, endpoints: { win: "7d", cat: "", all: false },
                   trending: { kind: "providers", all: false }, reliable: { cat: "", all: false }, fastest: { cat: "", all: false },
-                  headtohead: { job: "", all: false }, aimodels: { win: "7d", kind: "models", type: "", all: false } };
+                  headtohead: { job: "", all: false }, aimodels: { win: "7d", type: "", all: false } };
   function paint(name, rows, render) {
     const list = $(name + "-list"), more = document.querySelector(`[data-more="${name}"]`);
     const st = state[name];
@@ -715,11 +718,8 @@
     },
     aimodels() {
       const st = state.aimodels, board = (D.ai_models || {})[st.win] || {};
-      const rows = (board[st.kind] || []).filter((r) => !st.type || r.type === st.type);
-      const who = {
-        models: (r) => `<a href="${toolLink(r.provider)}">${esc(r.name)}</a><small>${esc(r.type)} · via ${esc((r.vendors || []).join(", "))}</small>`,
-        tools: (r) => `<a href="${toolLink(r.provider)}">${esc(r.label)}</a><small>${esc(r.type)} · ${num(r.models)} model${num(r.models) === 1 ? "" : "s"}</small>`,
-      }[st.kind];
+      const rows = (board.models || []).filter((r) => !st.type || r.type === st.type);
+      const who = (r) => `<a href="${toolLink(r.provider)}">${esc(r.name)}</a><small>${esc(r.type)} · via ${esc((r.vendors || []).join(", "))}</small>`;
       paint("aimodels", rows, (r, i) => row(i, r, who(r), `<b>${compact(r.calls)}</b>${change(r.change)}`));
     },
     headtohead() {
@@ -768,7 +768,7 @@
   function setUp(name) {
     if (name === "aimodels") {   // a type menu: the types that have calls, in a fixed order
       const have = new Set(Object.values(D.ai_models || {}).flatMap((b) => (b.models || []).map((r) => r.type)));
-      const types = ["Image", "Video", "Audio"].filter((t) => have.has(t));
+      const types = ["Image", "Video", "Audio", "Decision"].filter((t) => have.has(t));
       selectMenu(document.querySelector('.sm[data-type="aimodels"]'), "Type",
         [{ value: "", label: "All types" }, ...types.map((t) => ({ value: t, label: t }))],
         (v) => { state.aimodels.type = v; state.aimodels.all = false; draw.aimodels(); });

@@ -1,0 +1,83 @@
+{
+  "places": [
+    {
+      "id": "NrSvxJcZJk0",
+      "name": "Embriago Coffee",
+      "address": "5 Rivington St, New York, NY 10002, USA",
+      "lat": 40.7212926,
+      "lon": -73.99295049999999,
+      "distance_km": 10.7,
+      "score": 9.8,
+      "category_scores": [
+        {
+          "category_id": "69e178c3-14be-11ee-a9cb-614c6a0a867a",
+          "name": "Cappuccino",
+          "score": 10,
+          "reviews": 18
+        }
+      ],
+      "reasons": [
+        {
+          "text": "It was the best cappuccino I’ve ever had.",
+          "kind": "Specific Drink",
+          "sentiment": "positive"
+        },
+        {
+          "text": "I found the cappuccino at Embriago Coffee to be the best I had in NYC.",
+          "kind": "Specific Drink",
+          "sentiment": "positive"
+        },
+        "… 6 more item(s) truncated"
+      ],
+      "blurb": "Thoughtfully curated, sophisticated yet laid-back coffee shop with a speakeasy-inspired ambiance and comfortable seating.",
+      "place_type": "Coffee shop",
+      "review_count": 345,
+      "google_rating": 4.9,
+      "price": "$1 to $10",
+      "url": "https://www.atly.com/location/EmbriagoCoffee",
+      "timezone": "America/New_York",
+      "good_to_know": [
+        "Embriago Coffee offers a spacious seating area for customers.",
+        "Credit cards and mobile payments are accepted at Embriago Coffee.",
+        "… 3 more item(s) truncated"
+      ],
+      "business_status": "OPERATIONAL",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Embriago+Coffee%2C+5+Rivington+St%2C+New+York%2C+NY+10002%2C+USA&query_place_id=ChIJIW02-Q5ZwokR3lDY6rBN29E",
+      "added_at": "2025-09-14T14:11:36.701Z",
+      "data_refreshed_at": "2026-03-19T19:20:19.756Z",
+      "open_now": true,
+      "hours_updated_at": "2025-09-14T14:11:36.681Z",
+      "hours": [
+        {
+          "day": "thu",
+          "open": "07:00",
+          "close": "17:00"
+        },
+        {
+          "day": "fri",
+          "open": "07:00",
+          "close": "17:00"
+        },
+        "… 5 more item(s) truncated"
+      ]
+    }
+  ],
+  "total_matched": "1000+",
+  "dropped_categories": [],
+  "area": {
+    "id": "canonical-area::c790a21e-65a4-5e5c-8061-64900cd3fd0e",
+    "name": "New York",
+    "level": "city",
+    "bbox": [
+      -74.30567959999999,
+      40.3463196,
+      "… 2 more item(s) truncated"
+    ],
+    "center": [
+      -74.00410345,
+      40.6255352
+    ]
+  },
+  "doc_notes": "Left out 17 of the strongest candidates: their address is in another city inside New York's search box (Cliffside Park, New Jersey; Elizabeth, New Jersey; West New York, New Jersey and 11 more). Search one of those cities by name for its places; total_matched counts the whole box, those cities included. 1000+ places match Cappuccino, best first; ranking considers the strongest 100 candidates. Scores are 0–10 relative to other places in the same country; quote the reasons, and link url where a pl… [791 chars total]",
+  "call_id": "1aef083e-8c8b-4fb4-a572-db2a01f2b141"
+}

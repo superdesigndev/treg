@@ -93,8 +93,8 @@ treg catalog search "backlinks for a domain"
 
   ENDPOINT                              PLATFORM   PROVIDER     COST
   dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call
-  moz.links.summary                     web        Moz          $0.0025/call
-  majestic.backlinks.list               web        Majestic     $0.010/call
+  moz.web.backlinks.summary             web        Moz          $0.013334/call (2 quota rows)
+  majestic.web.backlinks.list           web        Majestic     $0.02/call (5000 analysis units)
 ```
 
 > Several providers usually serve one capability at different prices. treg shows them side by side
@@ -319,25 +319,24 @@ HOME=~/.treg-personas/tom treg org invite alice@superdesign.dev --role viewer
 
 **Notice:** this time we **keep the code** - Alice uses it directly next.
 
-## Step 13 - Alice joins by code (no login first)
+## Step 13 - Alice signs in, then joins by code
 
-The contrast with Bob: Alice **never runs** `login`. The code itself proves her email, so `join` creates
-her, adds her to Superdesign, and saves her token - all in one command.
+The contrast with Bob: Alice uses the **code** instead of browsing her invites. The code only names the
+invite - Tom holds it too - so Alice still proves her email with `login` first. Then `join` adds her to
+Superdesign and saves her token.
 
 ```bash
-HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-… --email alice@superdesign.dev
+HOME=~/.treg-personas/alice treg login --email alice@superdesign.dev
+HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-…
 ```
 ```json
 {
   "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",
-  "token": "<alice's superdesign token>",
-  "personal": { "org": "alice-superdesign-dev", "org_id": 4, "role": "owner",
-                "token": "<alice's personal token>" }
+  "token": "<alice's superdesign token>"
 }
 ```
 
-**Notice:** one command created Alice, gave her a personal org, and made her a viewer - Tom never handled
-her token.
+**Notice:** the code picked the invite; Alice's own sign-in proved who she is. Tom never handled her token.
 
 ## Step 14 - The viewer role has teeth
 
@@ -575,6 +574,81 @@ any of them with `treg skill install <name>` (or `--all`), which writes the reci
 
 > **Non-interactive safety:** run from an agent/CI (no TTY) and upload refuses without `--all` or
 > `--select`, so credentials are never registered unattended by accident.
+
+---
+
+# Part 6c - Run a CLI tool
+
+Every tool so far was an HTTP **API** you `call`. Many providers also ship a **command-line tool** (stripe,
+gh, gcloud…). `treg run` executes that CLI with the org's credential injected - so a teammate uses it
+*without* owning the key or logging in.
+
+## Step 22c - Turn on `run` for a CLI tool
+
+Because a run hands the credential to a machine, the owner opts each tool in first (the dashboard's **⌘ run**
+toggle is the same switch). Here Tom enables it for the `stripe` tool (its id from `tool ls`).
+
+```bash
+HOME=~/.treg-personas/tom treg tool update 4 --local-run on
+```
+```json
+{
+  "id": 4, "name": "stripe",
+  "base_url": "https://api.stripe.com/v1",
+  "cli": { "enabled": true }
+}
+```
+
+**Notice:** off by default - a run is more powerful than a proxied call, so it's opt-in per tool, and only
+an owner/admin can flip it.
+
+## Step 22d - Run the vendor CLI (no login, nothing on disk)
+
+Now Bob runs Stripe's real CLI *through* treg. Everything after `--` is handed to the vendor tool verbatim.
+treg injects the credential just for this run; Bob never logged into Stripe or stored its key. The default
+tier is `--local` - it runs on Bob's own machine, and on Linux the key is isolated under a dedicated
+`treg-run` user (installed once with `sudo treg setup-local-run`; on macOS it's best-effort).
+Server-side CLI execution is disabled; `--server` returns HTTP 503.
+
+```bash
+HOME=~/.treg-personas/bob treg run stripe -- get /v1/balance
+```
+```
+{
+  "object": "balance",
+  "available": [{ "amount": 0, "currency": "usd" }],
+  …
+}
+# Stripe's own CLI ran with the org key injected - Bob never logged in or held the key.
+```
+
+**Notice:** `treg run <tool> -- <args>` for a CLI; `treg call <tool> <path>` for an HTTP API - same
+credential, two ways to use it.
+
+## Step 22e - Every run is on the record
+
+Like proxied calls, local CLI runs are audited. The owner reviews them with `treg runs`; historical
+server runs remain readable there too. The example below is a historical server run; new server runs
+are disabled.
+
+```bash
+HOME=~/.treg-personas/tom treg runs --limit 5
+```
+```json
+[
+  {
+    "id": 1,
+    "user_email": "bob@superdesign.dev",
+    "bundle_name": "stripe",
+    "argv": ["get", "/v1/balance"],
+    "exit_code": 0,
+    "duration_ms": 812,
+    "created_at": "2026-07-02T…"
+  }
+]
+```
+
+**Notice:** the mnemonic - `treg call` → `treg calls`; `treg run` → `treg runs`. Two verbs, two ledgers.
 
 ---
 
@@ -839,7 +913,7 @@ treg accept <org-slug>                          # accept one addressed to you (n
 treg org create "<Name>"                        # make a team, become owner
 treg org ls | org use <slug>                    # list / switch active org
 treg org invite <email> [--role viewer|member|admin] [--expires-days N]
-treg org join <code> --email you@x.com          # the code door (creates you if new)
+treg org join <code>                           # the code door (sign in as the invited email first)
 treg org members | set-role <user_id> <role>    # roster / change a role (owner)
 treg org invites | revoke <invite_id>           # list / kill pending invites (admin+)
 treg org leave | delete <slug>                  # self-remove / delete (owner, confirm-by-name)

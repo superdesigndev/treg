@@ -186,15 +186,20 @@ async def report(*, days: int = 1, session_factory=session_maker) -> dict:
                                        .execution_options(yield_per=2000))
         async for p in rows:
             g = groups.setdefault((p.capability, p.endpoint_id), {
-                "pairs": 0, "served_found": 0, "shadow_found": 0, "both_found": 0,
+                "pairs": 0, "answered": 0, "served_found": 0, "shadow_found": 0, "both_found": 0,
                 "shadow_found_with_email": 0, "shadow_errors": 0, "ms": [], "units": 0.0,
                 "served_cost_micro": 0, "fields": {}})
             g["pairs"] += 1
+            # A refusal, a timeout or a server error is no answer, not a miss: those pairs count in
+            # the error rate and stay out of every hit rate.
+            if p.shadow_status == 0 or p.shadow_status == 429 or p.shadow_status >= 500:
+                g["shadow_errors"] += 1
+                continue
+            g["answered"] += 1
             g["served_found"] += p.served_found
             g["shadow_found"] += p.shadow_found
             g["both_found"] += p.served_found and p.shadow_found
             g["shadow_found_with_email"] += bool(p.shadow_found and (p.shadow_with_email or 0) > 0)
-            g["shadow_errors"] += p.shadow_status == 0 or p.shadow_status >= 500
             if p.shadow_ms is not None:
                 g["ms"].append(p.shadow_ms)
             g["units"] += p.shadow_units or 0
@@ -206,12 +211,12 @@ async def report(*, days: int = 1, session_factory=session_maker) -> dict:
     out = []
     for (cap, eid), g in sorted(groups.items()):
         ms = sorted(g.pop("ms"))
-        n = g["pairs"]
+        n, a = g["pairs"], g["answered"]
         out.append({
-            "capability": cap, "served_endpoint": eid, "pairs": n,
-            "served_hit_pct": _pct(g["served_found"], n), "shadow_hit_pct": _pct(g["shadow_found"], n),
+            "capability": cap, "served_endpoint": eid, "pairs": n, "answered": a,
+            "served_hit_pct": _pct(g["served_found"], a), "shadow_hit_pct": _pct(g["shadow_found"], a),
             "both_found": g["both_found"],
-            "shadow_hit_with_email_pct": _pct(g["shadow_found_with_email"], n),
+            "shadow_hit_with_email_pct": _pct(g["shadow_found_with_email"], a),
             "shadow_error_pct": _pct(g["shadow_errors"], n),
             "shadow_p50_ms": statistics.median(ms) if ms else None,
             "shadow_p95_ms": ms[int(0.95 * (len(ms) - 1))] if ms else None,

@@ -214,6 +214,26 @@ async def require_identity(
     raise HTTPException(status_code=401, detail="not authenticated")
 
 
+async def require_person(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """The caller as a person, for acts on the account rather than inside one team: joining a team
+    or minting a Default key for another team. An identity token or a browser session qualifies; a
+    key that resolves to one membership (an Additional, agent or legacy team key) names a team, not a
+    person, so it is refused here even though `require_identity` accepts it."""
+    if x_treg_token:
+        membership, _ = await _membership_and_key_by_token(x_treg_token, db)
+        if membership is not None:
+            raise HTTPException(status_code=403, detail=(
+                "this key belongs to one team and cannot act for your account — sign in with "
+                "`treg login` or the dashboard"))
+    return await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 def _sso_scope_allows(request: Request, org_id: int) -> bool:
     path = request.url.path.split("/")
     scoped_team_path = len(path) > 2 and path[1] == "orgs" and path[2] == str(org_id)
@@ -233,6 +253,16 @@ async def _user_from_identity_token(token: str, db: AsyncSession) -> User | None
         return None
     _refuse_sandbox_visitor(user)
     return user
+
+
+class NoTeam(HTTPException):
+    """A refusal that means the identity is fine and only the team is missing: none chosen, one the
+    user has left, or the bootstrap token before team setup. Callers that can answer without a team
+    (bare `treg`, `GET /home`) catch this type; every other refusal stays a refusal."""
+
+
+NOT_A_MEMBER = "not a member of this org"
+TEAM_SETUP_PENDING = "finish team setup first — this temporary login token cannot access team resources"
 
 
 async def require_member(
@@ -281,8 +311,7 @@ async def require_member(
         # scopes shipped, keeping a rolling deploy from revoking existing CLI/MCP installations.
         identity_claims = sess.read_identity_claims(x_treg_token) if x_treg_token else None
         if (identity_claims or {}).get("scope") == sess.BOOTSTRAP_SCOPE:
-            raise HTTPException(status_code=403, detail=(
-                "finish team setup first — this temporary login token cannot access team resources"))
+            raise NoTeam(status_code=403, detail=TEAM_SETUP_PENDING)
         claimed_org = (identity_claims or {}).get("org", "")
         # New Default keys are explicitly team-scoped, so their signed team is authoritative.
         # Older unmarked identity tokens retain the header-first behavior during migration.
@@ -304,7 +333,7 @@ async def require_member(
             # Keep the ordinary 400 for callers that simply omitted or mistyped their team header.
             if x_treg_token and not x_treg_org and (identity_claims or {}).get("org"):
                 raise HTTPException(status_code=401, detail="invalid token")
-            raise HTTPException(status_code=400, detail="choose an org (send X-Treg-Org)")
+            raise NoTeam(status_code=400, detail="choose an org (send X-Treg-Org)")
         membership = (
             await db.execute(
                 select(Membership).where(Membership.user_id == user.id, Membership.org_id == org.id)
@@ -322,7 +351,7 @@ async def require_member(
                     ApiKey.kind == managed_keys.DEFAULT_KIND,
                 ).order_by(ApiKey.id.desc()))).scalars().first()
                 _require_active_key(retained_default)
-            raise HTTPException(status_code=403, detail="not a member of this org")
+            raise NoTeam(status_code=403, detail=NOT_A_MEMBER)
         # Browser sessions are not API keys. A signed identity bearer maps to this membership's
         # default control, except the short-lived typed identity token used only by MCP OAuth.
         claims = identity_claims

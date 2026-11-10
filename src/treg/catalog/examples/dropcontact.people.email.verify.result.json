@@ -1,0 +1,15 @@
+{
+  "request_id": "sanitized-request-id",
+  "success": true,
+  "data": [
+    {
+      "email": [
+        {
+          "email": "support@dropcontact.com",
+          "qualification": "generique@pro"
+        }
+      ]
+    }
+  ],
+  "credits_left": 3999
+}

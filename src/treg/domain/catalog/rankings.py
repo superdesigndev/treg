@@ -36,8 +36,9 @@ FASTEST_MIN_TIMED = 20
 NEW_FIRST = 5            # trending lists at most this many brand-new rows before the risers
 TOP = 20                 # rows per board, and per category on a filterable board: 10, then 10 more
 HEAD_TO_HEAD_JOBS = 40   # jobs offered in the head-to-head menu, busiest first
-# The generation platforms the "Top AI models" board ranks, and the type each one is filed under.
-AI_TYPES = {"image-gen": "Image", "video-gen": "Video", "voice-gen": "Audio", "music-gen": "Audio"}
+# The model platforms the "Top AI models" board ranks, and the type each one is filed under.
+AI_TYPES = {"image-gen": "Image", "video-gen": "Video", "voice-gen": "Audio", "music-gen": "Audio",
+            "ai-judge": "Decision"}
 CHART_SERIES = 10        # providers drawn by name on the daily chart; the rest is "Others"
 WINDOWS = {"7d": 7, "30d": 30}
 
@@ -236,9 +237,9 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
     head_to_head = head_to_head[:HEAD_TO_HEAD_JOBS]
     fastest.sort(key=lambda r: (r["p50_ms"], -r["timed"], r["id"]))
 
-    # Top AI models: image, video and audio generation only, where a vendor is mostly a host and the
-    # model is what people choose. Two views of the same calls: per model (every vendor added up) and
-    # per vendor; each by type.
+    # Top AI models: image, video and audio generation and decision models, where a vendor is mostly a host and the
+    # model is what people choose. One row per model, every vendor
+    # that serves it added up, by type.
     def model_name(ep: dict) -> str:
         """The model as people say it: "Google: Gemini 3 Pro Image (Nano Banana Pro)" keeps its words
         after the vendor; a slug such as "minimax/hailuo-2.3-fast" becomes "Hailuo 2.3 Fast"."""
@@ -260,7 +261,6 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
 
     def ai_board(by_ep: dict[str, int], prev: dict[str, int] | None) -> dict:
         models: dict[str, dict] = {}
-        tools: dict[str, dict] = {}
         for ep_id, calls in by_ep.items():
             ep = eps[ep_id]
             kind = AI_TYPES.get(ep["platform"])
@@ -272,11 +272,6 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
             m["vendors"][ep["provider"]] = m["vendors"].get(ep["provider"], 0) + calls
             if calls > m["best"]:
                 m["best"], m["name"], m["provider"] = calls, model_name(ep), ep["provider"]
-            t = tools.setdefault(ep["provider"], {"provider": ep["provider"], "label": label(ep["provider"]),
-                                                  "calls": 0, "prev": 0, "models": set(), "types": defaultdict(int)})
-            t["calls"] += calls
-            t["models"].add(model_key(ep))
-            t["types"][kind] += calls
         # The week before, from every endpoint that had calls then, so a model that changed vendors
         # is compared with all of its earlier calls, not only those at today's vendors.
         for ep_id, before in (prev or {}).items():
@@ -285,25 +280,14 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
                 continue
             if model_key(ep) in models:
                 models[model_key(ep)]["prev"] += before
-            if ep["provider"] in tools:
-                tools[ep["provider"]]["prev"] += before
         model_rows = []
         for m in models.values():
             vendors = sorted(m["vendors"], key=lambda p: (-m["vendors"][p], p))
             model_rows.append({"model": m["model"], "name": m["name"], "type": m["type"], "provider": m["provider"],
                                "label": label(m["provider"]), "vendors": [label(p) for p in vendors], "calls": m["calls"]}
                               | ({"change": _change(m["calls"], m["prev"])} if prev is not None else {}))
-        tool_rows = []
-        for t in tools.values():
-            types = t.pop("types")
-            t["models"] = len(t["models"])
-            tool_rows.append({k: v for k, v in t.items() if k != "prev"} | {"type": max(types, key=lambda k: (types[k], k))}
-                             | ({"change": _change(t["calls"], t["prev"])} if prev is not None else {}))
-        def order(r: dict) -> tuple:
-            return (-r["calls"], r.get("model") or r["provider"])
-
-        return {"models": _keep_per_category(sorted(model_rows, key=order), key="type"),
-                "tools": _keep_per_category(sorted(tool_rows, key=order), key="type")}
+        model_rows.sort(key=lambda r: (-r["calls"], r["model"]))
+        return {"models": _keep_per_category(model_rows, key="type")}
 
     ai_models = {"7d": ai_board(cur7_ep, prev7_ep if has_prev7 else None),
                  "30d": ai_board(window_sum(*_days(last_day, 30))[0], None)}

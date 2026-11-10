@@ -4,14 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..application import billing
+from ..application import billing, view_context
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.identity.access import Caller, _role_at_least, require_member
 from ..infra.db import get_session
 from ..models import Org
+from . import view
 from .auth_helpers import _is_https
 from .orgs import _require_admin_of
+from .views import account as account_views
 
 
 app = APIRouter()
@@ -85,6 +87,17 @@ async def org_balance(
             ],
         },
     }
+
+
+@view.renders(org_balance)
+async def _balance_view(answer: view.Answer) -> str:
+    if answer.status >= 400:
+        return account_views.as_json(answer.json())
+    caller = await view.quietly(view.caller_of(answer.request))
+    if caller is None:
+        return account_views.balance(answer.object(), team="", autotopup=None)
+    autotopup = await view.quietly(view_context.autotopup(caller))
+    return account_views.balance(answer.object(), team=caller.org.slug if caller.org else "", autotopup=autotopup)
 
 
 balance_router = app
@@ -224,10 +237,7 @@ app = APIRouter()
 async def billing_stripe_webhook(request: Request) -> dict:
     """Stripe → treg: the ONLY door through which a payment becomes balance.
 
-    A DIFFERENT endpoint from the landing demo's `/stripe/webhook`, with a different signing secret:
-    they are different Stripe accounts' events with different consequences, and sharing a path would
-    mean one secret could authorize the other's effects. 404 when unconfigured, so a deploy without the
-    secret exposes no unauthenticated POST surface.
+    404 when unconfigured, so a deploy without the secret exposes no unauthenticated POST surface.
     """
     try:
         result = await billing.process_webhook(

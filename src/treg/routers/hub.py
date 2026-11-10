@@ -1,4 +1,4 @@
-"""The tool hub's maker routes (docs/HUB-DECISIONS.md).
+"""The tool hub's maker routes.
 
 Behind TREG_HUB_ENABLED: with the flag off every route here answers 404, so the surface does not
 exist until the whole hub lands. Phase 1: publish (validate + store) and read back. The check run,
@@ -186,7 +186,7 @@ async def hub_run(
     """One finished run. The CALLER's team sees what it paid, the inputs, the trace and the
     output. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,
     the script's log lines and the failure's error body, never the caller's identity or the
-    output (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404."""
+    output. Anyone else: 404."""
     _require_hub(caller)
     from ..application.hub import health as hub_health
     from ..models import HubRun
@@ -258,7 +258,7 @@ async def get_hub_tool(
 
 class RunIn(PublishIn):
     """A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is
-    real and charged to the maker (HUB-DECISIONS round 4 q10 / round 5 q2: `treg hub run .`)."""
+    real and charged to the maker (`treg hub run .`)."""
 
     inputs: dict[str, Any] = Field(default_factory=dict)
 
@@ -325,7 +325,7 @@ async def hub_tool_earnings(
     tool_id: str, days: int = 90, format: str = "json",
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """The seller's view (docs/HUB-DECISIONS.md round 3 q10, round 5 q9): per day, runs,
+    """The seller's view: per day, runs,
     successes, failures and what was earned, for one of the team's tools. Counts and amounts only;
     never who called. `format=csv` for a download."""
     _require_hub(caller)
@@ -353,8 +353,8 @@ async def hub_tool_earnings(
                HubRun.started_at >= since, HubRun.version > 0)
         .group_by(day).order_by(day.desc()))).all()
     # avg_price_micro: what one successful run earned on average (earned / ok). With a variable
-    # price (per_unit, cost_plus) this is how the maker sees where the price lands
-    # (docs/hub-pricing-decisions.md round 2 q5). 0 on a day with no successful run.
+    # price (a script's ctx.charge lines) this is how the maker sees where the price lands.
+    # 0 on a day with no successful run.
     table = [{"day": str(d), "runs": int(n), "ok": int(ok or 0), "failed": int(bad or 0),
               "earned_micro": int(earned),
               "avg_price_micro": int(round(int(earned) / int(ok))) if int(ok or 0) else 0}
@@ -391,7 +391,7 @@ async def retire_hub_tool(
 
 class PriceIn(BaseModel):
     """One PATCH, three knobs of the newest live version, none bumps the version: the seller's
-    price, and the two distribution switches (docs/hub-listing-decisions.md). At least one."""
+    price, and the two distribution switches. At least one."""
     model_config = ConfigDict(extra="forbid")
     price_usd: float | None = None
     listed: bool | None = None
@@ -467,7 +467,7 @@ async def hub_tool_health(
                      for r in runs]}
 
 
-# Listing review (docs/hub-listing-decisions.md round 2): a maker's `treg hub list` is a request;
+# Listing review: a maker's `treg hub list` is a request;
 # a superadmin approves or rejects it here. Only an approved tool is in catalog search.
 
 class ListingDecisionIn(BaseModel):

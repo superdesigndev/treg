@@ -226,7 +226,7 @@ endpoints:
         required: false
         example:
           include:
-          - 51-200
+          - 20 - 99
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       revenue:
@@ -234,7 +234,7 @@ endpoints:
         required: false
         example:
           include:
-          - 10M-50M
+          - 10 - 20 Million
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       city:
@@ -252,13 +252,14 @@ endpoints:
           include:
           - US
           exclude: []
-        note: Include/exclude string arrays; OR within include, AND across dimensions.
+        note: The company's HQ country, not the person's. Exact codes from quickenrich.x.country-codes; some ISO
+          codes are absent, use locality there.
       industry_linkedin:
         type: object
         required: false
         example:
           include:
-          - Computer Software
+          - Software Development
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       bio_li:
@@ -268,13 +269,13 @@ endpoints:
           include:
           - payments
           exclude: []
-        note: Include/exclude string arrays; OR within include, AND across dimensions.
+        note: Matches the company's LinkedIn About text, not the person's bio.
       services:
         type: object
         required: false
         example:
           include:
-          - Software
+          - Web Development
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       has_email:
@@ -301,10 +302,10 @@ endpoints:
         type: string
         required: false
         example: opaque cursor from meta.next_cursor
-    note: 'At least one filter is required. Use exact lookup values for country, industry, size, revenue and services.
-      Cursor from meta.next_cursor overrides page; repeat until null. Docs support cursor beyond 10,000 rows, but
-      free plan reports max_pages=5; respect plan limits. Discovery returns has_email/has_phone flags, not the email
-      or phone: selectively call email/phone find with employee_linkedin or name/company.'
+    note: 'At least one filter is required; arrays take at most 100 values. Country, industry, size, revenue and
+      services need exact values from the free quickenrich.x.* lookups (country-codes, industries, employee-ranges,
+      revenue-ranges, company-services), else 422. Past 10,000 rows follow meta.next_cursor until null. Rows carry
+      has_email/has_phone flags only: get the contact with email/phone find.'
   test_request:
     body:
       company_url:
@@ -362,7 +363,7 @@ endpoints:
         required: false
         example:
           include:
-          - Software
+          - Web Development
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       industry:
@@ -370,7 +371,7 @@ endpoints:
         required: false
         example:
           include:
-          - Computer Software
+          - Software Development
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       number_of_employees:
@@ -378,7 +379,7 @@ endpoints:
         required: false
         example:
           include:
-          - 51-200
+          - 20 - 99
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       revenue:
@@ -386,7 +387,7 @@ endpoints:
         required: false
         example:
           include:
-          - 10M-50M
+          - 10 - 20 Million
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       country_code:

@@ -1,0 +1,325 @@
+provider: theirstack
+source:
+  docs: https://theirstack.com/en/docs/what-is-theirstack
+  openapi: https://api.theirstack.com/openapi.json
+  curated: '2026-10-27'
+limits: "Paid searches and company lookups share a 4 requests/second limit on the tested account; the provider returns RateLimit-Limit and RateLimit-Remaining headers."
+pricing_url: https://theirstack.com/en/docs/api-reference/rate-limit
+
+proposed_capabilities:
+  companies.buying_intents: "Find technologies indicated by a company's recent job postings"
+  companies.technologies: "List technologies observed in a company's job postings"
+  companies.search.keywords: "List job and company technology keywords accepted by search filters"
+  companies.search.keyword_categories: "List technology keyword categories"
+  companies.search.keyword_subcategories: "List technology keyword subcategories"
+  companies.search.industries: "List industries accepted by company filters"
+  companies.search.locations: "Resolve location identifiers for job and company filters"
+  companies.search.job_countries: "Count jobs and hiring companies by job country"
+  companies.search.company_countries: "Count companies by company country"
+
+endpoints:
+  - id: theirstack.jobs.search
+    domain: companies
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: Search jobs
+    summary: Search recent jobs by role, company, location, technology and hiring signals.
+    input:
+      bodyType: json
+      body:
+        company_domain_or: {type: 'array[string]', required: false, example: [stripe.com]}
+        company_name_or: {type: 'array[string]', required: false, example: [Stripe]}
+        posted_at_max_age_days: {type: integer, required: false, example: 30}
+        job_title_or: {type: 'array[string]', required: false, example: [Software Engineer]}
+        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        job_technology_slug_or: {type: 'array[string]', required: false, example: [python]}
+        page: {type: integer, required: false, min: 0, example: 0}
+        limit: {type: integer, required: false, min: 1, note: "Default 25 upstream; shared-key calls require 1-100 to bound the hold.", example: 1}
+      note: "The upstream accepts many more filters; send them in the raw JSON body. Supply at least one date, job or company filter. More than 50 company identifiers also require a date filter."
+    test_request:
+      body: {company_domain_or: [stripe.com], posted_at_max_age_days: 30, limit: 1, page: 0}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.jobs.search.json
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, source_url: 'https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1', checked: '2026-10-27', confidence: verified, note: "One API credit per returned job; an empty data list is free. The shared-key hold uses the requested limit."}
+    docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
+
+  - id: theirstack.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/search
+    name: Search companies
+    summary: Find companies by identifiers, firmographics, technologies and hiring activity.
+    input:
+      bodyType: json
+      body:
+        company_domain_or: {type: 'array[string]', required: false, example: [stripe.com]}
+        company_name_or: {type: 'array[string]', required: false, example: [Stripe]}
+        company_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        company_technology_slug_or: {type: 'array[string]', required: false, example: [python]}
+        min_employee_count: {type: integer, required: false, example: 100}
+        page: {type: integer, required: false, min: 0, example: 0}
+        limit: {type: integer, required: false, min: 1, note: "Default 25 upstream; shared-key calls require 1-100 to bound the hold.", example: 1}
+      note: "The upstream accepts many more filters in the raw JSON body. Each returned company costs three API credits."
+    test_request:
+      body: {company_domain_or: [stripe.com], limit: 1, page: 0}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.companies.search.json
+    cost: {type: per_result, value: 3, currency: credit, per: 1, unit: result, source: observed, source_url: 'https://theirstack.com/en/docs/api-reference/companies/search_companies_v1', checked: '2026-10-27', confidence: verified, note: "Three API credits per returned company; an empty data list is free. The shared-key hold uses the requested limit."}
+    docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
+
+  - id: theirstack.companies.technologies
+    domain: companies
+    capability: companies.technologies
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/technologies
+    name: Company technologies
+    summary: List technologies inferred from a company's job postings.
+    input:
+      bodyType: json
+      body:
+        company_domain: {type: string, required: false, example: stripe.com}
+        company_name: {type: string, required: false, example: Stripe}
+        company_linkedin_url: {type: string, required: false}
+        limit: {type: integer, required: false, min: 1, example: 1}
+        page: {type: integer, required: false, min: 0, example: 0}
+      note: "Identify one company. All returned technology rows together cost three API credits; a missing company is free. Shared-key calls require exactly one singular company identifier."
+    test_request:
+      body: {company_domain: stripe.com, limit: 1}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.companies.technologies.json
+    cost: {type: per_success, value: 3, currency: credit, per: 1, unit: call, source: observed, source_url: 'https://theirstack.com/en/docs/api-reference/companies/technographics_v1', checked: '2026-10-27', confidence: verified, note: "Three API credits for a company lookup with data, independent of technology row count."}
+    docs_url: https://theirstack.com/en/docs/api-reference/companies/technographics_v1
+
+  - id: theirstack.companies.buying_intents
+    domain: companies
+    capability: companies.buying_intents
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/buying_intents
+    name: Company buying intents
+    summary: Find technology buying signals in a company's recent hiring activity.
+    input:
+      bodyType: json
+      body:
+        company_domain: {type: string, required: false, example: stripe.com}
+        company_name: {type: string, required: false, example: Stripe}
+        company_linkedin_url: {type: string, required: false}
+        limit: {type: integer, required: false, min: 1, example: 1}
+        page: {type: integer, required: false, min: 0, example: 0}
+      note: "Identify one company. All returned intent rows together cost three API credits; a missing company is free. Shared-key calls require exactly one singular company identifier."
+    test_request:
+      body: {company_domain: stripe.com, limit: 1}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.companies.buying_intents.json
+    cost: {type: per_success, value: 3, currency: credit, per: 1, unit: call, source: observed, source_url: 'https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1', checked: '2026-10-27', confidence: verified, note: "Three API credits for a company lookup with data, independent of intent row count."}
+    docs_url: https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1
+
+  - id: theirstack.catalog.keywords
+    kind: utility
+    domain: companies
+    capability: companies.search.keywords
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v0/catalog/keywords
+    name: List search keywords
+    summary: Browse technology and job keywords and their slugs for search filters.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: snowflake}
+        keyword_type: {type: string, required: false}
+        category_slug: {type: string, required: false}
+        page: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {q: snowflake, limit: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.keywords.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0
+
+  - id: theirstack.catalog.keyword_categories
+    kind: utility
+    domain: companies
+    capability: companies.search.keyword_categories
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/catalog/keywords/categories
+    name: List keyword categories
+    summary: List top-level technology keyword categories.
+    input:
+      queryParams:
+        category_slug: {type: string, required: false, example: finance-and-accounting}
+    test_request: {queryParams: {category_slug: finance-and-accounting}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.keyword_categories.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/list_keyword_categories_v1
+
+  - id: theirstack.catalog.keyword_subcategories
+    kind: utility
+    domain: companies
+    capability: companies.search.keyword_subcategories
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/catalog/keywords/subcategories
+    name: List keyword subcategories
+    summary: List keyword subcategories and optionally their technology counts.
+    input:
+      queryParams:
+        category_slug: {type: string, required: false, example: finance-and-accounting}
+        subcategory_slug: {type: string, required: false}
+        num_technologies_per_category: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {category_slug: finance-and-accounting, num_technologies_per_category: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.keyword_subcategories.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/list_keyword_subcategories_v1
+
+  - id: theirstack.catalog.industries
+    kind: utility
+    domain: companies
+    capability: companies.search.industries
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v0/catalog/industries
+    name: List industries
+    summary: Browse industry names and identifiers used in company search.
+    input:
+      queryParams:
+        industry: {type: string, required: false, example: software}
+        page: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {industry: software, limit: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.industries.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0
+
+  - id: theirstack.catalog.locations
+    kind: utility
+    domain: companies
+    capability: companies.search.locations
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v0/catalog/locations
+    name: Resolve locations
+    summary: Find location records by name, country or feature code.
+    input:
+      queryParams:
+        name: {type: string, required: false, example: Paris}
+        country_code: {type: string, required: false, example: FR}
+        feature_code: {type: string, required: false}
+        offset: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {name: Paris, country_code: FR, limit: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.locations.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0
+
+  - id: theirstack.catalog.job_countries
+    kind: utility
+    domain: companies
+    capability: companies.search.job_countries
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v0/catalog/jobs_companies_per_job_country_code
+    name: Job country coverage
+    summary: Count indexed jobs and hiring companies by job country.
+    input:
+      queryParams:
+        country: {type: string, required: false, example: France}
+        page: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {country: France, limit: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.job_countries.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_jobs_companies_per_job_country_code_v0
+
+  - id: theirstack.catalog.company_countries
+    kind: utility
+    domain: companies
+    capability: companies.search.company_countries
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v0/catalog/companies_per_company_country_code
+    name: Company country coverage
+    summary: Count indexed companies by company country.
+    input:
+      queryParams:
+        country: {type: string, required: false, example: France}
+        page: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {country: France, limit: 1}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.catalog.company_countries.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_companies_per_company_country_code_v0
+
+  - id: theirstack.account.balance
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v0/billing/credit-balance
+    name: Check API credit balance
+    summary: Read your own API credit allocation and usage.
+    input: {queryParams: {}}
+    test_request: {queryParams: {}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.account.balance.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/billing/get_billing_credit_balance_v0
+
+  - id: theirstack.account.credits_consumption
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v0/teams/credits_consumption
+    name: Inspect credit consumption
+    summary: Read your own API credit consumption over a time range.
+    input:
+      queryParams:
+        start_datetime: {type: string, required: false, example: '2026-10-26T00:00:00Z'}
+        end_datetime: {type: string, required: false, example: '2026-10-27T23:59:59Z'}
+        group_by: {type: string, required: false}
+        endpoint: {type: string, required: false}
+    test_request: {queryParams: {start_datetime: '2026-10-26T00:00:00Z', end_datetime: '2026-10-27T23:59:59Z'}}
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/theirstack.account.credits_consumption.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://theirstack.com/en/docs/api-reference/credit-consumption/get_teams_credits_consumption_v0

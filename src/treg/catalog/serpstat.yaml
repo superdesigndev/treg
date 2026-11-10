@@ -122,6 +122,7 @@ endpoints:
       currency: credit
       per: 1
       unit: keyword
+      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
@@ -229,6 +230,7 @@ endpoints:
       currency: credit
       per: 1
       unit: keyword
+      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
@@ -379,6 +381,7 @@ endpoints:
       currency: credit
       per: 1
       unit: domain
+      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'

@@ -1,0 +1,2035 @@
+{
+ "version": 27,
+ "providers": [
+  {
+   "provider": "Google Ads",
+   "tokens": [],
+   "skills": [
+    "google-ads",
+    "googleads",
+    "google-adwords"
+   ],
+   "base_url": "https://googleads.googleapis.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Google Search Console",
+   "tokens": [],
+   "skills": [
+    "gsc",
+    "search-console",
+    "google-search-console",
+    "webmasters"
+   ],
+   "base_url": "https://searchconsole.googleapis.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Google Cloud",
+   "tokens": [],
+   "skills": [
+    "gcloud",
+    "google-cloud",
+    "gcp"
+   ],
+   "base_url": "https://cloudresourcemanager.googleapis.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "cli": {
+    "bin": "gcloud",
+    "login_cmd": "gcloud auth login",
+    "install": "https://cloud.google.com/sdk/docs/install",
+    "verified": "2026-07-07",
+    "auth_mechanism": "config_file",
+    "detect": {
+     "config_paths": [
+      "~/.config/gcloud/credentials.db",
+      "~/.config/gcloud/access_tokens.db"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "CLOUDSDK_AUTH_ACCESS_TOKEN",
+      "secret_field": "token"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ],
+    "warnings": [
+     "gcloud may also need a project: add a param secret + inject it as CLOUDSDK_CORE_PROJECT"
+    ]
+   }
+  },
+  {
+   "provider": "Azure",
+   "tokens": [],
+   "skills": [
+    "az",
+    "azure",
+    "azure-cli"
+   ],
+   "base_url": "https://management.azure.com",
+   "auth": {
+    "shape": "oauth2"
+   },
+   "cli": {
+    "bin": "az",
+    "unsupported": true,
+    "auth_mechanism": "device",
+    "reason": "az has no token-override env var (device/browser login only) - register an Azure service principal as an HTTP tool instead"
+   }
+  },
+  {
+   "provider": "Supabase",
+   "tokens": [],
+   "skills": [
+    "supabase",
+    "supabase-cli"
+   ],
+   "base_url": "https://api.supabase.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "cli": {
+    "bin": "supabase",
+    "install": "brew install supabase/tap/supabase",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.supabase/access-token"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "SUPABASE_ACCESS_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "OpenAI",
+   "tokens": [
+    "OPENAI"
+   ],
+   "base_url": "https://api.openai.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "openai",
+    "openai-cli"
+   ],
+   "cli": {
+    "bin": "openai",
+    "install": "pip install openai",
+    "auth_mechanism": "env",
+    "beta": true,
+    "inject": [
+     {
+      "via": "env",
+      "name": "OPENAI_API_KEY"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Anthropic",
+   "tokens": [
+    "ANTHROPIC",
+    "CLAUDE"
+   ],
+   "base_url": "https://api.anthropic.com/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "Google AI",
+   "tokens": [
+    "GEMINI"
+   ],
+   "base_url": "https://generativelanguage.googleapis.com/v1beta",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-goog-api-key"
+   },
+   "probe": "models?pageSize=1"
+  },
+  {
+   "provider": "Mistral",
+   "tokens": [
+    "MISTRAL"
+   ],
+   "base_url": "https://api.mistral.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Cohere",
+   "tokens": [
+    "COHERE"
+   ],
+   "base_url": "https://api.cohere.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Groq",
+   "tokens": [
+    "GROQ"
+   ],
+   "base_url": "https://api.groq.com/openai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "OpenRouter",
+   "tokens": [
+    "OPENROUTER"
+   ],
+   "base_url": "https://openrouter.ai/api/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Perplexity",
+   "tokens": [
+    "PERPLEXITY",
+    "PPLX"
+   ],
+   "base_url": "https://api.perplexity.ai",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "HuggingFace",
+   "tokens": [
+    "HUGGINGFACE",
+    "HUGGINGFACEHUB",
+    "HF"
+   ],
+   "base_url": "https://api-inference.huggingface.co",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Replicate",
+   "tokens": [
+    "REPLICATE"
+   ],
+   "base_url": "https://api.replicate.com/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "ElevenLabs",
+   "tokens": [
+    "ELEVENLABS",
+    "ELEVEN"
+   ],
+   "base_url": "https://api.elevenlabs.io/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "xi-api-key"
+   }
+  },
+  {
+   "provider": "Deepgram",
+   "tokens": [
+    "DEEPGRAM"
+   ],
+   "base_url": "https://api.deepgram.com/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "Token {secret}"
+   }
+  },
+  {
+   "provider": "Stripe",
+   "tokens": [
+    "STRIPE"
+   ],
+   "base_url": "https://api.stripe.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "balance",
+   "skills": [
+    "stripe",
+    "stripe-cli"
+   ],
+   "cli": {
+    "bin": "stripe",
+    "install": "brew install stripe/stripe-cli/stripe",
+    "verified": "2026-07-07",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.config/stripe/config.toml"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "STRIPE_API_KEY"
+     }
+    ],
+    "deny": [
+     "(^|\\s)--live\\b"
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Resend",
+   "tokens": [
+    "RESEND"
+   ],
+   "base_url": "https://api.resend.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "domains"
+  },
+  {
+   "provider": "SendGrid",
+   "tokens": [
+    "SENDGRID"
+   ],
+   "base_url": "https://api.sendgrid.com/v3",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Postmark",
+   "tokens": [
+    "POSTMARK"
+   ],
+   "base_url": "https://api.postmarkapp.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Postmark-Server-Token"
+   }
+  },
+  {
+   "provider": "Twilio",
+   "tokens": [
+    "TWILIO"
+   ],
+   "base_url": "https://api.twilio.com/2010-04-01",
+   "auth": {
+    "shape": "basic"
+   }
+  },
+  {
+   "provider": "Slack",
+   "tokens": [
+    "SLACK"
+   ],
+   "base_url": "https://slack.com/api",
+   "auth": {
+    "shape": "bearer"
+   },
+   "oauth": {
+    "auth_uri": "https://slack.com/oauth/v2/authorize",
+    "token_uri": "https://slack.com/api/oauth.v2.access",
+    "scopes": [
+     "users:read"
+    ]
+   }
+  },
+  {
+   "provider": "Discord",
+   "tokens": [
+    "DISCORD"
+   ],
+   "base_url": "https://discord.com/api/v10",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "Bot {secret}"
+   },
+   "oauth": {
+    "auth_uri": "https://discord.com/oauth2/authorize",
+    "token_uri": "https://discord.com/api/oauth2/token",
+    "scopes": [
+     "identify"
+    ]
+   }
+  },
+  {
+   "provider": "Telegram",
+   "tokens": [
+    "TELEGRAM"
+   ],
+   "base_url": "https://api.telegram.org",
+   "auth": {
+    "shape": "query"
+   }
+  },
+  {
+   "provider": "GitHub",
+   "tokens": [
+    "GITHUB",
+    "GH"
+   ],
+   "base_url": "https://api.github.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "oauth": {
+    "auth_uri": "https://github.com/login/oauth/authorize",
+    "token_uri": "https://github.com/login/oauth/access_token",
+    "scopes": [
+     "read:user"
+    ]
+   },
+   "skills": [
+    "gh",
+    "github",
+    "github-cli"
+   ],
+   "cli": {
+    "bin": "gh",
+    "login_cmd": "gh auth login",
+    "install": "brew install gh",
+    "verified": "2026-07-07",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.config/gh/hosts.yml"
+     ]
+    },
+    "deny": [
+     "(^|\\s)(extension|alias)(\\s|$)",
+     "(^|\\s)auth\\s+token(\\s|$)",
+     "--show-token\\b"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "GH_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "GitLab",
+   "tokens": [
+    "GITLAB"
+   ],
+   "base_url": "https://gitlab.com/api/v4",
+   "auth": {
+    "shape": "bearer"
+   },
+   "oauth": {
+    "auth_uri": "https://gitlab.com/oauth/authorize",
+    "token_uri": "https://gitlab.com/oauth/token",
+    "scopes": [
+     "read_api"
+    ]
+   },
+   "skills": [
+    "glab",
+    "gitlab",
+    "gitlab-cli"
+   ],
+   "cli": {
+    "bin": "glab",
+    "login_cmd": "glab auth login",
+    "install": "brew install glab",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.config/glab-cli/config.yml"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "GITLAB_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Notion",
+   "tokens": [
+    "NOTION"
+   ],
+   "base_url": "https://api.notion.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "oauth": {
+    "auth_uri": "https://api.notion.com/v1/oauth/authorize",
+    "token_uri": "https://api.notion.com/v1/oauth/token",
+    "scopes": []
+   }
+  },
+  {
+   "provider": "Linear",
+   "tokens": [
+    "LINEAR"
+   ],
+   "base_url": "https://api.linear.app/graphql",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "{secret}"
+   },
+   "oauth": {
+    "auth_uri": "https://linear.app/oauth/authorize",
+    "token_uri": "https://api.linear.app/oauth/token",
+    "scopes": [
+     "read"
+    ]
+   }
+  },
+  {
+   "provider": "Airtable",
+   "tokens": [
+    "AIRTABLE"
+   ],
+   "base_url": "https://api.airtable.com/v0",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Render",
+   "tokens": [
+    "RENDER"
+   ],
+   "base_url": "https://api.render.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "services",
+   "skills": [
+    "render",
+    "render-cli"
+   ],
+   "cli": {
+    "bin": "render",
+    "install": "brew install render-oss/render/render",
+    "auth_mechanism": "env",
+    "beta": true,
+    "inject": [
+     {
+      "via": "env",
+      "name": "RENDER_API_KEY"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Vercel",
+   "tokens": [
+    "VERCEL"
+   ],
+   "base_url": "https://api.vercel.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v2/user",
+   "skills": [
+    "vercel",
+    "vercel-cli"
+   ],
+   "cli": {
+    "bin": "vercel",
+    "install": "npm i -g vercel",
+    "verified": "2026-07-07",
+    "auth_mechanism": "argv",
+    "detect": {
+     "config_paths": [
+      "~/Library/Application Support/com.vercel.cli/auth.json",
+      "~/.local/share/com.vercel.cli/auth.json"
+     ]
+    },
+    "inject": [
+     {
+      "via": "argv",
+      "argv": [
+       "--token",
+       "{secret}"
+      ],
+      "env_from": "VERCEL_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ],
+    "warnings": [
+     "the token is passed as a --token flag (visible in `ps` on shared machines)"
+    ]
+   }
+  },
+  {
+   "provider": "Ahrefs",
+   "tokens": [
+    "AHREFS"
+   ],
+   "base_url": "https://api.ahrefs.com/v3",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Apify",
+   "tokens": [
+    "APIFY"
+   ],
+   "base_url": "https://api.apify.com/v2",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "users/me"
+  },
+  {
+   "provider": "ScrapeCreators",
+   "tokens": [
+    "SCRAPECREATORS"
+   ],
+   "base_url": "https://api.scrapecreators.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "Fetchin",
+   "tokens": [
+    "FETCHINIO"
+   ],
+   "base_url": "https://api.fetchin.io",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   },
+   "probe": "api/v1/subscription"
+  },
+  {
+   "provider": "OrbiSearch",
+   "tokens": [
+    "ORBISEARCH"
+   ],
+   "base_url": "https://api.orbisearch.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   },
+   "probe": "v1/credits"
+  },
+  {
+   "provider": "Sumble",
+   "tokens": [
+    "SUMBLE"
+   ],
+   "base_url": "https://api.sumble.com/v9",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "MoltSets",
+   "tokens": [
+    "MOLTSETS"
+   ],
+   "base_url": "https://api.moltsets.com/api/v1/tools",
+   "auth": {
+    "shape": "bearer"
+   },
+   "required_headers": {
+    "User-Agent": "treg/1.0 (+https://treg.to)"
+   }
+  },
+  {
+   "provider": "Openmart",
+   "tokens": [
+    "OPENMART"
+   ],
+   "base_url": "https://api.openmart.ai",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "api/v2/credit-balance"
+  },
+  {
+   "provider": "LimaData",
+   "tokens": [
+    "LIMADATA"
+   ],
+   "base_url": "https://api.limadata.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "TrestleIQ",
+   "tokens": [
+    "TRESTLEIQ",
+    "TRESTLE"
+   ],
+   "base_url": "https://api.trestleiq.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "Datagma",
+   "tokens": [
+    "DATAGMA"
+   ],
+   "base_url": "https://gateway.datagma.net",
+   "auth": {
+    "shape": "query",
+    "param": "apiId"
+   },
+   "probe": "api/ingress/v1/mine"
+  },
+  {
+   "provider": "Crustdata",
+   "tokens": [
+    "CRUSTDATA"
+   ],
+   "base_url": "https://api.crustdata.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "account/credits",
+   "required_headers": {
+    "x-api-version": "2025-11-01"
+   }
+  },
+  {
+   "provider": "TheirStack",
+   "tokens": [
+    "THEIRSTACK"
+   ],
+   "base_url": "https://api.theirstack.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v0/billing/credit-balance"
+  },
+  {
+   "provider": "Aviato",
+   "tokens": [
+    "AVIATO"
+   ],
+   "base_url": "https://data.api.aviato.co",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "billing/balance"
+  },
+  {
+   "provider": "Enrichlayer",
+   "tokens": [
+    "ENRICHLAYER"
+   ],
+   "base_url": "https://enrichlayer.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "api/v2/credit-balance"
+  },
+  {
+   "provider": "AgentMail",
+   "tokens": [
+    "AGENTMAIL"
+   ],
+   "base_url": "https://api.agentmail.to/v0",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "inboxes"
+  },
+  {
+   "provider": "Cloudflare",
+   "tokens": [
+    "CLOUDFLARE"
+   ],
+   "base_url": "https://api.cloudflare.com/client/v4",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "wrangler",
+    "cloudflare",
+    "cloudflare-workers"
+   ],
+   "cli": {
+    "bin": "wrangler",
+    "install": "npm i -g wrangler",
+    "auth_mechanism": "env",
+    "inject": [
+     {
+      "via": "env",
+      "name": "CLOUDFLARE_API_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Pinecone",
+   "tokens": [
+    "PINECONE"
+   ],
+   "base_url": "https://api.pinecone.io",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Api-Key"
+   }
+  },
+  {
+   "provider": "Stability",
+   "tokens": [
+    "STABILITY"
+   ],
+   "base_url": "https://api.stability.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Together AI",
+   "tokens": [
+    "TOGETHER"
+   ],
+   "base_url": "https://api.together.xyz/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Fireworks",
+   "tokens": [
+    "FIREWORKS"
+   ],
+   "base_url": "https://api.fireworks.ai/inference/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "DeepSeek",
+   "tokens": [
+    "DEEPSEEK"
+   ],
+   "base_url": "https://api.deepseek.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "xAI",
+   "tokens": [
+    "XAI",
+    "GROK"
+   ],
+   "base_url": "https://api.x.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Voyage AI",
+   "tokens": [
+    "VOYAGE"
+   ],
+   "base_url": "https://api.voyageai.com/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Jina AI",
+   "tokens": [
+    "JINA"
+   ],
+   "base_url": "https://api.jina.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "AssemblyAI",
+   "tokens": [
+    "ASSEMBLYAI"
+   ],
+   "base_url": "https://api.assemblyai.com/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "{secret}"
+   }
+  },
+  {
+   "provider": "Cartesia",
+   "tokens": [
+    "CARTESIA"
+   ],
+   "base_url": "https://api.cartesia.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   }
+  },
+  {
+   "provider": "Tavily",
+   "tokens": [
+    "TAVILY"
+   ],
+   "base_url": "https://api.tavily.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Search1API",
+   "tokens": [
+    "SEARCH1API"
+   ],
+   "base_url": "https://api.search1api.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "usage"
+  },
+  {
+   "provider": "Octen",
+   "tokens": [
+    "OCTEN"
+   ],
+   "base_url": "https://api.octen.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "Linkup",
+   "tokens": [
+    "LINKUP"
+   ],
+   "base_url": "https://api.linkup.so/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "credits/balance"
+  },
+  {
+   "provider": "Parallel",
+   "tokens": [
+    "PARALLEL"
+   ],
+   "base_url": "https://api.parallel.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "v1/monitors/stats"
+  },
+  {
+   "provider": "You.com",
+   "tokens": [
+    "YDC_API_KEY",
+    "YOU_API_KEY"
+   ],
+   "base_url": "https://api.you.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   },
+   "probe": "v1/billing/account_balance"
+  },
+  {
+   "provider": "Valyu",
+   "tokens": [
+    "VALYU_API_KEY",
+    "VALYU"
+   ],
+   "base_url": "https://api.valyu.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   },
+   "probe": "v1/datasources"
+  },
+  {
+   "provider": "Keenable",
+   "tokens": [
+    "KEENABLE"
+   ],
+   "base_url": "https://api.keenable.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-Key"
+   }
+  },
+  {
+   "provider": "Sixtyfour AI",
+   "tokens": [
+    "SIXTYFOUR"
+   ],
+   "base_url": "https://api.sixtyfour.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "check-balance"
+  },
+  {
+   "provider": "LeadOcean",
+   "tokens": [
+    "LEADOCEAN"
+   ],
+   "base_url": "https://api.leadocean.io",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "v1/account"
+  },
+  {
+   "provider": "BlitzAPI",
+   "tokens": [
+    "BLITZAPI",
+    "BLITZ_API"
+   ],
+   "base_url": "https://api.blitz-api.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "v2/account/key-info"
+  },
+  {
+   "provider": "MobiusEngine.ai Jobs Data",
+   "tokens": [
+    "MOBIUSENGINE_JOBS"
+   ],
+   "base_url": "https://jobs-api.arihaan.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "v1/balance"
+  },
+  {
+   "provider": "Olostep",
+   "tokens": [
+    "OLOSTEP"
+   ],
+   "base_url": "https://api.olostep.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "user/credits/info"
+  },
+  {
+   "provider": "ScrapeGraphAI",
+   "tokens": [
+    "SCRAPEGRAPHAI",
+    "SGAI"
+   ],
+   "base_url": "https://v2-api.scrapegraphai.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "SGAI-APIKEY"
+   },
+   "probe": "api/credits"
+  },
+  {
+   "provider": "Firecrawl",
+   "tokens": [
+    "FIRECRAWL"
+   ],
+   "base_url": "https://api.firecrawl.dev/v2",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "team/credit-usage"
+  },
+  {
+   "provider": "Spider",
+   "tokens": [
+    "SPIDERCLOUD",
+    "SPIDER"
+   ],
+   "base_url": "https://api.spider.cloud",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "data/credits"
+  },
+  {
+   "provider": "Exa",
+   "tokens": [
+    "EXA"
+   ],
+   "base_url": "https://api.exa.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   }
+  },
+  {
+   "provider": "cloro",
+   "tokens": [
+    "CLORO"
+   ],
+   "base_url": "https://api.cloro.dev",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v1/credits"
+  },
+  {
+   "provider": "Serper",
+   "tokens": [
+    "SERPER"
+   ],
+   "base_url": "https://google.serper.dev",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-KEY"
+   }
+  },
+  {
+   "provider": "SerpAPI",
+   "tokens": [
+    "SERPAPI"
+   ],
+   "base_url": "https://serpapi.com",
+   "auth": {
+    "shape": "query",
+    "param": "api_key"
+   }
+  },
+  {
+   "provider": "Brave Search",
+   "tokens": [
+    "BRAVE"
+   ],
+   "base_url": "https://api.search.brave.com/res/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Subscription-Token"
+   }
+  },
+  {
+   "provider": "ScrapingBee",
+   "tokens": [
+    "SCRAPINGBEE"
+   ],
+   "base_url": "https://app.scrapingbee.com/api/v1",
+   "auth": {
+    "shape": "query",
+    "param": "api_key"
+   }
+  },
+  {
+   "provider": "NewsAPI",
+   "tokens": [
+    "NEWSAPI"
+   ],
+   "base_url": "https://newsapi.org/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Api-Key"
+   }
+  },
+  {
+   "provider": "CoinGecko",
+   "tokens": [
+    "COINGECKO"
+   ],
+   "base_url": "https://pro-api.coingecko.com/api/v3",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-cg-pro-api-key"
+   }
+  },
+  {
+   "provider": "Polygon.io",
+   "tokens": [
+    "POLYGON",
+    "MASSIVE"
+   ],
+   "base_url": "https://api.polygon.io",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Finnhub",
+   "tokens": [
+    "FINNHUB"
+   ],
+   "base_url": "https://finnhub.io/api/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Finnhub-Token"
+   }
+  },
+  {
+   "provider": "Twelve Data",
+   "tokens": [
+    "TWELVEDATA",
+    "TWELVE"
+   ],
+   "base_url": "https://api.twelvedata.com",
+   "auth": {
+    "shape": "query",
+    "param": "apikey"
+   }
+  },
+  {
+   "provider": "Financial Modeling Prep",
+   "tokens": [
+    "FMP",
+    "FINANCIALMODELINGPREP"
+   ],
+   "base_url": "https://financialmodelingprep.com/api/v3",
+   "auth": {
+    "shape": "query",
+    "param": "apikey"
+   }
+  },
+  {
+   "provider": "EODHD",
+   "tokens": [
+    "EODHD"
+   ],
+   "base_url": "https://eodhd.com/api",
+   "auth": {
+    "shape": "query",
+    "param": "api_token"
+   }
+  },
+  {
+   "provider": "Marketstack",
+   "tokens": [
+    "MARKETSTACK"
+   ],
+   "base_url": "https://api.marketstack.com/v1",
+   "auth": {
+    "shape": "query",
+    "param": "access_key"
+   }
+  },
+  {
+   "provider": "Tiingo",
+   "tokens": [
+    "TIINGO"
+   ],
+   "base_url": "https://api.tiingo.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "Token {secret}"
+   }
+  },
+  {
+   "provider": "Financial Datasets",
+   "tokens": [
+    "FINANCIALDATASETS"
+   ],
+   "base_url": "https://api.financialdatasets.ai",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-API-KEY"
+   }
+  },
+  {
+   "provider": "DigitalOcean",
+   "tokens": [
+    "DIGITALOCEAN"
+   ],
+   "base_url": "https://api.digitalocean.com/v2",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "doctl",
+    "digitalocean"
+   ],
+   "cli": {
+    "bin": "doctl",
+    "login_cmd": "doctl auth init",
+    "install": "brew install doctl",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/Library/Application Support/doctl/config.yaml",
+      "~/.config/doctl/config.yaml"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "DIGITALOCEAN_ACCESS_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Netlify",
+   "tokens": [
+    "NETLIFY"
+   ],
+   "base_url": "https://api.netlify.com/api/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "netlify",
+    "netlify-cli"
+   ],
+   "cli": {
+    "bin": "netlify",
+    "install": "npm i -g netlify-cli",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.config/netlify/config.json",
+      "~/Library/Preferences/netlify/config.json"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "NETLIFY_AUTH_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Heroku",
+   "tokens": [
+    "HEROKU"
+   ],
+   "base_url": "https://api.heroku.com",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "heroku",
+    "heroku-cli"
+   ],
+   "cli": {
+    "bin": "heroku",
+    "install": "brew install heroku/brew/heroku",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.netrc"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "HEROKU_API_KEY"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Fly.io",
+   "tokens": [
+    "FLY"
+   ],
+   "base_url": "https://api.machines.dev/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "fly",
+    "flyctl",
+    "fly-io"
+   ],
+   "cli": {
+    "bin": "flyctl",
+    "login_cmd": "fly auth login",
+    "install": "brew install flyctl",
+    "verified": "2026-07-07",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.fly/config.yml"
+     ]
+    },
+    "deny": [
+     "(^|\\s)auth\\s+token(\\s|$)"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "FLY_API_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Railway",
+   "tokens": [
+    "RAILWAY"
+   ],
+   "base_url": "https://backboard.railway.app/graphql/v2",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "railway",
+    "railway-cli"
+   ],
+   "cli": {
+    "bin": "railway",
+    "install": "brew install railway",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.railway/config.json",
+      "~/.config/railway/config.json"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "RAILWAY_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Neon",
+   "tokens": [
+    "NEON"
+   ],
+   "base_url": "https://console.neon.tech/api/v2",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "neon",
+    "neonctl"
+   ],
+   "cli": {
+    "bin": "neonctl",
+    "install": "npm i -g neonctl",
+    "auth_mechanism": "env",
+    "beta": true,
+    "inject": [
+     {
+      "via": "env",
+      "name": "NEON_API_KEY"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "PlanetScale",
+   "tokens": [
+    "PLANETSCALE"
+   ],
+   "base_url": "https://api.planetscale.com/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "pscale",
+    "planetscale"
+   ],
+   "cli": {
+    "bin": "pscale",
+    "login_cmd": "pscale auth login",
+    "install": "brew install planetscale/tap/pscale",
+    "auth_mechanism": "config_file",
+    "beta": true,
+    "detect": {
+     "config_paths": [
+      "~/.config/planetscale/access-token",
+      "~/Library/Application Support/planetscale/access-token"
+     ]
+    },
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Turso",
+   "tokens": [
+    "TURSO"
+   ],
+   "base_url": "https://api.turso.tech/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "turso",
+    "turso-cli"
+   ],
+   "cli": {
+    "bin": "turso",
+    "install": "brew install tursodatabase/tap/turso",
+    "auth_mechanism": "env",
+    "beta": true,
+    "deny": [
+     "(^|\\s)auth\\s+token(\\s|$)"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "TURSO_API_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Doppler",
+   "tokens": [
+    "DOPPLER"
+   ],
+   "base_url": "https://api.doppler.com/v3",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "doppler",
+    "doppler-cli"
+   ],
+   "cli": {
+    "bin": "doppler",
+    "install": "brew install dopplerhq/cli/doppler",
+    "auth_mechanism": "env",
+    "beta": true,
+    "deny": [
+     "(^|\\s)run(\\s|$)",
+     "(^|\\s)secrets\\s+download(\\s|$)"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "DOPPLER_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Infisical",
+   "tokens": [
+    "INFISICAL"
+   ],
+   "base_url": "https://app.infisical.com/api",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "infisical",
+    "infisical-cli"
+   ],
+   "cli": {
+    "bin": "infisical",
+    "install": "brew install infisical/get-cli/infisical",
+    "auth_mechanism": "env",
+    "beta": true,
+    "deny": [
+     "(^|\\s)run(\\s|$)",
+     "(^|\\s)export(\\s|$)"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "INFISICAL_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Sentry",
+   "tokens": [
+    "SENTRY"
+   ],
+   "base_url": "https://sentry.io/api/0",
+   "auth": {
+    "shape": "bearer"
+   },
+   "skills": [
+    "sentry-cli",
+    "sentry"
+   ],
+   "cli": {
+    "bin": "sentry-cli",
+    "install": "brew install getsentry/tools/sentry-cli",
+    "auth_mechanism": "env",
+    "detect": {
+     "config_paths": [
+      "~/.sentryclirc"
+     ]
+    },
+    "inject": [
+     {
+      "via": "env",
+      "name": "SENTRY_AUTH_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
+    ]
+   }
+  },
+  {
+   "provider": "Datadog",
+   "tokens": [
+    "DATADOG"
+   ],
+   "base_url": "https://api.datadoghq.com/api/v1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "DD-API-KEY"
+   }
+  },
+  {
+   "provider": "New Relic",
+   "tokens": [
+    "NEWRELIC",
+    "RELIC"
+   ],
+   "base_url": "https://api.newrelic.com/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Api-Key"
+   }
+  },
+  {
+   "provider": "PagerDuty",
+   "tokens": [
+    "PAGERDUTY"
+   ],
+   "base_url": "https://api.pagerduty.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "Token token={secret}"
+   }
+  },
+  {
+   "provider": "Honeycomb",
+   "tokens": [
+    "HONEYCOMB"
+   ],
+   "base_url": "https://api.honeycomb.io/1",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "X-Honeycomb-Team"
+   }
+  },
+  {
+   "provider": "Bunny",
+   "tokens": [
+    "BUNNY"
+   ],
+   "base_url": "https://api.bunny.net",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "AccessKey"
+   }
+  },
+  {
+   "provider": "Square",
+   "tokens": [
+    "SQUARE"
+   ],
+   "base_url": "https://connect.squareup.com/v2",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Paddle",
+   "tokens": [
+    "PADDLE"
+   ],
+   "base_url": "https://api.paddle.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "LemonSqueezy",
+   "tokens": [
+    "LEMONSQUEEZY"
+   ],
+   "base_url": "https://api.lemonsqueezy.com/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Coinbase",
+   "tokens": [
+    "COINBASE"
+   ],
+   "base_url": "https://api.coinbase.com/v2",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Intercom",
+   "tokens": [
+    "INTERCOM"
+   ],
+   "base_url": "https://api.intercom.io",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "me"
+  },
+  {
+   "provider": "Front",
+   "tokens": [
+    "FRONT"
+   ],
+   "base_url": "https://api2.frontapp.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Telnyx",
+   "tokens": [
+    "TELNYX"
+   ],
+   "base_url": "https://api.telnyx.com/v2",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "MessageBird",
+   "tokens": [
+    "MESSAGEBIRD"
+   ],
+   "base_url": "https://rest.messagebird.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "AccessKey {secret}"
+   }
+  },
+  {
+   "provider": "Loops",
+   "tokens": [
+    "LOOPS"
+   ],
+   "base_url": "https://app.loops.so/api/v1",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Nylas",
+   "tokens": [
+    "NYLAS"
+   ],
+   "base_url": "https://api.us.nylas.com/v3",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "HubSpot",
+   "tokens": [
+    "HUBSPOT"
+   ],
+   "base_url": "https://api.hubapi.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Asana",
+   "tokens": [
+    "ASANA"
+   ],
+   "base_url": "https://app.asana.com/api/1.0",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "ClickUp",
+   "tokens": [
+    "CLICKUP"
+   ],
+   "base_url": "https://api.clickup.com/api/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "{secret}"
+   }
+  },
+  {
+   "provider": "Monday",
+   "tokens": [
+    "MONDAY"
+   ],
+   "base_url": "https://api.monday.com/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "{secret}"
+   }
+  },
+  {
+   "provider": "Calendly",
+   "tokens": [
+    "CALENDLY"
+   ],
+   "base_url": "https://api.calendly.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Cal.com",
+   "tokens": [
+    "CALCOM"
+   ],
+   "base_url": "https://api.cal.com/v1",
+   "auth": {
+    "shape": "query",
+    "param": "apiKey"
+   }
+  },
+  {
+   "provider": "Typeform",
+   "tokens": [
+    "TYPEFORM"
+   ],
+   "base_url": "https://api.typeform.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Zoom",
+   "tokens": [
+    "ZOOM"
+   ],
+   "base_url": "https://api.zoom.us/v2",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Pipedrive",
+   "tokens": [
+    "PIPEDRIVE"
+   ],
+   "base_url": "https://api.pipedrive.com/v1",
+   "auth": {
+    "shape": "query",
+    "param": "api_token"
+   }
+  },
+  {
+   "provider": "PostHog",
+   "tokens": [
+    "POSTHOG"
+   ],
+   "base_url": "https://app.posthog.com",
+   "auth": {
+    "shape": "bearer"
+   }
+  },
+  {
+   "provider": "Unsplash",
+   "tokens": [
+    "UNSPLASH"
+   ],
+   "base_url": "https://api.unsplash.com",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "Authorization",
+    "format": "Client-ID {secret}"
+   }
+  },
+  {
+   "provider": "Giphy",
+   "tokens": [
+    "GIPHY"
+   ],
+   "base_url": "https://api.giphy.com/v1",
+   "auth": {
+    "shape": "query",
+    "param": "api_key"
+   }
+  },
+  {
+   "provider": "OpenWeather",
+   "tokens": [
+    "OPENWEATHER",
+    "OWM"
+   ],
+   "base_url": "https://api.openweathermap.org/data/2.5",
+   "auth": {
+    "shape": "query",
+    "param": "appid"
+   }
+  }
+ ]
+}

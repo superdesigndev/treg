@@ -35,6 +35,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
+from . import cost as call_cost
 from . import keyslots
 from .resolve import MarketplaceCall, _openmart_credits, _usd_to_micro
 from .types import GatewayFailed, UpstreamResponse
@@ -183,12 +184,15 @@ def _tavily_result_count(endpoint_id: str, doc: object) -> int | None:
 
 
 def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
-    """People returned by CompanyEnrich's search, floored at one: a person is 2 credits, and an
-    empty page still costs the 2-credit minimum (catalog note, verified live). The reserve is the
-    requested `pageSize`, so without counting an empty `{"items": []}` settled a whole page."""
+    """Rows returned by a CompanyEnrich search, floored at one. The provider bills each person or
+    company returned at the row's credits (2 a person, 1 a company, 5 a lookalike) and an empty
+    page at one row (catalog notes, verified live). The reserve is the requested `pageSize`, so
+    without counting an empty `{"items": []}` settled a whole page."""
     if endpoint_id not in (
         "companyenrich.people.search",
         "companyenrich.people.search.scroll",
+        "companyenrich.companies.search",
+        "companyenrich.companies.similar",
     ):
         return None
     if not isinstance(doc, dict):
@@ -196,7 +200,7 @@ def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
     items = doc.get("items")
     if not isinstance(items, list):
         return None
-    # 2 credits per person, minimum 1 unit charged (the 2-credit minimum on empty)
+    # An empty page still bills one row's credits.
     return max(len(items), 1)
 
 
@@ -437,18 +441,15 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     the reserved estimate's row assumption only implicitly (a bigger-than-asked response charges
     more, which `ledger.settle` handles as an overrun).
 
-    Three providers volunteer the number, in two different denominations:
-      - dataforseo: a top-level `cost` in USD — including 0 when it decided not to charge (a free
-        route, or a request it rejected before metering). That zero is real information and settles the
-        call at zero, which is why the test is `>= 0` and not truthiness.
-      - scrapecreators (`credits_charged`), akta and leadmagic (`credits_consumed`): provider
-        credits, converted through the provider's credit rate (fx.yaml) — the same conversion
-        `cost_view` uses, so a settle can't disagree with the catalog's price. Akta is the one that
-        NEEDS this: its enrich route is priced per SECTION requested and its news route adds a
-        per-article rider, so the catalog's single estimate can only be an upper bound — the actual
-        charge lives here. LeadMagic answers a miss with 2xx and `credits_consumed: 0` (observed at
-        verify time), so honouring the field is what keeps a free miss from billing the estimate;
-        it also reports fractions (email verify is 0.25).
+    Providers that volunteer the number, in two different denominations:
+      - akta and leadmagic (`credits_consumed`): provider credits, converted through the
+        provider's credit rate (fx.yaml) — the same conversion `cost_view` uses, so a settle can't
+        disagree with the catalog's price. Akta is the one that NEEDS this: its enrich route is
+        priced per SECTION requested and its news route adds a per-article rider, so the catalog's
+        single estimate can only be an upper bound — the actual charge lives here. LeadMagic
+        answers a miss with 2xx and `credits_consumed: 0` (observed at verify time), so honouring
+        the field is what keeps a free miss from billing the estimate; it also reports fractions
+        (email verify is 0.25).
       - Dropleads: REPORTED in provider credits through `credits_charged` for finder/verifier,
         `credits_consumed` for people enrichment, or `credits.creditsDeducted` for company calls.
         Each field uses the same Dropleads credit rate from fx.yaml.
@@ -465,17 +466,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - hunter (email finder): DERIVED, the flat case — one whole SEARCH credit when an email is
         found, nothing on a miss ("a miss is free", per Hunter's own pricing), yet a miss still
         answers HTTP 200, so the estimate billed the full credit for a name Hunter had nothing on.
-      - tikhub: REPORTED in prose rather than a number. Every envelope says whether the call is
-        billed; only the explicit no-charge phrasing settles at zero, because TikHub really does
-        charge for a 2xx whose payload is an embedded error.
 
       - crustdata / cloro / aiark: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`),
         the only place the charge exists. AI Ark reports debits as negative `X-Credit` values; its
         explicit -1 multiplier converts that convention to a nonnegative charge. cloro's
         ChatGPT/Google routes price their include flags and US state targeting per request, so the
         catalog value is an upper bound and the header is the bill.
-      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
-        dataforseo's `cost`) — the only place the per-result and per-content riders exist.
+      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body — the only place the
+        per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
@@ -484,8 +482,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
-    Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
-    harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
+    Everyone else settles at the estimate. A v2 row reads its own `settle.reported` instead."""
+    if mk.cost_terms is not None:
+        return call_cost.reported(mk.cost_terms, call_cost.document(body), headers)
     provider = mk.provider
     catalog = catalog_store.load()
     ep = catalog.by_id.get(mk.endpoint_id)
@@ -531,6 +530,16 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return 0 if provider == "contactout" else None
+    if provider == "theirstack" and mk.endpoint_id in {
+        "theirstack.jobs.search", "theirstack.companies.search",
+        "theirstack.companies.technologies", "theirstack.companies.buying_intents",
+    }:
+        rows = doc.get("data") if isinstance(doc, dict) else None
+        if not isinstance(rows, list):
+            return None
+        if mk.endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
+            return _rows_billed_micro(mk, ep, len(rows))
+        return mk.estimate_micro if rows else 0
     if (provider == "valyu" and mk.endpoint_id.endswith(".search")
             and isinstance(doc, dict)
             and ("results" not in doc or doc["results"] == [])
@@ -642,6 +651,10 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             # HarvestAPI answers a full queue (429) or no backend (503) as a 200 without `cost`.
             return 0
         # Missing or invalid charge evidence leaves the normal miss/base rules in force.
+    counted = (ep.get("cost") or {}).get("settle") if ep else None
+    if isinstance(counted, dict) and mk.unit_micro > 0:
+        rows = _dig(doc, counted["count"]["path"])
+        return _rows_billed_micro(mk, ep, len(rows) if isinstance(rows, list) else None)
     if provider == "sumble":
         credits = doc.get("credits_used")
         # The request-time credit freezes the rate, including legitimate zero usage. Not
@@ -709,17 +722,11 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         n = len(data) if isinstance(data, list) else (1 if data else 0)
         return n * mk.unit_micro
     if provider == "influencersclub" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # Discovery bills per creator RETURNED (cost.value credits each, e.g. 0.01 for search/similar,
-        # 0.03 for search with return_filter_values=true). The `accounts` array is invisible to the
-        # generic counters. An envelope without `accounts` (an error shape) costs nothing.
+        # Discovery bills per creator RETURNED. The `accounts` array is invisible to the generic
+        # counters. An envelope without `accounts` (an error shape) costs nothing.
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
-    if provider == "dataforseo":
-        cost = doc.get("cost")
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
-            return int(cost * 1_000_000 + 0.5)
-        return None
     if provider == "contactout" and cost:
         from . import contactout
         return contactout.observed(cost, mk.request_data, doc)
@@ -741,8 +748,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(total, (int, float)) and not isinstance(total, bool) and total >= 0:
             return int(total * 1_000_000 + 0.5)
         return None
-    if provider in ("scrapecreators", "akta", "leadmagic"):
-        credits = doc.get("credits_charged" if provider == "scrapecreators" else "credits_consumed")
+    if provider in ("akta", "leadmagic"):
+        credits = doc.get("credits_consumed")
         rate = catalog_store.load().credit_rates.get(provider)
         if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
             return int(credits * rate * 1_000_000 + 0.5)
@@ -802,18 +809,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rate = catalog_store.load().credit_rates.get("hunter")
         if isinstance(data, dict) and "email" in data and rate:
             return int(rate * 1_000_000 + 0.5) if data["email"] else 0
-        return None
-    if provider == "tikhub":
-        # REPORTED in prose rather than a number: every TikHub envelope states whether the call is
-        # billed. A 2xx whose payload is an embedded error still says "This request will incur a
-        # charge." and TikHub really does charge us for it, so a dead page settling at the estimate
-        # is faithful, not an over-charge. Only the explicit no-charge phrasing settles at zero;
-        # anything else stays at the estimate.
-        msg = doc.get("message")
-        if isinstance(msg, str):
-            low = msg.lower()
-            if "won't be charged" in low or "will not be charged" in low or "not incur" in low:
-                return 0
         return None
     if provider == "apollo":
         # Only the shapes whose billing rule is documented and body-decidable: company enrichment
@@ -1128,6 +1123,123 @@ async def _read_whole_if_small(
     return UpstreamResponse(response.status, response.raw_headers, replay(), response.close), None
 
 
+@dataclass(frozen=True)
+class SettleDecision:
+    """What closing one metered hold decides, before any ledger write. Amounts are RAW micro-USD
+    except `charged_micro`, the margined amount the ledger takes from the balance."""
+
+    billable: bool
+    reason: str
+    observed_micro: int | None
+    actual_micro: int | None
+    charged_micro: int
+    repeat_percent: int
+
+
+def decide_settle(
+    mk: MarketplaceCall, status_code: int | None, body: bytes = b"", *, headers=None,
+    reason: str = "", observed_override: int | None = None, cached_repeat: bool = False,
+) -> SettleDecision:
+    """The decision half of `_platform_settle`: charge or release, and how much. Pure: no session,
+    no network; reads the catalog and settings of this checkout."""
+    if mk.cost_terms is not None:
+        billable, reason, observed, actual = _decide_v2(mk, status_code, body, headers, reason,
+                                                        observed_override)
+    else:
+        billable, reason, observed, actual = _decide_legacy(mk, status_code, body, headers, reason,
+                                                            observed_override)
+    repeat_percent = get_settings().archive_hit_repeat_price_percent
+    if billable and cached_repeat and actual is not None:
+        # The repeat price: the team already paid full price for this question once (live or
+        # hit); this stored answer costs the configured share. Applied to the RAW amount so the
+        # margin rule stays the ledger's alone. Floor division, never rounding up a discount.
+        actual = actual * repeat_percent // 100
+    if mk.deferred is not None and billable and actual == 0:
+        # A routed child the provider reported free (a miss on a per-success rate card): there is
+        # nothing for the parent to decide, so it is released below like any unbilled child.
+        billable, reason = False, reason or "free_answer"
+    charged = (ledger.with_margin(actual) if actual is not None
+               else ledger.with_margin(mk.estimate_micro)) if billable else 0
+    return SettleDecision(billable=billable, reason=reason, observed_micro=observed,
+                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent)
+
+
+def _capacity_release(mk: MarketplaceCall, status_code: int, headers, body: bytes) -> str:
+    """`capacity_<kind>` when a platform answer is OUR account running dry, else ""."""
+    if mk.tier != "platform":
+        return ""
+    signal = capacity_signatures.classify(mk.provider, status_code, headers, body[:4096])
+    return f"capacity_{signal.kind}" if capacity_signatures.is_exhausting(signal) else ""
+
+
+def _decide_v2(mk: MarketplaceCall, status_code: int | None, body: bytes, headers, reason: str,
+               observed_override: int | None) -> tuple[bool, str, int | None, int | None]:
+    """The v2 settlement order (`call.cost`): no answer and a 3xx or 5xx release; a 4xx releases
+    unless it reports a charge and is the caller's fault; a 2xx is billed by `free_when`, the
+    reported charge, the outcome and `bill`, then the `settle` form; and an answer that would be
+    billed is released when it carries a capacity signature."""
+    if status_code is None or not (200 <= status_code < 300 or 400 <= status_code < 500):
+        return False, reason, None, None
+    doc = call_cost.document(body)
+    if 400 <= status_code < 500:
+        figure = (observed_override if observed_override is not None
+                  else call_cost.reported(mk.cost_terms, doc, headers))
+        billable = bool(figure) and status_code not in _NOT_THE_CALLERS_FAULT
+        observed = actual = figure if billable else None
+        if not billable and _platform_billable(status_code, mk.cost_type):
+            return False, (_capacity_release(mk, status_code, headers, body)
+                           or f"rejected_unbilled_{status_code}"), None, None
+    elif observed_override is not None:
+        billable, observed, actual = True, observed_override, observed_override
+    else:
+        billable = True
+        observed, actual = call_cost.charge(
+            mk.cost_terms, mk.settlement_basis, mk.estimate_micro, status_code, doc, raw=body,
+            headers=headers, request_data=mk.request_data)
+    if billable and (capacity := _capacity_release(mk, status_code, headers, body)):
+        return False, capacity, None, None
+    return billable, reason, observed, actual
+
+
+def _decide_legacy(mk: MarketplaceCall, status_code: int | None, body: bytes, headers, reason: str,
+                   observed_override: int | None) -> tuple[bool, str, int | None, int | None]:
+    billable = status_code is not None and _platform_billable(status_code, mk.cost_type)
+    if billable and mk.tier == "platform":
+        # A 4xx the status set calls the caller's fault, or even a 2xx (Icypeas' 200 "insufficient
+        # credits"), may still be OUR account running dry in a
+        # vendor's own dialect (Apollo's 422 "Insufficient credits"). Ask the signature table before
+        # charging: billing it would take the caller's money for treg's empty account, and once
+        # overflow serves the same request through an aggregator they would pay twice. (The
+        # overflow child never reaches here with such a body: `with_vendor_verdict` diverts it.)
+        signal = capacity_signatures.classify(mk.provider, status_code, headers, body[:4096])
+        if capacity_signatures.is_exhausting(signal):
+            billable, reason = False, f"capacity_{signal.kind}"
+    # `observed_override`: the overflow child cycle knows its cost from the aggregator's envelope, not
+    # from the vendor body - the caller pays exactly that, whatever the vendor's own billing shape.
+    observed = ((observed_override if observed_override is not None
+                 else _observed_cost_micro(mk, body, headers)) if billable else None)
+    if billable and status_code >= 400 and not observed:
+        # A rejected request is billed on the provider's word, never on the estimate. The estimate
+        # prices a SERVED call; a 4xx served nothing, and a `per_call` rate card does not say the
+        # vendor takes a credit for a request it bounced at validation. When the body carries the
+        # vendor's own charge (`credits_charged`, `chargeInfo.creditsCharged`, `cost`…) and it is
+        # non-zero, the caller pays exactly that; when the vendor is silent or says 0, the hold is
+        # released — the same "when unclear, don't charge" rule `_NOT_THE_CALLERS_FAULT` follows.
+        billable, observed, reason = False, None, f"rejected_unbilled_{status_code}"
+    # A provider-reported zero (an adapter miss, a failed `expect` envelope, an explicit zero
+    # charge) is a fact about THIS answer and outranks any frozen basis: a price table says what a
+    # success costs, and this was not one.
+    # A `settle: usage` endpoint reads the provider's own charge from the answer (the async worker
+    # hands the terminal document; a synchronous call hands its body the same way, or a per-usage
+    # endpoint would settle at the reserve ceiling instead of the reported charge).
+    terminal = None
+    if billable and (mk.settlement_basis.get("amount") or {}).get("kind") == "usage" and body:
+        terminal = _usage_document(body)
+    actual = ((0 if observed == 0 else settlement_basis.settle(
+        mk.settlement_basis, {"observed_micro": observed, "terminal": terminal})) if billable else None)
+    return billable, reason, observed, actual
+
+
 async def _platform_settle(
     mk: MarketplaceCall, status_code: int | None, body: bytes = b"", *, headers=None,
     reason: str = "", finalized: Callable[[], None] | None = None,
@@ -1152,58 +1264,29 @@ async def _platform_settle(
     turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
     releases it, which errs in the org's favour. Runs on its OWN session because the request's session
     may be mid-rollback from the very error we are releasing for."""
+    if mk.metered and mk.holdless:
+        decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                                 observed_override=observed_override, cached_repeat=cached_repeat)
+        if decision.charged_micro:
+            logging.getLogger("treg.ledger").error(
+                "holdless call on %s computed a charge of %s micro; nothing was held, treg absorbs it",
+                mk.endpoint_id, decision.charged_micro)
+        if finalized is not None:
+            finalized()
+        return 0, decision.observed_micro
     if not mk.metered or not mk.call_id:
         return 0, None
-    billable = status_code is not None and _platform_billable(status_code, mk.cost_type)
-    if billable and mk.tier == "platform":
-        # A 4xx the status set calls the caller's fault, or even a 2xx (Icypeas' 200 "insufficient
-        # credits"), may still be OUR account running dry in a
-        # vendor's own dialect (Apollo's 422 "Insufficient credits"). Ask the signature table before
-        # charging: billing it would take the caller's money for treg's empty account, and once
-        # overflow serves the same request through an aggregator they would pay twice. (The
-        # overflow child never reaches here with such a body: `with_vendor_verdict` diverts it.)
-        signal = capacity_signatures.classify(mk.provider, status_code, headers, body[:4096])
-        if capacity_signatures.is_exhausting(signal):
-            billable, reason = False, f"capacity_{signal.kind}"
-    # `observed_override`: the overflow child cycle knows its cost from the aggregator's envelope, not
-    # from the vendor body - the caller pays exactly that, whatever the vendor's own billing shape.
+    decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                             observed_override=observed_override, cached_repeat=cached_repeat)
+    billable, reason, observed, actual = (
+        decision.billable, decision.reason, decision.observed_micro, decision.actual_micro)
+    repeat_percent = decision.repeat_percent
     # `overflow_spend` = (aggregator, adjustment from the budget reservation, delta vs treg's direct
     # price): folded into the SAME settle transaction, the one allowlisted overflow write
     # (`overflow_spend_in_settle`). It is recorded even when the vendor response is not billable to
     # the caller because the aggregator's prepaid account still incurred the cost.
-    observed = ((observed_override if observed_override is not None
-                 else _observed_cost_micro(mk, body, headers)) if billable else None)
-    if billable and status_code >= 400 and not observed:
-        # A rejected request is billed on the provider's word, never on the estimate. The estimate
-        # prices a SERVED call; a 4xx served nothing, and a `per_call` rate card does not say the
-        # vendor takes a credit for a request it bounced at validation. When the body carries the
-        # vendor's own charge (`credits_charged`, `chargeInfo.creditsCharged`, `cost`…) and it is
-        # non-zero, the caller pays exactly that; when the vendor is silent or says 0, the hold is
-        # released — the same "when unclear, don't charge" rule `_NOT_THE_CALLERS_FAULT` follows.
-        billable, observed, reason = False, None, f"rejected_unbilled_{status_code}"
-    # A provider-reported zero (an adapter miss, a failed `expect` envelope, an explicit zero
-    # charge) is a fact about THIS answer and outranks any frozen basis: a price table says what a
-    # success costs, and this was not one.
-    # A `settle: usage` endpoint reads the provider's own charge from the answer (the async worker
-    # hands the terminal document; a synchronous call hands its body the same way, or a per-usage
-    # endpoint would settle at the reserve ceiling instead of the reported charge).
-    terminal = None
-    if billable and (mk.settlement_basis.get("amount") or {}).get("kind") == "usage" and body:
-        terminal = _usage_document(body)
-    actual = ((0 if observed == 0 else settlement_basis.settle(
-        mk.settlement_basis, {"observed_micro": observed, "terminal": terminal})) if billable else None)
-    repeat_percent = get_settings().archive_hit_repeat_price_percent
-    if billable and cached_repeat and actual is not None:
-        # The repeat price: the team already paid full price for this question once (live or
-        # hit); this stored answer costs the configured share. Applied to the RAW amount so the
-        # margin rule stays the ledger's alone. Floor division, never rounding up a discount.
-        actual = actual * repeat_percent // 100
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
-    if mk.deferred is not None and billable and actual == 0:
-        # A routed child the provider reported free (a miss on a per-success rate card): there is
-        # nothing for the parent to decide, so it is released below like any unbilled child.
-        billable, reason = False, reason or "free_answer"
     if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
             and status_code is not None):
         # A routed child: the parent decides whether the caller pays (a routed call that fails
@@ -1224,9 +1307,7 @@ async def _platform_settle(
                      if cached_hit else {})}))
         if finalized is not None:
             finalized()
-        would = (ledger.with_margin(actual) if actual is not None
-                 else ledger.with_margin(mk.estimate_micro)) if billable else 0
-        return would, observed
+        return decision.charged_micro, observed
 
     # A block draw keeps the close lease. A release or a full refund still updates the balance
     # row, so it takes the release lease instead of an empty admit. One admit, around this session.
@@ -1403,11 +1484,18 @@ async def _finish_cancelled_call(
             except (Exception, asyncio.CancelledError):
                 logging.getLogger("treg.proxy").error(
                     "upstream close failed for cancelled call %s", call_ref, exc_info=True)
+        # A holdless parent never had a hold; only a started overflow child may have one.
+        hold_ids = ([] if mk is None or not mk.metered else
+                    [hold_id for hold_id, possible in (
+                        (call_ref, not mk.holdless),
+                        (f"{call_ref}:overflow", not mk.holdless or mk.overflow_hold_possible),
+                    ) if possible])
         if mk is not None and mk.metered:
+            mk.call_id = None
+        if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
             # conditionally claims it: committed means refund, rolled back means a safe no-op.
-            mk.call_id = None
             try:
                 # A parent reserve already stored mk.payer_org_id. Overflow cancel passes
                 # the authenticated caller instead, including skip-direct, where the parent
@@ -1430,7 +1518,7 @@ async def _finish_cancelled_call(
                                     if charge_hold and hold_id == call_ref else "call_cancelled"),
                             meta={"provider": mk.provider, "cost_type": mk.cost_type,
                                   "status_code": None})
-                        for hold_id in (call_ref, f"{call_ref}:overflow")
+                        for hold_id in hold_ids
                     ])
                     await cleanup_db.commit()
             except (Exception, asyncio.CancelledError):

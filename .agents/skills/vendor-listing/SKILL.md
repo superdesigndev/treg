@@ -18,7 +18,7 @@ A listing has **three parts**, and all three ship in the same PR:
 1. **Registry entry** (`src/treg/oauth_providers.py`) — how a team connects a credential for the
    provider, and how treg verifies that credential is real.
 2. **Core catalog file** (`src/treg/catalog/<service>.yaml`) — what an agent can *do*: 8–15
-   curated endpoints with capability mapping, inputs, cost + provenance, and verified examples.
+   curated endpoints with capability mapping, inputs, price + provenance, and verified examples.
 3. **Platform-key slot** (`config.py` + `fx.yaml`) — so treg can serve the
    endpoints on its own key (tier 4). **Always aim for this.** A listing that is BYOK-only is the
    exception and needs a stated reason (no self-serve pricing, `own_account` data, sales-gated).
@@ -26,13 +26,16 @@ A listing has **three parts**, and all three ship in the same PR:
 And every listing PR carries a **verification evidence ledger** (Step 7b). No ledger, no merge.
 
 Deep references (read before non-trivial work; do not duplicate them here):
-- `docs/context/guides/expanding-a-category.md` — the add-a-provider playbook, verify toolbox, traps
-- `docs/context/architecture/catalog.md` — catalog schema, cost provenance, verify pipeline, PII rules
+- `references/expanding-a-category.md` - the verify toolbox, provider traps and selection heuristics
+- `docs/context/architecture/catalog.md` — catalog file shape, cost provenance, verify pipeline, PII rules
+- `docs/context/architecture/catalog-schema.md` - the v2 row model, `defaults:`, outcome keys, and
+  the rules for a summary and a note
 - `docs/VENDORS.md` — what we told the vendor to prepare (their checklist)
 - `src/treg/web/vendor-listing.md` — the HOSTED instructions (served at `/vendor-listing`) that a
   vendor's own coding agent follows to raise a listing PR; the dashboard's "List as vendor" modal
-  (connections view, `vendorAsk` in `index.html`) hands vendors a prompt pointing at it. Keep the
-  three vendor-facing surfaces (doc, hosted page, modal prompt) telling one story.
+  (Catalog page, `vendorPromptText` in `frontend/src/state/agentsComputed.js`) hands vendors a
+  prompt pointing at it. Keep the three vendor-facing surfaces (doc, hosted page, modal prompt)
+  telling one story.
 
 ## Step 0 — intake: collect the vendor facts
 
@@ -66,7 +69,7 @@ Reject decisively, with a recorded reason, when:
 
 Add an `OAuthProvider(auth_kind="key", …)` in `oauth_providers.py` and append it to `REGISTRY`.
 Model it on `HUNTER` (a clean key provider). Pick the verify fields from the toolbox table in
-`expanding-a-category.md` (`token_header`/`token_format`, `token_location="query"`+`token_param`,
+`references/expanding-a-category.md` (`token_header`/`token_format`, `token_location="query"`+`token_param`,
 `probe_url`, `probe_method`+`probe_json`, `token_verify_field`, `token_ok_field`+`token_ok_value`,
 `token_reject_field`, `probe_reject_statuses`, …). Prefer a header over a query key so the secret
 never lands in a logged URL. Set `category` (add to `CATEGORY_ORDER` only if genuinely new),
@@ -89,8 +92,8 @@ The tier-4 wiring is part of the listing, not a follow-up:
 - `src/treg/catalog/fx.yaml` `credit_rates_usd`: the USD-per-credit treg actually pays, with
   `basis` naming the real top-up/receipt (not the pricing page's headline tier), `source`, `checked`.
 - A test asserting `cat.platform_eligible(ep)` for every endpoint in the file (see
-  `test_crustdata_and_aviato_catalogs_are_platform_priced`); every cost must therefore be
-  `confidence: documented|verified` with a computable USD figure.
+  `test_crustdata_and_aviato_catalogs_are_platform_priced`); every row's `provenance` must
+  therefore be `confidence: documented|verified` and its price computable in USD.
 - If the platform key also needs a constant header, `_platform_bindings` must carry it — assert
   the tier-4 binding list equals BYOK's (see `test_crustdata_platform_key_keeps_the_required_version_header`).
 - Hand the **env value** to Jason out-of-band (a file, never the PR, never chat if avoidable) with
@@ -98,8 +101,8 @@ The tier-4 wiring is part of the listing, not a follow-up:
   the PR just makes it possible.
 
 Modal pricing (preview/rescrape/email riders, bulk-per-record) that one scalar can't express: keep
-the numbers in the YAML cost block (`note` today; a `modifiers` block if you add one) and read
-them generically — do not hardcode credit arithmetic in `api.py` per provider (#191 debt).
+the numbers in the row (`price.table`, `reserve`, `settle`) and read them generically — do not
+hardcode credit arithmetic in `api.py` per provider (#191 debt).
 
 ## Step 3 — logo
 
@@ -108,8 +111,7 @@ them generically — do not hardcode credit arithmetic in `api.py` per provider 
 
 ## Step 4 — tests
 
-- Add the id to `test_every_provider_is_registered` (test_oauth_providers_m3)
-- Add it to the offerable loop in `test_key_providers`
+No test list needs editing: the registry-wide tests pick the new entry up on their own.
 
 ## Step 5 — LIVE bogus-key test (load-bearing; never skip)
 
@@ -136,12 +138,50 @@ slash in `probe_path`), 200-with-error-body (read a body field), CSV/text respon
    and if another provider's endpoint already does the job unmapped, name it in the PR so the
    reviewer attaches both to the new capability.
 4. **Describe** `input` (param names, types, required, location; constraints into `note`).
-5. **Cost** with full provenance: `type/value/currency/per/unit` + `source/source_url/checked/
-   confidence`. Unknown price → `value: null` + `confidence: unknown` + a note. Prefer a
-   rate-card endpoint (`source: rate_card_api`) over a pricing page.
+5. **Cost, in the v2 spelling** - never a `cost:` block. Each row states its `price`; when the
+   request or the answer decides the charge, `reserve` / `settle` / `bill`; and its outcome
+   rules, `expect` / `error` / `miss` / `not_found`. What holds for every row of the provider
+   (`provenance`, the `bill` rule, a shared `expect`) goes once in the file header's `defaults:`.
+   The keys, the merge rule and the outcome order are `catalog-schema.md`; how each key bills is
+   `money.md` ("Rows in the v2 spelling"). Prefer a rate-card endpoint (`source: rate_card_api`)
+   over a pricing page.
+   A minimal file, header and one row:
+
+   ```yaml
+   defaults:
+     provenance: {source: docs, source_url: 'https://acme.example/pricing', checked: '2026-11-09', confidence: documented}
+
+   endpoints:
+     - id: acme.web.backlinks.summary
+       # … capability, platform, scope, method, path, name, summary, input, test_request …
+       price: {value: '0.002', currency: USD, per: 1, unit: call}
+       miss: {when: {path: response.data, op: absent}}
+       added: '2026-11-09'
+   ```
+
+   For the full shape copy a live v2 file: `tikhub.yaml` (a provider that bills every 2xx:
+   `bill: {miss: charged, error: charged}` in `defaults:`, an `error` rule per row) or
+   `justoneapi.yaml` (a provider-wide `expect` in `defaults:`, a CNY price, `miss` rules).
+   **A provider already listed keeps its spelling:** rows added to it are written the way its
+   file's rows are, and a listing PR never respells a row. Moving rows between `cost` and v2 is a
+   migration batch's job, under the `catalog-migration` label; without it the `Catalog added
+   dates` workflow fails the respelt row.
 6. **test_request** per endpoint — CHEAP: smallest limit, one item, public well-known target.
    ⚠️ Never probe with empty params "expecting a validation error": a no-required-params endpoint
    returns its full default result set and bills for it (the Moz quota trap).
+7. **Write the summary and note** by the procedure below.
+
+### Writing summary and note
+
+The rules are [`catalog-schema.md`, "Summary and note"](../../../docs/context/architecture/catalog-schema.md#summary-and-note);
+read them there. This is only the order to apply them in, to a row's `summary`, `note`, parameter
+notes and `price.note`:
+
+1. Apply its "Most callers need it" rule to each sentence.
+2. Place each caveat that stays by its "A caveat goes to its most specific home first" bullet.
+3. **Run `uv run --frozen python scripts/catalog_validate.py` locally and read every warning** on
+   your rows (`--base origin/main` limits them to the rows you touched, as CI does).
+4. Put the evidence behind each sentence where that bullet says, with the Step 7b ledger.
 
 ## Step 7 — verify, scrub, validate
 
@@ -163,17 +203,17 @@ uv run --frozen python -m pytest -q
     2xx for 0 credits. That proves the route exists, nothing else. Use a real id harvested from a
     sibling endpoint's response and observe the charge once.
   - **Preview / free modes** (`preview=true`) as the test_request: the free path is verified, the
-    paid price is not. Either observe the paid path once, or write "hit price unobserved" in the
-    cost `note` — never let the stamp imply the price was confirmed.
+    paid price is not. Either observe the paid path once, or mark the ledger row "hit price
+    unobserved" - never let the stamp imply the price was confirmed.
   - **A miss on a per_success route** (`{"phones":[]}`, 0 credits) proves miss=free, not the
-    hit price. Say so in the note.
+    hit price. Say so in the ledger.
 - **Declare the miss shape, or the router turns every miss into a 502.** Probe each find/enrich
   endpoint once with a person who cannot exist and record status, body, latency and charge. The
   routed waterfall reads only the endpoint's `miss:` block: a 2xx is hit-or-miss by the adapter's
   predicate, and any 4xx is an ERROR unless `miss: {status, means}` names it — one error child
   and the parent cannot answer "miss", so eight clean misses plus one undeclared 404 is a 502
   (#573: 64% of three days of `treg.people.email.find` 502s were exactly this).
-  - LimaData answered 404 for "no email"; the cost `note` said "a 404 miss is free" but no
+  - LimaData answered 404 for "no email"; its note said "a 404 miss is free" but no
     `miss:` block existed. Prose in `note` is documentation; only the `miss:` block is read.
   - Prospeo answers 400 for BOTH `NO_MATCH` (a miss) and `INVALID_DATAPOINTS` (a real error). When
     status alone cannot separate them the declaration needs a body predicate, not a
@@ -218,16 +258,19 @@ Rules for the ledger:
   observed value with `source: observed`).
 - Also record: the **bogus-key probe** (status + quoted body), balance before/after per provider,
   `catalog_validate.py` and `build_plugin.py --check` output, the pytest count, and the date.
-- Prices that were observed get `source: observed / confidence: verified`; the rest stay
-  `documented`. The ledger and the YAML must agree — a ledger that contradicts its own YAML
+- Prices that were observed get `provenance: {source: observed, confidence: verified}`; the
+  rest stay `documented`. The ledger and the YAML must agree — a ledger that contradicts its own YAML
   bounces the PR.
 
 ## Step 8 — optional extended tier
 
 If the vendor publishes a stable OpenAPI spec with example parameter values, add an
 `ingest_<service>()` to `scripts/catalog_ingest.py`, register it in `INGESTERS`, and generate
-`<service>.extended.yaml`. Rules: never probe with a real call; platform = what the data is
-ABOUT; normalise platform slugs across providers. Bulk-verify with
+`<service>.extended.yaml`. The core file's `defaults:` apply to the extended rows too, so a v2
+provider's ingester writes v2 keys against them, as `ingest_tikhub` and `ingest_justoneapi` do,
+or its output is converted with `scripts/catalog_v2.py --provider <slug> --apply`. Rules: never
+probe with a real call; platform = what the data is ABOUT; normalise platform slugs across
+providers. Bulk-verify with
 `catalog_verify_extended.py --dry-run` first, then with an explicit `--budget`.
 
 ## Reviewing a vendor-RAISED PR (they wrote the files; you verify)
@@ -248,7 +291,7 @@ under the real charge (#141, GitHub→LinkedIn: claimed 1 credit, metered 5). Th
    the shared test lists and REGISTRY tuple within days.
 4. **Independently verify with a key YOU control** (steps 5–7 above): watch the bogus-key
    rejection yourself and quote the real wire body, run `catalog_verify.py` over every
-   test_request, and reconcile every cost block against the meter (charge field / rate-card
+   test_request, and reconcile every row's price against the meter (charge field / rate-card
    endpoint / balance delta) — the vendor's ledger is a cross-check, never the source of truth.
    Where a price disagrees, fix it from the observed charge (`source: observed`,
    `confidence: verified`) and tell the vendor their docs are stale. Post your own Step 7b table
@@ -269,7 +312,9 @@ under the real charge (#141, GitHub→LinkedIn: claimed 1 credit, metered 5). Th
   balances before/after, reconciliation), and the vendor's contact email — no credential value
   anywhere
 - Every endpoint carries `verified:` + example backed by a real target and an observed charge, or
-  its cost `note` states exactly what was not observed (hit price / rider / placeholder)
+  its ledger row states exactly what was not observed (hit price / rider / placeholder)
+- Every new row is in the v2 spelling (no `cost:` block) unless its provider's file is still in
+  today's
 - Every find/enrich endpoint with a routing adapter has its miss shape observed and, when the
   miss is a 4xx, declared in `miss:`; the ledger row for the deliberate-miss probe shows the
   status, body and latency

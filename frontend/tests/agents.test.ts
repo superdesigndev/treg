@@ -27,6 +27,7 @@ const cleanup: (() => void)[] = []
 function dashboard() {
   const vm: any = reactive({
     ...agents, ...keys, ...tickets, ...credentialIssues, switchOrg: session.switchOrg,
+    reportApi: session.reportApi,
     elements: markRaw({}), credentialIssues: {}, activeSlug: 'team', sessionMode: true,
     view: 'orgs', canAdmin: true, orgTab: 'members',
     agents: [{ user_id: 3, connected: true }],

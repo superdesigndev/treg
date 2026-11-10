@@ -4,12 +4,11 @@ Revision ID: 0050
 Revises: 0049
 Create Date: 2026-09-24
 
-One row per tool (docs/hub-listing-decisions.md round 2): state requested | approved | rejected,
+One row per tool: state requested | approved | rejected,
 so a listing outlives a version. Expand only: `hubtool.listed` stays in the table, unread from this
 revision on (the hub was off in production, so no tool was listed there), for a later contract
-revision to drop. `capability` is the catalog job treg approved with the listing (round 3); `pending_version`,
-`pending_pricing` and `update_reason` hold an update to an approved tool while it waits for review
-(round 4); `reviewed` marks a tool treg approved once, which stays under review for good.
+revision to drop. `capability` is the catalog job treg approved with the listing; `pending_version`,
+`pending_pricing` and `update_reason` hold an update to an approved tool while it waits for review; `reviewed` marks a tool treg approved once, which stays under review for good.
 """
 from collections.abc import Sequence
 
