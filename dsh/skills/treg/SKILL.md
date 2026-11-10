@@ -88,9 +88,10 @@ or the CLI is enough, and having both is fine.
    token, `curl -fsSL https://treg.to/install.sh | sh -s -- --token <token>` does the install and sign-in at
    once.
 
-   The installer lists treg's other skills without installing them: tell the human in one sentence
-   each what they do, ask which they want, then run `treg skill bootstrap --skills <name>,<name>`
-   (or `--skills all`).
+   The installer names treg's other skills in one line without installing them. Do not stop to ask
+   about them before sign-in: sign in, make the first call, and only once it returns real data
+   tell the human in one sentence each what they do (`https://treg.to/.well-known/skills/index.json`), then
+   run `treg skill bootstrap --skills <name>,<name>` (or `--skills all`) for the ones they pick.
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
 `treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
