@@ -605,6 +605,16 @@ _SITE_KEYS = frozenset({
     "company_domain", "companydomain",
 })
 _PAGE_NAME_KEYS = frozenset({"page_name", "pagename"})
+_PAGE_ID_KEYS = frozenset({"pageid"})
+
+
+def _name_keys(text: str) -> set[str]:
+    """Comparable forms of a page or company name: the ASCII fold, plus a Unicode-preserving
+    casefold so a name in a non-Latin script (`腾讯`) still meets itself."""
+    import unicodedata
+    keys = {_fold(text), " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFKC", text).casefold()).split())}
+    keys.discard("")
+    return keys
 
 
 def _is_facebook_host(h: str) -> bool:
@@ -638,12 +648,13 @@ def _domain_matches(extracted: str, asked: str) -> bool:
 
 
 def _advertiser_fields(page_name: Any, ads: Any) -> tuple[set[str], set[str], set[str]]:
-    """Page slugs, landing/website hosts, and folded page names from the contract core and ad rows."""
+    """Page identities (slugs from page URLs, `id:<n>` from page URLs and page ids), landing/website
+    hosts, and comparable page names from the contract core and ad rows."""
     pages: set[str] = set()
     hosts: set[str] = set()
     names: set[str] = set()
     if isinstance(page_name, str) and page_name.strip():
-        names.add(_fold(page_name))
+        names.update(_name_keys(page_name))
 
     def walk(obj: Any) -> None:
         if isinstance(obj, list):
@@ -655,7 +666,11 @@ def _advertiser_fields(page_name: Any, ads: Any) -> tuple[set[str], set[str], se
         for key, value in obj.items():
             k = key.replace("_", "").lower()
             if k in _PAGE_NAME_KEYS and isinstance(value, str) and value.strip():
-                names.add(_fold(value))
+                names.update(_name_keys(value))
+            if k in _PAGE_ID_KEYS and isinstance(value, (str, int)) and not isinstance(value, bool):
+                pid = str(value).strip()
+                if pid.isdigit():
+                    pages.add(f"id:{pid}")
             if isinstance(value, str) and value.strip():
                 if k in _PAGE_URL_KEYS:
                     slug = _facebook_page_key(value)
@@ -678,9 +693,11 @@ def advertiser_identity_miss(company_domain: Any, facebook_url: Any, company_nam
     can try a later provider. A name-only request is never judged.
 
     A domain is corroborated by a landing or website host on the page or its ads (a subdomain
-    counts; Facebook hosts do not). A Facebook URL is corroborated by the returned page URL.
-    When the payload has neither a page URL nor a website or landing host to compare, an exact
-    folded page-name match against the supplied company name is enough; a near-match is not."""
+    counts; Facebook hosts do not). A Facebook URL is corroborated by the returned page URL or,
+    for a numeric `profile.php?id=` URL, the returned page id. A numeric identity is only judged
+    against numeric ones and a vanity slug only against slugs. When the payload has nothing
+    comparable, an exact page-name match against the supplied company name is enough (folded,
+    or Unicode-preserving for non-Latin names); a near-match is not."""
     asked_domain = host(company_domain) if isinstance(company_domain, str) else None
     asked_page = _facebook_page_key(facebook_url)
     if not asked_domain and not asked_page:
@@ -691,11 +708,12 @@ def advertiser_identity_miss(company_domain: Any, facebook_url: Any, company_nam
     if asked_page and asked_page in pages:
         return False
     can_check_domain = bool(asked_domain and hosts)
-    can_check_page = bool(asked_page and pages)
+    can_check_page = bool(asked_page and any(p.startswith("id:") == asked_page.startswith("id:")
+                                             for p in pages))
     if can_check_domain or can_check_page:
         return True
-    asked_name = _fold(company_name) if isinstance(company_name, str) and company_name.strip() else ""
-    if asked_name and asked_name in names:
+    asked_names = _name_keys(company_name) if isinstance(company_name, str) and company_name.strip() else set()
+    if asked_names & names:
         return False
     return True
 

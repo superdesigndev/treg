@@ -1932,6 +1932,18 @@ def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_que
     ({"company_name": "Fyno", "facebook_url": "https://www.facebook.com/fyno.travel",
       "company_domain": "fyno.com"}, "Fynony",
      [{"page_name": "Fynony", "page_url": "https://www.facebook.com/fynony/"}], True),
+    # Numeric Facebook URL corroborated by the returned page id beside a vanity page URL: hit.
+    ({"facebook_url": "https://www.facebook.com/profile.php?id=15087023444"}, "Nike",
+     [{"page_id": "15087023444", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], False),
+    # Numeric Facebook URL with a different returned page id: miss.
+    ({"facebook_url": "https://www.facebook.com/profile.php?id=15087023444"}, "Nike",
+     [{"page_id": "1", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], True),
+    # Non-Latin company name, name-only child payload with the identical page name: hit.
+    ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
+     [{"pageName": "腾讯", "pageId": "1"}], False),
+    # Non-Latin company name, different non-Latin page name: miss.
+    ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
+     [{"pageName": "阿里巴巴", "pageId": "2"}], True),
     # Ad-library links are not a page URL; they do not corroborate a Facebook identity.
     ({"facebook_url": "https://www.facebook.com/nike"}, "Nike",
      [{"page_name": "Nike", "ad_url": "https://www.facebook.com/ads/library/?id=1"}], True),
