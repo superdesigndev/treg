@@ -195,6 +195,20 @@ contracts:
     # Never `verified`: a live line is not proof it is this person's number.
     verdict: {from: live_status, words: [live, dead, unknown]}
 
+  # One Enrichlayer child; settle needs a verified miss predicate for per_success all-null bodies.
+  people.profile.from_phone:
+    summary: "Find social profiles from a contact phone number — Enrichlayer reverse phone; miss judging only, never routed"
+    routed: false
+    identity:
+      - {phone: str}
+    filters: {}
+    output:
+      linkedin_url: {type: url, note: "LinkedIn profile when the provider found one"}
+      twitter_url: {type: url}
+      facebook_url: {type: url}
+    miss: "coalesce(linkedin_url, twitter_url, facebook_url) == null"
+    idempotent: true
+
   people.phone.verify:
     summary: "Validate a phone number's format and numbering-plan validity; not a live-line check"
     identity:
@@ -332,37 +346,91 @@ contracts:
       results: {type: list, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
 
   people.search:
-    summary: "Find people by a free-text description, or by company domain / title / country — provider-native rows in `people`"
+    summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
     identity:
-      - {q: str}
+      - {q: text}
       - {company_domain: str}
       - {title: str, company_domain: str}
       - {title: str}
       - {full_name: str}
+    identity_notes:
+      q: "describe the people in words, as a profile would: role, seniority, industry, place, audience ('B2B sales coaches on Instagram with a mostly US audience'). A semantic search over profiles answers it, so creators and influencers too, not only employees. For a niche's best-known creators, also find list articles with treg.web.search"
+      company_domain: "the employer's website domain ('stripe.com'): everyone treg's providers list there; with q, the people q describes there (q 'executives')"
+      title: "a job title ('Head of Tax'); with company_domain, that role at that company"
+      full_name: "one person's name, to find their profile"
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
-      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
-      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
+      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
-    scoping: [company_domain]
+    # A child that cannot send one of these answers a different question. A `q` counts only when the
+    # child's matched variant carries it or `title` (carried_by): crawl4ai answers
+    # {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
+    scoping: [company_domain, title, full_name, q]
+    carried_by: {q: [title]}
+    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
+    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
+    # those adapters append them to q themselves. No domain: they fold a domain into a q the
+    # caller wrote, but a {company_domain} or {company_domain, title} request still skips them.
+    stand_in: {q: "join(full_name, title, location)"}
     output:
-      people: {type: list, required: true, note: "the provider's own people rows (name, title, profile url, location…) — shapes differ per provider; raw is the same body"}
+      people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
       next_cursor: {type: str}
+    # Every provider's row in one shape, so an agent reads the same keys whoever answered and
+    # pays tokens for the person, not for a provider's internal ids and flags.
+    row:
+      of: people
+      needs: [name, profile_url, email]
+      fields:
+        name: {type: str}
+        title: {type: str, note: "current job title, or the provider's headline when it has no title; when `title_until` is set, the person's last dated title, not a current one"}
+        company: {type: str, note: "current employer's name; when `title_until` is set, the employer of that last title"}
+        title_since: {type: str, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
+        title_until: {type: str, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
+        past_titles: {type: list, note: "titles of roles the person has left, latest first, at most five, where the provider lists a work history: a profile can match a search on one of these"}
+        title_match: {type: str, note: "set by treg when you sent `title` and the row carries a work history: `current` when `title` is that role held now, `past` when the person held it only in the past. Unmarked = no work history, or the role is not in it. Rows are ordered current, then the rest, then past holders and people with no role now"}
+        company_domain: {type: str}
+        location: {type: str}
+        profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        email: {type: str, note: "found by the provider, not confirmed deliverable"}
+        email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
+        # Longer than other row text: it is the evidence an agent checks a brief against, and a
+        # candidate it cannot check is a candidate it drops.
+        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
+      # A semantic search matches the whole work history: a former holder of the asked role ranks
+      # with the current ones unless the rows are ordered by the role held now.
+      rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
+    # A free-text `q` is a semantic question: ask the semantic searches first.
+    # A role with no company or name ({title}, {q, title}) is one too: half the teams ask exa first
+    # (`in_rollout`) so the two orders compare on live calls. Company and name rules come first.
+    prefer_when:
+      - {sent: [q, title, company_domain], prefer: [crawl4ai]}
+      - {sent: [q, title, full_name], prefer: [crawl4ai]}
+      - {sent: [q, title], prefer: [exa, crawl4ai], percent: 50}
+      - {sent: [q, title], prefer: [crawl4ai]}
+      - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+      - {sent: [company_domain], prefer: [crawl4ai]}
+      - {sent: [full_name], prefer: [crawl4ai]}
+      - {sent: [title], prefer: [exa, crawl4ai], percent: 50}
+    # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
+    # {q, company_domain} too: scoping leaves only the providers that send both.
+    fill_limit_when: [[q], [q, company_domain]]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
     # $0.006 verify call each would have caught (2026-09-08).
-    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's own verification field says so. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
+    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's `email_status` says the provider verified it. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
 
   # ---- batch 5: company enrichment (2026-08-28) -----------------------------------------------
   companies.enrich:
@@ -627,16 +695,46 @@ contracts:
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   instagram.search.users:
-    summary: "Search Instagram accounts by keyword — provider-native profile rows in `users`"
+    summary: "Search Instagram accounts by keyword — profile rows in `users`, from account bios and from creator directory pages (with the passage that names each account); `raw` holds the provider's full answer"
     identity:
       - {q: str}
+    identity_notes:
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. Rows from directory pages carry no follower count: check a handle with treg.instagram.user.profile"
     filters: {}
     output:
       users: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
+    # The provider's own field names, minus what no reader of a search result uses: a provider's
+    # picture URLs and link metadata cost more tokens than everything else in its row. `raw` keeps
+    # the full row. Same names as before, so a caller reading `follower_count` reads it still.
+    row:
+      of: users
+      needs: [username, url]
+      fields:
+        id: {type: str}
+        username: {type: str}
+        full_name: {type: str}
+        url: {type: url, note: "the account's Instagram page"}
+        follower_count: {type: int}
+        following_count: {type: int}
+        media_count: {type: int}
+        biography: {type: str, note: "the account's own bio, cut to 300 characters"}
+        category_name: {type: str}
+        external_url: {type: url}
+        is_verified: {type: bool}
+        is_private: {type: bool}
+        is_business_account: {type: bool}
+        is_professional_account: {type: bool}
+        matched_from: {type: str, note: "how the provider found the account (`profile`, a web search)"}
+        google_title: {type: str}
+        google_description: {type: str}
     miss: "users == []"
     idempotent: true
+    # Account bios (ScrapeCreators) and directory pages (Exa) each see a different slice of a
+    # niche's creators: every request asks the bio search first, then fills toward 25 from the next.
+    prefer: [scrapecreators, exa]
+    fill_rows: 25
 
   google.serp.local:
     summary: "Google local pack / local finder results for a keyword — provider-native business rows in `results`"
@@ -681,6 +779,8 @@ contracts:
     summary: "Search TikTok accounts by keyword — provider-native user rows in `users`"
     identity:
       - {q: str}
+    identity_notes:
+      q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. For a niche's best-known creators: find list articles with treg.web.search ('top B2B sales influencers on TikTok'), read one with treg.web.extract, then check each handle with treg.tiktok.user.profile"
     filters: {}
     output:
       users: {type: list, required: true}
@@ -688,6 +788,8 @@ contracts:
       has_more: {type: bool}
     miss: "users == []"
     idempotent: true
+    # Shown on every hit (a search has no `verified`): an agent reads it while choosing its next call.
+    advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil TikTok') returns the names they list."
 
   tiktok.search.videos:
     summary: "Search TikTok videos by keyword, first page only — provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor"
@@ -966,6 +1068,24 @@ contracts:
     # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
     miss: "ads == []"
     idempotent: true
+
+  linkedin.search.ads:
+    summary: "LinkedIn Ad Library ads for one company domain, LinkedIn page id, or keyword — provider-native ad rows in `ads`"
+    identity:
+      - {company_domain: str}
+      - {linkedin_page_id: str}
+      - {keyword: str}
+    filters: {}
+    output:
+      ads: {type: list, required: true, note: "the provider's own ad rows (creative type, advertiser, commentary…) — shapes differ per provider; raw is the same body"}
+      page_id: {type: str}
+      count: {type: int}
+      next_cursor: {type: str}
+    # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
+    # routed: false — admission/settle only until more children verify; do not mint treg.linkedin.search.ads yet.
+    miss: "ads == []"
+    idempotent: true
+    routed: false
 
   google.maps.reviews:
     summary: "The reviews Google Maps shows for one place, by place id — provider-native review rows in `reviews`"
@@ -1279,9 +1399,6 @@ contracts:
       source_kind: {type: str, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite largely different sources for the same question"}
     miss: "answer == null"
     idempotent: true
-    # DataForSEO answers far more often and much faster than Cloro (see their observed stats). Cloro reads the
-    # website itself; a caller who needs that sends X-Treg-Route-Prefer: cloro or calls it directly.
-    prefer: [dataforseo]
 
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
@@ -1289,13 +1406,18 @@ contracts:
       - {q: str}
     filters:
       limit: {type: int, default: 10, note: "maximum results, where the provider accepts one"}
+      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents"}
     output:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
+    # Asked for passages: the provider that returns them leads, not the cheaper snippet-only one.
+    prefer_when:
+      - {sent: [contents], prefer: [exa]}
 
   web.search.news:
     summary: "Search recent news — provider-native article rows in `results`"

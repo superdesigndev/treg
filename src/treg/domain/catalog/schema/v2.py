@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, Field, model_validator
+from pydantic import AfterValidator, Field, TypeAdapter, model_validator
 
 from .base import CONFIDENCES, COST_SOURCES, COST_UNITS, Date, Model, Money, field
 from .common import CeilingParam, Json, RowBase
-from .paths import AnswerOrRequestPredicate, RequestPath, RequestPredicate, ResponsePath, ResponsePredicate
+from .paths import (AnswerOrRequestPredicate, Predicate, RequestPath, RequestPredicate, ResponsePath,
+                    ResponsePredicate, parse_path, relative)
 
 _PLUGIN = re.compile(r"[a-z][a-z0-9_]*\.[a-z_][a-z0-9_]*")
 
@@ -147,13 +149,24 @@ class Reported(Model):
         return self
 
 
+def _meter(text: str) -> str:
+    path = parse_path(text)
+    if path.filter is not None or any(step.every for step in path.steps) or not path.steps:
+        raise ValueError(f"{text!r}: a usage meter is one value under response: names, indexes and "
+                         "[k=v] filters, no * and no filter on the root")
+    return text
+
+
+MeterPath = Annotated[ResponsePath, AfterValidator(_meter)]
+
+
 class UsageTerm(Model):
-    path: ResponsePath
+    path: MeterPath
     rate: Money
 
 
 class Usage(Model):
-    path: ResponsePath | None = None
+    path: MeterPath | None = None
     terms: list[UsageTerm] | None = Field(default=None, min_length=1)
     unit: str = Field(min_length=1)
 
@@ -250,22 +263,132 @@ class V2Row(RowBase):
         if self.provenance is not None and (self.provenance.confidence == "unknown") != unknown:
             raise ValueError("provenance.confidence is unknown exactly when price.value is null")
         if self.price is not None and self.price.rates is not None:
-            hooks = [h for h in (self.reserve, self.settle) if h is not None]
-            if not hooks or any(h.plugin is None for h in hooks):
-                raise ValueError("price.rates stands only beside plugins: every reserve or settle "
-                                 "on the row is a plugin, and at least one is present")
+            if self.reserve is None or self.reserve.plugin is None \
+                    or (self.settle is not None and self.settle.plugin is None):
+                raise ValueError("price.rates stands only beside plugins: a reserve.plugin, and a "
+                                 "settle, if any, that is a plugin")
+            if self.bill is not None and isinstance(self.bill.miss, int):
+                raise ValueError("bill.miss in units needs a unit price; price.rates has none")
         return self
 
 
 RESOLVED_KEYS = ("expect", "error", "miss", "not_found", "price", "provenance", "reserve", "settle",
                  "bill", "ceiling_param")
+_PREDICATE = TypeAdapter(Predicate)
 
 
-def resolved(row: V2Row) -> dict:
-    """The v2 keys of a resolved row: every key present, absence as its stated meaning (None for
-    the outcome keys, `price`, `provenance`, `reserve`, `settle` and `ceiling_param`; the default
-    `bill`), and no `cost`, so today's billing code reads the row as unpriced."""
-    return {**{key: getattr(row, key) for key in RESOLVED_KEYS}, "bill": row.bill or Bill(), "cost": None}
+def _plain(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, Model):
+        return value.model_dump(mode="json", by_alias=True, exclude_unset=True)
+    return _PREDICATE.dump_python(value, mode="json", exclude_unset=True)
+
+
+def _number(text: str) -> int | float:
+    value = Decimal(text)
+    return int(value) if value == value.to_integral_value() else float(value)
+
+
+def _legacy_location(path: str, input_schema: dict) -> str:
+    """`query.x` in today's spelling: `pathParams.x` when the endpoint declares it a path parameter."""
+    location, _, rest = path.partition(".")
+    if location != "query":
+        return path
+    named = rest.split(".", 1)[0]
+    return f"pathParams.{rest}" if named in (input_schema.get("pathParams") or {}) else f"queryParams.{rest}"
+
+
+def _table_view(table: list[dict], input_schema: dict) -> list[dict] | None:
+    """A price table in today's display shape (`when` as a map of request fields to values), or
+    None when a row has a condition other than one equality, which today's shape cannot show."""
+    rows = []
+    for row in table:
+        if any(not isinstance(c, dict) or c.get("op") != "equals" for c in row["when"]):
+            return None
+        out = {"when": {_legacy_location(c["path"], input_schema): c["value"] for c in row["when"]},
+               "value": _number(row["value"])}
+        if row.get("times"):
+            out["times"] = _legacy_location(row["times"], input_schema)
+        if row.get("times_min") is not None:
+            out["times_min"] = row["times_min"]
+        rows.append(out)
+    return rows
+
+
+def cost_type(price: dict | None, reserve: dict | None, settle: dict | None, bill: dict) -> str | None:
+    """Today's `cost.type` label of a v2 row, for the views that show one: free, per_result (the
+    bill follows a quantity), per_call (a miss is charged) or per_success."""
+    if price is None:
+        return None
+    if price.get("value") is not None and Decimal(price["value"]) == 0:
+        return "free"
+    if reserve is not None or (settle or {}).keys() & {"count", "plugin"}:
+        return "per_result"
+    if bill.get("miss") == "charged":
+        return "per_call"
+    return "per_success"
+
+
+def _reserve_view(reserve: dict, input_schema: dict) -> dict:
+    if "rows" in reserve:
+        rows = reserve["rows"]
+        view = {"param": _legacy_location(rows["param"], input_schema)} if rows.get("param") else {}
+        return {"rows": {**view, **{k: rows[k] for k in ("default", "max") if k in rows}}}
+    return {"entities": {}} if "entities" in reserve else {}
+
+
+def served_cost(row: dict, input_schema: dict) -> dict | None:
+    """The served cost of a v2 row: its price, provenance, hold and settle forms in today's `cost`
+    shape, so every view and eligibility check that reads `cost` reads a v2 row unchanged. Billing
+    never reads it."""
+    price, provenance = row.get("price"), row.get("provenance") or {}
+    if price is None:
+        return None
+    reserve, settle = row.get("reserve") or {}, row.get("settle") or {}
+    out: dict = {"type": cost_type(price, row.get("reserve"), row.get("settle"), row["bill"])}
+    if price.get("value") is not None:
+        out["value"] = _number(price["value"])
+    if price.get("rates") is not None:
+        out["fallback"] = {"value": _number(reserve["max"]),
+                           "note": "the most one call is held at; its plugin's quantities are priced by the rates"}
+    if price.get("table") is not None:
+        if (table := _table_view(price["table"], input_schema)) is not None:
+            out["table"] = table
+        out["fallback"] = {"value": _number(price["fallback"]["value"]), "note": price["fallback"]["note"]}
+    for key in ("currency", "per", "unit"):
+        if key in price:
+            out[key] = price[key]
+    if "display" in price:
+        out["display"] = {k: (_number(v) if k == "value" else v) for k, v in price["display"].items()}
+    if view := _reserve_view(reserve, input_schema):
+        out["reserve"] = view
+    if "count" in settle:
+        out["settle"] = {"count": {"path": relative(settle["count"]["path"])}}
+    reported = settle.get("reported") or {}
+    if reported.get("path"):
+        out["reported_charge"] = {"path": relative(reported["path"]), "unit": reported["unit"]}
+    usage = settle.get("usage")
+    if usage is not None:
+        out["settle"] = "usage"
+        out["usage"] = {"unit": usage["unit"], **(
+            {"terms": [{"path": relative(t["path"]), "rate": float(t["rate"])} for t in usage["terms"]]}
+            if "terms" in usage else {"path": relative(usage["path"])})}
+    out.update(provenance)
+    if "note" in price:
+        out["note"] = price["note"]
+    return out
+
+
+def served(row: V2Row, input_schema: dict) -> dict:
+    """The v2 keys of a resolved row as plain JSON values: every key present, absence as its stated
+    meaning (None, or the default `bill`), money as quoted decimal strings, predicates as written;
+    and `cost`, the served cost view's source."""
+    out = {key: _plain(getattr(row, key)) for key in RESOLVED_KEYS}
+    bill = row.bill or Bill()
+    out["bill"] = {"miss": bill.miss, "error": bill.error,
+                   **({"free_when": _plain(bill.free_when)} if bill.free_when is not None else {})}
+    return {**out, "cost": served_cost(out, input_schema)}
 
 
 def is_v2(endpoint: dict) -> bool:

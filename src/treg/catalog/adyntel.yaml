@@ -100,6 +100,7 @@ endpoints:
     cost:
       <<: *one_credit
       source_url: https://docs.adyntel.com/ad-libraries/linkedin
+      note: "One credit for a page that returns ads; an empty ads list (HTTP 200, total_ads 0) and HTTP 204 are free."
     verified: '2026-09-22'
     added: '2026-09-23'
     docs_url: https://docs.adyntel.com/ad-libraries/linkedin
@@ -126,6 +127,7 @@ endpoints:
     cost:
       <<: *one_credit
       source_url: https://docs.adyntel.com/openapi-docs/existing-endpoints
+      note: "One credit for a page that returns ads; an empty ads list (HTTP 200, total_ads 0) and HTTP 204 are free."
     verified: '2026-09-22'
     added: '2026-09-23'
     docs_url: https://docs.adyntel.com/openapi-docs/existing-endpoints

@@ -130,6 +130,12 @@ tierBonus(usd){ const t=this.billing&&this.billing.topup.bonus_tiers; if(!t||!us
       // Keys arrive as strings from JSON; the highest floor at or below the amount applies.
       let pct=0; Object.keys(t).map(Number).sort((a,b)=>a-b).forEach(k=>{ if(usd>=k) pct=t[k]; });
       return Math.floor(usd*1e6*pct/100); },
+// The cheapest tier above `usd` that earns a bigger bonus, as {usd, pct}; null at the top tier.
+    nextBonusTier(usd){ const t=this.billing&&this.billing.topup.bonus_tiers; if(!t) return null;
+      const floors=Object.keys(t).map(Number).sort((a,b)=>a-b);
+      let pct=0; floors.forEach(k=>{ if((usd||0)>=k) pct=t[k]; });
+      const k=floors.find(k=>k>(usd||0)&&t[k]>pct);
+      return k===undefined?null:{usd:k, pct:t[k]}; },
 async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       // The mandate decision below reads this team's auto top-up state; billing from another team
       // (a switch whose loadBilling has not answered yet) must never decide it.

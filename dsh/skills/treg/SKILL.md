@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 123 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 126 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 ---
 
 ## First, check which treg you have
@@ -93,7 +93,7 @@ or the CLI is enough, and having both is fine.
    (or `--skills all`).
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
-`treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new
+`treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
 verified account gets $1.00 of credit once, on its first eligible team; aliases of one inbox (`+tag`,
 Gmail dots) share it.
 
@@ -148,6 +148,10 @@ How a routed call works:
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current.
+- A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
+  `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
+  keeps going until an answer fills every `complete` field (`routing.contract.complete` in
+  `catalog_get`); the fullest so far wins if none does.
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.
@@ -163,7 +167,7 @@ re-send the same find: every hit is billed, repeats included.
   `_treg.advice`. A live phone line does not prove the number is this person's.
 - **Verify every address before it is sent to**, including rows from a company or domain search
   (`treg.people.search` and the like): those are directory listings, unconfirmed
-  unless the row's own verification field says otherwise. `invalid` is dead, `accept_all` is risky,
+  unless the row's `email_status` says the provider verified it. `invalid` is dead, `accept_all` is risky,
   and an address the provider did not return (`info@` after an empty domain search) is a guess, not
   a result.
 
@@ -285,6 +289,8 @@ no JSON `detail` is never treg's.
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
 | 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |

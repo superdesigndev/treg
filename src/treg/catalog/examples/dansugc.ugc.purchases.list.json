@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "purchases": [
+    {
+      "purchase_id": "dcd684df-22bc-4b77-87ae-41f6f65bcabc",
+      "video_id": "1166a85d-b967-4fb0-8ed8-6d2f2d22f23b",
+      "video_title": "Woman Reacting With Surprise While Online Shopping",
+      "video_description": "A young woman looks at the camera with wide eyes and a surprised reaction before the view pans down to reveal her sitting on a sofa with a laptop. She scrolls through clothing and portrait photos on an e-commerce website using the trackpad.",
+      "video_emotion": "surprised",
+      "video_gender": "female",
+      "video_location": "Living Room",
+      "price_paid": 11,
+      "difficulty_level": 1,
+      "customer_email": null,
+      "purchased_at": "2026-10-27T15:42:55.735773+00:00",
+      "license_type": "term",
+      "license_starts_at": "2026-10-27T15:42:55.735773+00:00",
+      "license_expires_at": "2027-10-27T15:42:55.735773+00:00",
+      "download_url": "https://dansugc.com/api/broll/file?p=broll%2Foriginals%2F1166a85d-b967-4fb0-8ed8-6d2f2d22f23b.mp4&m=video&fn=Woman_Reacting_With_Surprise_While_Online_Shopping.mp4&exp=1793622374&sig=REDACTED",
+      "thumbnail_url": "https://media.dansugcmodels.com/broll/thumbnails/1166a85d-b967-4fb0-8ed8-6d2f2d22f23b.jpg"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 1,
+    "total": 1,
+    "total_pages": 1,
+    "has_more": false
+  },
+  "summary": {
+    "source": "dansugcmodels.com",
+    "period_start": "all time",
+    "period_end": "present",
+    "total_purchases": 1,
+    "total_amount": 11,
+    "page_amount": 11
+  }
+}

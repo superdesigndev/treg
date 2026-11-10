@@ -5,6 +5,11 @@ sources:
   - src/treg/api.py
   - src/treg/routers/web.py
   - src/treg/agent_pages.py
+  - src/treg/compare_pages.py
+  - src/treg/routers/compare.py
+  - scripts/og_images.py
+  - src/treg/web/media/compare/compare.css
+  - src/treg/web/media/compare/signin.js
   - src/treg/web/robots.txt
   - src/treg/web/catalog.css
   - src/treg/web/usecase.css
@@ -45,6 +50,7 @@ sources:
   - src/treg/web/aeo.html
   - src/treg/web/rea-growth.html
   - src/treg/web/rea-growth.md
+  - src/treg/web/social-search.html
   - src/treg/web/start.html
   - src/treg/web/jev.html
   - src/treg/web/showcase.html
@@ -90,10 +96,11 @@ describes one grant per new verified account, not per team
 | `/use-cases`, `/use-cases/<job>`, `/resources` | Use-case pages and hubs (below). |
 | `/workflows`, `/workflows/<slug>`, `/workflows/<slug>.csv` | Workflow pages (below). |
 | `/blog`, `/blog/<post>` | Hand-kept index (`_BLOG_LAUNCHES`, `_BLOG_POSTS`). Posts carry `BlogPosting` (`_blog_posting_ld`) beside breadcrumbs. `/agents/grok-bot` 301s to `/grokbot`. |
-| Launch landings (`/people-search`, `/leads-signals`, `/web-access`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
+| Launch landings (`/people-search`, `/leads-signals`, `/web-access`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/social`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
 | `/jev` | `/jev/xboost.json` serves the document `treg-worker jev xboost` stores (Ephemeral `jev`/`xboost`), else `media/jev/xboost-seed.json` flagged `snapshot: true`. `POST /jev/xboost/judge` is rate-limited per IP and fleet-wide through ratestore, answers 503 until `jev_treg_token` and `ai_gateway_api_key` are set, and its entries survive the daily run. `application/jev_xboost.py` calls `/call/` with the demo team's token, so the receipt is a real bill. Bundled recipe runs have every email address replaced. `tests/test_jev.py`. |
 | `/start` | Paid-traffic landing. Hosted-only, `noindex` (meta and `X-Robots-Tag`), no canonical, not sitemapped. `?job=` picks copy from a fixed table; unknown values (including `constructor`, `__proto__`) get the general page. `sitetrack.js` loads before the page script so `start_viewed` is not dropped; copy events fire only after a fulfilled clipboard write. `tests/test_start_page.py`. |
 | `/gtm-engineering` (+ `.md`) | Hand-written (not `_page()`) because only hand-written pages load `sitetrack.js`. Its original studies publish results, never rows: the test fails if a catalog provider is named in a study block, a headline figure leaves its section, or a study FAQ answer drifts from its JSON-LD; raw data stays out of the repo. The `.md` twin is hand-kept and `tests/test_gtm_engineering_page.py` fails on a missing chapter heading. Hosted-only. |
+| `/compare`, `/compare/treg-vs-<slug>` (+ `.md`) | Comparison pages, hosted-only. All copy is `compare_pages.py`: one record per product, read from its own pages on its `checked` day (default `CHECKED`), with `sources` on its own site; the renderer (`routers/compare.py`) holds no text. Cells say "Not published" where the product's pages are silent, never "No". Every page says where the other product is the better choice. A row in `OPTIONAL_ROWS` (x402, until `TREG_X402`) shows only where the record fills it. treg's side uses `{ENDPOINTS}`/`{PROVIDERS}`. `WebPage` (its `about` names both products as `SoftwareApplication`, treg with the stable `@id` `<base>/#software`) + `BreadcrumbList` + `FAQPage` (FAQ verbatim in the body, each question an `h3`); the `.md` twin is `noindex`, and the Sources box offers it as Copy markdown (to the clipboard) and Open markdown. Where the product's tools are in the catalog (`catalog_provider`: the record's `provider`, else its key), the page links its `/tools/<provider>` page and that page links back (`for_provider`). "Other comparisons" takes half from the page's own group and half from the others, each from an offset that moves with the page, so every page gets about as many links. Re-read a record's sources and move its `checked` before changing a price or claim; move `UPDATED` when the copy changes. The page's `dateModified`, `article:modified_time` and sitemap `lastmod` are `modified()`, the later of the two; the visible chip says only when the facts were checked. Each page has its own share card (`scripts/og_images.py --group compare`, "The social card" below). Every `/app?ref=` link on the hub and the pages opens the shared sign-in dialog in place (`media/compare/signin.js`, as on /rankings and /grokbot); a signed-in visitor goes straight to the link, and the `ref` is kept in `treg-ref` as `/app?ref=` keeps it. The site footers (the shared one and the hand-written footers of landing, rankings, showcase, grokbot, people-search, gtm-engineering and aeo) carry a Compare column: `cp.FOOTER`, by search demand, plus the hub; `test_footers_name_the_same_comparisons` keeps them in step. `tests/test_compare_pages.py`. |
 | `/rankings` | Served on every registry (it counts that registry's traffic), sitemapped. Boards come from the row `treg-worker rankings refresh` saves ([catalog](../architecture/catalog.md)). The first board is inlined as JSON plus an `ItemList`; the rest load from `/rankings/data/{board}`. The page hand-copies the dashboard's `SelectMenu` and `SpendBars` because a static page cannot import Vue components: change them together. `tests/test_rankings.py`. |
 | `/showcase` | Tiles written in the HTML with `CollectionPage`/`ItemList`. The X wall is a committed snapshot (`media/showcase/wall.json`); the page never fetches from X. Hosted-only. `tests/test_showcase_page.py`. |
 | `/docs`, `/docs/api` | Server-rendered reference from `app.openapi()`; Swagger UI moved to `/docs/api` and disallowed. ReDoc is off. |
@@ -211,7 +218,17 @@ it.
 
 `assets/brand/og-card.html` is the source and `src/treg/web/media/og.png` the render: open the HTML
 at exactly 1200x630 headless and screenshot. Provider favicons are baked in at render time. Every
-brand on it must be a provider in `catalog_store.load()`. Every page uses the shared card.
+brand on it must be a provider in `catalog_store.load()`. It is the default for every page.
+
+A page can have its own card. `scripts/og_images.py` renders `src/treg/web/media/og/<path>.jpg`
+(1200x630 JPEG, about 60 KB) from an HTML template in the site's fonts, with the Playwright Chromium
+that `frontend/` installs; `og_image()` in `routers/web.py` serves that file as `og:image` and
+`twitter:image` when it exists (alt text: the page title), else `/media/og.png`. The script knows
+pages through `GROUPS` (today `compare`: the hub and every comparison) and draws them with a
+template from `LAYOUTS` (`vs` for two products, `page` for one headline). It runs for one page
+(`og_images.py /compare/treg-vs-clay`), a group (`--group compare`) or everything (`--all`);
+`--dry-run` lists what it would write. Re-run it for a page after its headline or subtitle changes.
+`test_every_comparison_shares_its_own_image` fails for a comparison with no card.
 
 ## Agent pages - `/agents/<agent>` and `/agents`
 

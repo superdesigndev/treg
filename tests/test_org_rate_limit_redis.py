@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
+from conftest import STALL_PROOF_TIMEOUT_S, pause_loop_once_in_flight
 
 from treg.infra import kv
 
@@ -18,24 +19,22 @@ def _keys(org_id):
 
 
 async def _ready(store):
-    # Retry fixture readiness only; admission itself must keep its production timeout/no-retry.
     try:
         async with asyncio.timeout(5):
             while not await store.ping():
                 await asyncio.sleep(0.05)
-            # Open the pool's connections up front so a concurrent burst spends admission's
-            # short timeout on Redis, not on connecting.
-            await asyncio.gather(*(store._client.ping() for _ in range(20)))
     except TimeoutError as exc:
         raise AssertionError("disposable Redis did not become ready within five seconds") from exc
 
 
 @pytest.fixture
-async def stores():
+async def stores(monkeypatch):
     url = os.environ.get("TREG_TEST_KV_URL")
     if not url:
         pytest.skip("requires disposable loopback Redis via TREG_TEST_KV_URL")
     assert urlsplit(url).hostname in {"127.0.0.1", "localhost", "::1"}, "local Redis only"
+    monkeypatch.setattr(kv, "_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
+    monkeypatch.setattr(kv, "_OPTIONAL_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
     org_id = uuid4().int % 2147483646 + 1
     other_org = org_id + 1
     clients = []
@@ -70,6 +69,7 @@ async def _admit(store, org_id, token, *, limit=3, rps=5e-324, burst=3):
 
 async def test_one_shared_burst_across_clients_processes_and_independent_orgs(stores):
     first, second, org_id, other_org = stores
+    pause_loop_once_in_flight((first, second), 20, 0.25)
     results = await asyncio.gather(*(
         _admit(first if index % 2 else second, org_id, f"owner-{index}", limit=None)
         for index in range(20)
@@ -83,9 +83,10 @@ async def test_one_shared_burst_across_clients_processes_and_independent_orgs(st
 
     script = """
 import asyncio, json, sys
-from treg.infra.kv import RedisStore
+from treg.infra import kv
 async def main():
-    store = RedisStore(sys.argv[1])
+    kv._TIMEOUT_S = kv._OPTIONAL_TIMEOUT_S = float(sys.argv[3])
+    store = kv.RedisStore(sys.argv[1])
     try:
         result = await store.admit_org(int(sys.argv[2]), 'another-process', 30000, None,
                                       rps=5e-324, burst=3)
@@ -95,7 +96,7 @@ async def main():
 asyncio.run(main())
 """
     process = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], str(org_id),
+        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], str(org_id), str(STALL_PROOF_TIMEOUT_S),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
@@ -133,9 +134,11 @@ async def test_fractional_balance_just_below_one_is_not_rounded_into_a_free_toke
 async def test_concurrency_contention_does_not_spend_a_rate_token(stores):
     first, second, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)
+    await _seed(first, org_id, tokens=3, rps=5e-324, burst=3, future_s=30)
     assert await first.acquire_slot(slot_key, "existing-concurrency-owner", 30_000, 1) == "acquired"
     denied = await _admit(second, org_id, "busy-owner", limit=1)
     assert (denied.outcome, denied.retry_after_s) == ("busy", 1)
+    await asyncio.sleep(0.01)
     assert float(await first._client.hget(rate_key, "tokens")) == 3
     assert await first._client.zrange(slot_key, 0, -1) == ["existing-concurrency-owner"]
     assert await first.release_slot(slot_key, "existing-concurrency-owner") == "released"
@@ -157,6 +160,7 @@ async def test_rate_refusal_neither_allocates_nor_erases_slot_owners(stores):
 async def test_atomic_mixed_admission_counts_only_accepted_requests(stores):
     first, second, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)
+    pause_loop_once_in_flight((first, second), 30, 0.25)
     results = await asyncio.gather(*(
         _admit(first if index % 2 else second, org_id, f"mixed-{index}", limit=3, burst=100)
         for index in range(30)

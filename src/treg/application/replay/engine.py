@@ -13,10 +13,11 @@ import httpx
 from ...domain import asynctasks as asynctasks_rules
 from ...domain import money as ledger
 from ...domain.catalog import results as catalog_results
+from ...domain.catalog import schema
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.stats import Tally
-from ...domain.money import settlement as settlement_basis
 from ..asynctasks import terminal_judgement
+from ..call import cost as call_cost
 from ..call.resolve import MarketplaceCall, QueryValues, _spool_evidence_paths, price_call
 from ..call.route import child_outcome
 from ..call.service import submission_state
@@ -57,14 +58,18 @@ def _json(raw: bytes) -> object:
 def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str], *,
                   routed_child: bool) -> MarketplaceCall:
     """The MarketplaceCall the resolver builds for treg's own key, with a hold of the estimate."""
+    cat = catalog_store.load()
+    if schema.is_v2(ep):
+        call_cost.require_rates(ep, cat)
     pricing = price_call(ep, query, body, consumed)
-    cost = catalog_store.load().cost_view(ep.get("cost"), ep["provider"]) or {}
+    cost = cat.cost_view(ep.get("cost"), ep["provider"]) or {}
     return MarketplaceCall(
         tool=None, upstream="", consumed=consumed, endpoint_id=ep["id"], provider=ep["provider"],
         tier="platform", cost_type=str(cost.get("type") or "per_call"),
         estimate_micro=pricing.estimate_micro, unit_micro=pricing.unit_micro,
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
+        cost_terms=pricing.terms,
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
@@ -150,12 +155,13 @@ def _async_terminal(ep: dict, mk: MarketplaceCall | None, record: dict, status: 
                     raw: bytes) -> dict:
     recorded = record.get("async") or {}
     descriptor = recorded.get("descriptor") or ep.get("async") or {}
-    basis = recorded.get("settlement_basis") or (mk.settlement_basis if mk else None)
+    basis = recorded.get("settlement_basis") or (
+        call_cost.persisted(mk.settlement_basis, mk.cost_terms) if mk else None)
     document = _json(raw)
     outcome = asynctasks_rules.classify_terminal(descriptor, document)
     settled = None
     if outcome in ("success", "billed_failure") and basis:
-        settled = settlement_basis.settle(basis, {"terminal": document})
+        settled = call_cost.settle_terminal(basis, outcome, document)
     elif outcome == "failure":
         settled = 0
     hit, word = terminal_judgement(ep["id"], outcome, status, raw)

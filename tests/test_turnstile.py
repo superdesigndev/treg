@@ -11,6 +11,7 @@ from treg.config import get_settings
 from treg.infra import turnstile
 from treg.infra.db import session_maker
 from treg.models import LedgerEntry, Org, User
+from treg.timeutil import utcnow_naive
 
 SITE_KEY = "1x00000000000000000000AA"
 
@@ -177,15 +178,26 @@ async def test_enforce_outage_signs_in_without_credit(clients, widget, monkeypat
         assert all(entry.meta.get("user_id") != user.id for entry in grants)
 
 
-async def test_enforce_outage_never_touches_an_existing_user(clients, widget, monkeypatch):
+async def test_enforce_outage_never_touches_a_verified_user(clients, widget, monkeypatch):
     async with session_maker() as db:
-        db.add(User(email="existing@example.org"))
+        db.add(User(email="existing@example.org", email_verified_at=utcnow_naive()))
         await db.commit()
     monkeypatch.setattr(get_settings(), "turnstile_mode", "enforce")
     widget["answer"] = httpx.ConnectError("down")
     response, balance = await _sign_up_and_fund(clients, "existing@example.org", "tok")
     assert response.status_code == 200
     assert balance == get_settings().promo_grant_micro
+
+
+async def test_enforce_outage_withholds_credit_from_an_unproven_users_first_proof(clients, widget, monkeypatch):
+    async with session_maker() as db:
+        db.add(User(email="legacy@example.org"))
+        await db.commit()
+    monkeypatch.setattr(get_settings(), "turnstile_mode", "enforce")
+    widget["answer"] = httpx.ConnectError("down")
+    response, balance = await _sign_up_and_fund(clients, "legacy@example.org", "tok")
+    assert response.status_code == 200
+    assert balance == 0
 
 
 @pytest.mark.parametrize(("token", "reason"), [

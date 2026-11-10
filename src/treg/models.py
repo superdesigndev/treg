@@ -55,7 +55,7 @@ class Org(SQLModel, table=True):
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
     # (see money.reserve). Only `domain/money` may write it.
-    balance_micro: int = Field(default=0)
+    balance_micro: int = Field(default=0, sa_type=BigInteger)
     # "Committed since midnight UTC": everything settled today plus everything still held from
     # today - the number the fail-closed daily cap is checked against on EVERY metered call. Kept
     # here, in the same UPDATE that moves the balance, because the equivalent aggregate over
@@ -77,8 +77,8 @@ class Org(SQLModel, table=True):
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
     autotopup_enabled: bool = Field(default=False)
-    autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
-    autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
+    autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
+    autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
     autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
@@ -111,7 +111,7 @@ class Org(SQLModel, table=True):
     # default. The EFFECTIVE cap is min(this, the platform ceiling): a team may lower it freely, and
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
-    daily_cap_micro: int = Field(default=0)
+    daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -194,6 +194,51 @@ class OrgFlowControlVersion(SQLModel, table=True):
     published_at: NaiveUTC | None = Field(default=None)
 
 
+class RouteRuleVersion(SQLModel, table=True):
+    """Saved route rule sets (docs/context/architecture/route-rules.md). The private admin is the
+    only writer; workers read the published snapshot from Redis, never this table."""
+
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_routeruleversion_version"),
+        CheckConstraint("review_status IN ('draft', 'approved', 'rejected')",
+                        name="ck_routeruleversion_review_status"),
+        CheckConstraint("publish_status IN ('unpublished', 'pending', 'published', 'failed')",
+                        name="ck_routeruleversion_publish_status"),
+        CheckConstraint("length(trim(created_by)) > 0 AND length(trim(reason)) > 0",
+                        name="ck_routeruleversion_created"),
+        CheckConstraint(
+            "review_status = 'draft' OR (reviewed_by IS NOT NULL AND length(trim(reviewed_by)) > 0"
+            " AND reviewed_at IS NOT NULL)",
+            name="ck_routeruleversion_reviewed"),
+        CheckConstraint("publish_status = 'unpublished' OR review_status = 'approved'",
+                        name="ck_routeruleversion_publish_approved"),
+        CheckConstraint(
+            "publish_status != 'published' OR "
+            "(published_by IS NOT NULL AND length(trim(published_by)) > 0 AND published_at IS NOT NULL)",
+            name="ck_routeruleversion_published"),
+        Index("ix_routeruleversion_publish_status", "publish_status", "version"),
+    )
+    version: int = Field(sa_column=Column(Integer, primary_key=True, autoincrement=False))
+    config: dict = Field(sa_column=Column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"),
+        nullable=False,
+    ))
+    reason: str
+    created_by: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    review_status: str = Field(default="draft", sa_column=Column(
+        String, nullable=False, server_default="draft",
+    ))
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: NaiveUTC | None = Field(default=None)
+    review_note: str | None = Field(default=None)
+    publish_status: str = Field(default="unpublished", sa_column=Column(
+        String, nullable=False, server_default="unpublished",
+    ))
+    published_by: str | None = Field(default=None)
+    published_at: NaiveUTC | None = Field(default=None)
+
+
 class User(SQLModel, table=True):
     """A global identity (one email/login). Identity ONLY — the token and role live on
     Membership, so one person in two orgs has two memberships (two tokens), one User.
@@ -201,8 +246,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
@@ -221,6 +266,12 @@ class User(SQLModel, table=True):
     # same human unlimited codes to farm with. NULL until they open the Referrals page; minted lazily
     # so we never generate codes for the majority who never look. See domain/referrals.py.
     referral_code: str | None = Field(default=None, index=True, unique=True)
+    referral_affiliate: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    referral_affiliate_version: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
     created_at: NaiveUTC = Field(default_factory=_now)
     # This person's picture: a media key (`img/user_avatar/<sha256>.webp`) in the public media bucket, or
     # NULL for initials. Set by the person themselves through `application.images`. Appended last.
@@ -946,8 +997,8 @@ class CreditBlock(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id", index=True)
     kind: str = Field(default="promotional", index=True)  # promotional | purchased
-    amount_micro: int  # granted amount, micro-USD (1e-6 USD) — never mutated
-    remaining_micro: int  # what's left to spend from this block
+    amount_micro: int = Field(sa_type=BigInteger)  # granted amount, micro-USD (1e-6 USD) — never mutated
+    remaining_micro: int = Field(sa_type=BigInteger)  # what's left to spend from this block
     currency: str = Field(default="USD")
     expires_at: NaiveUTC | None = Field(default=None)
     # The already-authorized payment this block was funded by. Doubles as the idempotency
@@ -985,12 +1036,15 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'settle'")),
                       Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
                             postgresql_where=text("kind = 'topup'"),
-                            sqlite_where=text("kind = 'topup'")))
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)
@@ -1012,7 +1066,7 @@ class Hold(SQLModel, table=True):
     id: str = Field(primary_key=True)  # == call_id
     org_id: int = Field(foreign_key="org.id", index=True)
     endpoint_id: str = Field(default="")
-    amount_micro: int  # what was withheld from the balance (margin already applied)
+    amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
 
 
@@ -1075,6 +1129,22 @@ class AsyncResourceRecord(SQLModel, table=True):
     # Attribution snapshot: never infer ownership from a current membership or lossy audit.
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
+
+
+class CallTask(SQLModel, table=True):
+    """The provider task an async call's answer names, on every credential tier, read when treg
+    relayed that answer. `/tasks/{call_id}` follows it for the team that made the call."""
+
+    call_id: str = Field(primary_key=True)  # the X-Treg-Call-Id the caller holds
+    org_id: int = Field(index=True)
+    endpoint_id: str
+    descriptor: dict = Field(default_factory=dict, sa_column=Column("descriptor", JSON, nullable=False))
+    task_id: str | None = Field(default=None)  # NULL: the answer named no task
+    poll_url: str | None = Field(default=None)
+    # Of the bytes relayed; NULL for a routed pending answer, whose body is treg's own envelope.
+    submission_sha256: str | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    created_at: NaiveUTC = Field(default_factory=_now, index=True)
 
 
 class ProviderResource(SQLModel, table=True):
@@ -1180,8 +1250,8 @@ class TagBudget(SQLModel, table=True):
     # NULL = no ceiling on this axis. Caps are SOFT (see application/call/reserve.py
     # `_enforce_tag_budgets`): the figure they
     # test is an aggregate, not a materialized column, so concurrent calls can overshoot slightly.
-    daily_cap_micro: int | None = Field(default=None)
-    monthly_cap_micro: int | None = Field(default=None)
+    daily_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
+    monthly_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     calls_per_day: int = Field(default=-1)  # -1 = unlimited, mirroring Membership.daily_call_cap
     # "active" | "blocked". Blocking is the soft form of revocation — it needs no token management,
     # and it is checked before the idempotency replay so a blocked user cannot be served a cached
@@ -1190,6 +1260,27 @@ class TagBudget(SQLModel, table=True):
     note: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ReferralAffiliateEvent(SQLModel, table=True):
+    """Durable affiliate operations, retained independently of account deletion."""
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "user_created_at", "version", name="uq_referralaffiliateevent_user_version"),
+        CheckConstraint("version > 0", name="ck_referralaffiliateevent_version"),
+        CheckConstraint("length(trim(reason)) > 0 AND length(trim(principal)) > 0",
+                        name="ck_referralaffiliateevent_reason_principal"),
+    )
+
+    operation_id: str = Field(primary_key=True)
+    user_id: int = Field(index=True)
+    user_created_at: NaiveUTC
+    version: int
+    previous_affiliate: bool
+    affiliate: bool
+    reason: str
+    principal: str
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class Referral(SQLModel, table=True):
@@ -1442,6 +1533,10 @@ class IdempotentCall(SQLModel, table=True):
         UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),
         # The per-call expired-label sweep in `_claim_idempotent` (Alembic 0053).
         Index("ix_idempotentcall_membership_id_expires_at", "membership_id", "expires_at"),
+        # Only rows that dropped their copy: the archive pruner's "still needed" read (Alembic 0066).
+        Index("ix_idempotentcall_archive_live", "expires_at",
+              postgresql_where=text("archive_content_hash IS NOT NULL"),
+              sqlite_where=text("archive_content_hash IS NOT NULL")),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1465,6 +1560,11 @@ class IdempotentCall(SQLModel, table=True):
     charged_micro: int = Field(default=0)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC
+    # Set when the hourly `treg-worker idempotency prune` dropped `response_body` because the archive
+    # holds the same bytes (`ArchiveKey.key_hash`, `ArchiveSnapshot.content_hash`); a replay then
+    # reads them from there, instead of the same answer being stored twice.
+    archive_key_hash: str | None = Field(default=None)
+    archive_content_hash: str | None = Field(default=None)
 
 
 class Feedback(SQLModel, table=True):
@@ -1976,7 +2076,8 @@ class ArchiveSnapshot(SQLModel, table=True):
     media_type: str = Field(default="")
     content_hash: str                              # sha256 of the RAW body (dedup identity)
     body: bytes | None = Field(default=None)       # verbatim bytes, or NULL when body_of is set
-    body_of: int | None = Field(default=None, foreign_key="archivesnapshot.id")
+    # An archivesnapshot.id in the same key, deliberately not a foreign key (alembic 0094).
+    body_of: int | None = Field(default=None)
     size_bytes: int = Field(default=0)             # of the raw body, even when deduplicated
     fetched_at: NaiveUTC = Field(default_factory=_now, index=True)
     # Who triggered the fetch: "caller" (a real request) | "refresh" (worker) | "sample" (learner).

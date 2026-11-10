@@ -115,28 +115,32 @@ endpoints:
       pathParams: {model: gemini-3.1-flash-image}
       queryParams: {fields: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback"}
       body: {contents: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}], generationConfig: {responseModalities: [IMAGE], imageConfig: {imageSize: "1K", aspectRatio: "1:1"}}}
-    cost:
-      type: per_success
+    price:
       table:
-        - {when: {body.generationConfig.imageConfig.imageSize: "512"}, value: 0.05}
-        - {when: {body.generationConfig.imageConfig.imageSize: "1K"}, value: 0.075}
-        - {when: {body.generationConfig.imageConfig.imageSize: "2K"}, value: 0.11}
-        - {when: {body.generationConfig.imageConfig.imageSize: "4K"}, value: 0.165}
-      fallback: {value: 0.165, note: "One 4K image with its prompt, text and reference-image tokens; the reported token meters settle."}
+        - when: [{path: body.generationConfig.imageConfig.imageSize, op: equals, value: '512'}]
+          value: '0.05'
+        - {when: [{path: body.generationConfig.imageConfig.imageSize, op: equals, value: 1K}], value: '0.075'}
+        - {when: [{path: body.generationConfig.imageConfig.imageSize, op: equals, value: 2K}], value: '0.11'}
+        - {when: [{path: body.generationConfig.imageConfig.imageSize, op: equals, value: 4K}], value: '0.165'}
+      fallback:
+        value: '0.165'
+        note: One 4K image with its prompt, text and reference-image tokens; the reported token meters settle.
       currency: USD
-      settle: usage
+      note: 'Token-metered at Google''s paid-tier rates: input $0.50/M, text and thinking output $3/M, image output $60/M (the image term adds $57/M on top of candidatesTokenCount, which already counts it at $3/M). Live 2026-09-30 the image meter read 747 tokens at 512px, 1,120 at 1K, 1,680 at 2K and 2,520 at 4K ($0.045 / $0.067 / $0.101 / $0.151 per image), plus about 400 text tokens in candidatesTokenCount; no thoughtsTokenCount is reported. A 4K answer is about 23 MB and is spooled. The row is the hold; usageMetadata settles.'
+    provenance:
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: '2026-09-30'
+      confidence: documented
+    settle:
       usage:
         unit: usd
         terms:
-          - {path: usageMetadata.promptTokenCount, rate: 0.0000005}
-          - {path: usageMetadata.candidatesTokenCount, rate: 0.000003}
-          - {path: usageMetadata.thoughtsTokenCount, rate: 0.000003}
-          - {path: "usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount", rate: 0.000057}
-      source: docs
-      source_url: https://ai.google.dev/gemini-api/docs/pricing
-      checked: 2026-09-30
-      confidence: documented
-      note: "Token-metered at Google's paid-tier rates: input $0.50/M, text and thinking output $3/M, image output $60/M (the image term adds $57/M on top of candidatesTokenCount, which already counts it at $3/M). Live 2026-09-30 the image meter read 747 tokens at 512px, 1,120 at 1K, 1,680 at 2K and 2,520 at 4K ($0.045 / $0.067 / $0.101 / $0.151 per image), plus about 400 text tokens in candidatesTokenCount; no thoughtsTokenCount is reported. A 4K answer is about 23 MB and is spooled. The row is the hold; usageMetadata settles."
+          - {path: response.usageMetadata.promptTokenCount, rate: '0.0000005'}
+          - {path: response.usageMetadata.candidatesTokenCount, rate: '0.000003'}
+          - {path: response.usageMetadata.thoughtsTokenCount, rate: '0.000003'}
+          - path: response.usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount
+            rate: '0.000057'
     verified: 2026-09-30
     added: '2026-09-29'
     example_response: examples/google-ai.image-gen.gemini-3-1-flash-image.json
@@ -219,8 +223,8 @@ endpoints:
         contents:
           type: array
           required: true
-          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
-          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
@@ -234,7 +238,7 @@ endpoints:
       bodyType: json
     test_request:
       pathParams: {model: gemini-3.8-flash-tts}
-      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+      body: {contents: [{parts: [{text: "Welcome to treg, the tool catalog for your agents.", speechMetadata: {style: cheerful}}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
     cost:
       type: per_success
       value: 0.05
@@ -276,8 +280,8 @@ endpoints:
         contents:
           type: array
           required: true
-          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
-          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
@@ -291,7 +295,7 @@ endpoints:
       bodyType: json
     test_request:
       pathParams: {model: gemini-3.8-flash-lite-tts}
-      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+      body: {contents: [{parts: [{text: "Welcome to treg, the tool catalog for your agents.", speechMetadata: {style: cheerful}}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
     cost:
       type: per_success
       value: 0.035

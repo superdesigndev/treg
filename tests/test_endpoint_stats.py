@@ -255,14 +255,14 @@ async def test_a_relayed_405_is_the_CATALOGS_failure_not_the_callers(clients: As
     the method THIS CATALOG RECORDED was rejected upstream — a stale contract, which is the single
     thing these numbers exist to surface. Counting it as "the caller sent bad parameters" is what
     let `tikhub.x.tiktok-ads-search-ads` show `WORKS — (7)` while being uncallable by anyone."""
-    from treg import cli
+    from treg.routers.views import catalog as catalog_views
     for _ in range(7):
         await _record(EP, 405)
     got = (await _observed([EP]))[EP]
     assert got["samples"] == 7
     assert got["ok_rate"] == 0.0, "seven straight 405s are decided evidence, not unknown"
     assert got["last_ok_days"] is None
-    assert cli._pct(got["ok_rate"]) == "0%"
+    assert catalog_views.pct(got["ok_rate"]) == "0%"
 
     # …and an ordinary caller error is still excluded, or this trades one wrong reading for another
     for _ in range(7):

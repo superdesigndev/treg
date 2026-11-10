@@ -16,6 +16,7 @@ from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import AsyncResourceRecord, AsyncTaskRecord
+from conftest import verified_signup
 
 POST = "dataforseo.x.business-data-google-reviews-task-post"
 GET = "dataforseo.x.business-data-google-reviews-task-get"
@@ -99,7 +100,7 @@ async def test_a_task_post_is_owned_polled_and_settled_at_the_submission_charge(
         task = await db.get(AsyncTaskRecord, task.call_id)
     assert task.status == "settled" and task.settled_micro == 7_500
 
-    other = await clients.post("/users", json={"email": "dfs-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "dfs-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
 
     async def must_not_relay(*args, **kwargs):
@@ -130,6 +131,33 @@ async def test_a_task_that_fails_after_posting_still_bills_what_dataforseo_charg
     async with session_maker() as db:
         task = (await db.execute(select(AsyncTaskRecord))).scalar_one()
     assert task.status == "settled" and task.settled_micro == 3_750
+
+
+async def test_a_task_whose_submission_reported_no_cost_settles_at_the_hold(
+    clients: AsyncClient, monkeypatch, dfs_platform,
+):
+    """The terminal answer's own `cost` (0 on a task_get) is never the bill, and a task_get's 20000
+    fails the submission's own success rule, so only the charged error keeps this at the hold."""
+    posted = _envelope([_task(TASK_A, 20100, 0.00375)])
+    posted.pop("cost")
+    answers = [
+        _response(200, posted),
+        _response(200, _envelope([_task(TASK_A, 20000, 0, result=[{"items": []}])])),
+    ]
+
+    async def fake_relay(*args, **kwargs):
+        return answers.pop(0)
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    submitted = await clients.post(f"/call/{POST}", json=[{"keyword": "tea"}])
+    assert submitted.status_code == 200
+    async with session_maker() as db:
+        task = (await db.execute(select(AsyncTaskRecord))).scalar_one()
+    assert "submission_charge_micro" not in task.settlement_basis
+    assert (await clients.get(f"/call/{GET}", params={"id": TASK_A})).status_code == 200
+    async with session_maker() as db:
+        task = await db.get(AsyncTaskRecord, task.call_id)
+    assert task.status == "settled" and task.settled_micro == task.settlement_basis["reserve_micro"] > 0
 
 
 async def test_a_batch_whose_first_task_was_refused_bills_the_tasks_dataforseo_accepted(
@@ -181,7 +209,7 @@ async def test_an_on_page_crawl_is_readable_only_by_the_team_that_paid_for_it(
     smuggled = await clients.post("/call/dataforseo.x.on-page-pages",
                                   json=[{"id": TASK_A}, {"id": TASK_B}])
     assert smuggled.status_code == 400
-    other = await clients.post("/users", json={"email": "crawl-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "crawl-stranger@example.com"})
     denied = await clients.post("/call/dataforseo.x.on-page-pages", json=[{"id": TASK_A}],
                                 headers={"X-Treg-Token": other.json()["token"]})
     assert denied.status_code == 403

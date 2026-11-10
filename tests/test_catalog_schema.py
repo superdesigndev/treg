@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal
 
 import pytest
 import yaml
@@ -100,6 +99,10 @@ PROVENANCE = {"source": "docs", "source_url": "https://example.com/pricing", "ch
     ({"settle": {"count": {"path": "body.items"}}, "price": {"value": "0"}}, "body path"),
     ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "settle": {"count": {"path": "response.a"}}},
      "price.rates stands only beside plugins"),
+    ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "settle": {"plugin": "demo.used"}},
+     "price.rates stands only beside plugins"),
+    ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "reserve": {"plugin": "demo.hold", "max": "1"},
+      "bill": {"miss": 2}}, "bill.miss in units needs a unit price"),
     ({"miss": {"status": [200]}}, "greater than or equal to 400"),
     ({"miss": {"means": "nothing"}}, "needs status, when or plugin"),
     ({"error": {"when": {"path": "response.e", "op": "present"}, "plugin": "demo.err"}}, "exactly one of when"),
@@ -107,6 +110,7 @@ PROVENANCE = {"source": "docs", "source_url": "https://example.com/pricing", "ch
     ({"bill": {"miss": 0}}, "bill.miss"),
     ({"reserve": {"plugin": "Demo-Hold", "max": "1"}, "price": {"value": "0"}}, "<module>.<function>"),
     ({"cost": {"type": "free"}, "price": {"value": "0"}}, "mixes today's spelling"),
+    ({"call_note": "x", "price": {"value": "0"}}, "call_note"),
 ])
 def test_the_v2_row_refuses_each_invalid_shape(keys, message):
     from treg.domain.catalog.schema.files import parse_row
@@ -114,17 +118,38 @@ def test_the_v2_row_refuses_each_invalid_shape(keys, message):
         parse_row(_v2(**keys), "demo.yaml")
 
 
-def test_a_v2_row_parses_money_as_decimal_and_states_every_absent_meaning():
-    from treg.domain.catalog.schema.v2 import resolved
+def test_a_v2_row_is_served_as_plain_values_with_every_absent_meaning_and_its_cost_view():
+    from treg.domain.catalog.schema.v2 import served
     row = V2Row.model_validate(_v2(
         price={"value": "1", "currency": "credit", "per": 10, "round": "up", "unit": "result"},
         provenance=PROVENANCE, reserve={"rows": {"param": "body.limit", "default": {"value": 100, "source": "docs"},
                                                  "max": 10000}},
         settle={"reported": {"path": "response.credits_used", "unit": "credit"}}))
-    out = resolved(row)
-    assert out["price"].value == Decimal("1") and out["price"].per == 10
-    assert out["cost"] is None and out["expect"] is None and out["miss"] is None
-    assert (out["bill"].miss, out["bill"].error, out["bill"].free_when) == ("free", "free", None)
+    out = served(row, {})
+    assert out["price"] == {"value": "1", "currency": "credit", "per": 10, "round": "up", "unit": "result"}
+    assert out["expect"] is None and out["miss"] is None and out["bill"] == {"miss": "free", "error": "free"}
+    assert out["cost"] == {"type": "per_result", "value": 1, "currency": "credit", "per": 10, "unit": "result",
+                           "reserve": {"rows": {"param": "body.limit", "default": {"value": 100, "source": "docs"},
+                                                "max": 10000}},
+                           "reported_charge": {"path": "credits_used", "unit": "credit"}, **PROVENANCE}
+    assert json.loads(json.dumps(out)) == out
+
+
+@pytest.mark.parametrize("keys,cost", [
+    ({"reserve": {"rows": {"param": "query.limit", "max": 50}}},
+     {"reserve": {"rows": {"param": "queryParams.limit", "max": 50}}}),
+    ({"reserve": {"rows": {"param": "query.n", "default": {"value": 5, "source": "docs"}, "max": 50}}},
+     {"reserve": {"rows": {"param": "pathParams.n", "default": {"value": 5, "source": "docs"}, "max": 50}}}),
+    ({"reserve": {"entities": {"from": "body.domains"}}, "settle": {"count": {"path": "response.data.items"}}},
+     {"reserve": {"entities": {}}, "settle": {"count": {"path": "data.items"}}}),
+    ({"settle": {"reported": {"header": "x-cost", "unit": "usd"}}}, {}),
+])
+def test_the_served_cost_rebuilds_todays_hold_and_settle_forms(keys, cost):
+    from treg.domain.catalog.schema.v2 import served
+    row = V2Row.model_validate(_v2(price={"value": "1"}, provenance=PROVENANCE, **keys))
+    out = served(row, {"pathParams": {"n": {"type": "integer"}}, "queryParams": {"limit": {"type": "integer"}}})
+    assert out["cost"] == {"type": "per_result" if "reserve" in keys or "count" in keys.get("settle", {})
+                           else "per_success", "value": 1, **cost, **PROVENANCE}
 
 
 def test_the_merge_rule_replaces_whole_inherits_the_absent_and_opts_out_on_null():
@@ -166,13 +191,16 @@ def test_the_loader_reads_both_spellings_into_one_resolved_row(tmp_path):
     old, new, unpriced = (cat.by_id[f"demo.web.{n}"] for n in ("old", "new", "unpriced"))
     kept, ext = cat.by_id["next.web.kept"], cat.by_id["next.web.ext"]
     assert old["cost"]["value"] == 0.01 and not is_v2(old) and "price" not in old
-    assert is_v2(new) and new["cost"] is None and new["tier"] == "core"
-    assert new["price"].value == Decimal("0") and new["miss"].when.path == "response.items"
-    assert is_v2(unpriced) and unpriced["price"] is None and unpriced["expect"].value == 0
-    assert kept["bill"].miss == "charged" and kept["provenance"].source == "docs"
-    assert kept["price"].value == Decimal("0.01")
-    assert ext["tier"] == "extended" and ext["bill"].miss == "free"
-    assert not cat.platform_eligible(kept)
+    assert is_v2(new) and new["cost"] == {"type": "free", "value": 0} and new["tier"] == "core"
+    assert new["price"] == {"value": "0"} and new["miss"] == {"when": {"path": "response.items", "op": "empty"}}
+    assert is_v2(unpriced) and unpriced["price"] is None and unpriced["cost"] is None
+    assert unpriced["expect"] == {"path": "response.code", "op": "equals", "value": 0}
+    assert kept["bill"] == {"miss": "charged", "error": "charged"} and kept["provenance"]["source"] == "docs"
+    assert kept["price"] == {"value": "0.01", "unit": "call"}
+    assert kept["cost"] == {"type": "per_call", "value": 0.01, "unit": "call", "source": "docs",
+                            "source_url": "https://example.com", "checked": "2026-10-01", "confidence": "documented"}
+    assert ext["tier"] == "extended" and ext["bill"] == {"miss": "free", "error": "free"}
+    assert cat.platform_eligible(kept) and json.dumps(cat.by_id["next.web.kept"])
 
 
 def test_a_legacy_row_keeps_its_cost_ceiling_param_and_its_own_response_retention(tmp_path):

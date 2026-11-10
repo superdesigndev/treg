@@ -12,6 +12,7 @@ from sqlmodel import select
 from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import Org
+from conftest import verified_signup
 
 COOKIE = quote("botdirectory.ai|sponsor|edge||p1|botdirectory.ai", safe="")
 
@@ -22,7 +23,7 @@ async def _org(org_id: int) -> Org:
 
 
 async def test_signup_persists_the_utm_cookie(clients):
-    r = await clients.post("/users", json={"email": "sponsor@example.com"}, cookies={"treg_utm": COOKIE})
+    r = await verified_signup(clients, json={"email": "sponsor@example.com"}, cookies={"treg_utm": COOKIE})
     assert r.status_code == 200, r.text
     org = await _org(r.json()["org_id"])
     assert (org.utm_source, org.utm_medium, org.utm_campaign) == ("botdirectory.ai", "sponsor", "edge")
@@ -40,7 +41,7 @@ async def test_org_creation_persists_the_utm_cookie(clients):
 
 
 async def test_signup_without_the_cookie_leaves_source_null(clients):
-    r = await clients.post("/users", json={"email": "organic@example.com"})
+    r = await verified_signup(clients, json={"email": "organic@example.com"})
     assert r.status_code == 200, r.text
     org = await _org(r.json()["org_id"])
     assert org.utm_source is None and org.utm_referrer is None
@@ -48,7 +49,7 @@ async def test_signup_without_the_cookie_leaves_source_null(clients):
 
 async def test_referrer_only_cookie_records_just_the_host(clients):
     # A link with no utm tags still has a referrer — that alone is worth keeping.
-    r = await clients.post("/users", json={"email": "ref@example.com"},
+    r = await verified_signup(clients, json={"email": "ref@example.com"},
                            cookies={"treg_utm": quote("|||||news.ycombinator.com", safe="")})
     assert r.status_code == 200, r.text
     org = await _org(r.json()["org_id"])
@@ -56,7 +57,7 @@ async def test_referrer_only_cookie_records_just_the_host(clients):
 
 
 async def test_hostile_cookie_is_capped_and_never_errors(clients):
-    r = await clients.post("/users", json={"email": "hostile@example.com"},
+    r = await verified_signup(clients, json={"email": "hostile@example.com"},
                            cookies={"treg_utm": "x" * 5000})
     assert r.status_code == 200, r.text
     org = await _org(r.json()["org_id"])

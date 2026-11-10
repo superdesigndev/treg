@@ -191,7 +191,9 @@ token bucket.
 ## Protect: fair share of a provider's concurrency
 
 A provider that caps the calls in progress on one account (`_CONCURRENCY`, read through
-`view.concurrency`) is shared by every team on treg's key. `fair_share.py` applies max-min fairness
+`view.concurrency_pool`) is shared by every team on treg's key. An endpoint family with its own
+allowance (`_ENDPOINT_CONCURRENCY`: a name, a limit and its endpoints) has its own places, which
+replace the provider's for those endpoints and do not draw from them. `fair_share.py` applies max-min fairness
 on those places, DB-free, after the DB phase and around the relay (platform tier only):
 
 1. A free place with no one waiting is taken at once.
@@ -243,6 +245,11 @@ Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings` refuses to 
   its chance as for a provider's burst 429 (forced trigger `burst`); when it does not serve, the
   caller still gets the rate refusal. A routed job records the candidate `skipped` without spending
   its error budget.
+- A routed child on treg's own key whose answer the signature table marks `balance` or `quota`
+  (treg's account out of money or out of its period allowance, e.g. LeadOcean's 429 "Fair-use pace
+  reached") is likewise `skipped` (`child_outcome` kind `account_exhausted`), never an error: one
+  used-up account beside providers that answered "nobody" leaves the call a 200 miss, not a 502.
+  A provider that is down (5xx) is still an error, so a failed routed call stays free.
 - A capacity probe (`probe_lock_id`) and a team's poll of its own job (`free_owned_poll`) are
   counted but never refused. The one `retry-after` re-send asks the window after its sleep; on a
   full enforced bucket it is not sent and the provider's first 429 stands.
@@ -279,8 +286,10 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
   check refused small requests while serving larger ones, which callers read as a plan change. Such
   a fallback charges the aggregator's flat fee, including an empty page.
 - **The seed** (`overflow_seed.json`) holds candidate mappings and verification evidence. Enabled
-  routes decay without verification. Verification records live in
-  `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
+  routes decay without verification. A free-to-us vendor route still carries the aggregator's list
+  price here (Apollo people search is `$0.002`/call): that figure is what catalog disclosure and the
+  child reserve use; settlement still follows the aggregator's in-band charge. Verification records
+  live in `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
   ContactOut routes whose static catalog examples cannot.
 - **Mark scope on a failed child** (`overflow.py`): only `aggregator_auth` and `aggregator_balance`
   mark `overflow:<aggregator>` for every provider. Everything else (the aggregator's account for
