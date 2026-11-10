@@ -640,7 +640,7 @@ def _facebook_page_key(url: Any) -> str | None:
         return f"id:{pid}" if pid else None
     if parts[0] in {"pages", "people", "pg"} and len(parts) >= 2:
         return f"id:{parts[-1]}" if parts[-1].isdigit() else parts[-1].lower()
-    return parts[0].lower()
+    return f"id:{parts[0]}" if parts[0].isdigit() else parts[0].lower()
 
 
 def _domain_matches(extracted: str, asked: str) -> bool:
@@ -694,7 +694,7 @@ def advertiser_identity_miss(company_domain: Any, facebook_url: Any, company_nam
 
     A domain is corroborated by a landing or website host on the page or its ads (a subdomain
     counts; Facebook hosts do not). A Facebook URL is corroborated by the returned page URL or,
-    for a numeric `profile.php?id=` URL, the returned page id. A numeric identity is only judged
+    for a numeric URL (`profile.php?id=<n>` or `/<n>`), the returned page id. A numeric identity is only judged
     against numeric ones and a vanity slug only against slugs. When the payload has nothing
     comparable, an exact page-name match against the supplied company name is enough (folded,
     or Unicode-preserving for non-Latin names); a near-match is not."""

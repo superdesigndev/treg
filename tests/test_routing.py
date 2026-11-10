@@ -1938,6 +1938,12 @@ def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_que
     # Numeric Facebook URL with a different returned page id: miss.
     ({"facebook_url": "https://www.facebook.com/profile.php?id=15087023444"}, "Nike",
      [{"page_id": "1", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], True),
+    # Bare numeric Facebook path is a page id too: corroborated by the returned page id.
+    ({"facebook_url": "https://www.facebook.com/15087023444"}, "Nike",
+     [{"page_id": "15087023444", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], False),
+    # Bare numeric Facebook path with a different returned page id: miss.
+    ({"facebook_url": "https://www.facebook.com/15087023444"}, "Nike",
+     [{"page_id": "1", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], True),
     # Non-Latin company name, name-only child payload with the identical page name: hit.
     ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
      [{"pageName": "腾讯", "pageId": "1"}], False),
