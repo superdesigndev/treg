@@ -129,18 +129,24 @@ def test_a_table_row_with_an_adapter_miss_freezes_its_outcome():
         {"path": "body.model", "op": "equals", "value": "m1"},
         {"path": "query.size", "op": "equals", "value": 2}], "value": "0.28"}]
     assert change.keys["miss"] == {"when": {"path": "response.items", "op": "absent"}}
-    assert change.keys["error"] == {"when": codemod.ENVELOPE} and change.keys["bill"] == {"error": "charged"}
+    assert "error" not in change.keys and "bill" not in change.keys
     assert change.adapter_miss and change.replaced == ("cost",) and _v2(change)
 
 
 @pytest.mark.parametrize("miss", ["items == null", "coalesce(items, []) == []"])
-def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_error_rule(miss):
-    change = codemod.rewrite(_table_row(expect={"json_path": "base.code", "equals": 0}), provider="demo",
+@pytest.mark.parametrize("expect", [None, {"json_path": "base.code", "equals": 0}])
+def test_a_per_success_row_that_frees_a_miss_keeps_its_error_envelope_out_of_the_error_rule(miss, expect):
+    change = codemod.rewrite(_table_row(**({"expect": expect} if expect else {})), provider="demo",
                              adapter={"miss": miss, "verified": True}, check_branches=False)
     assert "error" not in change.keys and "bill" not in change.keys
-    assert change.keys["expect"] == {"path": "response.base.code", "op": "equals", "value": 0}
-    assert change.replaced == ("cost", "expect") and change.adapter_miss and _v2(change)
+    assert change.adapter_miss and _v2(change)
     assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
+
+
+def test_a_per_success_row_under_a_charging_bill_default_gets_the_error_envelope():
+    change = codemod.rewrite(_table_row(), provider="demo", adapter={"miss": "items == null", "verified": True},
+                             check_branches=False, defaults={"bill": {"miss": "charged", "error": "charged"}})
+    assert change.keys["error"] == {"when": codemod.ENVELOPE} and "bill" not in change.keys
 
 
 @pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
