@@ -183,10 +183,13 @@ class Settle(Model):
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
+    uncapped: Literal[True] | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
+        if self.uncapped and self.count is None and self.plugin is None:
+            raise ValueError("uncapped applies to count and plugin only: reported and usage are never capped")
         return self
 
 

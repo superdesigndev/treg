@@ -194,6 +194,20 @@ def test_a_rates_plugin_that_returns_a_plain_number_is_missing_evidence(monkeypa
     assert hold == 20000 and decision.actual_micro == 20000
 
 
+@pytest.mark.parametrize("uncapped,actual", [(None, 30000), (True, 50000)])
+def test_a_counted_settle_is_capped_at_the_hold_unless_uncapped(uncapped, actual):
+    settle = {"count": {"path": "response.items"}, **({"uncapped": True} if uncapped else {})}
+    ep = row(price={"value": "0.01", "currency": "USD"}, settle=settle,
+             reserve={"entities": {"from": "body.urls", "max": 3}})
+    hold, decision = call(ep, {"urls": ["a", "b", "c", "d", "e"]}, answer={"items": [1, 2, 3, 4, 5]})
+    assert (hold, decision.actual_micro) == (30000, actual)
+
+
+def test_uncapped_is_refused_beside_a_settle_that_is_never_capped():
+    with pytest.raises(ValueError, match="uncapped applies to count and plugin only"):
+        row(settle={**REPORTED, "uncapped": True})
+
+
 # -- the settlement order ------------------------------------------------------------------------
 
 REPORTED = {"reported": {"path": "response.used", "unit": "credit"}}

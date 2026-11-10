@@ -280,9 +280,12 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
 
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,
               answer: plugins.Answer | None) -> int | None:
-    """What a `count` or `plugin` settle reads off this answer, capped at the hold."""
+    """What a `count` or `plugin` settle reads off this answer, capped at the hold unless the row
+    declares `uncapped`."""
     found = _uncapped(terms, doc, request, answer)
-    return None if found is None else min(found, hold)
+    if found is None or (terms.get("settle") or {}).get("uncapped"):
+        return found
+    return min(found, hold)
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
