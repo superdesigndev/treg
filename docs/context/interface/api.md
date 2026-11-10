@@ -294,6 +294,24 @@ X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 it is the `idempotency_key` argument and a replay carries `replayed: true`. Storage rules:
 [money](../architecture/money.md).
 
+### `X-Treg-Keep-Reported-Charge` on `/call/`
+
+```
+TREG_STRIP_REPORTED_CHARGE=true          deploy switch, off by default
+X-Treg-Keep-Reported-Charge: true        this call keeps the provider's charge (1, yes, on also)
+```
+
+With the switch on, a metered 2xx answer, live or an archive hit, reaches the caller without the
+member its row's settlement reads the provider's own charge from (`settle.reported.path`, or
+`cost.reported_charge.path` in today's spelling). Everything else is byte for byte as the provider
+sent it; error bodies, non-JSON answers, rows with no such path or a header-reported charge, own-key
+calls, streamed free fetches and spooled answers are relayed as before. The bill, the outcome and
+`X-Treg-Upstream-Failed` are decided first, on the provider's bytes; the archive keeps those bytes.
+An idempotent replay hands back what the first call received, whatever the retry sends. A routed
+child is an ordinary call (it inherits the header), so `raw` carries its answer as received.
+`GET /calls/{id}/result` returns a metered answer by the same rule, read from the request's own
+header. Mechanism: [proxy-model](../architecture/proxy-model.md), "The provider's reported charge".
+
 ### Caller tags, budgets and isolation
 
 `X-Treg-Meta: customer=cust_8123, feature=email-finder` is set from the builder's backend, never
