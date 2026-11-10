@@ -106,6 +106,8 @@ The stream has no map type; they travel as JSON objects (`json` columns):
 - `answer_values`: `{field: value}` for output fields declared `analytics: value`, as strings
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
+  A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
+  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
   when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
   `domain_match` comparison is disclosed to callers on a routed email-find hit as

@@ -508,15 +508,18 @@ adapters:
     in_expr: {body.telephone_number: "e164_digits(phone)"}
     in_read: *hlr_read
     test_identity: {phone: "+447540822872"}
-    out: {valid: "choose(results[0].error == 'NONE', true, choose(results[0].error == 'BAD_FORMAT', false, null))",
+    # BAD_FORMAT is a number type, not an error: an invalid number. A per-result error is the
+    # provider failing, and UNKNOWN says nothing either way; both leave `valid` unset (a miss).
+    out: {valid: "choose(results[0].error == 'NONE', choose(results[0].telephone_number_type == 'BAD_FORMAT', false, choose(coalesce(results[0].telephone_number_type, 'UNKNOWN') == 'UNKNOWN', null, true)), null)",
           line_type: "results[0].telephone_number_type", carrier: "results[0].original_network_details.name"}
-    miss: "results[0].error != 'NONE'"
+    miss: "at_least(results[0].error != 'NONE', coalesce(results[0].telephone_number_type, 'UNKNOWN') == 'UNKNOWN')"
   trestleiq.people.phone.verify:
     route: false
     accepts: [[phone]]
     in: {phone: queryParams.phone}
-    # Trestle reads a national number as North American; so does the read-back.
-    in_read: {phone: "with_country_code(queryParams.phone, 'US')"}
+    # A national number is read in phone.country_hint's country, North American without one (as
+    # Trestle reads it). A hint outside the North American plan leaves it unread: no key.
+    in_read: {phone: "with_country_code(queryParams.phone, coalesce(key(queryParams, 'phone.country_hint'), 'US'))"}
     out: {valid: is_valid, phone: phone_number, country_code: country_code, line_type: line_type, carrier: carrier}
     miss: "is_valid == null"
 

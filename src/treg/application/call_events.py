@@ -68,6 +68,7 @@ _ROLE_LOCALS = frozenset({
     "support", "team", "webmaster",
 })
 _VALUE_MAX = 256
+_SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
 
@@ -144,6 +145,7 @@ def adapter_fingerprint(adapter: Adapter) -> str:
     if cached is not None and cached[0] is adapter:
         return cached[1]
     spec = {"accepts": adapter.accepts, "in": adapter.in_map, "in_expr": adapter.in_expr,
+            **({"in_read": adapter.in_read} if adapter.in_read else {}),
             "const": adapter.const, "out": adapter.out_map, "miss": adapter.miss,
             "verdict": adapter.verdict, "verdicts": adapter.verdicts}
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -312,7 +314,20 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
         return None
     if not isinstance(doc, (dict, list)):
         return None
-    return safe_output(adapter.from_upstream(doc), capability=capability)
+    raw = adapter.from_upstream(doc)
+    core = safe_output(raw, capability=capability)
+    # The Arena keeps only the booleans and numbers it ranks on (`valid`, `score`, …) and blanks
+    # the rest as likely masking flags. A field the contract records and declares `bool`, `int` or
+    # `float` is the provider's verdict (`name_match`, `ported`), kept when it has that type.
+    contract = catalog_store.load().contracts.get(capability)
+    for field_name, spec in (contract.output if contract else {}).items():
+        spec = spec or {}
+        kind = _SCALAR_TYPES.get(str(spec.get("type")))
+        v = raw.get(field_name)
+        if kind and spec.get("analytics", "skip") != "skip" and isinstance(v, kind) \
+                and (kind is bool or not isinstance(v, bool)):
+            core[field_name] = v
+    return core
 
 
 def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None) -> dict:
