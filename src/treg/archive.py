@@ -395,7 +395,7 @@ def record(
     answer. They are what the audit row keeps so a call can later be joined back to its stored
     bytes (`/calls/{id}/result`). Computed here rather than in `_store` so they are computed
     ONCE (the store reuses them) and are true whether or not the write lands: a shed recording
-    still names the answer the caller received."""
+    still names the provider's answer."""
     global _pending_bytes
     kh = cache_key(method, endpoint_id, url, caller_body, headers, scope=scope)
     ch = content_hash(body)
@@ -1305,7 +1305,7 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
     """The request shape and the stored answer a call row points at, or None when the key or
     that exact answer is no longer on file.
 
-    `content_hash` names the exact bytes the caller received (dedup means several versions can
+    `content_hash` names the exact bytes of the provider's answer (dedup means several versions can
     share them — the newest matching version is the one reported). Follows a `body_of` reference
     to the row carrying the bytes; a hash-only version returns `stored=False` with the bytes
     honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`."""
