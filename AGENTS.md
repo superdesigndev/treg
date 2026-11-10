@@ -62,6 +62,12 @@ Everything else in this file is guidance; these are the contract, and they win o
    back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
    row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
    call one that cannot be scanned is replaced whole, never relayed as a prefix.
+   One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
+   (off by default): the member the row's settlement reads the provider's own charge from
+   (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
+   settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
+   or an idempotent replay sees it. The archive keeps the answer whole; a call sending
+   `X-Treg-Keep-Reported-Charge: true` keeps the member.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With

@@ -77,7 +77,7 @@ def test_the_index_holds_jobs_and_shown_endpoints_only():
     ix = fr.build(_cat())
     kinds = {u.id: u.kind for u in ix.units}
     assert kinds["people.email.find"] == fr.JOB and kinds["hunter.people.email.find"] == fr.ENDPOINT
-    assert "hunter.account.usage" not in kinds                       # utility: not on the browse surface
+    assert "hunter.account.usage" not in kinds                       # uncatalogued utility: not recalled
     # a first-party endpoint may carry its capability's id: two units, told apart by kind
     same = "tiktok-ads.library.search"
     assert ix.units[ix.job_pos[same]].kind == fr.JOB and ix.units[ix.pos[same]].kind == fr.ENDPOINT
@@ -219,3 +219,22 @@ def test_the_semantic_channel_ranks_by_similarity_whatever_its_sign():
     cands = fr.recall("zzqx", ix, cat.aliases, semantic=sem, n_jobs=2)
     assert [c.unit.id for c in cands if c.unit.kind == fr.JOB][0] == "image-gen.flux.generate"
     assert len([c for c in cands if c.unit.kind == fr.JOB]) == 2   # the channel alone fills the seats
+
+
+def test_a_catalogued_hidden_job_is_recalled():
+    """A job whose members are account/utility still belongs in recall, so searching for it is
+    not a catalog gap. An uncatalogued hidden endpoint stays out (the existing usage row)."""
+    cat = _cat()
+    extra = _ep("x.x.media-upload", "x.media.upload", "x", "x", "Upload a media file",
+                "Upload media", kind="utility")
+    eps = list(cat.endpoints) + [extra]
+    cat = store.Catalog(
+        platforms={**cat.platforms, "x": {"label": "X", "category": "Social"}},
+        capabilities={**cat.capabilities, "x.media.upload": "Upload a media file"},
+        endpoints=eps, by_id={e["id"]: e for e in eps}, aliases=cat.aliases)
+    ix = fr.build(cat)
+    kinds = {u.id: u.kind for u in ix.units}
+    assert kinds["x.media.upload"] == fr.JOB and kinds["x.x.media-upload"] == fr.ENDPOINT
+    assert "hunter.account.usage" not in kinds
+    assert "x.x.media-upload" not in {e["id"] for e in fr.shown_endpoints(cat)}
+    assert "x.media.upload" in _ids(fr.recall("x media upload", ix, cat.aliases))
