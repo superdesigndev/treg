@@ -49,7 +49,7 @@ def _email(value) -> bool:
 
 def has_result_rules(endpoint_id: str) -> bool:
     """Only verified, configured hit/miss adapters opt into result-aware cache behavior; on a v2
-    row the miss is the row's own rule, beside a verified adapter."""
+    row the miss is the row's own rule, for a 2xx or a 4xx status, beside a verified adapter."""
     from .store import load
 
     adapter = load().adapters.get(endpoint_id)
@@ -57,7 +57,7 @@ def has_result_rules(endpoint_id: str) -> bool:
         return False
     endpoint = load().by_id.get(endpoint_id)
     if endpoint is not None and is_v2(endpoint):
-        return outcome.declares_miss(endpoint)
+        return isinstance(endpoint.get("miss"), dict)
     return bool(adapter.miss.strip())
 
 
