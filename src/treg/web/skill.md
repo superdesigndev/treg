@@ -361,19 +361,10 @@ tools as JSON.
 **Command-line tools** (stripe, gh, vercel, gcloud and others) run with the team's credential and
 without you logging in:
 
-- `treg <command>` is the simplest: `treg claude`, `treg node server.js`, `treg with -- npm test`
-  run that one command with the team's credentials, and nothing else changes. Calls to a registered
-  host are credentialed by the server; every other address goes out untouched. Node before version
-  24 ignores proxy settings in its built-in `fetch`, so such a call goes out with no credential: use
-  a client that reads the environment (axios, got, undici `ProxyAgent`) or Node 24+. curl, git,
-  Python requests and httpx, and Deno are covered at any version.
 - `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the default) runs it on this
   machine, isolated under a dedicated user once an admin has run `sudo treg setup-local-run`;
   server-side execution (`--server`) is disabled globally.
-- `treg shell start` opens a subshell where registered CLIs get their credentials by themselves;
-  `--proxy` also credentials HTTPS calls your own code makes to a registered API. `treg serve` runs
-  the same proxy as a background service. A certificate-pinned client refuses the interception: use
-  `treg run` or `treg call` for it.
+- `treg shell start` opens a subshell where registered CLIs get their credentials by themselves.
 
 [Import and shell]({BASE}/tutorial-import-shell.md) has the full walkthrough.
 
