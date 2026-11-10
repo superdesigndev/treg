@@ -3568,6 +3568,9 @@ adapters:
     out: {places: rows, count: "len(rows)"}
     miss: "coalesce(rows, []) == []"
   crawl4ai.instagram.user.profile:
+    # evidence only: its recipe never fills biography or external_url (both null on every row, with or
+    # without full_profile), so a routed hit here would hand back a profile without its bio
+    route: false
     accepts: [[username]]
     in: {username: body.username}
     out: {username: "rows[0].username", user_id: "rows[0].user_id", full_name: "rows[0].full_name",
