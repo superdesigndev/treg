@@ -49,11 +49,6 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # charge covers for each cost type, so `cost_view` can divide by `per` and a reader knows whether
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
-    # Credit counts come from `credits_charged` in the provider's own OpenAPI response examples —
-    # first-party, machine-readable and re-fetchable, so the COUNT is verified. (What is merely
-    # inferred is the credits→USD rate, and that lives in fx.yaml with its own basis.)
-    "scrapecreators": {"source": "rate_card_api", "confidence": "verified",
-                       "url": "https://docs.scrapecreators.com/openapi.json", "units": {"*": "call"}},
     # Prices transcribed from docs / pricing pages → documented.
     "brightdata": {"source": "docs", "confidence": "documented",
                    "url": "https://brightdata.com/pricing", "units": {"*": "record"}},

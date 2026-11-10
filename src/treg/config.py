@@ -814,9 +814,10 @@ class Settings(BaseSettings):
     cli_latest_version: str = ""
     cli_min_version: str = ""
     # The binary CLI's release channels (application/cli_releases.py). `/cli/latest` answers the stable
-    # channel with cli_latest_version and the beta channel with cli_beta_version; an empty one is
+    # channel with cli_stable_version and the beta channel with cli_beta_version; an empty one is
     # answered from the newest matching GitHub release of cli_release_repo. Archives are fetched from
     # cli_download_base_url with `{version}` filled in.
+    cli_stable_version: str = ""
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
@@ -861,6 +862,9 @@ class Settings(BaseSettings):
     # in production.
     turnstile_hostnames: str = ""
     turnstile_mode: Literal["observe", "enforce"] = "observe"
+    # Off: a new GitHub/Google address signs in at once with signup credit, as with no widget; the
+    # email door keeps its check.
+    turnstile_social: bool = True
     # Registry OAuth apps for the non-Google providers (oauth_providers.py). Empty = that provider
     # is listed as unconfigured rather than failing part-way through a consent.
     # treg's own Google Ads developer token, from OUR approved manager account. Ads needs it on

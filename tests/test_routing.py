@@ -211,16 +211,17 @@ def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
 
 def test_a_row_field_may_keep_more_text_than_the_default_cut():
     """people.search's `summary` is the evidence an agent checks a brief against: it keeps up to its
-    own `max` (1000) while every other text field is still cut to ROW_TEXT_MAX."""
+    own `max` while every other text field is still cut to ROW_TEXT_MAX."""
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
-    assert cat.contracts["people.search"].row_fields["summary"]["max"] == 1000
+    cap = cat.contracts["people.search"].row_fields["summary"]["max"]
+    assert cap > C.ROW_TEXT_MAX
     ad = cat.adapters["parallel.people.search"]
-    long = "evidence " * 200
+    long = "evidence " * (cap // 4)
     row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": "https://linkedin.com/in/ada",
                                           "description": long}]})["people"][0]
-    assert len(row["summary"]) == 1000 and len(row["name"]) == C.ROW_TEXT_MAX
+    assert len(row["summary"]) == cap and len(row["name"]) == C.ROW_TEXT_MAX
     doc = {"identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}}}}
     for bad in (0, -5, True, "1000", 1.5):
@@ -338,10 +339,11 @@ def people_search_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-async def _first_providers(ep_id: str, identity: dict, header: str | None = None, n: int = 2) -> list[str]:
+async def _first_providers(ep_id: str, identity: dict, header: str | None = None, n: int = 2,
+                           org_id: int = 1) -> list[str]:
     options = call_route.RouteOptions.from_headers(
         lambda key: header if header and key == call_route.PREFER_HEADER else None)
-    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    caller = SimpleNamespace(org_id=org_id, org=SimpleNamespace(id=org_id, platform_overflow_disabled=False))
     plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
     return [c.endpoint["provider"] for c in plan.candidates][:n]
 
@@ -361,7 +363,124 @@ async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
         prefer_when=((("q",), ("parallel", "exa")), (("q",), ("exa",)))))
     assert (await _first_providers("treg.people.search", identity, header, len(first))) == first
     scoped = await _first_providers("treg.people.search", {"q": "head of tax", "title": "Head of Tax"}, n=99)
-    assert not {"parallel", "exa"} & set(scoped), "a {q} rule never reaches past scoping"
+    assert "parallel" not in scoped, "a {q} rule never reaches past scoping"
+
+
+def test_phrase_leaves_out_what_the_text_already_says():
+    from treg.domain.catalog.routing import paths as P
+    assert P.evaluate("phrase(q, title)", {"q": "head of tax in phoenix", "title": "Head of Tax"}) == "head of tax in phoenix"
+    assert P.evaluate("phrase(q, title)", {"q": "speaks Japanese", "title": "CTO"}) == "speaks Japanese CTO"
+    assert P.evaluate("phrase(q, title)", {"q": "semiconductor startups", "title": "CTO"}) == "semiconductor startups CTO"
+    assert P.evaluate("phrase(q, title)", {"title": "CTO"}) == "CTO"
+    assert P.evaluate("phrase(q, title)", {"q": " ", "title": None}) is None
+
+
+def test_current_role_is_the_open_role_not_the_first_listed():
+    from treg.domain.catalog.routing import paths as P
+    ended = {"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}}
+    now = {"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}}
+    advisor = {"title": "Advisor", "dates": {"from": "2019-05-01", "to": None}}
+    assert P.current_role([ended, now, advisor]) is now, "the latest-started role with no end date"
+    assert P.current_role([ended, {"title": "Intern", "dates": {"from": "2012", "to": "2013"}}]) is ended
+    assert P.current_role([{"title": "A"}, {"title": "B"}])["title"] == "A", "no dates keeps list order"
+    assert P.current_role([{"title": "A"}, {"title": "B", "dates": {"from": "2010"}}])["title"] == "B", "a dated start wins"
+    assert P.current_role([]) is None and P.current_role(None) is None
+
+
+def test_past_titles_are_the_ended_roles_latest_first():
+    from treg.domain.catalog.routing import paths as P
+    hist = [{"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}},
+            {"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}},
+            {"title": "Intern", "dates": {"from": "2012", "to": "2013"}},
+            {"title": "Developer Evangelist", "dates": {"from": "2014", "to": "2016"}}]
+    assert P.past_titles(hist) == ["Developer Evangelist", "Intern"], "ended roles only, each once"
+    assert P.past_titles([hist[0]]) is None and P.past_titles(None) is None
+
+
+def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
+    """`row.rank_by_role`: a semantic search matches the whole history, so a former holder of the
+    role came back beside current ones; the router puts the role held now first and flags each."""
+    c = catalog_store.load().contracts["people.search"]
+    cfg = c.row_rank
+    now = {"name": "A", cfg["now"]: "Senior Developer Evangelist", cfg["since"]: "2023-01"}
+    left = {"name": "B", cfg["now"]: "Support Engineer", cfg["past"]: ["Developer Evangelist"]}
+    other = {"name": "C", cfg["now"]: "Developer Advocate"}
+    retired = {"name": "D", cfg["now"]: "Consultant", cfg["ended"]: "2024-01"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelists"}, [left, retired, other, now])
+    assert [r["name"] for r in out] == ["A", "C", "B", "D"], "now, then unknown, then past, provider order within"
+    assert out[0][cfg["flag"]] == "current" and out[2][cfg["flag"]] == "past" and cfg["flag"] not in out[1]
+    held_then_left = {"name": "E", cfg["now"]: "Developer Evangelist", cfg["ended"]: "2025-12"}
+    assert c.rank_rows({cfg["asked"]: "developer evangelist"}, [held_then_left])[0][cfg["flag"]] == "past"
+    rows = [left, now]
+    assert c.rank_rows({"q": "developer evangelists"}, rows) is rows, "no asked role: the provider's order"
+    headline = {"name": "F", cfg["now"]: "Former Developer Evangelist; now advisor"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelist"}, [left, headline])
+    assert out[0] is headline and out[1][cfg["flag"]] == "past", \
+        "a title with no work history may be a headline: unmarked, not current"
+    dated = lambda t: {"name": t, cfg["now"]: t, cfg["since"]: "2024"}  # noqa: E731
+    marked = lambda asked, *ts: [r.get(cfg["flag"]) for r in c.rank_rows({cfg["asked"]: asked}, [dated(t) for t in ts])]  # noqa: E731
+    assert marked("C++ Developer", "C# Developer", "C Developer", "Senior C++ Developer") == ["current", None, None], \
+        "C++, C# and C are different roles"
+    assert marked("AI 产品经理", "AI 产品经理", "AI 工程师") == ["current", None]
+    assert marked("产品经理", "产品经理", "高级产品经理") == ["current", None], "a word without spaces holds only itself"
+
+
+def test_a_malformed_rank_by_role_fails_the_load():
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    base = {"identity": [{"title": "str"}], "output": {"people": {"type": "list"}},
+            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}, "title": {"type": "str"},
+                                                                   "past": {"type": "list"}, "until": {"type": "str"}, "m": {"type": "str"}}}}
+    ok = {"asked": "title", "now": "title", "since": "title", "past": "past", "ended": "until", "flag": "m"}
+    assert parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": ok}}}})["y"].row_rank == ok
+    for bad in ({**ok, "asked": "q"}, {**ok, "flag": "nope"}, {"asked": "title"}):
+        with pytest.raises(ValueError, match="rank_by_role"):
+            parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": bad}}}})
+
+
+def test_in_rollout_is_stable_per_team_and_never_without_one():
+    from treg.domain.catalog.routing.contracts import in_rollout
+    picked = [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
+    assert 400 < len(picked) < 600
+    assert picked == [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
+    assert not in_rollout("people.search", None, 99)
+    assert set(picked) <= {o for o in range(1, 1001) if in_rollout("people.search", o, 99)}
+
+
+def test_a_percent_rule_applies_only_to_teams_in_its_rollout_and_rules_keep_their_order():
+    from treg.domain.catalog.routing.contracts import in_rollout, parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}, {"title": "str"}], "output": {"a": "str"},
+                               "prefer": ["c"],
+                               "prefer_when": [{"sent": ["q", "title"], "prefer": ["b"]},
+                                               {"sent": ["title"], "prefer": ["a"], "percent": 50}]}}}
+    contract = parse_contracts(doc)["y"]
+    inside = next(o for o in range(1, 100) if in_rollout("y", o, 50))
+    outside = next(o for o in range(1, 100) if not in_rollout("y", o, 50))
+    assert contract.prefer_for({"title"}, inside) == ("a",)
+    assert contract.prefer_for({"title"}, outside) == ("c",)
+    assert contract.prefer_for({"title"}, None) == ("c",), "no team, no rollout"
+    assert contract.prefer_for({"q", "title"}, inside) == ("b",), "an earlier rule wins"
+
+
+async def test_the_routed_plan_buckets_by_the_callers_team(clients, people_search_on, monkeypatch):
+    import dataclasses
+    from treg.domain.catalog.routing.contracts import in_rollout
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "people.search", dataclasses.replace(
+        cat.contracts["people.search"], prefer=("icypeas",), prefer_when=((("title",), ("exa",), 50),)))
+    inside = next(o for o in range(1, 100) if in_rollout("people.search", o, 50))
+    outside = next(o for o in range(1, 100) if not in_rollout("people.search", o, 50))
+    identity = {"title": "Head of Tax", "location": "Phoenix"}
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=inside)) == ["exa"]
+    assert (await _first_providers("treg.people.search", identity, n=1, org_id=outside)) == ["icypeas"]
+
+
+@pytest.mark.parametrize("percent", [0, 100, 50.5, True, "50", None])
+def test_a_prefer_when_percent_outside_1_to_99_fails_the_load(percent):
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                               "prefer_when": [{"sent": ["q"], "prefer": ["exa"], "percent": percent}]}}}
+    with pytest.raises(ValueError, match="prefer_when"):
+        parse_contracts(doc)
 
 
 @pytest.mark.parametrize("domain, first", [
@@ -1837,7 +1956,14 @@ async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_wh
         "one call, and the geography actually reached the provider"
     assert "ignored_filters" not in d["_treg"] and "X-Treg-Ignored-Filters" not in r.headers
 
-    # …and when the winner cannot express a filter, the answer says which — envelope, header, attempt
+    # …and when the winner cannot express a filter, the answer says which — envelope, header, attempt.
+    # exa writes country into its text, so this half gives it an adapter without that.
+    import dataclasses
+    cat = catalog_store.load()
+    exa = cat.adapters["exa.people.search"]
+    monkeypatch.setitem(cat.adapters, "exa.people.search", dataclasses.replace(
+        exa, in_expr={**exa.in_expr, "body.query": "join(q, company_domain, csv(keywords))",
+                      "body.contents.highlights.query": "join(q, csv(keywords))"}))
     seen2 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"*": [(200, {"results": [{"name": "Ada L", "url": "https://linkedin.com/in/al"}]})] * 12}, seen2))
@@ -2059,6 +2185,22 @@ async def test_a_q_search_fills_to_the_limit_the_caller_sent(clients: AsyncClien
     r2 = await clients.post("/call/treg.people.search", json={"q": "head of tax in phoenix", "limit": 5},
                             headers={"X-Treg-Route-Min-Results": "1"})
     assert [p for p, *_ in seen] == ["exa"] and "merged_from" not in r2.json()["_treg"]
+
+
+async def test_a_title_search_answers_with_current_holders_first(clients: AsyncClient, people_search_on, monkeypatch):
+    def person(i, history):
+        return {"url": f"https://linkedin.com/in/p{i}", "entities": [{"properties": {"name": f"P{i}", "workHistory": history}}]}
+    left = person(0, [{"title": "Support Engineer", "dates": {"from": "2026-01", "to": None}},
+                      {"title": "Developer Evangelist", "dates": {"from": "2016", "to": "2025-12"}}])
+    now = person(1, [{"title": "Developer Evangelist", "dates": {"from": "2023-01", "to": None}}])
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": [left, now]})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search", json={"title": "Developer Evangelist", "limit": 2},
+                           headers={"X-Treg-Route-Prefer": "exa", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    people = r.json()["output"]["people"]
+    assert [(p["name"], p.get("title_match")) for p in people] == [("P1", "current"), ("P0", "past")]
+    assert people[1]["past_titles"] == ["Developer Evangelist"]
 
 
 async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(

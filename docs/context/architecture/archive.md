@@ -274,8 +274,8 @@ branch, and a fault anywhere in lookup degrades to a live call.
 `domain.catalog.results.classify` reads the buffered bytes, never rewriting them, into `found`,
 `empty`, `error` or `unknown` with bounded reason codes. Result-aware behavior applies only to
 endpoints with a verified adapter and a nonempty hit/miss expression (`has_result_rules`), reusing
-`Adapter.is_miss`, and to a v2 row with a verified adapter that declares a 2xx miss, judged by its
-outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
+`Adapter.is_miss`, and to a v2 row with a verified adapter that declares a `miss` rule (for a 2xx or
+a 4xx status), judged by its outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
 `routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
 the adapter. Strict per-endpoint validators live in `results.py`.
@@ -441,6 +441,8 @@ one body; then versions older than `archive_prune_min_age_days` beyond the newes
 `archive_prune_keep_versions` on keys undemanded for 14 days. `archive`-policy endpoints are
 exempt. Batch 0 disables. Stripped `both` rows become `r2` and keep their logical counts; only
 erasure deletes objects.
+Versions whose `content_hash` an unexpired trimmed `IdempotentCall` row names are protected too
+(read once per pass over Alembic 0100's partial index): that row replays from them.
 
 ## Change observation
 

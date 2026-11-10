@@ -282,6 +282,17 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
             await _enforce_platform_daily_cap(caller, 0, db)
 
 
+def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
+    """Whose money a metered call spends, and the line naming the way off that meter."""
+    wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
+    # For a billed OAuth call "connect your own key" is not the fix: the connection already exists,
+    # and the way off the meter is bringing your OWN developer app to /oauth/start.
+    alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) - those calls are never metered"
+           if mk.billed_oauth else
+           f"  or use your own key: treg connections connect --provider {mk.provider}")
+    return wallet, alt
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
@@ -364,12 +375,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
-        wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
-        # For a billed OAuth call "connect your own key" is not the fix — the connection already
-        # exists; the way off the meter is bringing your OWN developer app to /oauth/start.
-        alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) — those calls are never metered"
-               if mk.billed_oauth else
-               f"  or use your own key: treg connections connect --provider {mk.provider}")
+        wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
         # otherwise the natural reading of "add funds" is that auto top-up is broken.

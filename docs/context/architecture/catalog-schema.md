@@ -84,11 +84,14 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
 `miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a 2xx miss beside a verified adapter, in today's
-result reasons; routing's `child_outcome` reads it too, keeping its own checks (declared miss,
-`not_found`, non-JSON body, empty required output) on top: a 2xx it judges an error is a miss with
-reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter only maps fields:
-`Adapter.is_miss` reads the row's rule, so every reader of an adapter's miss reads the one declaration.
+cache admission) reads it for a row that declares a `miss` rule, for a 2xx or a 4xx status, beside
+a verified adapter, in today's result reasons; routing's `child_outcome` reads it too, keeping its
+own checks (declared miss, `not_found`, non-JSON body, empty required output) on top: a 2xx it
+judges an error is a miss with reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's
+adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
+miss reads the one declaration. Such an adapter verifies beside any `miss` rule; beside a status
+rule alone, a 2xx that found nothing is a routing miss by the empty required output and a hit to
+stats, unless the row's `error` rule holds on it.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 
@@ -154,22 +157,6 @@ A row has two prose fields, and each caveat has one home.
   `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
   comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
 
-What the validator says about them is warnings for the author to weigh, never errors:
-
-- **Length is the token limits, and only them:** `SUMMARY_TOKENS` (50) and `NOTE_TOKENS` (75) in
-  `scripts/catalog_validate.py`. No tokenizer is a dependency, so a token is a run of letters and
-  digits or one CJK character; punctuation is not counted.
-- **The reflection word list** (`scripts/catalog_text_reflect.txt`): every entry found in a row's
-  summary, note, parameter notes or charge notes warns with the entry and its reason. An entry is
-  a word or phrase matched case-insensitive on word boundaries, or a `re:` regular expression;
-  hedges, words that argue with an earlier text, evidence, dates, sample sizes and
-  maintainer reasoning are seeded. A new word worth a second look is one more line there.
-
-A plain run warns on every row. `--base REF`, which `catalog-added.yml` runs on every pull request,
-warns only on the rows added or changed against REF, so an author sees the rows they touched. The
-one error is the spelling: a row written in today's `cost` on the base and in v2 `price` on the
-head, or back, fails unless the pull request carries the `catalog-migration` label.
-
 The writing rules no check can judge:
 
 - **Most callers need it.** A sentence earns its place when most callers of the tool's main use meet
@@ -180,12 +167,21 @@ The writing rules no check can judge:
   probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
   X, Y").
 - **Summary.** Verb + object + key outputs; lead with the essentials: CLI search shows only the
-  start of a summary. Positive only: a limit or trap goes to a note, because a negation in a
-  searched field matches the query it denies. No parameter or output-column lists.
+  start of a summary. Positive only: a limit or trap goes to a note. No parameter or output-column
+  lists.
 - **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
   specific home. No price derivation.
 - **Both.** State the present fact; never argue with an earlier version. Do not contradict another
   field. Say each thing once.
+
+A note in that shape: "Answers for a private account are empty: check `is_private` before paging."
+
+The validator warns when a summary runs over about 50 tokens or a note over about 75, and when the
+summary, the note or a parameter or charge note contains a word from the reflection list
+(`scripts/catalog_text_reflect.txt`); each warning names the word and why, and the author decides.
+With `--base` it adds one error: a row respelled between `cost:` and `price:` without the
+`catalog-migration` label. Run `uv run python scripts/catalog_validate.py --base origin/main`
+locally to see the warnings for the rows you touched.
 
 ## The shrink-only violation list
 

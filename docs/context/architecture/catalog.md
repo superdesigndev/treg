@@ -140,6 +140,9 @@ provider: tikhub                # must equal OAuthProvider.service
 source: {docs: https://docs.tikhub.io/, openapi: https://api.tikhub.io/openapi.json, curated: 2026-07-28}
 limits: "10 requests/second per key"   # optional: the rate/quota model in one line
 pricing_url: https://...               # optional: where CURRENT prices live
+defaults:                              # optional: endpoint keys every row inherits (catalog-schema.md)
+  bill: {miss: charged, error: charged}
+  provenance: {source: rate_card_api, source_url: https://..., checked: '2026-07-28', confidence: verified}
 endpoints:
   - id: tikhub.tiktok.user.profile   # unique across the whole catalog; convention <provider>.<capability>
     capability: tiktok.user.profile
@@ -158,8 +161,8 @@ endpoints:
       note: "one of uniqueId | secUid"
       # also pathParams, headers, body, bodyType (json|form|multipart). Unknown keys fail the load.
     test_request: {queryParams: {uniqueId: "tiktok"}}   # EXACT params the verifier sends; must be cheap
-    expect: {json_path: code, equals: 200, misses: [404]}   # optional; default is HTTP 2xx
-    cost: {type: per_success, value: 0.0015, currency: USD, note: "charged on 2xx only"}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}   # v2 spelling; a new provider never writes `cost:`
+    miss: {when: {path: response.data.userInfo.user.uniqueId, op: absent}}   # optional; also expect, error, not_found
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main
     example_response: examples/tikhub.tiktok.user.profile.json
@@ -996,6 +999,11 @@ returned and never documented as stable. An output field may say where it lands 
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
+  stable sha256 bucket of capability and team id; a call with no team is never in it), and the
+  other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
+  with no company or name (`{title}`, `{q, title}`) for half the teams, so the two orders are
+  compared on live calls before every team gets it.
   `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
   page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
@@ -1033,6 +1041,14 @@ returned and never documented as stable. An output field may say where it lands 
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
   field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
   set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
+  rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
+  held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
+  they held it. Only a row with a work history (`since`, `past` or `ended` set) is judged: a bare
+  `title` may be a headline ("Former Developer Evangelist"), so it stays unmarked. Words keep any
+  script and `+`, `#` and an inner `.` ("C++", "C#" and "C" are three roles). The provider's order
+  stands within each group and no row is dropped. A semantic search matches the whole work history,
+  so without it a former holder ranks with current ones.
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
@@ -1108,7 +1124,8 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    refusals are terminal. A `call_admission` refusal of treg's money skips that candidate without
+    spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped

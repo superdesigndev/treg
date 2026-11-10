@@ -34,6 +34,8 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "provider_resource_state_failed": "treg",
     "capability_pinned": "caller",
     "policy_denied": "caller",
+    # An installed policy extension refused treg's money for this call (`call_admission`).
+    "admission_denied": "caller",
     "daily_cap_reached": "caller",
     "org_endpoint_quota_exceeded": "caller",
     "public_demo_rate_limited": "caller",
@@ -332,6 +334,9 @@ class IdempotentReplay:
     media_type: str
     charged_micro: int
     call_ref: str
+    # `(key_hash, content_hash)` when the row dropped its own copy: the bytes are read by
+    # `idempotency.resolve_archived_replay` AFTER the request's session closes (non-negotiable 3).
+    archive: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)

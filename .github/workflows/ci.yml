@@ -182,6 +182,7 @@ jobs:
           tests/test_archive_r2.py
           tests/test_archive_opt_out.py
           tests/test_call_cancellation.py
+          tests/test_idempotency_retention.py
           tests/test_call_pool_discipline.py
           tests/test_catalog_stats_refresh.py
           tests/test_catalog_stats_corrections.py
