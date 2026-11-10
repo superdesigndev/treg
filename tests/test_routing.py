@@ -1903,6 +1903,125 @@ def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_que
         "without the question (a replay record) nothing is judged"
 
 
+@pytest.mark.parametrize("identity, page_name, ads, miss", [
+    # Name only: near-matches stay hits; the rule only judges a supplied domain or Facebook URL.
+    ({"company_name": "Arc"}, "D'arc Tarot",
+     [{"page_name": "D'arc Tarot", "page_url": "https://www.facebook.com/darctarot/"}], False),
+    # Domain supplied, ads for a different page, no matching landing host: miss.
+    ({"company_name": "Arc", "company_domain": "arc.net"}, "D'arc Tarot",
+     [{"page_name": "D'arc Tarot", "page_url": "https://www.facebook.com/darctarot/",
+       "link_url": "https://api.whatsapp.com/send", "link_caption": "api.whatsapp.com"}], True),
+    # Domain only, same wrong page: still a miss (a domain-capable child can near-match too).
+    ({"company_domain": "arc.net"}, "D'arc Tarot",
+     [{"page_name": "D'arc Tarot", "page_url": "https://www.facebook.com/darctarot/",
+       "link_url": "https://api.whatsapp.com/send"}], True),
+    # Landing hosts include the supplied domain: hit, even when some ads go to an app store.
+    ({"company_name": "Nike", "company_domain": "nike.com"}, "Nike",
+     [{"page_name": "Nike", "page_url": "https://www.facebook.com/nike/",
+       "link_url": "https://www.nike.com/ph/t/shoe", "link_caption": "itunes.apple.com"}], False),
+    # Name-only child payload (no page URL or landing host): exact page name is enough.
+    ({"company_name": "Nike", "company_domain": "nike.com"}, "Nike",
+     [{"pageName": "Nike", "pageId": "15087023444"}], False),
+    # Name-only child payload, near-match or unrelated page name: miss.
+    ({"company_name": "WorkOS", "company_domain": "workos.com"}, None,
+     [{"pageName": "Osprey Photo Workshops & Tours", "pageId": "1"}], True),
+    # Facebook URL matches the returned page URL: hit.
+    ({"company_name": "Nike", "facebook_url": "https://www.facebook.com/nike"}, "Nike",
+     [{"page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], False),
+    # Facebook URL conflicts with the returned page URL: miss.
+    ({"company_name": "Fyno", "facebook_url": "https://www.facebook.com/fyno.travel",
+      "company_domain": "fyno.com"}, "Fynony",
+     [{"page_name": "Fynony", "page_url": "https://www.facebook.com/fynony/"}], True),
+    # Numeric Facebook URL corroborated by the returned page id beside a vanity page URL: hit.
+    ({"facebook_url": "https://www.facebook.com/profile.php?id=15087023444"}, "Nike",
+     [{"page_id": "15087023444", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], False),
+    # Numeric Facebook URL with a different returned page id: miss.
+    ({"facebook_url": "https://www.facebook.com/profile.php?id=15087023444"}, "Nike",
+     [{"page_id": "1", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], True),
+    # Bare numeric Facebook path is a page id too: corroborated by the returned page id.
+    ({"facebook_url": "https://www.facebook.com/15087023444"}, "Nike",
+     [{"page_id": "15087023444", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], False),
+    # Bare numeric Facebook path with a different returned page id: miss.
+    ({"facebook_url": "https://www.facebook.com/15087023444"}, "Nike",
+     [{"page_id": "1", "page_name": "Nike", "page_url": "https://www.facebook.com/nike/"}], True),
+    # Non-Latin company name, name-only child payload with the identical page name: hit.
+    ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
+     [{"pageName": "腾讯", "pageId": "1"}], False),
+    # Non-Latin company name, different non-Latin page name: miss.
+    ({"company_name": "腾讯", "company_domain": "tencent.com"}, None,
+     [{"pageName": "阿里巴巴", "pageId": "2"}], True),
+    # Mixed-script names sharing only a Latin word are different names: miss.
+    ({"company_name": "腾讯 Cloud", "company_domain": "tencent.com"}, None,
+     [{"pageName": "阿里巴巴 Cloud", "pageId": "3"}], True),
+    # The identical mixed-script name still meets itself: hit.
+    ({"company_name": "腾讯 Cloud", "company_domain": "tencent.com"}, None,
+     [{"pageName": "腾讯 Cloud", "pageId": "4"}], False),
+    # An accented Latin name still meets its unaccented spelling: hit.
+    ({"company_name": "Café Société", "company_domain": "cafesociete.fr"}, None,
+     [{"pageName": "Cafe Societe", "pageId": "5"}], False),
+    # Ad-library links are not a page URL; they do not corroborate a Facebook identity.
+    ({"facebook_url": "https://www.facebook.com/nike"}, "Nike",
+     [{"page_name": "Nike", "ad_url": "https://www.facebook.com/ads/library/?id=1"}], True),
+])
+def test_advertiser_identity_miss_judges_a_supplied_domain_or_facebook_url(
+        identity, page_name, ads, miss):
+    """A supplied company domain or Facebook URL must be corroborated by the returned page,
+    otherwise non-empty ads are a question_miss so the route can continue."""
+    doc = {"company_domain": identity.get("company_domain"),
+           "facebook_url": identity.get("facebook_url"),
+           "company_name": identity.get("company_name"),
+           "page_name": page_name, "ads": ads}
+    assert P.evaluate(
+        "advertiser_identity_miss(company_domain, facebook_url, company_name, page_name, ads)",
+        doc) is miss
+
+
+def test_advertiser_question_miss_turns_a_wrong_page_with_ads_into_a_miss():
+    """The route's ads == [] miss would treat a near-match page with ads as a hit. The
+    question_miss rule rejects that page when a domain was also supplied, and leaves a
+    corroborated page (and a name-only request) as a hit."""
+    from dataclasses import replace
+    cat = catalog_store.load()
+    contract = replace(cat.contracts["meta-ads.library.advertiser"])
+    assert "advertiser_identity_miss" in (contract.question_miss or "")
+    ep = cat.by_id["crawl4ai.meta-ads.library.advertiser"]
+    adapter = cat.adapters["crawl4ai.meta-ads.library.advertiser"]
+    wrong = json.dumps({"rows": [{
+        "page_id": "104750675025151", "page_name": "D'arc Tarot",
+        "page_url": "https://www.facebook.com/darctarot/",
+        "link_url": "https://api.whatsapp.com/send",
+    }]}).encode()
+    right = json.dumps({"rows": [{
+        "page_id": "15087023444", "page_name": "Nike",
+        "page_url": "https://www.facebook.com/nike/",
+        "link_url": "https://www.nike.com/t/shoe",
+    }]}).encode()
+    empty = json.dumps({"rows": []}).encode()
+    off = call_route.child_outcome(ep, contract, adapter, 200, wrong, tier="platform",
+                                   identity={"company_name": "Arc", "company_domain": "arc.net"})
+    assert off.kind == "miss" and "question_miss" in off.why
+    hit = call_route.child_outcome(ep, contract, adapter, 200, right, tier="platform",
+                                   identity={"company_name": "Nike", "company_domain": "nike.com"})
+    assert hit.kind == "hit"
+    name_only = call_route.child_outcome(ep, contract, adapter, 200, wrong, tier="platform",
+                                         identity={"company_name": "Arc"})
+    assert name_only.kind == "hit"
+    assert call_route.child_outcome(ep, contract, adapter, 200, empty, tier="platform",
+                                    identity={"company_domain": "arc.net"}).kind == "miss"
+    anyapi_ep = cat.by_id["anyapi.facebook.company_ads"]
+    anyapi_ad = cat.adapters["anyapi.facebook.company_ads"]
+    near = json.dumps({"output": {"data": {"ads": [
+        {"pageId": "1", "pageName": "Osprey Photo Workshops & Tours", "id": "ad1"}]}}}).encode()
+    exact = json.dumps({"output": {"data": {"ads": [
+        {"pageId": "15087023444", "pageName": "Nike", "id": "ad1"}]}}}).encode()
+    near_out = call_route.child_outcome(anyapi_ep, contract, anyapi_ad, 200, near, tier="platform",
+                                        identity={"company_name": "WorkOS", "company_domain": "workos.com"})
+    assert near_out.kind == "miss" and "question_miss" in near_out.why
+    exact_out = call_route.child_outcome(anyapi_ep, contract, anyapi_ad, 200, exact, tier="platform",
+                                         identity={"company_name": "Nike", "company_domain": "nike.com"})
+    assert exact_out.kind == "hit"
+
+
 @pytest.mark.parametrize("asked, ended, lost", [
     ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/", True),
     ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/en-us/", True),

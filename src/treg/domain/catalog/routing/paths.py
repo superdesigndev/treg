@@ -596,6 +596,134 @@ def http_error(v: Any) -> bool:
         return False
 
 
+
+_PAGE_URL_KEYS = frozenset({
+    "page_url", "pageurl", "page_profile_uri", "pageprofileuri", "facebook_url", "facebookurl",
+})
+_SITE_KEYS = frozenset({
+    "link_url", "linkurl", "link_caption", "linkcaption", "caption", "website",
+    "company_domain", "companydomain",
+})
+_PAGE_NAME_KEYS = frozenset({"page_name", "pagename"})
+_PAGE_ID_KEYS = frozenset({"pageid"})
+
+
+def _name_keys(text: str) -> set[str]:
+    """Comparable forms of a page or company name: a Unicode-preserving casefold, so a name in a
+    non-Latin script (`腾讯`) still meets itself, plus the ASCII fold only when folding drops
+    nothing but accents. A mixed-script name (`腾讯 Cloud`) keeps just its Unicode form, so a shared
+    Latin word alone never makes two different names meet."""
+    import unicodedata
+    full = " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFKC", text).casefold()).split())
+    keys = {full}
+    bare = "".join(c for c in unicodedata.normalize("NFKD", full) if not unicodedata.combining(c))
+    if bare.isascii():
+        keys.add(_fold(text))
+    keys.discard("")
+    return keys
+
+
+def _is_facebook_host(h: str) -> bool:
+    return h in {"facebook.com", "fb.com"} or h.endswith(".facebook.com") or h.endswith(".fb.com")
+
+
+def _facebook_page_key(url: Any) -> str | None:
+    """A comparable Facebook page identity (`nike`, `id:15087023444`), or None for an ads-library
+    link, a non-Facebook URL, or an address with no page slug."""
+    if not isinstance(url, str) or not url.strip():
+        return None
+    from urllib.parse import parse_qs, urlsplit
+    raw = url.strip()
+    h, path = _host_path(raw)
+    if not h or not _is_facebook_host(h):
+        return None
+    parts = [seg for seg in path.split("/") if seg]
+    if not parts or parts[0] in {"ads", "ad_library", "adsmanager", "watch", "reel", "share", "groups"}:
+        return None
+    if parts[0] == "profile.php":
+        query = urlsplit(raw if "://" in raw or raw.startswith("//") else "//" + raw).query
+        pid = (parse_qs(query).get("id") or [None])[0]
+        return f"id:{pid}" if pid else None
+    if parts[0] in {"pages", "people", "pg"} and len(parts) >= 2:
+        return f"id:{parts[-1]}" if parts[-1].isdigit() else parts[-1].lower()
+    return f"id:{parts[0]}" if parts[0].isdigit() else parts[0].lower()
+
+
+def _domain_matches(extracted: str, asked: str) -> bool:
+    return extracted == asked or extracted.endswith("." + asked)
+
+
+def _advertiser_fields(page_name: Any, ads: Any) -> tuple[set[str], set[str], set[str]]:
+    """Page identities (slugs from page URLs, `id:<n>` from page URLs and page ids), landing/website
+    hosts, and comparable page names from the contract core and ad rows."""
+    pages: set[str] = set()
+    hosts: set[str] = set()
+    names: set[str] = set()
+    if isinstance(page_name, str) and page_name.strip():
+        names.update(_name_keys(page_name))
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, list):
+            for item in obj:
+                walk(item)
+            return
+        if not isinstance(obj, dict):
+            return
+        for key, value in obj.items():
+            k = key.replace("_", "").lower()
+            if k in _PAGE_NAME_KEYS and isinstance(value, str) and value.strip():
+                names.update(_name_keys(value))
+            if k in _PAGE_ID_KEYS and isinstance(value, (str, int)) and not isinstance(value, bool):
+                pid = str(value).strip()
+                if pid.isdigit():
+                    pages.add(f"id:{pid}")
+            if isinstance(value, str) and value.strip():
+                if k in _PAGE_URL_KEYS:
+                    slug = _facebook_page_key(value)
+                    if slug:
+                        pages.add(slug)
+                if k in _SITE_KEYS:
+                    extracted = host(value)
+                    if extracted and not _is_facebook_host(extracted):
+                        hosts.add(extracted)
+            walk(value)
+
+    walk(ads)
+    return pages, hosts, names
+
+
+def advertiser_identity_miss(company_domain: Any, facebook_url: Any, company_name: Any,
+                             page_name: Any, ads: Any) -> bool:
+    """True when the caller also sent a company domain or Facebook page URL and this answer does
+    not corroborate it. Ads for a near-match or prefix-match page are then a miss, so the route
+    can try a later provider. A name-only request is never judged.
+
+    A domain is corroborated by a landing or website host on the page or its ads (a subdomain
+    counts; Facebook hosts do not). A Facebook URL is corroborated by the returned page URL or,
+    for a numeric URL (`profile.php?id=<n>` or `/<n>`), the returned page id. A numeric identity is only judged
+    against numeric ones and a vanity slug only against slugs. When the payload has nothing
+    comparable, an exact page-name match against the supplied company name is enough (folded,
+    or Unicode-preserving for non-Latin names); a near-match is not."""
+    asked_domain = host(company_domain) if isinstance(company_domain, str) else None
+    asked_page = _facebook_page_key(facebook_url)
+    if not asked_domain and not asked_page:
+        return False
+    pages, hosts, names = _advertiser_fields(page_name, ads)
+    if asked_domain and any(_domain_matches(h, asked_domain) for h in hosts):
+        return False
+    if asked_page and asked_page in pages:
+        return False
+    can_check_domain = bool(asked_domain and hosts)
+    can_check_page = bool(asked_page and any(p.startswith("id:") == asked_page.startswith("id:")
+                                             for p in pages))
+    if can_check_domain or can_check_page:
+        return True
+    asked_names = _name_keys(company_name) if isinstance(company_name, str) and company_name.strip() else set()
+    if asked_names & names:
+        return False
+    return True
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
@@ -604,7 +732,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "advertiser_identity_miss": advertiser_identity_miss, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
