@@ -359,12 +359,9 @@ your `X-Treg-Token` is removed before the provider sees the request. `GET {BASE}
 tools as JSON.
 
 **Command-line tools** (stripe, gh, vercel, gcloud and others) run with the team's credential and
-without you logging in:
-
-- `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the default) runs it on this
-  machine, isolated under a dedicated user once an admin has run `sudo treg setup-local-run`;
-  server-side execution (`--server`) is disabled globally.
-- `treg shell start` opens a subshell where registered CLIs get their credentials by themselves.
+without you logging in: `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the
+default) runs it on this machine, isolated under a dedicated user once an admin has run
+`sudo treg setup-local-run`; server-side execution (`--server`) is disabled globally.
 
 [Import and shell]({BASE}/tutorial-import-shell.md) has the full walkthrough.
 
