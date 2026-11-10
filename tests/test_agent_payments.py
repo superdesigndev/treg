@@ -382,6 +382,24 @@ async def test_credit_pays_the_next_call_without_settling_again(anon: AsyncClien
     assert await _balance(payer) == FLOOR - 3 * EP_MICRO
 
 
+
+async def test_the_fee_raises_the_payment_and_is_never_credited(anon: AsyncClient, payments_on,
+                                                               facilitator, monkeypatch):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_FEE_BPS", "500")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MIN_PAYMENT_MICRO", str(EP_MICRO))
+    get_settings.cache_clear()
+    assert (await anon.get(f"/catalog/endpoints/{EP}")).json()["endpoint"]["wallet"]["fee_bps"] == 500
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    detail = challenge.json()["detail"]
+    assert detail["amount_micro"] == 1_053 and detail["fee_bps"] == 500 and "5% fee" in detail["message"]
+    credential, payer = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment))).scalars().one()
+    assert (row.amount_micro, row.fee_micro) == (1_053, 52)
+    assert await _balance(payer) == 1_053 - 52 - EP_MICRO
+
 # ---- refusals -----------------------------------------------------------------------------------
 async def test_a_replayed_payment_is_refused(anon: AsyncClient, payments_on, chain, facilitator):
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")

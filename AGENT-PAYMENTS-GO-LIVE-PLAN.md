@@ -32,6 +32,8 @@ Temporary working plan for this PR. Remove this file from the branch before merg
 4. Done: the Coinbase CDP key path against Coinbase's real facilitator: one x402 payment on Base
    Sepolia settled through it and was recorded in Stripe test mode; the facilitator refuses the same
    request without the key (401).
+5. Done: treg's fee on each payment, `TREG_AGENT_PAYMENTS_FEE_BPS` (100 = 1%), 0 for now. The
+   payment is raised so the credit after the fee still covers the call; the fee is never credited.
 
 ## 3. Keys and accounts
 
@@ -53,6 +55,7 @@ TREG_AGENT_PAYMENTS_ENABLED=true
 TREG_AGENT_PAYMENTS_SECRET=<openssl output>
 TREG_AGENT_PAYMENTS_SETTLEMENT=stripe
 TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY=<agent-payments Stripe key>
+TREG_AGENT_PAYMENTS_FEE_BPS=0   # treg's fee per payment; 0 for now
 
 # MPP on Tempo
 TREG_AGENT_PAYMENTS_MPP_ENABLED=true

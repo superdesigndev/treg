@@ -1036,6 +1036,8 @@ class AgentPayment(SQLModel, table=True):
     payer_address: str = Field(index=True)
     org_id: int = Field(foreign_key="org.id", index=True)
     amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
+    # treg's fee kept from `amount_micro`; the payer team is credited the rest.
+    fee_micro: int = Field(default=0, sa_column=Column("fee_micro", BigInteger, nullable=False))
     status: str = Field(index=True)
     asset: str             # the token contract the transfer moves
     pay_to: str            # the address the transfer credits

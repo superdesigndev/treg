@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column("payer_address", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("org_id", sa.Integer(), nullable=False),
         sa.Column("amount_micro", sa.BigInteger(), nullable=False),
+        sa.Column("fee_micro", sa.BigInteger(), nullable=False),
         sa.Column("status", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("asset", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("pay_to", sqlmodel.sql.sqltypes.AutoString(), nullable=False),

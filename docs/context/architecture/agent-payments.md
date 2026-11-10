@@ -74,7 +74,7 @@ this wallet's; no money moves. A challenge for a tool that starts a task says th
 until the task ends and that polling with the same wallet is free.
 
 While the feature is on, catalog search rows and tool details carry `wallet`
-(`agent_payments.wallet_view`): `{payable: true, protocols, minimum_payment_micro, note}`, or
+(`agent_payments.wallet_view`): `{payable: true, protocols, minimum_payment_micro, fee_bps, note}`, or
 `{payable: true, free_for_task_owner: true, note}` for an async utility, or
 `{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent. Only `/call/` takes this
 path; `/catalog/call/`, `/table/` and MCP do not.
@@ -101,7 +101,12 @@ and the payer's next call draws the credit without a new transfer.
 ## Prices: the quote and the payment floor
 
 The quote is `money.with_margin(price_call(...).estimate_micro)`, the amount the call will reserve.
-One payment carries `max(quote, agent_payments_min_payment_micro)` (default $0.05). TIP-20 tokens
+One payment carries `max(with_fee(quote), agent_payments_min_payment_micro)` (default $0.05).
+**Fee.** `agent_payments_fee_bps` (default 0; 100 = 1%) is treg's cut of each settled payment.
+`with_fee` raises the quote so the payment, less the fee, still covers it; `_claim` stores the fee
+as `AgentPayment.fee_micro` (0 on a credit draw), and `_credit` tops up `amount_micro - fee_micro`,
+so the fee is never credited and a later setting change does not alter a recorded payment. Stripe
+records the whole payment. TIP-20 tokens
 and USDC use 6 decimals, so one base unit is one micro-USD and the amount crosses as the same
 integer (`infra.agent_payments.micro_to_decimal` for the SDK that takes a decimal string).
 
@@ -151,10 +156,10 @@ A missing or unusable payment answers 402 with every rail's challenge: `WWW-Auth
 (one per accepted Tempo currency, HMAC-bound by `pympp` with `agent_payments_secret`, bound to the
 method, path and query) and `PAYMENT-REQUIRED` (x402 v2, `resource.url` is the full request URL).
 The body is `{"detail": {"error": "payment_required", "reason", "amount_micro",
-"estimated_cost_micro", "minimum_payment_micro", "protocols", "message"}}`, with `X-Treg-Error: 1`
+"estimated_cost_micro", "minimum_payment_micro", "fee_bps", "protocols", "message"}}`, with `X-Treg-Error: 1`
 and `Cache-Control: no-store`. The message says what to pay and why that amount (the top price, or
 the payment minimum), that only the real price is charged, and that what is not used stays as
-credit that is not refunded. A first challenge has `reason: payment_required`; a refusal names
+credit that is not refunded, plus the fee when it is not 0. A first challenge has `reason: payment_required`; a refusal names
 `reason`: `payment_replayed`, `invalid_challenge` (another route, query or amount),
 `payment_expired`, `malformed_credential`, `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`.
@@ -248,7 +253,7 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 ## Settings
 
 `agent_payments_enabled`, `agent_payments_secret` (32+ characters), `agent_payments_realm`,
-`agent_payments_min_payment_micro`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
+`agent_payments_min_payment_micro`, `agent_payments_fee_bps`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
 Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_rpc_api_key` (needs `..._tempo_rpc_url`),

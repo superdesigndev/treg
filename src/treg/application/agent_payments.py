@@ -62,6 +62,7 @@ def unserved(rest: str, method: str) -> str:
 
 
 CENT_MICRO = 10_000
+BPS = 10_000
 
 
 def enabled() -> bool:
@@ -150,7 +151,7 @@ async def quote(*, rest: str, method: str, path: str, query: str,
         raise NotServed("free")
     settings = get_settings()
     base = settings.public_url.rstrip("/")
-    amount = max(charged, settings.agent_payments_min_payment_micro)
+    amount = max(with_fee(charged), settings.agent_payments_min_payment_micro)
     if settings.agent_payments_settlement == "stripe":
         amount = -(-amount // CENT_MICRO) * CENT_MICRO  # Stripe records whole cents
     offer = Offer(
@@ -159,6 +160,21 @@ async def quote(*, rest: str, method: str, path: str, query: str,
         description=f"{ep['id']} on treg")
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
+
+
+def with_fee(amount_micro: int) -> int:
+    """The payment whose credit, after treg's fee, still covers `amount_micro`."""
+    bps = get_settings().agent_payments_fee_bps
+    return -(-amount_micro * BPS // (BPS - bps))
+
+
+def fee_of(amount_micro: int) -> int:
+    return amount_micro * get_settings().agent_payments_fee_bps // BPS
+
+
+def _fee_note() -> str:
+    bps = get_settings().agent_payments_fee_bps
+    return f" Each settled payment carries treg's {bps / 100:g}% fee, which is not credited." if bps else ""
 
 
 def wallet_view(ep: dict) -> dict | None:
@@ -173,12 +189,13 @@ def wallet_view(ep: dict) -> dict | None:
     if reason := wallet_refusal(ep):
         return {"payable": False, "reason": reason,
                 "note": f"{_NOT_SERVED.get(reason, reason)}; sign in to call it"}
-    minimum = get_settings().agent_payments_min_payment_micro
+    settings = get_settings()
+    minimum = settings.agent_payments_min_payment_micro
     return {"payable": True, "protocols": [rail.protocol for rail in _rails],
-            "minimum_payment_micro": minimum,
+            "minimum_payment_micro": minimum, "fee_bps": settings.agent_payments_fee_bps,
             "note": f"pay per call with a wallet, no account; one payment is at least "
                     f"${ledger.usd(minimum):g}, only the real price is charged, and what is not "
-                    "used stays as credit for the next calls (not refunded)"}
+                    "used stays as credit for the next calls (not refunded)." + _fee_note()}
 
 
 _HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)"}
@@ -192,9 +209,10 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
         except Exception:
             log.exception("agent payments: %s challenge failed", rail.protocol)
     ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in _rails)
-    minimum = get_settings().agent_payments_min_payment_micro
+    settings = get_settings()
+    minimum = settings.agent_payments_min_payment_micro
     amount, hold = paid.offer.amount_micro, paid.quote_micro
-    why = (f"the payment minimum, ${ledger.usd(minimum):g}" if amount > hold
+    why = (f"the payment minimum, ${ledger.usd(minimum):g}" if amount > with_fee(hold)
            else "the highest price this call can cost")
     if paid.proof_only:
         message_text = (
@@ -206,8 +224,8 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
             f"Pay ${ledger.usd(amount):g} ({why}) with {ways} and send the same request again. "
             f"The call holds up to ${ledger.usd(hold):g} and is charged only its real price; a "
             "failed call or a call with no billable result is charged nothing. What the call does "
-            "not use stays as credit for this wallet's next calls and is not refunded. Or sign in "
-            "and use a treg key.")
+            "not use stays as credit for this wallet's next calls and is not refunded."
+            + _fee_note() + " Or sign in and use a treg key.")
         if paid.is_async:
             message_text += (" This tool starts a task: the hold stays open until the task ends. "
                              "Poll it with the same wallet; polling is free.")
@@ -218,6 +236,7 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
         "amount_micro": amount,
         "estimated_cost_micro": hold,
         "minimum_payment_micro": minimum,
+        "fee_bps": settings.agent_payments_fee_bps,
         "protocols": [rail.protocol for rail in _rails],
         "message": message_text,
     }
@@ -330,6 +349,7 @@ async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
             payer_address=verified.payer, org_id=org_id, amount_micro=verified.amount_micro,
+            fee_micro=0 if draw else fee_of(verified.amount_micro),
             asset=verified.asset, pay_to=verified.pay_to, expires_at=verified.expires_at,
             status="credit" if draw else "settling")
         db.add(row)
@@ -358,8 +378,8 @@ async def _credit(payment_id: int | None, reference: str) -> None:
     async with session_maker() as db:
         row = await db.get(AgentPayment, payment_id)
         await ledger.topup(
-            db, row.org_id, row.amount_micro, f"agentpay:{row.proof_id}",
-            meta={"source": "agent_payment", "protocol": row.protocol,
+            db, row.org_id, row.amount_micro - row.fee_micro, f"agentpay:{row.proof_id}",
+            meta={"source": "agent_payment", "protocol": row.protocol, "fee_micro": row.fee_micro,
                   "network": row.network, "reference": reference})
         row.status, row.reference, row.error, row.updated_at = "settled", reference, None, _now()
         db.add(row)

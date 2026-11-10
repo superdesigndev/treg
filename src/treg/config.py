@@ -769,6 +769,9 @@ class Settings(BaseSettings):
     # The smallest amount one payment may carry. A cheaper call buys this much credit and the
     # payer's next calls draw on it. Integer micro-USD.
     agent_payments_min_payment_micro: int = Field(default=50_000, ge=1)
+    # treg's fee on each settled payment, in basis points (100 = 1%). The payment is raised so the
+    # credit after the fee still covers the call; the fee is never credited.
+    agent_payments_fee_bps: int = Field(default=0, ge=0, le=5_000)
     agent_payments_tempo_recipient: str = ""
     agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
     agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC
