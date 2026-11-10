@@ -156,43 +156,6 @@ endpoints:
   verified: '2026-11-10'
   docs_url: https://docs.brightdata.com/datasets/scrapers/instagram/quickstart
   example_response: examples/brightdata.x.instagram-reels.json
-- id: brightdata.x.instagram-hashtag-info
-  added: '2026-07-28'
-  platform: instagram
-  scope: any_account
-  method: POST
-  path: /datasets/v3/scrape
-  resource_ownership:
-    produces:
-    - {kind: snapshot, path: snapshot_id}
-  name: "Instagram hashtag details by hashtag page URL"
-  summary: Instagram hashtag information
-  input:
-    queryParams:
-      dataset_id:
-        type: string
-        required: true
-        note: pinned to the documented 'Instagram hashtag information' dataset
-        example: gd_lp9xgqvwrt2wc2jjy
-      format:
-        type: string
-        required: false
-        note: json (default) | ndjson | csv
-    body:
-      input:
-        type: array
-        required: true
-        note: one object per target — an Instagram hashtag page URL
-        example:
-        - url: https://example.com/
-    bodyType: json
-    note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
-  price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  test_request:
-    queryParams: {dataset_id: gd_lp9xgqvwrt2wc2jjy, format: json}
-    body: [{"url": "https://www.instagram.com/explore/tags/travel/"}]
-  skipped: sibling verified via brightdata.x.instagram-posts; same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
-  docs_url: https://docs.brightdata.com/datasets/scrapers/instagram/quickstart
 - id: brightdata.x.tiktok-profiles
   capability: tiktok.user.profile
   platform: tiktok
@@ -755,45 +718,6 @@ endpoints:
   skipped: sibling verified via brightdata.x.amazon-products; same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
   docs_url: https://docs.brightdata.com/datasets/scrapers/amazon/quickstart
   example_response: examples/brightdata.x.amazon-reviews.json
-- id: brightdata.x.amazon-best-sellers
-  added: '2026-07-28'
-  capability: amazon.bestsellers.list
-  platform: amazon
-  scope: any_account
-  method: POST
-  path: /datasets/v3/scrape
-  platform_blocked: "One URL can return an unbounded number of records, and a run past one minute continues as a background job on treg's key with no record cap; connect your own Bright Data key."
-  resource_ownership:
-    produces:
-    - {kind: snapshot, path: snapshot_id}
-  name: "Amazon best-seller products by category URL"
-  summary: Amazon best seller products
-  input:
-    queryParams:
-      dataset_id:
-        type: string
-        required: true
-        note: pinned to the documented 'Amazon best seller products' dataset
-        example: gd_l1vijixj9g2vp7563
-      format:
-        type: string
-        required: false
-        note: json (default) | ndjson | csv
-    body:
-      input:
-        type: array
-        required: true
-        note: one object per target — an Amazon best-sellers category URL
-        example:
-        - url: https://example.com/
-    bodyType: json
-    note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
-  price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  test_request:
-    queryParams: {dataset_id: gd_l1vijixj9g2vp7563, format: json}
-    body: [{"url": "https://www.amazon.com/gp/bestsellers/electronics"}]
-  skipped: sibling verified via brightdata.x.amazon-products; same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
-  docs_url: https://docs.brightdata.com/datasets/scrapers/amazon/quickstart
 - id: brightdata.x.amazon-sellers-info
   added: '2026-07-28'
   platform: amazon
@@ -1312,44 +1236,6 @@ endpoints:
   docs_url: https://docs.brightdata.com/datasets/scrapers/yelp/quickstart
   capability: yelp.business.reviews
   example_response: examples/brightdata.x.yelp-reviews.json
-- id: brightdata.x.tripadvisor-hotels
-  added: '2026-07-28'
-  platform: tripadvisor
-  scope: any_account
-  method: POST
-  path: /datasets/v3/scrape
-  resource_ownership:
-    produces:
-    - {kind: snapshot, path: snapshot_id}
-  name: "Tripadvisor hotel listing by URL"
-  summary: Tripadvisor Hotel Listings
-  input:
-    queryParams:
-      dataset_id:
-        type: string
-        required: true
-        note: pinned to the documented 'Tripadvisor Hotel Listings' dataset
-        example: gd_mapan2y3gii0v83rh
-      format:
-        type: string
-        required: false
-        note: json (default) | ndjson | csv
-    body:
-      input:
-        type: array
-        required: true
-        note: one object per target — a Tripadvisor hotel listing URL
-        example:
-        - url: https://example.com/
-    bodyType: json
-    note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
-  price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  test_request:
-    queryParams: {dataset_id: gd_mapan2y3gii0v83rh, format: json}
-    body: [{"url": "https://www.tripadvisor.com/Hotel_Review-g60763-d93437-Reviews-The_Plaza-New_York_City_New_York.html"}]
-  skipped: sibling verified via brightdata.web.scrape.structured (core); same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
-  docs_url: https://docs.brightdata.com/datasets/scrapers/tripadvisor/quickstart
-  capability: tripadvisor.hotel.detail
 - id: brightdata.x.trustpilot-reviews
   added: '2026-07-28'
   platform: trustpilot
@@ -1587,44 +1473,6 @@ endpoints:
   verified: '2026-11-10'
   docs_url: https://docs.brightdata.com/datasets/scrapers/imdb/quickstart
   example_response: examples/brightdata.x.imdb-media.json
-- id: brightdata.x.xiaohongshu-posts
-  added: '2026-07-28'
-  capability: xiaohongshu.note.detail
-  platform: xiaohongshu
-  scope: any_account
-  method: POST
-  path: /datasets/v3/scrape
-  resource_ownership:
-    produces:
-    - {kind: snapshot, path: snapshot_id}
-  name: "Xiaohongshu post details by URL"
-  summary: Xiaohongshu - posts
-  input:
-    queryParams:
-      dataset_id:
-        type: string
-        required: true
-        note: pinned to the documented 'Xiaohongshu - posts' dataset
-        example: gd_mj5ejq771oauz0bz85
-      format:
-        type: string
-        required: false
-        note: json (default) | ndjson | csv
-    body:
-      input:
-        type: array
-        required: true
-        note: one object per target — a Xiaohongshu post URL
-        example:
-        - url: https://example.com/
-    bodyType: json
-    note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
-  price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  test_request:
-    queryParams: {dataset_id: gd_mj5ejq771oauz0bz85, format: json}
-    body: [{"url": "https://www.xiaohongshu.com/explore/66c0b5a8000000001e01c0f5"}]
-  skipped: sibling verified via brightdata.web.scrape.structured (core); same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
-  docs_url: https://docs.brightdata.com/datasets/scrapers/xiaohongshu/quickstart
 - id: brightdata.x.threads-profiles
   added: '2026-07-28'
   capability: threads.user.profile
@@ -1664,44 +1512,6 @@ endpoints:
   verified: '2026-11-10'
   docs_url: https://docs.brightdata.com/datasets/scrapers/threads/quickstart
   example_response: examples/brightdata.x.threads-profiles.json
-- id: brightdata.x.telegram-channels
-  added: '2026-07-28'
-  capability: telegram.channel.info
-  platform: telegram
-  scope: any_account
-  method: POST
-  path: /datasets/v3/scrape
-  resource_ownership:
-    produces:
-    - {kind: snapshot, path: snapshot_id}
-  name: "Telegram channel details by URL"
-  summary: Telegram
-  input:
-    queryParams:
-      dataset_id:
-        type: string
-        required: true
-        note: pinned to the documented 'Telegram' dataset
-        example: gd_lnlpb47l1ztqrqz7oc
-      format:
-        type: string
-        required: false
-        note: json (default) | ndjson | csv
-    body:
-      input:
-        type: array
-        required: true
-        note: one object per target — a Telegram channel URL
-        example:
-        - url: https://example.com/
-    bodyType: json
-    note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
-  price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  test_request:
-    queryParams: {dataset_id: gd_lnlpb47l1ztqrqz7oc, format: json}
-    body: [{"url": "https://t.me/durov"}]
-  skipped: sibling verified via brightdata.web.scrape.structured (core); same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
-  docs_url: https://docs.brightdata.com/datasets/scrapers/telegram/quickstart
 - id: brightdata.x.companies-crunchbase
   added: '2026-07-28'
   domain: companies
@@ -1753,14 +1563,14 @@ endpoints:
     produces:
     - {kind: snapshot, path: snapshot_id}
   name: "Glassdoor company profile by page URL"
-  summary: Glassdoor companies information (Public web data)
+  summary: Glassdoor companies overview information
   input:
     queryParams:
       dataset_id:
         type: string
         required: true
-        note: pinned to the documented 'Glassdoor companies information (Public web data)' dataset
-        example: gd_l1vik5c8204suup7nc
+        note: pinned to the documented 'Glassdoor companies overview information' dataset
+        example: gd_l7j0bx501ockwldaqf
       format:
         type: string
         required: false
@@ -1776,10 +1586,11 @@ endpoints:
     note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
   test_request:
-    queryParams: {dataset_id: gd_l1vik5c8204suup7nc, format: json}
+    queryParams: {dataset_id: gd_l7j0bx501ockwldaqf, format: json}
     body: [{"url": "https://www.glassdoor.com/Overview/Working-at-Google-EI_IE9079.11,17.htm"}]
-  skipped: sibling verified via brightdata.web.scrape.structured (core); same generic POST /datasets/v3/scrape runner, only dataset_id differs, no per-endpoint logic to diverge on (see file header, 2026-07-28 verify pass). Not re-called to conserve budget.
+  verified: '2026-11-10'
   docs_url: https://docs.brightdata.com/datasets/scrapers/companies/quickstart
+  example_response: examples/brightdata.x.companies-glassdoor-info.json
 - id: brightdata.x.companies-glassdoor-reviews
   added: '2026-07-28'
   domain: other

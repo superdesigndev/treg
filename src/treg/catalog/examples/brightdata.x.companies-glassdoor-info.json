@@ -1,0 +1,88 @@
+[
+  {
+    "id": "9079",
+    "company": "Google",
+    "ratings_overall": 4.3,
+    "details_size": "10000+ Employees",
+    "details_founded": 1998,
+    "details_type": "Company - Public (GOOG)",
+    "country_code": "US",
+    "company_type": "Company - Public (GOOG)",
+    "url_jobs": "https://www.glassdoor.com/Jobs/Google-Jobs-E9079.htm",
+    "url_overview": "https://www.glassdoor.com/Overview/Working-at-Google-EI_IE9079.11,17.htm",
+    "url_reviews": "https://www.glassdoor.com/Reviews/Google-Reviews-E9079.htm",
+    "benefits_url": "https://www.glassdoor.com/pay-and-benefits/Google-E9079",
+    "details_headquarters": "Mountain View, CA",
+    "region": "CA",
+    "details_industry": "Internet & Web Services",
+    "details_revenue": "$10+ billion (USD)",
+    "details_website": "https://goo.gle/4ehVuXi",
+    "interviews_url": "https://www.glassdoor.com/Interview/Google-Interview-Questions-E9079.htm",
+    "photos_url": "https://www.glassdoor.com/Photos/Google-Office-Photos-E9079.htm",
+    "ratings_career_opportunities": 4.2,
+    "ratings_ceo_approval": 0.83,
+    "ratings_compensation_benefits": 4.5,
+    "ratings_cutlure_values": 4.2,
+    "diversity_inclusion_score": "4.4",
+    "diversity_inclusion_count": "10399",
+    "ratings_senior_management": 3.8,
+    "ratings_work_life_balance": 4.2,
+    "ratings_business_outlook": 0.82,
+    "ratings_recommend_to_friend": 0.87,
+    "ratings_rated_ceo": "Sundar Pichai",
+    "competitors": "Meta,Apple,Amazon,Nest,Microsoft,IBM,X,Oracle,Cisco,Intel Corporation,Deloitte,Uber",
+    "salaries_url": "https://www.glassdoor.com/Salary/Google-Salaries-E9079.htm",
+    "salaries_count": 132447,
+    "career_opportunities_distribution": {
+      "one_star": 420,
+      "two_star": 601,
+      "three_star": 1701,
+      "four_star": 2857,
+      "five_star": 5299
+    },
+    "url_faq": "https://www.glassdoor.com/FAQ/Google-Questions-E9079.htm",
+    "interviews_count": 26867,
+    "benefits_count": 8655,
+    "jobs_count": 3237,
+    "photos_count": "621",
+    "faq": [
+      {
+        "answers": [
+          "Pros:    - good pay\n- nice perks like pension, health insurance, breakfast and lunch\nCons:    - sales/account management roles are very micromanaged and tedious after a few years\n- no matter how high you progress as an IC, the job is essentially the same\nAdvice to Management:    Diversify roles in D",
+          "Pros:    Great benefits, food, gym, health care and pension packages.\nCons:    Very siloed perspectives, heavy politics.",
+          "… 1 more item(s) truncated"
+        ],
+        "query": "Does Google have a pension plan?"
+      },
+      {
+        "answers": [
+          "Pros:    Good culture and lot of opportunities plus lot of great and smart team members you will be working with.\nCons:    Not much just sometime too much work",
+          "Pros:    Strong work-life balance and flexible work options with great growth opportunities and learning resources\nCons:    High internal competition can be stressful",
+          "… 1 more item(s) truncated"
+        ],
+        "query": "How are career development opportunities at Google? "
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "reviews_count": 51232,
+    "interviews_experience": [
+      {
+        "name": "POSITIVE",
+        "value": "64%"
+      },
+      {
+        "name": "NEGATIVE",
+        "value": "12%"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "url": "https://www.glassdoor.com/Overview/Working-at-Google-EI_IE9079.11,17.htm",
+    "industry": "Internet & Web Services",
+    "additional_information": null,
+    "stock_symbol": "GOOG",
+    "timestamp": "2026-11-10T16:27:27.709Z",
+    "input": {
+      "url": "https://www.glassdoor.com/Overview/Working-at-Google-EI_IE9079.11,17.htm"
+    }
+  }
+]
