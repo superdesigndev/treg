@@ -273,6 +273,7 @@ the provider.
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
+| 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
 | 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch. |
@@ -292,6 +293,24 @@ X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 422 when a key is reused for a different request, 409 while the first call is in flight. Over MCP
 it is the `idempotency_key` argument and a replay carries `replayed: true`. Storage rules:
 [money](../architecture/money.md).
+
+### `X-Treg-Keep-Reported-Charge` on `/call/`
+
+```
+TREG_STRIP_REPORTED_CHARGE=true          deploy switch, off by default
+X-Treg-Keep-Reported-Charge: true        this call keeps the provider's charge (1, yes, on also)
+```
+
+With the switch on, a metered 2xx answer, live or an archive hit, reaches the caller without the
+member its row's settlement reads the provider's own charge from (`settle.reported.path`, or
+`cost.reported_charge.path` in today's spelling). Everything else is byte for byte as the provider
+sent it; error bodies, non-JSON answers, rows with no such path or a header-reported charge, own-key
+calls, streamed free fetches and spooled answers are relayed as before. The bill, the outcome and
+`X-Treg-Upstream-Failed` are decided first, on the provider's bytes; the archive keeps those bytes.
+An idempotent replay hands back what the first call received, whatever the retry sends. A routed
+child is an ordinary call (it inherits the header), so `raw` carries its answer as received.
+`GET /calls/{id}/result` returns a metered answer by the same rule, read from the request's own
+header. Mechanism: [proxy-model](../architecture/proxy-model.md), "The provider's reported charge".
 
 ### Caller tags, budgets and isolation
 

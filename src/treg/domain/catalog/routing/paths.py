@@ -396,6 +396,30 @@ def e164_digits(v: Any) -> str | None:
     return digits if 7 <= len(digits) <= 15 else None
 
 
+# ITU country calling codes are prefix-free: one digit for 1 and 7, these two-digit codes, and
+# three digits for every other country.
+_CC2 = frozenset({"20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46",
+                  "47", "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63",
+                  "64", "65", "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98"})
+
+
+def calling_code(v: Any) -> str | None:
+    """`+44 7790 606023` → `44`, `+1 617…` → `1`: the country calling code of an international
+    number (shared by every country of one plan, so `1` is the US, Canada and the Caribbean)."""
+    digits = e164_digits(v)
+    if digits is None:
+        return None
+    if digits[0] in "17":
+        return digits[0]
+    return digits[:2] if digits[:2] in _CC2 else digits[:3]
+
+
+def key(obj: Any, name: Any) -> Any:
+    """`key(queryParams, 'phone.country_hint')`: one entry by its whole name, for parameter names
+    that contain a dot (a path would read it as nesting)."""
+    return obj.get(name) if isinstance(obj, dict) and isinstance(name, str) else None
+
+
 # A national number is trusted only with a country whose numbering plan it fits exactly.
 _NATIONAL_PLANS = {"US": ("1", re.compile(r"[2-9]\d{9}")), "CA": ("1", re.compile(r"[2-9]\d{9}"))}
 
@@ -438,6 +462,22 @@ def current_role(history: Any) -> dict | None:
         return isinstance(d, dict) and bool(d.get("to"))
     pool = [r for r in roles if not ended(r)] or roles
     return max(pool, key=start)  # max keeps the first of equal starts
+
+
+def past_titles(history: Any) -> list | None:
+    """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
+    carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
+    current role is something else."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    def to(r: dict) -> str:
+        d = r.get("dates")
+        return str(d.get("to") or "") if isinstance(d, dict) else ""
+    out: list[str] = []
+    for r in sorted((r for r in roles if to(r)), key=to, reverse=True):
+        t = r.get("title")
+        if isinstance(t, str) and t.strip() and t.strip() not in out:
+            out.append(t.strip())
+    return out[:5] or None
 
 
 def instagram_handles(results: Any) -> list | None:
@@ -588,9 +628,9 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

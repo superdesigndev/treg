@@ -245,8 +245,7 @@ treg run gh -- pr list
 ```
 
 `--local` (default) runs on your machine. Server-side CLI execution (`--server`) is disabled globally.
-For a whole session, `treg shell start` opens a subshell where every registered CLI injects
-automatically — just use `stripe`, `gh`, … normally; `exit` reverts. `treg runs` is the audit log.
+`treg runs` is the audit log.
 
 ### 3. Skills
 

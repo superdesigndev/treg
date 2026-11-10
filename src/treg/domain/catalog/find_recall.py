@@ -141,9 +141,19 @@ class Index:
 
 
 def shown_endpoints(cat: store.Catalog) -> list[dict]:
-    """What find may answer with: the browse surface, routed parents out."""
+    """What a name page may list: the browse surface, routed parents out."""
     return [e for e in cat.endpoints
             if store.browsable(e) and e.get("kind") != "routed" and not store.paused(e)]
+
+
+def indexed_endpoints(cat: store.Catalog) -> list[dict]:
+    """What find may recall: the browse surface, plus hidden (account/utility) members of a
+    catalogued job. A job that lives only under Account and setup can then be found, instead of
+    the search calling it a catalog gap. Routed parents, paused providers, and hidden endpoints
+    with no capability stay out — those last are plumbing no job claims."""
+    return [e for e in cat.endpoints
+            if e.get("kind") != "routed" and not store.paused(e)
+            and (store.browsable(e) or e.get("capability"))]
 
 
 def short_label(label: str) -> str:
@@ -161,7 +171,7 @@ def index(cat: store.Catalog) -> Index:
 
 
 def build(cat: store.Catalog) -> Index:
-    eps = shown_endpoints(cat)
+    eps = indexed_endpoints(cat)
     by_cap: dict[str, list[dict]] = defaultdict(list)
     for e in eps:
         if e["capability"]:
