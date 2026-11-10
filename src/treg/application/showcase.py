@@ -208,11 +208,11 @@ def _key_view(key: ApiKey) -> dict:
             "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None}
 
 
-async def _views(db: AsyncSession, apps, *, orgs: dict[int, Org] | None = None, with_keys: bool = True) -> list[dict]:
-    """`app_view` for each app, with its usage: the source, and for a team's owner or admin and for
-    staff, the linked keys as they are now (a rotated key shows as its newest replacement)."""
+async def _views(db: AsyncSession, apps, *, orgs: dict[int, Org] | None = None) -> list[dict]:
+    """`app_view` for each app, with its usage: the source and the linked keys as they are now (a
+    rotated key shows as its newest replacement). Only a team's owner or admin and staff see it."""
     apps = list(apps)
-    links = await _links(db, [a.id for a in apps if a.usage_source == "keys"]) if with_keys else {}
+    links = await _links(db, [a.id for a in apps if a.usage_source == "keys"])
     keys = await _org_keys(db, [a.org_id for a in apps if a.id in links])
     out = []
     for a in apps:
@@ -260,12 +260,11 @@ async def my_teams(user: User) -> list[dict]:
 
 async def team_apps(user: User, org_id: int) -> list[dict]:
     async with session_maker() as db:
-        role = await team_role(db, user.id, org_id)
-        if role is None:
-            raise ShowcaseError("forbidden", "you are not a member of this team")
+        if await team_role(db, user.id, org_id) not in ("owner", "admin"):
+            raise ShowcaseError("forbidden", "owner or admin role in this team is required")
         apps = (await db.execute(select(ShowcaseApp).where(ShowcaseApp.org_id == org_id)
                                  .order_by(ShowcaseApp.id))).scalars().all()
-        return await _views(db, apps, with_keys=role in ("owner", "admin"))
+        return await _views(db, apps)
 
 
 async def _team_full(db: AsyncSession, org_id: int, *, besides: int | None = None) -> bool:

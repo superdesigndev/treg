@@ -926,6 +926,8 @@ class Settings(BaseSettings):
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
+    # The share of new installs `/install.sh` sends to the binary CLI (docs/context/interface/cli-binary.md).
+    cli_binary_install_percent: int = Field(default=0, ge=0, le=100)
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both
