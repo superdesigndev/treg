@@ -23,7 +23,6 @@ source:
   - https://api.getanyapi.com/v1/apis?limit=1000
 endpoints:
 - id: anyapi.facebook.ad_details
-  tier: extended
   platform: facebook
   domain: ad
   method: POST
@@ -42,19 +41,16 @@ endpoints:
         required: false
         note: Meta Ad Library ad URL (e.g. "https://www.facebook.com/ads/library?id=1185617869915074"). Provide either id or url.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.ad_details
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/ad-details
   test_request:
     body:
@@ -64,7 +60,6 @@ endpoints:
   example_response: examples/anyapi.facebook.ad_details.json
   observed_time: 2.98
 - id: anyapi.facebook.ad_details_full
-  tier: extended
   platform: facebook
   domain: ad
   method: POST
@@ -79,19 +74,16 @@ endpoints:
         note: Meta Ad Library ad ID - the numeric id in an Ad Library URL (e.g. "1519158199783790" from https://www.facebook.com/ads/library/?id=1519158199783790).
         example: '1519158199783790'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00462
+  price:
+    value: '0.00462'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00462 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.ad_details_full
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00462 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/ad-details-full
   test_request:
     body:
@@ -101,7 +93,6 @@ endpoints:
   example_response: examples/anyapi.facebook.ad_details_full.json
   observed_time: 6.55
 - id: anyapi.facebook.ad_transcript
-  tier: extended
   platform: facebook
   domain: ad
   method: POST
@@ -120,19 +111,16 @@ endpoints:
         required: false
         note: Meta Ad Library ad URL (e.g. "https://www.facebook.com/ads/library?id=1020359190509080"). Provide either id or url.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.ad_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/ad-transcript
   test_request:
     body:
@@ -142,7 +130,6 @@ endpoints:
   example_response: examples/anyapi.facebook.ad_transcript.json
   observed_time: 10.68
 - id: anyapi.facebook.ads_search
-  tier: extended
   platform: facebook
   domain: ads
   method: POST
@@ -216,19 +203,16 @@ endpoints:
         - ACTIVE
         - INACTIVE
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.ads_search
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/ads-search
   test_request:
     body:
@@ -241,7 +225,6 @@ endpoints:
   observed_time: 5.07
 - id: anyapi.facebook.comment_replies
   added: '2026-09-19'
-  tier: extended
   platform: facebook
   domain: comment
   method: POST
@@ -265,19 +248,16 @@ endpoints:
         note: The feedback_id of the comment (not the comment id).
         example: ZmVlZGJhY2s6MTM5MzQ2MTExNTQ4MTkyN18yMDgyNjUzMjQ1ODA5Mzg2
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.comment_replies
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/comment-replies
   test_request:
     body:
@@ -285,7 +265,6 @@ endpoints:
       feedbackId: ZmVlZGJhY2s6MTM5MzQ2MTExNTQ4MTkyN18yMDgyNjUzMjQ1ODA5Mzg2
   unverified: http 502
 - id: anyapi.facebook.company_ads
-  tier: extended
   platform: meta-ads
   capability: meta-ads.library.advertiser
   domain: company
@@ -352,19 +331,18 @@ endpoints:
         - ACTIVE
         - INACTIVE
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.company_ads
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  miss:
+    when: {any: [{path: response.output.data.ads, op: absent}, {path: response.output.data.ads, op: empty}]}
   docs_url: https://getanyapi.com/api/facebook/company-ads
   test_request:
     body:
@@ -375,7 +353,6 @@ endpoints:
   example_response: examples/anyapi.facebook.company_ads.json
   observed_time: 3.78
 - id: anyapi.facebook.event_details
-  tier: extended
   platform: facebook
   domain: event
   method: POST
@@ -394,19 +371,16 @@ endpoints:
         required: false
         note: The event's Facebook URL.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.event_details
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/event-details
   test_request:
     body:
@@ -416,7 +390,6 @@ endpoints:
   example_response: examples/anyapi.facebook.event_details.json
   observed_time: 1.91
 - id: anyapi.facebook.events
-  tier: extended
   platform: facebook
   domain: events
   method: POST
@@ -443,19 +416,16 @@ endpoints:
         note: URL of a city's or place's Facebook Events page (e.g. https://www.facebook.com/events/explore/saint-petersburg-florida/111326725552547).
         example: https://www.facebook.com/events/explore/saint-petersburg-florida/111326725552547
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.events
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/events
   test_request:
     body:
@@ -465,7 +435,6 @@ endpoints:
   example_response: examples/anyapi.facebook.events.json
   observed_time: 1.71
 - id: anyapi.facebook.events_search
-  tier: extended
   platform: facebook
   domain: events
   method: POST
@@ -484,19 +453,16 @@ endpoints:
         note: The query to search events for.
         example: music festival
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.events_search
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/events-search
   test_request:
     body:
@@ -506,7 +472,6 @@ endpoints:
   example_response: examples/anyapi.facebook.events_search.json
   observed_time: 3.53
 - id: anyapi.facebook.followers
-  tier: extended
   platform: facebook
   domain: followers
   method: POST
@@ -533,19 +498,16 @@ endpoints:
         note: Facebook page or profile URL to list follows for (e.g. https://www.facebook.com/nasa).
         example: https://www.facebook.com/nike
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.12
+  price:
+    value: '0.12'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.132 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.followers
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.132 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/followers
   test_request:
     body:
@@ -556,7 +518,6 @@ endpoints:
   example_response: examples/anyapi.facebook.followers.json
   observed_time: 9.24
 - id: anyapi.facebook.marketplace
-  tier: extended
   platform: facebook
   domain: marketplace
   method: POST
@@ -641,19 +602,16 @@ endpoints:
         - price_ascend
         - price_descend
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.marketplace
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/marketplace
   test_request:
     body:
@@ -667,7 +625,6 @@ endpoints:
   example_response: examples/anyapi.facebook.marketplace.json
   observed_time: 2.74
 - id: anyapi.facebook.marketplace_item
-  tier: extended
   platform: facebook
   domain: marketplace
   method: POST
@@ -686,19 +643,16 @@ endpoints:
         note: Facebook Marketplace item URL.
         example: https://www.facebook.com/marketplace/item/1656586118821988/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.marketplace_item
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/marketplace-item
   test_request:
     body:
@@ -708,7 +662,6 @@ endpoints:
   example_response: examples/anyapi.facebook.marketplace_item.json
   observed_time: 2.6
 - id: anyapi.facebook.marketplace_location_search
-  tier: extended
   platform: facebook
   domain: marketplace
   method: POST
@@ -723,19 +676,16 @@ endpoints:
         note: Location search query (e.g. a city name).
         example: Austin
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.marketplace_location_search
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/marketplace-location-search
   test_request:
     body:
@@ -745,7 +695,6 @@ endpoints:
   example_response: examples/anyapi.facebook.marketplace_location_search.json
   observed_time: 1.05
 - id: anyapi.facebook.page_contact
-  tier: extended
   platform: facebook
   domain: page
   method: POST
@@ -765,19 +714,16 @@ endpoints:
         note: Facebook Page URL or page ID to look up (e.g. https://www.facebook.com/nasa).
         example: https://www.facebook.com/joesstonecrab
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.011 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.page_contact
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.011 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/page-contact
   test_request:
     body:
@@ -787,7 +733,6 @@ endpoints:
   example_response: examples/anyapi.facebook.page_contact.json
   observed_time: 4.09
 - id: anyapi.facebook.photos
-  tier: extended
   platform: facebook
   domain: photos
   method: POST
@@ -806,19 +751,16 @@ endpoints:
         note: URL of the public Facebook page or profile to fetch photos from (e.g. https://www.facebook.com/Spurs).
         example: https://www.facebook.com/Spurs
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.photos
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/photos
   test_request:
     body:
@@ -828,7 +770,6 @@ endpoints:
   example_response: examples/anyapi.facebook.photos.json
   observed_time: 1.53
 - id: anyapi.facebook.post_comments
-  tier: extended
   platform: facebook
   domain: post
   method: POST
@@ -851,19 +792,16 @@ endpoints:
         note: Full Facebook post URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0067 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.post_comments
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0067 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/post-comments
   test_request:
     body:
@@ -873,7 +811,6 @@ endpoints:
   example_response: examples/anyapi.facebook.post_comments.json
   observed_time: 4.06
 - id: anyapi.facebook.post_transcript
-  tier: extended
   platform: facebook
   domain: post
   method: POST
@@ -888,19 +825,16 @@ endpoints:
         note: The Facebook post or video URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.post_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/post-transcript
   test_request:
     body:
@@ -910,7 +844,6 @@ endpoints:
   example_response: examples/anyapi.facebook.post_transcript.json
   observed_time: 5.76
 - id: anyapi.facebook.profile
-  tier: extended
   platform: facebook
   domain: profile
   method: POST
@@ -929,19 +862,16 @@ endpoints:
         note: Full Facebook page URL.
         example: https://www.facebook.com/nike
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/profile
   test_request:
     body:
@@ -951,7 +881,6 @@ endpoints:
   example_response: examples/anyapi.facebook.profile.json
   observed_time: 3.01
 - id: anyapi.facebook.profile_events
-  tier: extended
   platform: facebook
   domain: profile
   method: POST
@@ -970,19 +899,16 @@ endpoints:
         note: The Facebook page URL.
         example: https://www.facebook.com/brickyardoldtown
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile_events
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/profile-events
   test_request:
     body:
@@ -992,7 +918,6 @@ endpoints:
   example_response: examples/anyapi.facebook.profile_events.json
   observed_time: 1.83
 - id: anyapi.facebook.profile_reels
-  tier: extended
   platform: facebook
   domain: profile
   method: POST
@@ -1011,19 +936,16 @@ endpoints:
         note: Full Facebook page/profile URL.
         example: https://www.facebook.com/nike
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0067 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile_reels
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0067 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/profile-reels
   test_request:
     body:
@@ -1033,7 +955,6 @@ endpoints:
   example_response: examples/anyapi.facebook.profile_reels.json
   observed_time: 2.07
 - id: anyapi.facebook.search_companies
-  tier: extended
   platform: facebook
   domain: search
   method: POST
@@ -1048,19 +969,16 @@ endpoints:
         note: Keyword to search advertiser pages for (e.g. "nike").
         example: nike
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.004 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.search_companies
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.004 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/search-companies
   test_request:
     body:
@@ -1070,7 +988,6 @@ endpoints:
   example_response: examples/anyapi.facebook.search_companies.json
   observed_time: 1.13
 - id: anyapi.facebook.search_pages
-  tier: extended
   platform: facebook
   domain: search
   method: POST
@@ -1096,19 +1013,16 @@ endpoints:
         note: Keyword to search Facebook Pages for (e.g. 'coffee roasters').
         example: nike
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.1221
+  price:
+    value: '0.1221'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.123 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.search_pages
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.123 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/search-pages
   test_request:
     body:
@@ -1119,7 +1033,6 @@ endpoints:
   example_response: examples/anyapi.facebook.search_pages.json
   observed_time: 50.34
 - id: anyapi.facebook.search_posts
-  tier: extended
   platform: facebook
   domain: search
   method: POST
@@ -1153,19 +1066,16 @@ endpoints:
         required: false
         note: Only return posts published on or after this date, format YYYY-MM-DD (e.g. 2024-01-01).
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.06606
+  price:
+    value: '0.06606'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0661 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.search_posts
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0661 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/facebook/search-posts
   test_request:
     body:
@@ -1176,7 +1086,6 @@ endpoints:
   example_response: examples/anyapi.facebook.search_posts.json
   observed_time: 6.25
 - id: anyapi.google.ai_mode
-  tier: extended
   platform: google
   domain: ai
   method: POST
@@ -1191,19 +1100,16 @@ endpoints:
         note: The question or prompt to answer with Google AI Mode.
         example: What is AnyAPI at getanyapi.com, and what does it offer?
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0007
+  price:
+    value: '0.0007'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0007 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.ai_mode
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.0007 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/ai-mode
   test_request:
     body:
@@ -1213,7 +1119,6 @@ endpoints:
   example_response: examples/anyapi.google.ai_mode.json
   observed_time: 8.59
 - id: anyapi.google.images
-  tier: extended
   platform: google
   domain: images
   method: POST
@@ -1260,19 +1165,16 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00198
+  price:
+    value: '0.00198'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00198 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/google.images
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00198 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/images
   test_request:
     body:
@@ -1285,7 +1187,6 @@ endpoints:
   example_response: examples/anyapi.google.images.json
   observed_time: 1.49
 - id: anyapi.google.lens
-  tier: extended
   platform: google
   domain: lens
   method: POST
@@ -1300,19 +1201,16 @@ endpoints:
         note: Public URL of the image to search with.
         example: https://i.imgur.com/HBrB8p0.png
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00297
+  price:
+    value: '0.00297'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00297 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.lens
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00297 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/lens
   test_request:
     body:
@@ -1322,7 +1220,6 @@ endpoints:
   example_response: examples/anyapi.google.lens.json
   observed_time: 2.05
 - id: anyapi.google.patents
-  tier: extended
   platform: google
   domain: patents
   method: POST
@@ -1337,19 +1234,16 @@ endpoints:
         note: The Google Patents search query.
         example: wireless charging
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00099
+  price:
+    value: '0.00099'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/google.patents
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/patents
   test_request:
     body:
@@ -1359,7 +1253,6 @@ endpoints:
   example_response: examples/anyapi.google.patents.json
   observed_time: 1.58
 - id: anyapi.google.scholar
-  tier: extended
   platform: google
   domain: scholar
   method: POST
@@ -1374,19 +1267,16 @@ endpoints:
         note: The Google Scholar search query.
         example: attention is all you need
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00099
+  price:
+    value: '0.00099'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/google.scholar
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/scholar
   test_request:
     body:
@@ -1397,7 +1287,6 @@ endpoints:
   observed_time: 0.87
 - id: anyapi.google.search_100
   added: '2026-09-19'
-  tier: extended
   platform: google
   domain: search
   method: POST
@@ -1432,19 +1321,16 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0018
+  price:
+    value: '0.0018'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0018 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.search_100
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0018 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/search-100
   test_request:
     body:
@@ -1453,7 +1339,6 @@ endpoints:
       query: best crm software
   unverified: transport ReadTimeout
 - id: anyapi.google.videos
-  tier: extended
   platform: google
   domain: videos
   method: POST
@@ -1492,19 +1377,16 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00099
+  price:
+    value: '0.00099'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/google.videos
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google/videos
   test_request:
     body:
@@ -1516,7 +1398,6 @@ endpoints:
   example_response: examples/anyapi.google.videos.json
   observed_time: 0.86
 - id: anyapi.google_shopping.search
-  tier: extended
   platform: google
   domain: search
   method: POST
@@ -1566,19 +1447,16 @@ endpoints:
         - HIGHEST_PRICE
         - TOP_RATED
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0638
+  price:
+    value: '0.0638'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0638 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google_shopping.search
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0638 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/google-shopping/search
   test_request:
     body:
@@ -1589,7 +1467,6 @@ endpoints:
   example_response: examples/anyapi.google_shopping.search.json
   observed_time: 23.91
 - id: anyapi.maps.contacts
-  tier: extended
   platform: google
   domain: contacts
   method: POST
@@ -1646,19 +1523,16 @@ endpoints:
         - withoutWebsite
         example: withWebsite
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0946
+  price:
+    value: '0.0946'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0991 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/maps.contacts
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0991 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/maps/contacts
   test_request:
     body:
@@ -1672,7 +1546,6 @@ endpoints:
   example_response: examples/anyapi.maps.contacts.json
   observed_time: 32.48
 - id: anyapi.instagram.audio_reels
-  tier: extended
   platform: instagram
   domain: audio
   method: POST
@@ -1691,19 +1564,16 @@ endpoints:
         required: false
         note: Pagination cursor returned by a previous response.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0011
+  price:
+    value: '0.0011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.audio_reels
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/audio-reels
   test_request:
     body:
@@ -1713,7 +1583,6 @@ endpoints:
   example_response: examples/anyapi.instagram.audio_reels.json
   observed_time: 1.99
 - id: anyapi.instagram.basic_profile
-  tier: extended
   platform: instagram
   domain: basic
   method: POST
@@ -1728,19 +1597,16 @@ endpoints:
         note: Instagram numeric user id.
         example: '314216'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.basic_profile
     checked: '2026-10-02'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/basic-profile
   test_request:
     body:
@@ -1750,7 +1616,6 @@ endpoints:
   example_response: examples/anyapi.instagram.basic_profile.json
   observed_time: 0.94
 - id: anyapi.instagram.comment_replies
-  tier: extended
   platform: instagram
   domain: comment
   method: POST
@@ -1774,19 +1639,16 @@ endpoints:
         note: Full Instagram post or reel URL the comment belongs to.
         example: https://www.instagram.com/p/C8rKmYvsrck/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0011
+  price:
+    value: '0.0011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.comment_replies
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/comment-replies
   test_request:
     body:
@@ -1797,7 +1659,6 @@ endpoints:
   example_response: examples/anyapi.instagram.comment_replies.json
   observed_time: 2.67
 - id: anyapi.instagram.embed
-  tier: extended
   platform: instagram
   domain: embed
   method: POST
@@ -1812,19 +1673,16 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.embed
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/embed
   test_request:
     body:
@@ -1834,7 +1692,6 @@ endpoints:
   example_response: examples/anyapi.instagram.embed.json
   observed_time: 2.54
 - id: anyapi.instagram.hashtag_analytics
-  tier: extended
   platform: instagram
   domain: hashtag
   method: POST
@@ -1856,19 +1713,16 @@ endpoints:
         max: 20
         example: 5
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00297
+  price:
+    value: '0.00297'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0385 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.hashtag_analytics
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0385 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/hashtag-analytics
   test_request:
     body:
@@ -1879,7 +1733,6 @@ endpoints:
   example_response: examples/anyapi.instagram.hashtag_analytics.json
   observed_time: 10.97
 - id: anyapi.instagram.hashtag_recent_posts
-  tier: extended
   platform: instagram
   domain: hashtag
   method: POST
@@ -1898,19 +1751,16 @@ endpoints:
         note: 'Hashtag to monitor, without the leading #.'
         example: skincare
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0024
+  price:
+    value: '0.0024'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.hashtag_recent_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/hashtag-recent-posts
   test_request:
     body:
@@ -1920,7 +1770,6 @@ endpoints:
   example_response: examples/anyapi.instagram.hashtag_recent_posts.json
   observed_time: 2.1
 - id: anyapi.instagram.hashtag_top_posts
-  tier: extended
   platform: instagram
   domain: hashtag
   method: POST
@@ -1939,19 +1788,16 @@ endpoints:
         note: 'Hashtag to fetch, without the leading #.'
         example: skincare
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0015
+  price:
+    value: '0.0015'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.hashtag_top_posts
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/hashtag-top-posts
   test_request:
     body:
@@ -1961,7 +1807,6 @@ endpoints:
   example_response: examples/anyapi.instagram.hashtag_top_posts.json
   observed_time: 9.97
 - id: anyapi.instagram.highlight_detail
-  tier: extended
   platform: instagram
   domain: highlight
   method: POST
@@ -1976,19 +1821,16 @@ endpoints:
         note: The id of the highlight to retrieve details for.
         example: '18201653992314974'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.highlight_detail
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/highlight-detail
   test_request:
     body:
@@ -1999,7 +1841,6 @@ endpoints:
   observed_time: 3.21
 - id: anyapi.instagram.location_posts
   added: '2026-09-19'
-  tier: extended
   platform: instagram
   domain: location
   method: POST
@@ -2026,19 +1867,16 @@ endpoints:
         - recent
         example: recent
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.location_posts
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/location-posts
   test_request:
     body:
@@ -2046,7 +1884,6 @@ endpoints:
       sort: recent
   unverified: http 400
 - id: anyapi.instagram.media_transcript
-  tier: extended
   platform: instagram
   domain: media
   method: POST
@@ -2061,19 +1898,16 @@ endpoints:
         note: Instagram post or reel URL.
         example: https://www.instagram.com/reel/DHsD6HGqJhp/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.media_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/media-transcript
   test_request:
     body:
@@ -2083,7 +1917,6 @@ endpoints:
   example_response: examples/anyapi.instagram.media_transcript.json
   observed_time: 7.57
 - id: anyapi.instagram.post_likers
-  tier: extended
   platform: instagram
   domain: post
   method: POST
@@ -2098,19 +1931,16 @@ endpoints:
         note: Canonical URL of a public Instagram post or reel.
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0024
+  price:
+    value: '0.0024'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0024 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.post_likers
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0024 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/post-likers
   test_request:
     body:
@@ -2120,7 +1950,6 @@ endpoints:
   example_response: examples/anyapi.instagram.post_likers.json
   observed_time: 10.78
 - id: anyapi.instagram.profile
-  tier: extended
   platform: instagram
   domain: profile
   method: POST
@@ -2135,19 +1964,16 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.profile
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/profile
   test_request:
     body:
@@ -2157,7 +1983,6 @@ endpoints:
   example_response: examples/anyapi.instagram.profile.json
   observed_time: 2.52
 - id: anyapi.instagram.profile_contact
-  tier: extended
   platform: instagram
   domain: profile
   method: POST
@@ -2172,19 +1997,16 @@ endpoints:
         note: Instagram username without the leading @.
         example: eminenceorganics
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00721
+  price:
+    value: '0.00721'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00721 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.profile_contact
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00721 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/profile-contact
   test_request:
     body:
@@ -2194,7 +2016,6 @@ endpoints:
   example_response: examples/anyapi.instagram.profile_contact.json
   observed_time: 7.03
 - id: anyapi.instagram.reel_transcript
-  tier: extended
   platform: instagram
   domain: reel
   method: POST
@@ -2215,19 +2036,16 @@ endpoints:
         default: false
         example: false
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0308
+  price:
+    value: '0.0308'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0995 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.reel_transcript
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.0995 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/reel-transcript
   test_request:
     body:
@@ -2238,7 +2056,6 @@ endpoints:
   example_response: examples/anyapi.instagram.reel_transcript.json
   observed_time: 8.59
 - id: anyapi.instagram.search
-  tier: extended
   platform: instagram
   domain: search
   method: POST
@@ -2268,19 +2085,16 @@ endpoints:
         - hashtag
         - place
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0036
+  price:
+    value: '0.0036'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0418 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.search
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0418 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/search
   test_request:
     body:
@@ -2290,7 +2104,6 @@ endpoints:
   example_response: examples/anyapi.instagram.search.json
   observed_time: 6.78
 - id: anyapi.instagram.search_locations
-  tier: extended
   platform: instagram
   domain: search
   method: POST
@@ -2305,19 +2118,16 @@ endpoints:
         note: Place name, address or city to search for.
         example: Eiffel Tower
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0011
+  price:
+    value: '0.0011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.search_locations
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/search-locations
   test_request:
     body:
@@ -2327,7 +2137,6 @@ endpoints:
   example_response: examples/anyapi.instagram.search_locations.json
   observed_time: 5.43
 - id: anyapi.instagram.search_profiles
-  tier: extended
   platform: instagram
   domain: search
   method: POST
@@ -2346,19 +2155,16 @@ endpoints:
         note: Bio or caption keyword/phrase to search for.
         example: coffee roaster
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.search_profiles
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/search-profiles
   test_request:
     body:
@@ -2368,7 +2174,6 @@ endpoints:
   example_response: examples/anyapi.instagram.search_profiles.json
   observed_time: 8.86
 - id: anyapi.instagram.similar_profiles
-  tier: extended
   platform: instagram
   domain: similar
   method: POST
@@ -2383,19 +2188,16 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00175
+  price:
+    value: '0.00175'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.027 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.similar_profiles
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.027 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/similar-profiles
   test_request:
     body:
@@ -2405,7 +2207,6 @@ endpoints:
   example_response: examples/anyapi.instagram.similar_profiles.json
   observed_time: 3.19
 - id: anyapi.instagram.stories_full
-  tier: extended
   platform: instagram
   domain: stories
   method: POST
@@ -2420,19 +2221,16 @@ endpoints:
         note: Instagram username or handle without the @.
         example: natgeo
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0022
+  price:
+    value: '0.0022'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.stories_full
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/stories-full
   test_request:
     body:
@@ -2442,7 +2240,6 @@ endpoints:
   example_response: examples/anyapi.instagram.stories_full.json
   observed_time: 5.57
 - id: anyapi.instagram.stories_thin
-  tier: extended
   platform: instagram
   domain: stories
   method: POST
@@ -2457,19 +2254,16 @@ endpoints:
         note: Instagram username/handle to fetch currently live stories for (without the @).
         example: natgeo
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0015
+  price:
+    value: '0.0015'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.stories_thin
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/stories-thin
   test_request:
     body:
@@ -2479,7 +2273,6 @@ endpoints:
   example_response: examples/anyapi.instagram.stories_thin.json
   observed_time: 4.45
 - id: anyapi.instagram.tagged_posts
-  tier: extended
   platform: instagram
   domain: tagged
   method: POST
@@ -2498,19 +2291,16 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0024
+  price:
+    value: '0.0024'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.tagged_posts
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/tagged-posts
   test_request:
     body:
@@ -2521,7 +2311,6 @@ endpoints:
   observed_time: 5.01
 - id: anyapi.instagram.trending_reels
   added: '2026-09-19'
-  tier: extended
   platform: instagram
   domain: trending
   method: POST
@@ -2531,22 +2320,18 @@ endpoints:
   input:
     body: {}
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.trending_reels
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/trending-reels
 - id: anyapi.instagram.user_highlights
-  tier: extended
   platform: instagram
   domain: user
   method: POST
@@ -2565,19 +2350,16 @@ endpoints:
         required: false
         note: Instagram numeric user id (optional, faster than handle).
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0022 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_highlights
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0022 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/user-highlights
   test_request:
     body:
@@ -2587,7 +2369,6 @@ endpoints:
   example_response: examples/anyapi.instagram.user_highlights.json
   observed_time: 3.45
 - id: anyapi.instagram.user_reposts
-  tier: extended
   platform: instagram
   domain: user
   method: POST
@@ -2606,19 +2387,16 @@ endpoints:
         note: Instagram's numeric account id, as returned by instagram.profile.
         example: '787132'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0011
+  price:
+    value: '0.0011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_reposts
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/instagram/user-reposts
   test_request:
     body:
@@ -2628,7 +2406,6 @@ endpoints:
   example_response: examples/anyapi.instagram.user_reposts.json
   observed_time: 5.4
 - id: anyapi.linkedin.ad
-  tier: extended
   platform: linkedin
   domain: ad
   method: POST
@@ -2643,19 +2420,16 @@ endpoints:
         note: LinkedIn Ad Library ad URL (e.g. "https://www.linkedin.com/ad-library/detail/666281156").
         example: https://www.linkedin.com/ad-library/detail/1487405616
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/linkedin.ad
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/ad
   test_request:
     body:
@@ -2665,7 +2439,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.ad.json
   observed_time: 2.86
 - id: anyapi.linkedin.ads
-  tier: extended
   platform: linkedin
   domain: ads
   method: POST
@@ -2687,19 +2460,16 @@ endpoints:
         note: LinkedIn Ad Library search URL or a LinkedIn company URL (e.g. https://www.linkedin.com/ad-library/search?companyIds=1035).
         example: https://www.linkedin.com/company/stripe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.01656
+  price:
+    value: '0.01656'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0331 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.ads
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0331 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/ads
   test_request:
     body:
@@ -2710,7 +2480,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.ads.json
   observed_time: 9.19
 - id: anyapi.linkedin.ads_search
-  tier: extended
   platform: linkedin
   domain: ads
   method: POST
@@ -2749,19 +2518,16 @@ endpoints:
         required: false
         note: Search start date in YYYY-MM-DD format.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.ads_search
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/ads-search
   test_request:
     body:
@@ -2771,7 +2537,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.ads_search.json
   observed_time: 6.47
 - id: anyapi.linkedin.article
-  tier: extended
   platform: linkedin
   domain: article
   method: POST
@@ -2786,19 +2551,16 @@ endpoints:
         note: Public LinkedIn article or newsletter issue URL, e.g. https://www.linkedin.com/pulse/your-article-slug. Pair it with the attachmentUrl returned by linkedin.search_posts_full to read the article behind a post.
         example: https://www.linkedin.com/pulse/artificial-intelligence-primer-stephen-dover
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00569
+  price:
+    value: '0.00569'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00569 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.article
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00569 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/article
   test_request:
     body:
@@ -2808,7 +2570,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.article.json
   observed_time: 11.16
 - id: anyapi.linkedin.company
-  tier: extended
   platform: linkedin
   domain: company
   method: POST
@@ -2823,19 +2584,16 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00253
+  price:
+    value: '0.00253'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/company
   test_request:
     body:
@@ -2845,7 +2603,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.company.json
   observed_time: 3.38
 - id: anyapi.linkedin.company_posts
-  tier: extended
   platform: linkedin
   domain: company
   method: POST
@@ -2889,19 +2646,16 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.02046
+  price:
+    value: '0.02046'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0975 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0975 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/company-posts
   test_request:
     body:
@@ -2912,7 +2666,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.company_posts.json
   observed_time: 3.3
 - id: anyapi.linkedin.company_posts_thin
-  tier: extended
   platform: linkedin
   domain: company
   method: POST
@@ -2932,19 +2685,16 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_posts_thin
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/company-posts-thin
   test_request:
     body:
@@ -2954,7 +2704,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.company_posts_thin.json
   observed_time: 3.6
 - id: anyapi.linkedin.company_thin
-  tier: extended
   platform: linkedin
   domain: company
   method: POST
@@ -2969,19 +2718,16 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_thin
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/company-thin
   test_request:
     body:
@@ -2991,7 +2737,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.company_thin.json
   observed_time: 3.81
 - id: anyapi.linkedin.post
-  tier: extended
   platform: linkedin
   domain: post
   method: POST
@@ -3006,19 +2751,16 @@ endpoints:
         note: Full LinkedIn post or article URL.
         example: https://www.linkedin.com/posts/stripe_last-week-agent-traffic-surpassed-human-activity-7470882737390940160-2Nxs
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.post
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00253 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/post
   test_request:
     body:
@@ -3028,7 +2770,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.post.json
   observed_time: 3.32
 - id: anyapi.linkedin.post_comments
-  tier: extended
   platform: linkedin
   domain: post
   method: POST
@@ -3063,19 +2804,16 @@ endpoints:
         note: Full URL of the LinkedIn post to list comments for.
         example: https://www.linkedin.com/posts/stripe_philip-kl%C3%B6ckner-in-conversation-with-conor-activity-7477791740645564416-tIbZ
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00685
+  price:
+    value: '0.00685'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.post_comments
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/post-comments
   test_request:
     body:
@@ -3086,7 +2824,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.post_comments.json
   observed_time: 3.64
 - id: anyapi.linkedin.post_reactions
-  tier: extended
   platform: linkedin
   domain: post
   method: POST
@@ -3108,19 +2845,16 @@ endpoints:
         note: URL of the LinkedIn post to list reactions for (a /posts/...-activity-... or /feed/update/urn:li:activity:... link).
         example: https://www.linkedin.com/posts/satyanadella_today-were-bringing-skills-to-copilot-for-activity-7475945433668694017--kvG
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0084
+  price:
+    value: '0.0084'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.post_reactions
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/post-reactions
   test_request:
     body:
@@ -3131,7 +2865,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.post_reactions.json
   observed_time: 3.42
 - id: anyapi.linkedin.post_transcript
-  tier: extended
   platform: linkedin
   domain: post
   method: POST
@@ -3146,19 +2879,16 @@ endpoints:
         note: The full URL of the LinkedIn post to get the video transcript from.
         example: https://www.linkedin.com/posts/artificial-analysis_gemini-35-flash-is-a-step-forward-for-google-activity-7465082408409870337-4Pm-
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/linkedin.post_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/post-transcript
   test_request:
     body:
@@ -3168,7 +2898,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.post_transcript.json
   observed_time: 1.63
 - id: anyapi.linkedin.profile_posts_full
-  tier: extended
   platform: linkedin
   domain: profile
   method: POST
@@ -3232,19 +2961,16 @@ endpoints:
         note: Full URL of the public LinkedIn profile whose posts should be returned.
         example: https://www.linkedin.com/in/williamhgates/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.01951
+  price:
+    value: '0.01951'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile_posts_full
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/profile-posts-full
   test_request:
     body:
@@ -3255,7 +2981,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.profile_posts_full.json
   observed_time: 4.61
 - id: anyapi.linkedin.profile_posts_thin
-  tier: extended
   platform: linkedin
   domain: profile
   method: POST
@@ -3282,19 +3007,16 @@ endpoints:
         note: Full URL of the public LinkedIn profile whose posts should be returned.
         example: https://www.linkedin.com/in/williamhgates/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0274
+  price:
+    value: '0.0274'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile_posts_thin
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/profile-posts-thin
   test_request:
     body:
@@ -3305,7 +3027,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.profile_posts_thin.json
   observed_time: 6.54
 - id: anyapi.linkedin.search_companies
-  tier: extended
   platform: linkedin
   domain: search
   method: POST
@@ -3332,19 +3053,16 @@ endpoints:
         note: Keyword to search LinkedIn companies for (e.g. marketing agency).
         example: fintech
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.041
+  price:
+    value: '0.041'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0891 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_companies
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0891 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/search-companies
   test_request:
     body:
@@ -3355,7 +3073,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.search_companies.json
   observed_time: 1.7
 - id: anyapi.linkedin.search_profiles
-  tier: extended
   platform: linkedin
   domain: search
   method: POST
@@ -3483,19 +3200,16 @@ endpoints:
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.18
+  price:
+    value: '0.18'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.18 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_profiles
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.18 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/search-profiles
   test_request:
     body:
@@ -3507,7 +3221,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.search_profiles.json
   observed_time: 18.67
 - id: anyapi.linkedin.search_profiles_email
-  tier: extended
   platform: linkedin
   domain: search
   method: POST
@@ -3635,19 +3348,16 @@ endpoints:
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.305
+  price:
+    value: '0.305'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.336 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_profiles_email
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.336 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/search-profiles-email
   test_request:
     body:
@@ -3659,7 +3369,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.search_profiles_email.json
   observed_time: 14.63
 - id: anyapi.linkedin.search_profiles_thin
-  tier: extended
   platform: linkedin
   domain: search
   method: POST
@@ -3678,19 +3387,16 @@ endpoints:
         note: Search query for LinkedIn profiles - a role, name, or keywords (e.g. 'Marketing Manager').
         example: recruiter
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.036
+  price:
+    value: '0.036'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.036 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_profiles_thin
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.036 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/linkedin/search-profiles-thin
   test_request:
     body:
@@ -3700,7 +3406,6 @@ endpoints:
   example_response: examples/anyapi.linkedin.search_profiles_thin.json
   observed_time: 1.53
 - id: anyapi.reddit.post
-  tier: extended
   platform: reddit
   domain: post
   method: POST
@@ -3715,19 +3420,16 @@ endpoints:
         note: Full Reddit post URL in the /r/<subreddit>/comments/<id>/<slug>/ form, e.g. "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/". The short "reddit.com/comments/<id>" form is not accepted.
         example: https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00215
+  price:
+    value: '0.00215'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00225 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.post
     checked: '2026-09-11'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00225 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/post
   test_request:
     body:
@@ -3737,7 +3439,6 @@ endpoints:
   example_response: examples/anyapi.reddit.post.json
   observed_time: 1.39
 - id: anyapi.reddit.post_comments
-  tier: extended
   platform: reddit
   domain: post
   method: POST
@@ -3756,19 +3457,16 @@ endpoints:
         note: Full Reddit post URL.
         example: https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.post_comments
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/post-comments
   test_request:
     body:
@@ -3778,7 +3476,6 @@ endpoints:
   example_response: examples/anyapi.reddit.post_comments.json
   observed_time: 2.04
 - id: anyapi.reddit.post_transcript
-  tier: extended
   platform: reddit
   domain: post
   method: POST
@@ -3797,19 +3494,16 @@ endpoints:
         note: Reddit post URL or direct v.redd.it video URL to transcribe.
         example: https://www.reddit.com/r/youseeingthisshit/comments/1oiu9xm/
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.post_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/post-transcript
   test_request:
     body:
@@ -3819,7 +3513,6 @@ endpoints:
   example_response: examples/anyapi.reddit.post_transcript.json
   observed_time: 2.58
 - id: anyapi.reddit.profile
-  tier: extended
   platform: reddit
   domain: profile
   method: POST
@@ -3834,19 +3527,16 @@ endpoints:
         note: 'Reddit username, without the u/ prefix. Example: "spez".'
         example: spez
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00225 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.profile
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00225 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/profile
   test_request:
     body:
@@ -3856,7 +3546,6 @@ endpoints:
   example_response: examples/anyapi.reddit.profile.json
   observed_time: 3.74
 - id: anyapi.reddit.search
-  tier: extended
   platform: reddit
   domain: search
   method: POST
@@ -3896,19 +3585,16 @@ endpoints:
         - year
         - all
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.search
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/search
   test_request:
     body:
@@ -3918,7 +3604,6 @@ endpoints:
   example_response: examples/anyapi.reddit.search.json
   observed_time: 2.07
 - id: anyapi.reddit.subreddit_details
-  tier: extended
   platform: reddit
   domain: subreddit
   method: POST
@@ -3933,19 +3618,16 @@ endpoints:
         note: Subreddit name without the r/ prefix. Case-sensitive (e.g. "AskReddit", not "askreddit").
         example: programming
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.subreddit_details
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/subreddit-details
   test_request:
     body:
@@ -3955,7 +3637,6 @@ endpoints:
   example_response: examples/anyapi.reddit.subreddit_details.json
   observed_time: 1.04
 - id: anyapi.reddit.subreddit_posts
-  tier: extended
   platform: reddit
   domain: subreddit
   method: POST
@@ -4006,19 +3687,16 @@ endpoints:
         - day
         - hour
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.subreddit_posts
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/subreddit-posts
   test_request:
     body:
@@ -4029,7 +3707,6 @@ endpoints:
   example_response: examples/anyapi.reddit.subreddit_posts.json
   observed_time: 2.6
 - id: anyapi.reddit.subreddit_search
-  tier: extended
   platform: reddit
   domain: subreddit
   method: POST
@@ -4061,19 +3738,16 @@ endpoints:
         required: false
         note: 'Optional time filter: all, year, month, week, day, hour.'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.subreddit_search
     checked: '2026-10-02'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/subreddit-search
   test_request:
     body:
@@ -4084,7 +3758,6 @@ endpoints:
   example_response: examples/anyapi.reddit.subreddit_search.json
   observed_time: 1.92
 - id: anyapi.reddit.trending_posts
-  tier: extended
   platform: reddit
   domain: trending
   method: POST
@@ -4106,19 +3779,16 @@ endpoints:
         max: 100
         example: 25
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0002
+  price:
+    value: '0.0002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0002 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.trending_posts
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0002 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/trending-posts
   test_request:
     body:
@@ -4128,7 +3798,6 @@ endpoints:
   example_response: examples/anyapi.reddit.trending_posts.json
   observed_time: 1.52
 - id: anyapi.reddit.user_comments
-  tier: extended
   platform: reddit
   domain: user
   method: POST
@@ -4163,19 +3832,16 @@ endpoints:
         note: 'Reddit username, without the u/ prefix. Example: "spez".'
         example: spez
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.user_comments
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/user-comments
   test_request:
     body:
@@ -4185,7 +3851,6 @@ endpoints:
   example_response: examples/anyapi.reddit.user_comments.json
   observed_time: 1.35
 - id: anyapi.reddit.user_posts
-  tier: extended
   platform: reddit
   domain: user
   method: POST
@@ -4213,19 +3878,16 @@ endpoints:
         note: Reddit username without the leading u/ prefix (e.g. "spez").
         example: spez
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/reddit.user_posts
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/reddit/user-posts
   test_request:
     body:
@@ -4235,7 +3897,6 @@ endpoints:
   example_response: examples/anyapi.reddit.user_posts.json
   observed_time: 2.61
 - id: anyapi.tiktok.ad_library_ad
-  tier: extended
   platform: tiktok
   domain: ad
   method: POST
@@ -4250,19 +3911,16 @@ endpoints:
         note: TikTok Top Ads material/ad ID, or a Top Ads detail URL (e.g. 7648493525660270600).
         example: '7648493525660270600'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.ad_library_ad
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/ad-library-ad
   test_request:
     body:
@@ -4273,7 +3931,6 @@ endpoints:
   observed_time: 0.99
 - id: anyapi.tiktok.ad_library_search
   added: '2026-09-19'
-  tier: extended
   platform: tiktok
   domain: ad
   method: POST
@@ -4302,19 +3959,16 @@ endpoints:
         note: Two-letter region code for TikTok's Commercial Content Library, such as DE, FR, GB or IT. Omit it for the library default, DE. Coverage is the EU and EEA; a non-EU code such as US is not served.
         example: GB
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.ad_library_search
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/ad-library-search
   note: '`period`, `orderBy`, `limit`, `objective` and `industry` are not fields of this endpoint: `anyapi.tiktok.top_ads_search` takes the first four and `anyapi.tiktok.trending_hashtags` takes `industry`.'
   test_request:
@@ -4322,7 +3976,6 @@ endpoints:
       query: spotify
   unverified: 'http 400 on the previous test body (limit, objective, period plus query). The stored test_request is now {"query":"spotify"}; catalog_verify has not recaptured a success example.'
 - id: anyapi.tiktok.ad_transparency_search
-  tier: extended
   platform: tiktok
   domain: ad
   method: POST
@@ -4378,19 +4031,16 @@ endpoints:
         note: Upstream sort expression. Defaults to last_shown_date,desc.
         default: last_shown_date,desc
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0005
+  price:
+    value: '0.0005'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0005 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.ad_transparency_search
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0005 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/ad-transparency-search
   test_request:
     body:
@@ -4403,7 +4053,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.ad_transparency_search.json
   observed_time: 2.35
 - id: anyapi.tiktok.audience_demographics
-  tier: extended
   platform: tiktok
   domain: audience
   method: POST
@@ -4418,19 +4067,16 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "shakira").
         example: shakira
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.018
+  price:
+    value: '0.018'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0312 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.audience_demographics
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0312 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/audience-demographics
   test_request:
     body:
@@ -4440,7 +4086,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.audience_demographics.json
   observed_time: 8.96
 - id: anyapi.tiktok.comment_replies
-  tier: extended
   platform: tiktok
   domain: comment
   method: POST
@@ -4464,19 +4109,16 @@ endpoints:
         note: TikTok video URL the comment belongs to.
         example: https://www.tiktok.com/@stoolpresidente/video/7623818255903329566
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0009
+  price:
+    value: '0.0009'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.comment_replies
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/comment-replies
   test_request:
     body:
@@ -4487,7 +4129,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.comment_replies.json
   observed_time: 0.75
 - id: anyapi.tiktok.followers
-  tier: extended
   platform: tiktok
   domain: followers
   method: POST
@@ -4506,19 +4147,16 @@ endpoints:
         note: TikTok username whose followers to list, without the @ prefix (e.g. stoolpresidente).
         example: stoolpresidente
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.followers
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/followers
   test_request:
     body:
@@ -4528,7 +4166,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.followers.json
   observed_time: 2.28
 - id: anyapi.tiktok.following
-  tier: extended
   platform: tiktok
   domain: following
   method: POST
@@ -4547,19 +4184,16 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: stoolpresidente
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.following
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/following
   test_request:
     body:
@@ -4569,7 +4203,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.following.json
   observed_time: 2.56
 - id: anyapi.tiktok.hashtag_videos
-  tier: extended
   platform: tiktok
   domain: hashtag
   method: POST
@@ -4595,19 +4228,16 @@ endpoints:
         max: 20
         example: 3
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0036
+  price:
+    value: '0.0036'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0066 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.hashtag_videos
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0066 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/hashtag-videos
   test_request:
     body:
@@ -4618,7 +4248,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.hashtag_videos.json
   observed_time: 3.29
 - id: anyapi.tiktok.live
-  tier: extended
   platform: tiktok
   domain: live
   method: POST
@@ -4633,19 +4262,16 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "thejustalex").
         example: thejustalex
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.live
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/live
   test_request:
     body:
@@ -4655,7 +4281,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.live.json
   observed_time: 1.73
 - id: anyapi.tiktok.photos
-  tier: extended
   platform: tiktok
   domain: photos
   method: POST
@@ -4670,19 +4295,16 @@ endpoints:
         note: Full TikTok photo-mode post URL. TikTok serves slideshow posts under the same /video/<id> path as videos, so the normal share link works.
         example: https://www.tiktok.com/@foodbyfranchi/video/7479916555602513174
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.photos
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/photos
   test_request:
     body:
@@ -4692,7 +4314,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.photos.json
   observed_time: 0.98
 - id: anyapi.tiktok.profile_contact
-  tier: extended
   platform: tiktok
   domain: profile
   method: POST
@@ -4707,19 +4328,16 @@ endpoints:
         note: TikTok username without the leading @.
         example: gordonramsayofficial
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00116
+  price:
+    value: '0.00116'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00187 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile_contact
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00187 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/profile-contact
   test_request:
     body:
@@ -4729,7 +4347,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.profile_contact.json
   observed_time: 7.78
 - id: anyapi.tiktok.profile_region
-  tier: extended
   platform: tiktok
   domain: profile
   method: POST
@@ -4744,19 +4361,16 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: stoolpresidente
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile_region
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/profile-region
   test_request:
     body:
@@ -4766,7 +4380,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.profile_region.json
   observed_time: 2.69
 - id: anyapi.tiktok.search_hashtag
-  tier: extended
   platform: tiktok
   domain: search
   method: POST
@@ -4785,19 +4398,16 @@ endpoints:
         note: 'Hashtag or keyword to search for (without the leading #).'
         example: recipe
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_hashtag
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/search-hashtag
   test_request:
     body:
@@ -4807,7 +4417,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.search_hashtag.json
   observed_time: 4.7
 - id: anyapi.tiktok.song
-  tier: extended
   platform: tiktok
   domain: song
   method: POST
@@ -4822,19 +4431,16 @@ endpoints:
         note: The clip identifier for the song, found in TikTok music URLs (e.g. 7439295283975702544).
         example: '7439295283975702544'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0009
+  price:
+    value: '0.0009'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.song
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/song
   test_request:
     body:
@@ -4844,7 +4450,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.song.json
   observed_time: 1.16
 - id: anyapi.tiktok.song_videos
-  tier: extended
   platform: tiktok
   domain: song
   method: POST
@@ -4863,19 +4468,16 @@ endpoints:
         required: false
         note: Pagination cursor for retrieving the next page of results.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0009
+  price:
+    value: '0.0009'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok.song_videos
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/song-videos
   test_request:
     body:
@@ -4885,7 +4487,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.song_videos.json
   observed_time: 2.14
 - id: anyapi.tiktok.top_ads_search
-  tier: extended
   platform: tiktok
   domain: top
   method: POST
@@ -4980,19 +4581,16 @@ endpoints:
         note: Country code used to select the Creative Center market (default US).
         default: US
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.top_ads_search
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/top-ads-search
   test_request:
     body:
@@ -5002,7 +4600,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.top_ads_search.json
   observed_time: 2.83
 - id: anyapi.tiktok.trending_feed
-  tier: extended
   platform: tiktok
   domain: trending
   method: POST
@@ -5021,19 +4618,16 @@ endpoints:
         required: false
         note: Set to true to return a simplified response.
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.trending_feed
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/trending-feed
   test_request:
     body:
@@ -5043,7 +4637,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.trending_feed.json
   observed_time: 5.38
 - id: anyapi.tiktok.trending_hashtags
-  tier: extended
   capability: tiktok.trends.hashtags
   platform: tiktok
   domain: trending
@@ -5126,19 +4719,16 @@ endpoints:
         - VN
         example: US
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.11 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.trending_hashtags
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.11 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/trending-hashtags
   test_request:
     body:
@@ -5150,7 +4740,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.trending_hashtags.json
   observed_time: 0.85
 - id: anyapi.tiktok.video
-  tier: extended
   platform: tiktok
   domain: video
   method: POST
@@ -5169,19 +4758,16 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@mrbeast/video/7654638524729216287?_r=1&u_code=elgjf3ff8cajhk&preview_pb=0&sharer_language=en&_d=elh6737j6kjl71&share_item_id=7654638524729216287&source=h5_m
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video
     checked: '2026-10-02'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/video
   test_request:
     body:
@@ -5191,7 +4777,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.video.json
   observed_time: 0.75
 - id: anyapi.tiktok.video_download
-  tier: extended
   platform: tiktok
   domain: video
   method: POST
@@ -5206,19 +4791,16 @@ endpoints:
         note: Full TikTok video URL. Share links and tracking query params are fine.
         example: https://www.tiktok.com/@mrbeast/video/7654638524729216287
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_download
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/video-download
   test_request:
     body:
@@ -5228,7 +4810,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.video_download.json
   observed_time: 0.81
 - id: anyapi.tiktok.video_transcript_full
-  tier: extended
   platform: tiktok
   domain: video
   method: POST
@@ -5243,19 +4824,16 @@ endpoints:
         note: TikTok video URL (e.g. "https://www.tiktok.com/@user/video/1234567890").
         example: https://www.tiktok.com/@thatdudecancook/video/7649086431641521421
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0176
+  price:
+    value: '0.0176'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0995 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_transcript_full
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.0995 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok/video-transcript-full
   test_request:
     body:
@@ -5265,7 +4843,6 @@ endpoints:
   example_response: examples/anyapi.tiktok.video_transcript_full.json
   observed_time: 14.14
 - id: anyapi.tiktok_shop.categories
-  tier: extended
   platform: tiktok-shop
   domain: categories
   method: POST
@@ -5284,19 +4861,16 @@ endpoints:
         - VN
         example: US
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.categories
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/categories
   test_request:
     body:
@@ -5306,7 +4880,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.categories.json
   observed_time: 0.55
 - id: anyapi.tiktok_shop.creator
-  tier: extended
   platform: tiktok-shop
   domain: creator
   method: POST
@@ -5326,19 +4899,16 @@ endpoints:
         note: Lowercase two-letter country code of the TikTok Shop market (e.g. us).
         default: us
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0055
+  price:
+    value: '0.0055'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0055 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.creator
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0055 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/creator
   test_request:
     body:
@@ -5348,7 +4918,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.creator.json
   observed_time: 7.4
 - id: anyapi.tiktok_shop.product
-  tier: extended
   platform: tiktok-shop
   domain: product
   method: POST
@@ -5367,19 +4936,16 @@ endpoints:
         note: TikTok Shop product detail page URL (e.g. https://www.tiktok.com/shop/pdp/.../1729587769570529799).
         example: https://www.tiktok.com/shop/pdp/goli-ashwagandha-gummies-with-vitamin-d-ksm-66-vegan-non-gmo/1729587769570529799
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.product
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/product
   test_request:
     body:
@@ -5389,7 +4955,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.product.json
   observed_time: 1.94
 - id: anyapi.tiktok_shop.product_reviews
-  tier: extended
   platform: tiktok-shop
   domain: product
   method: POST
@@ -5414,19 +4979,16 @@ endpoints:
         note: TikTok Shop product URL (e.g. https://www.tiktok.com/shop/pdp/.../1729385633899532161).
         example: https://www.tiktok.com/shop/pdp/cat-nail-clipper-by-potaroma-adjustable-sizes-built-in-file-safe-for-kittens-cats/1731578642912612516
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00095
+  price:
+    value: '0.00095'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.product_reviews
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/product-reviews
   test_request:
     body:
@@ -5436,7 +4998,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.product_reviews.json
   observed_time: 2.04
 - id: anyapi.tiktok_shop.search
-  tier: extended
   platform: tiktok-shop
   domain: search
   method: POST
@@ -5479,19 +5040,16 @@ endpoints:
         note: Search keyword for TikTok Shop products (e.g. wireless earbuds).
         example: phone case
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.search
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/search
   test_request:
     body:
@@ -5502,7 +5060,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.search.json
   observed_time: 3.71
 - id: anyapi.tiktok_shop.search_suggestions
-  tier: extended
   platform: tiktok-shop
   domain: search
   method: POST
@@ -5528,19 +5085,16 @@ endpoints:
         note: Seed keyword to expand (e.g. ashwagandha gummies).
         example: ashwagandha gummies
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.search_suggestions
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/search-suggestions
   test_request:
     body:
@@ -5551,7 +5105,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.search_suggestions.json
   observed_time: 2.18
 - id: anyapi.tiktok_shop.shop_products
-  tier: extended
   platform: tiktok-shop
   domain: shop
   method: POST
@@ -5582,19 +5135,16 @@ endpoints:
         note: TikTok Shop store URL (e.g. https://www.tiktok.com/shop/store/...).
         example: https://www.tiktok.com/shop/store/goli-nutrition/7495794203056835079
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.shop_products
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/shop-products
   test_request:
     body:
@@ -5604,7 +5154,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.shop_products.json
   observed_time: 2.0
 - id: anyapi.tiktok_shop.user_showcase
-  tier: extended
   platform: tiktok-shop
   domain: user
   method: POST
@@ -5627,19 +5176,16 @@ endpoints:
         required: false
         note: Geographical region for proxy placement (defaults to US).
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.user_showcase
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/tiktok-shop/user-showcase
   test_request:
     body:
@@ -5649,7 +5195,6 @@ endpoints:
   example_response: examples/anyapi.tiktok_shop.user_showcase.json
   observed_time: 2.89
 - id: anyapi.web.crawl
-  tier: extended
   capability: web.crawl
   platform: web
   domain: crawl
@@ -5672,19 +5217,19 @@ endpoints:
         note: The website URL or domain to crawl.
         example: https://example.com
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0045
+  price:
+    value: '0.0045'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0347 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/web.crawl
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.0347 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   docs_url: https://getanyapi.com/api/web/crawl
   test_request:
     body:
@@ -5695,7 +5240,6 @@ endpoints:
   example_response: examples/anyapi.web.crawl.json
   observed_time: 5.75
 - id: anyapi.web.map
-  tier: extended
   capability: web.map
   platform: web
   domain: map
@@ -5733,19 +5277,19 @@ endpoints:
         note: The base URL of the site to map into a list of links.
         example: https://www.iana.org
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.001
+  price:
+    value: '0.001'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.001 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/web.map
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.001 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  miss:
+    when:
+      any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
   docs_url: https://getanyapi.com/api/web/map
   test_request:
     body:
@@ -5757,8 +5301,8 @@ endpoints:
   observed_time: 4.31
 - id: anyapi.web.scrape
   capability: web.extract
-  not_found: {status: 200, when: "choose(output.data.statusCode == 404, true, output.data.statusCode == 410)", means: "the site itself answered 404 or 410: the page does not exist"}
-  tier: extended
+  not_found: {status: [200], when: {path: response.output.data.statusCode, op: in, value: [404, 410]},
+              means: "the site itself answered 404 or 410: the page does not exist"}
   platform: web
   domain: scrape
   method: POST
@@ -5811,19 +5355,17 @@ endpoints:
         min: 0
         max: 15000
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0009
+  price:
+    value: '0.0009'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/web.scrape
     checked: '2026-10-02'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  miss: {plugin: anyapi.scrape_miss}
   docs_url: https://getanyapi.com/api/web/scrape
   test_request:
     body:
@@ -5836,7 +5378,6 @@ endpoints:
   observed_time: 0.86
 - id: anyapi.web.screenshot
   capability: web.screenshot
-  tier: extended
   platform: web
   domain: screenshot
   method: POST
@@ -5856,19 +5397,16 @@ endpoints:
         note: Browser viewport width in pixels (e.g. 1280).
         default: 1280
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00174
+  price:
+    value: '0.00174'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00174 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/web.screenshot
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00174 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/web/screenshot
   test_request:
     body:
@@ -5878,7 +5416,6 @@ endpoints:
   example_response: examples/anyapi.web.screenshot.json
   observed_time: 6.82
 - id: anyapi.twitter.article
-  tier: extended
   platform: x
   domain: article
   method: POST
@@ -5893,19 +5430,16 @@ endpoints:
         note: Canonical x.com or twitter.com URL of the public wrapper post for an X Article.
         example: https://x.com/Decentralisedco/status/1905545699552375179
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00075 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.article
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00075 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/article
   test_request:
     body:
@@ -5915,7 +5449,6 @@ endpoints:
   example_response: examples/anyapi.twitter.article.json
   observed_time: 2.38
 - id: anyapi.twitter.community
-  tier: extended
   platform: x
   domain: community
   method: POST
@@ -5930,19 +5463,16 @@ endpoints:
         note: Community URL (e.g. https://x.com/i/communities/1926186499399139650).
         example: https://x.com/i/communities/1926186499399139650
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0001
+  price:
+    value: '0.0001'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.community
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/community
   test_request:
     body:
@@ -5952,7 +5482,6 @@ endpoints:
   example_response: examples/anyapi.twitter.community.json
   observed_time: 0.88
 - id: anyapi.twitter.community_tweets
-  tier: extended
   platform: x
   domain: community
   method: POST
@@ -5967,19 +5496,16 @@ endpoints:
         note: Community URL (e.g. https://x.com/i/communities/1926186499399139650).
         example: https://x.com/i/communities/1926186499399139650
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00045
+  price:
+    value: '0.00045'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.community_tweets
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/community-tweets
   test_request:
     body:
@@ -5989,7 +5515,6 @@ endpoints:
   example_response: examples/anyapi.twitter.community_tweets.json
   observed_time: 3.18
 - id: anyapi.twitter.followers
-  tier: extended
   platform: x
   domain: followers
   method: POST
@@ -6016,19 +5541,16 @@ endpoints:
         note: The X (Twitter) username to fetch followers for, without the @ prefix (e.g. elonmusk).
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00075 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.followers
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00075 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/followers
   test_request:
     body:
@@ -6039,7 +5561,6 @@ endpoints:
   example_response: examples/anyapi.twitter.followers.json
   observed_time: 3.06
 - id: anyapi.twitter.following
-  tier: extended
   platform: x
   domain: following
   method: POST
@@ -6066,19 +5587,16 @@ endpoints:
         note: The X (Twitter) username to fetch the following list for, without the @ prefix (e.g. elonmusk).
         example: nasa
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.following
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/following
   test_request:
     body:
@@ -6089,7 +5607,6 @@ endpoints:
   example_response: examples/anyapi.twitter.following.json
   observed_time: 3.08
 - id: anyapi.twitter.search_communities
-  tier: extended
   platform: x
   domain: search
   method: POST
@@ -6108,19 +5625,16 @@ endpoints:
         note: Keyword to match against X (Twitter) community names and topics (e.g. artificial intelligence).
         example: artificial intelligence
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0011
+  price:
+    value: '0.0011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0011 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.search_communities
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0011 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/search-communities
   test_request:
     body:
@@ -6130,7 +5644,6 @@ endpoints:
   example_response: examples/anyapi.twitter.search_communities.json
   observed_time: 0.78
 - id: anyapi.twitter.search_users
-  tier: extended
   platform: x
   domain: search
   method: POST
@@ -6149,19 +5662,16 @@ endpoints:
         note: 'Keyword to match against X (Twitter) handles, display names, and profile bios. This is the People tab of X search: pass a topic (''ai agents''), a name (''Elon Musk''), or a handle (''openai'') and get back accounts, not posts. Use twitter.search for posts.'
         example: ai agents
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.search_users
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/search-users
   test_request:
     body:
@@ -6171,7 +5681,6 @@ endpoints:
   example_response: examples/anyapi.twitter.search_users.json
   observed_time: 1.29
 - id: anyapi.twitter.thread
-  tier: extended
   platform: x
   domain: thread
   method: POST
@@ -6186,19 +5695,16 @@ endpoints:
         note: Canonical x.com or twitter.com status URL with a numeric tweet ID. Any tweet in the self-thread can be supplied; the provider resolves the thread root.
         example: https://x.com/SpaceX/status/1732824684683784516
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00375
+  price:
+    value: '0.00375'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00375 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.thread
     checked: '2026-10-02'
     confidence: verified
-    note: One source serves this, at up to $0.00375 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/thread
   test_request:
     body:
@@ -6208,7 +5714,6 @@ endpoints:
   example_response: examples/anyapi.twitter.thread.json
   observed_time: 4.1
 - id: anyapi.twitter.trends
-  tier: extended
   platform: x
   domain: trends
   method: POST
@@ -6231,19 +5736,16 @@ endpoints:
         note: Country name, city name, or ISO country code. Omit for worldwide trends.
         example: US
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00075 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.trends
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00075 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/trends
   test_request:
     body:
@@ -6254,7 +5756,6 @@ endpoints:
   example_response: examples/anyapi.twitter.trends.json
   observed_time: 0.55
 - id: anyapi.twitter.tweet
-  tier: extended
   platform: x
   domain: tweet
   method: POST
@@ -6269,19 +5770,16 @@ endpoints:
         note: Canonical x.com or twitter.com status URL with a numeric tweet ID, including /i/web/status and media-share variants.
         example: https://x.com/SpaceX/status/1732824684683784516
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.tweet
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/tweet
   test_request:
     body:
@@ -6291,7 +5789,6 @@ endpoints:
   example_response: examples/anyapi.twitter.tweet.json
   observed_time: 1.28
 - id: anyapi.twitter.tweet_transcript
-  tier: extended
   platform: x
   domain: tweet
   method: POST
@@ -6306,19 +5803,16 @@ endpoints:
         note: Tweet URL of the video to transcribe (e.g. https://x.com/TheoVon/status/1916982720317821050).
         example: https://x.com/TheoVon/status/1916982720317821050
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.tweet_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/twitter/tweet-transcript
   test_request:
     body:
@@ -6328,7 +5822,6 @@ endpoints:
   example_response: examples/anyapi.twitter.tweet_transcript.json
   observed_time: 7.25
 - id: anyapi.youtube.channel
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6347,19 +5840,16 @@ endpoints:
         note: YouTube channel handle.
         example: '@mkbhd'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel
     checked: '2026-10-02'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel
   test_request:
     body:
@@ -6369,7 +5859,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel.json
   observed_time: 6.21
 - id: anyapi.youtube.channel_community_posts
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6392,19 +5881,16 @@ endpoints:
         note: YouTube channel handle.
         example: '@MrBeast'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_community_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-community-posts
   test_request:
     body:
@@ -6414,7 +5900,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_community_posts.json
   observed_time: 1.14
 - id: anyapi.youtube.channel_contact
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6433,19 +5918,16 @@ endpoints:
         note: YouTube channel handle, with or without the leading @.
         example: '@mkbhd'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0718
+  price:
+    value: '0.0718'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.2038 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_contact
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.2038 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-contact
   test_request:
     body:
@@ -6455,7 +5937,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_contact.json
   observed_time: 19.29
 - id: anyapi.youtube.channel_lives
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6478,19 +5959,16 @@ endpoints:
         note: YouTube channel handle.
         example: '@IShowSpeed'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_lives
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-lives
   test_request:
     body:
@@ -6500,7 +5978,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_lives.json
   observed_time: 1.36
 - id: anyapi.youtube.channel_playlists
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6523,19 +6000,16 @@ endpoints:
         note: YouTube channel handle.
         example: '@veritasium'
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_playlists
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-playlists
   test_request:
     body:
@@ -6545,7 +6019,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_playlists.json
   observed_time: 1.08
 - id: anyapi.youtube.channel_shorts
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6577,19 +6050,16 @@ endpoints:
         - popular
         example: latest
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_shorts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-shorts
   test_request:
     body:
@@ -6600,7 +6070,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_shorts.json
   observed_time: 6.05
 - id: anyapi.youtube.channel_videos
-  tier: extended
   platform: youtube
   domain: channel
   method: POST
@@ -6630,19 +6099,16 @@ endpoints:
         - latest
         - popular
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_videos
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/channel-videos
   test_request:
     body:
@@ -6652,7 +6118,6 @@ endpoints:
   example_response: examples/anyapi.youtube.channel_videos.json
   observed_time: 4.35
 - id: anyapi.youtube.comment_replies
-  tier: extended
   platform: youtube
   domain: comment
   method: POST
@@ -6667,19 +6132,16 @@ endpoints:
         note: Replies continuation token from the comments endpoint, or the continuationToken from a previous replies response for further pagination.
         example: Eg0SC19fZm1EajBaSjFRGAYygwEaUBIaVWd3aXRjRk9fdmtpM0x4LUNfZDRBYUFCQWciAggAKhhVQ1g2T1EzRGtjc2JZTkU2SDh1UVF1VkEyC19fZm1EajBaSjFRQABICoIBAggBQi9jb21tZW50LXJlcGxpZXMtaXRlbS1VZ3dpdGNGT192a2kzTHgtQ19kNEFhQUJBZw==
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.comment_replies
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/comment-replies
   test_request:
     body:
@@ -6689,7 +6151,6 @@ endpoints:
   example_response: examples/anyapi.youtube.comment_replies.json
   observed_time: 1.85
 - id: anyapi.youtube.community_post
-  tier: extended
   platform: youtube
   domain: community
   method: POST
@@ -6704,19 +6165,16 @@ endpoints:
         note: URL of the YouTube community post.
         example: https://www.youtube.com/post/Ugkx1LonSRBBUqASv-J8j9_FesxwlMAhT3_e
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.community_post
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/community-post
   test_request:
     body:
@@ -6726,7 +6184,6 @@ endpoints:
   example_response: examples/anyapi.youtube.community_post.json
   observed_time: 1.23
 - id: anyapi.youtube.playlist
-  tier: extended
   platform: youtube
   domain: playlist
   method: POST
@@ -6741,19 +6198,16 @@ endpoints:
         note: 'The playlist ID: the "list" parameter in a playlist URL (e.g. "PLu0W_9lII9ahIappRPN0MCAgtOu3lQjQi").'
         example: PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.playlist
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/playlist
   test_request:
     body:
@@ -6763,7 +6217,6 @@ endpoints:
   example_response: examples/anyapi.youtube.playlist.json
   observed_time: 2.26
 - id: anyapi.youtube.search
-  tier: extended
   platform: youtube
   domain: search
   method: POST
@@ -6799,19 +6252,16 @@ endpoints:
         - this_month
         - this_year
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.search
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/search
   test_request:
     body:
@@ -6821,7 +6271,6 @@ endpoints:
   example_response: examples/anyapi.youtube.search.json
   observed_time: 3.31
 - id: anyapi.youtube.search_hashtag
-  tier: extended
   platform: youtube
   domain: search
   method: POST
@@ -6846,19 +6295,16 @@ endpoints:
         enum:
         - all
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.search_hashtag
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/search-hashtag
   test_request:
     body:
@@ -6868,7 +6314,6 @@ endpoints:
   example_response: examples/anyapi.youtube.search_hashtag.json
   observed_time: 1.84
 - id: anyapi.youtube.search_shorts
-  tier: extended
   platform: youtube
   domain: search
   method: POST
@@ -6904,19 +6349,16 @@ endpoints:
         - this_month
         - this_year
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.search_shorts
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/search-shorts
   test_request:
     body:
@@ -6927,7 +6369,6 @@ endpoints:
   observed_time: 2.29
 - id: anyapi.youtube.trending_shorts
   added: '2026-09-19'
-  tier: extended
   platform: youtube
   domain: trending
   method: POST
@@ -6937,22 +6378,18 @@ endpoints:
   input:
     body: {}
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.trending_shorts
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/trending-shorts
 - id: anyapi.youtube.video
-  tier: extended
   platform: youtube
   domain: video
   method: POST
@@ -6971,19 +6408,16 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...), youtu.be, live, and embed URLs all work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.video
     checked: '2026-10-02'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/video
   test_request:
     body:
@@ -6993,7 +6427,6 @@ endpoints:
   example_response: examples/anyapi.youtube.video.json
   observed_time: 4.24
 - id: anyapi.youtube.video_comments
-  tier: extended
   platform: youtube
   domain: video
   method: POST
@@ -7016,19 +6449,16 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...) and youtu.be URLs also work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.video_comments
     checked: '2026-10-02'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/video-comments
   test_request:
     body:
@@ -7038,7 +6468,6 @@ endpoints:
   example_response: examples/anyapi.youtube.video_comments.json
   observed_time: 6.72
 - id: anyapi.youtube.video_sponsors
-  tier: extended
   platform: youtube
   domain: video
   method: POST
@@ -7057,19 +6486,16 @@ endpoints:
         note: YouTube video or Short URL.
         example: https://www.youtube.com/watch?v=AVO0ifle-OU
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.video_sponsors
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.0012 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/video-sponsors
   test_request:
     body:
@@ -7079,7 +6505,6 @@ endpoints:
   example_response: examples/anyapi.youtube.video_sponsors.json
   observed_time: 2.68
 - id: anyapi.youtube.video_transcript
-  tier: extended
   platform: youtube
   domain: video
   method: POST
@@ -7098,19 +6523,16 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...), youtu.be, live, and embed URLs all work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.011 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.video_transcript
     checked: '2026-10-02'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.011 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/video-transcript
   test_request:
     body:
@@ -7120,7 +6542,6 @@ endpoints:
   example_response: examples/anyapi.youtube.video_transcript.json
   observed_time: 31.71
 - id: anyapi.youtube.video_transcript_full
-  tier: extended
   platform: youtube
   domain: video
   method: POST
@@ -7148,19 +6569,16 @@ endpoints:
         note: YouTube video or Short URL (e.g. "https://www.youtube.com/watch?v=dQw4w9WgXcQ" or "https://www.youtube.com/shorts/Fir1x9cw2vg").
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.00308
+  price:
+    value: '0.00308'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00308 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/youtube.video_transcript_full
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00308 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   docs_url: https://getanyapi.com/api/youtube/video-transcript-full
   test_request:
     body:

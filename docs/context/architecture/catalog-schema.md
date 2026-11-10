@@ -15,11 +15,13 @@ sources:
   - src/treg/domain/catalog/schema/export.py
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
+  - src/treg/domain/plugins/anyapi.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
   - tests/test_catalog_schema.py
   - tests/test_catalog_v2_codemod.py
+  - tests/plugins/test_anyapi.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -200,7 +202,10 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
 - A v2 row names a plugin as `<module>.<function>`; `domain/plugins` resolves it by import from the
   row's own provider module (the slug with `-` as `_`) and calls it with read-only views of the
   request and the answer; it may do no I/O ([import-boundaries](import-boundaries.md)). One that
-  raises is missing evidence for its hook, and only the exception's type is logged.
+  raises is missing evidence for its hook, and only the exception's type is logged. An adapter
+  `miss` that needs an if-then-else, which the codemod refuses, becomes an outcome plugin
+  (`miss: {plugin: <module>.<function>}`) when its row moves to v2; the request may be absent, since
+  stats and routing judge an answer alone.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.

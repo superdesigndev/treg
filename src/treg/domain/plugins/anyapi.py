@@ -1,0 +1,20 @@
+"""AnyAPI: the outcome rules its rows name that the predicate cannot say."""
+
+from __future__ import annotations
+
+from . import Answer, Request
+
+
+def scrape_miss(request: Request | None, answer: Answer) -> bool:
+    """A scrape that brought back no page: the target site answered an HTTP error (a 4xx or 5xx in
+    `output.data.statusCode`, a number or a numeric string, is the site's error page, not the page),
+    or `output.data.markdown` is missing, null, empty or an empty list."""
+    data = answer.body
+    for key in ("output", "data"):
+        data = data.get(key) if isinstance(data, dict) else None
+    data = data if isinstance(data, dict) else {}
+    try:
+        failed = 400 <= int(data.get("statusCode")) <= 599
+    except (TypeError, ValueError):
+        failed = False
+    return failed or data.get("markdown") in (None, "", [])
