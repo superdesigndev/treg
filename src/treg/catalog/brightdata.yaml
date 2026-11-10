@@ -46,7 +46,7 @@ defaults:
   reserve: {entities: {from: [body.*, body.input.*], max: 100}}
   settle: {plugin: brightdata.records}
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
-  bill: {miss: charged, error: charged}
+  bill: {miss: free, error: charged}
 endpoints:
   - id: brightdata.web.scrape.structured
     capability: web.scrape.structured

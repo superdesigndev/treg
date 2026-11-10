@@ -15,7 +15,9 @@ def records(request: Request, answer: Answer) -> int | None:
     line, then one line per record). A JSON object is never records: the over-one-minute fallback
     and a trigger answer `{snapshot_id}`, and an early snapshot download answers its running state.
     A gzip download (`compress=true`), a body that starts like JSON but does not parse, and any
-    other shape cannot be counted."""
+    other shape cannot be counted. With `include_errors`, an input that found nothing (`dead_page`,
+    for one) comes back as a record with an `error_code`; Bright Data counts it as an error, not a
+    record, and does not bill it."""
     raw = answer.raw
     if raw[:2] == b"\x1f\x8b":
         return None
@@ -27,16 +29,18 @@ def records(request: Request, answer: Answer) -> int | None:
     except ValueError:
         lines = [line for line in text.splitlines() if line.strip()]
         try:
-            for line in lines:
-                json.loads(line)
-            return len(lines)
+            return _billed([json.loads(line) for line in lines])
         except ValueError:
             pass
         if text[0] in "[{":
             return None
         return len(lines) - 1 if len(lines) > 1 else None
     if isinstance(doc, list):
-        return len(doc)
+        return _billed(doc)
     if isinstance(doc, dict):
         return 0
     return None
+
+
+def _billed(items: list) -> int:
+    return sum(1 for item in items if not (isinstance(item, dict) and "error_code" in item))

@@ -13,6 +13,9 @@ def _records(raw: bytes):
 @pytest.mark.parametrize(("raw", "count"), [
     (b'[{"url": "a"}, {"url": "b"}]', 2),
     (b"[]", 0),
+    (b'[{"error": "Page not found", "error_code": "dead_page", "input": {"url": "a"}}]', 0),
+    (b'[{"url": "a"}, {"error": "x", "error_code": "dead_page", "input": {"url": "b"}}]', 1),
+    (b'{"url": "a"}\n{"error": "x", "error_code": "dead_page"}\n', 1),
     (b"", 0),
     (b"  \n ", 0),
     (b'{"snapshot_id": "s_1"}', 0),
