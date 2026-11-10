@@ -227,8 +227,8 @@ exit status.
 `install.sh` reports `cli_install_step` under the same rules. Its `install_step` is `started`,
 then `installed` (with `on_path`) or `failed` with a fixed `reason` (`install_command`,
 `python_version`, `no_installer`); the event carries the installer used, the prior and new CLI
-versions, OS, architecture and whether a short link (`ad_link`) or token (`with_token`) was passed,
-never the token. PostHog types a property name once per project, and `step` is numeric there, so
+versions, OS, architecture, whether a short link (`ad_link`) or token (`with_token`) was passed,
+never the token, and the `arm` (`python` or `binary`, [cli-binary](cli-binary.md)) it was given. PostHog types a property name once per project, and `step` is numeric there, so
 new names must not reuse one with another type. The route templates the server's `posthog_key`, so
 a registry without one sends nothing. The installer writes `analytics-id` when it is missing, so
 the first command joins the install that produced it.

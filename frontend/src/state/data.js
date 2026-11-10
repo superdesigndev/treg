@@ -128,7 +128,7 @@ export default function data(){
       proxy: location.origin, copyTool:null, snippetTab:'cURL', snippetTabs:['cURL','CLI','Claude Code','Python','Node'], copied:false,
       exPath:'<PATH>', exMethod:'GET',
       tryTool:null, tryMethod:'GET', tryPath:'', tryBody:'', trying:false, tryResp:null, tryStatus:0, tryMs:0,
-      useMode:'call', runArgsStr:'', running:false, runOut:null,
+      useMode:'call',
       startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
       vendorAsk:false, vendorCopied:false,

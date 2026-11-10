@@ -185,11 +185,11 @@ contracts:
       - {phone: str}
     filters: {}
     output:
-      live_status: {type: str, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)"}
+      live_status: {type: str, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)", analytics: value}
       phone: {type: str}
-      line_type: {type: str}
+      line_type: {type: str, analytics: value}
       current_network: {type: str}
-      ported: {type: bool}
+      ported: {type: bool, analytics: value}
     miss: "live_status == null"
     idempotent: true
     # Never `verified`: a live line is not proof it is this person's number.
@@ -222,6 +222,24 @@ contracts:
       line_type: {type: str, analytics: value}
       carrier: {type: str}
     miss: "valid == null"
+    idempotent: true
+
+  # Whether a phone number belongs to a named person. Admission-only (no treg route): it gives
+  # TrestleIQ's direct calls the contract's identity and answer columns, so a found number joins
+  # its ownership check by key in call events.
+  people.contact.verify:
+    summary: "Check that a phone number belongs to a named person"
+    routed: false
+    identity:
+      - {phone: str, full_name: str}
+    filters: {}
+    output:
+      name_match: {type: bool, required: true, note: "the number is registered to this name", analytics: value}
+      contact_grade: {type: str, note: "A (best) to F", analytics: value}
+      phone_valid: {type: bool, analytics: value}
+      line_type: {type: str, analytics: value}
+      activity_score: {type: int, analytics: value}
+    miss: "name_match == null"
     idempotent: true
 
   people.email.verify:
@@ -404,7 +422,7 @@ contracts:
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
-        summary: {type: str, max: 2000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 2000 characters: what to check the brief against"}
+        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
       # A semantic search matches the whole work history: a former holder of the asked role ranks
       # with the current ones unless the rows are ordered by the role held now.
       rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
