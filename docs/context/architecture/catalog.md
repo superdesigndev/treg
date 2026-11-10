@@ -1040,7 +1040,7 @@ returned and never documented as stable. An output field may say where it lands 
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
   field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 2000).
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when

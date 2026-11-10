@@ -850,7 +850,8 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
     view of it, and `out` must fill every required core field from the example response (or the
     example must be a recognised miss). Anything else = not a candidate."""
-    if not adapter.accepts or not adapter.out_map or not (adapter.miss or outcome.declares_miss(endpoint)):
+    if not adapter.accepts or not adapter.out_map or not (
+            adapter.miss or (is_v2(endpoint) and isinstance(endpoint.get("miss"), dict))):
         return False, "adapter incomplete"
     tr = endpoint.get("test_request") or {}
     # Reconstruct the identity from the test request through the adapter's own `in` map.
