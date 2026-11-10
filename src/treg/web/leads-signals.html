@@ -641,7 +641,19 @@
     .strip .cur { animation: none; }
     .hw { opacity: 1; transform: none; }
   }
+
+  /* ---------- launch video: hero play pill + lightbox ---------- */
+  .pill.play { gap: 9px; padding: 7px 18px 7px 7px; font-family: inherit; }
+  .pill.play .pi { width: 26px; height: 26px; border-radius: 50%; background: var(--green); display: grid; place-items: center; }
+  .pill.play .pi svg { width: 10px; height: 10px; margin-left: 2px; fill: #fff; }
+  .pill.play .dur { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .vbox { border: 0; padding: 0; background: transparent; width: min(1100px, 92vw); max-width: none; overflow: visible; }
+  .vbox::backdrop { background: rgba(10,10,10,.82); backdrop-filter: blur(4px); }
+  .vbox video { display: block; width: 100%; aspect-ratio: 16/9; border-radius: 14px; background: #000; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .vbox .x { position: absolute; top: -44px; right: 0; width: 36px; height: 36px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+  .vbox .x:hover { background: rgba(255,255,255,.26); }
 </style>
+<script src="/captcha.js" defer></script>
 </head>
 <body>
 
@@ -659,8 +671,14 @@
   <div class="ctas">
     <a class="pill dark" href="/app?ref=leads-signals" id="ctaHero">Setup treg</a>
     <a class="pill" href="#pricing">Pricing: pay per check</a>
+    <button type="button" class="pill play" id="playLaunch"><span class="pi"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z"/></svg></span>Watch the launch <span class="dur">1:15</span></button>
   </div>
 </header>
+<dialog class="vbox" id="vbox" aria-label="Launch video">
+  <form method="dialog"><button class="x" aria-label="Close">×</button></form>
+  <video src="media/leads-signals/launch.mp4" poster="media/leads-signals/launch-poster.jpg" controls playsinline preload="none"></video>
+</dialog>
+
 
 <div class="demo-wrap">
   <div class="stage" id="heroStage" aria-label="Demo: the agent monitors a topic, reads the hottest thread, scores companies and finds decision makers">
@@ -752,7 +770,7 @@
         <h3><b>{ENDPOINTS}</b> tools</h3>
         <div class="uc-tickwrap"><ul class="uc-tick">
           <li>ads.linkedin <s>· Adyntel</s></li>
-          <li>people.email.find <s>· from $0.0089</s></li>
+          <li>people.email.find <s>· from $0.0005</s></li>
           <li>people.phone.find <s>· 3 providers</s></li>
           <li>x.posts <s>· search &amp; profiles</s></li>
           <li>reviews.google <s>· any place</s></li>
@@ -760,7 +778,7 @@
           <li>scrape.page <s>· any URL</s></li>
           <li>tiktok.trends <s>· sounds &amp; tags</s></li>
           <li>ads.linkedin <s>· Adyntel</s></li>
-          <li>people.email.find <s>· from $0.0089</s></li>
+          <li>people.email.find <s>· from $0.0005</s></li>
           <li>people.phone.find <s>· 3 providers</s></li>
           <li>x.posts <s>· search &amp; profiles</s></li>
           <li>reviews.google <s>· any place</s></li>
@@ -874,7 +892,7 @@
     <div class="bill-divider" aria-hidden="true"></div>
     <div class="bill-right">
       <div class="bk">with <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
-      <div class="bb">$0.0002<small>per signal checked</small></div>
+      <div class="bb">$0.0001<small>per signal checked</small></div>
       <div class="bnote">the launch run: 4,710 LinkedIn engagers, Reddit threads, X posts and GitHub stars · $0.52 total</div>
     </div>
   </div>
@@ -887,18 +905,18 @@
   <p class="lede">Signals are one aisle. The same token finds the person behind each one, and reaches social, SEO, ads, scraping — your own keys always win over treg's.</p>
   <div class="catwrap">
     <div class="pgrid">
-      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.010 / query</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.007 / query</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/aviato.svg" alt=""></span><span class="pt"><b>People search</b><s>Aviato · $0.0025 / search</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/tomba.png" alt=""></span><span class="pt"><b>Email finder</b><s>Tomba · $0.0089 / find</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.003 / check</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.028</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.010 / co</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.0123 / check</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.28</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.009 / co</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/icypeas.svg" alt=""></span><span class="pt"><b>Email from LinkedIn</b><s>Icypeas · $0.019</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/leadmagic.png" alt=""></span><span class="pt"><b>People at a company</b><s>LeadMagic · $0.025</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/linkedin.svg" alt=""></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/crunchbase.png" alt=""></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/x.svg" alt=""></span><span class="pt"><b>X posts &amp; profiles</b><s class="was">X API · $200/mo</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/coresignal.png" alt=""></span><span class="pt"><b>Job postings</b><s>Coresignal · $0.020</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/predictleads.svg" alt=""></span><span class="pt"><b>Job postings</b><s>PredictLeads · $0.04 / co</s></span></div>
     </div>
     <div class="morewrap" aria-hidden="true">
       <div class="pgrid">
@@ -939,6 +957,10 @@
 <section class="section" id="related" style="padding-top:60px;padding-bottom:80px">
   <h2 style="margin-bottom:28px">Related</h2>
   <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+    <!--hosted--><a href="/gtm-engineering" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">GTM engineering playbook</b>
+      <span style="font-size:13px;color:var(--muted)">16 chapters from ICP to rollout, the data steps tested on real runs</span>
+    </a><!--/hosted-->
     <a href="/people-search" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
       <b style="display:block;font-size:15px;margin-bottom:4px">People search</b>
       <span style="font-size:13px;color:var(--muted)">Find the person and verified email behind a signal</span>
@@ -966,7 +988,7 @@
     </div>
     <nav class="bf-cols" aria-label="Site">
       <div class="bf-col"><div class="lab">Explore</div>
-        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
       <div class="bf-col"><div class="lab">Build</div>
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div>
@@ -986,7 +1008,7 @@
     <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
-      <input id="em-input" type="email" placeholder="you@work.com"/>
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
       <button class="pill" id="em-btn1">Email me a sign-in code</button>
     </div>
     <div id="em-step2" style="display:none">
@@ -1059,8 +1081,8 @@
     var em = document.getElementById('em-input').value.trim();
     var err = document.getElementById('em-err');
     if (!em) { err.textContent = 'Enter your email address.'; return; }
-    document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
-    fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em }) })
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) throw new Error(d.detail || 'could not send the code');
@@ -1074,7 +1096,7 @@
         else { err.style.color = ''; }
         document.getElementById('em-code').focus();
       })
-      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
   }
   function emailVerify() {
     var em = document.getElementById('em-input').value.trim();
@@ -1542,5 +1564,16 @@
 <script src="/sitetrack.js"></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
+<script>
+(function () {
+  var box = document.getElementById('vbox'), v = box.querySelector('video');
+  document.getElementById('playLaunch').addEventListener('click', function () {
+    box.showModal(); v.play().catch(function () {});
+  });
+  box.addEventListener('close', function () { v.pause(); });
+  box.addEventListener('click', function (e) { if (e.target === box) box.close(); });
+})();
+</script>
 </body>
 </html>

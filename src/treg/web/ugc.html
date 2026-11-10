@@ -374,6 +374,7 @@
   .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
+<script src="/captcha.js" defer></script>
 </head>
 <body>
 
@@ -637,7 +638,6 @@
       <div class="b-row"><span class="lg"><img src="media/ugc/logos/higgsfield.png" alt=""></span><b>Higgsfield</b><em>Seedance 2.5 from the $49 plan</em><s>$49/mo<i class="strike"></i></s></div>
       <div class="b-row"><span class="lg"><img src="media/ugc/logos/arcads.png" alt=""></span><b>Arcads</b><em>8,000 credits</em><s>$110/mo<i class="strike"></i></s></div>
       <div class="b-row"><span class="lg"><img src="media/ugc/logos/creatify.png" alt=""></span><b>Creatify</b><em>Starter</em><s>$39/mo<i class="strike"></i></s></div>
-      <div class="b-row"><span class="lg"><img src="media/ugc/logos/heygen.png" alt=""></span><b>HeyGen</b><em>Creator</em><s>$29/mo<i class="strike"></i></s></div>
       <div class="b-row"><span class="lg">👤</span><b>A human UGC creator</b><em>per video</em><s>$20–50<i class="strike"></i></s></div>
     </div>
     <div class="bill-divider" aria-hidden="true"></div>
@@ -670,7 +670,7 @@
     </div>
     <div class="morewrap" aria-hidden="true">
       <div class="pgrid">
-        <div class="pcard"><span class="ph"><img src="logos/exa.svg" alt=""></span><span class="pt"><b>Web search</b><s>Exa · $0.010 / query</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/exa.svg" alt=""></span><span class="pt"><b>Web search</b><s>Exa · $0.007 / query</s></span></div>
         <div class="pcard"><span class="ph"><img src="logos/apify.svg" alt=""></span><span class="pt"><b>Web scraping</b><s>Apify actors</s></span></div>
         <div class="pcard"><span class="ph"><img src="logos/dataforseo.svg" alt=""></span><span class="pt"><b>Keyword volume</b><s>DataForSEO</s></span></div>
         <div class="pcard"><span class="ph"><img src="logos/apollo.svg" alt=""></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
@@ -708,7 +708,7 @@
     </div>
     <nav class="bf-cols" aria-label="Site">
       <div class="bf-col"><div class="lab">Explore</div>
-        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><a href="/agents/claude-code">Agents</a></div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><a href="/agents/claude-code">Agents</a></div>
       <div class="bf-col"><div class="lab">Build</div>
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div>
@@ -729,7 +729,7 @@
     <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
-      <input id="em-input" type="email" placeholder="you@work.com"/>
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
       <button class="pill" id="em-btn1">Email me a sign-in code</button>
     </div>
     <div id="em-step2" style="display:none">
@@ -880,8 +880,8 @@
   function emailStart() {
     var em = $('em-input').value.trim(), err = $('em-err');
     if (!em) { err.textContent = 'Enter your email address.'; return; }
-    $('em-btn1').textContent = 'Sending…'; err.textContent = '';
-    fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em }) })
+    if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
       .then(function (d) {
         $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
@@ -889,7 +889,7 @@
         else { err.style.color = ''; }
         $('em-code').focus();
       })
-      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').textContent = 'Email me a sign-in code'; });
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
   }
   function emailVerify() {
     var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
@@ -904,6 +904,7 @@
 <script src="/sitetrack.js"></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
 </body>
 </html>
 

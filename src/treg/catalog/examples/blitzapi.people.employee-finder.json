@@ -1,0 +1,38 @@
+{
+  "company_linkedin_url": "https://www.linkedin.com/company/example-company",
+  "results": [
+    {
+      "first_name": "Alex",
+      "last_name": "Example",
+      "full_name": "Alex Example",
+      "headline": "Founder",
+      "linkedin_url": "https://www.linkedin.com/in/alex-example",
+      "location": {
+        "city": "San Francisco",
+        "country_code": "US"
+      },
+      "experiences": [
+        {
+          "company_name": "Example Company",
+          "company_domain": "example.com",
+          "job_title": "Founder",
+          "job_is_current": true
+        }
+      ]
+    }
+  ],
+  "results_length": 1,
+  "max_results": 1,
+  "page": 1,
+  "total_pages": 1,
+  "fair_usage": {
+    "records_used": 1,
+    "records_remaining": 199999,
+    "next_reset_at": "2026-11-16T00:00:00Z",
+    "rate_limit": {
+      "requests_per_second": 10,
+      "remaining_this_second": 9
+    },
+    "request_id": "example-request"
+  }
+}

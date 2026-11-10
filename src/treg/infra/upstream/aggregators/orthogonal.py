@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 
+from .... import jsontext
 from . import AggregatorRequest, AggregatorResult
 
 BASE = "https://api.orthogonal.com/v1"
@@ -41,7 +42,7 @@ def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | No
 
 
 def _dump(value) -> bytes:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    return jsontext.dumps_bytes(value, separators=(",", ":"))
 
 
 def parse(status: int, body: bytes | dict) -> AggregatorResult:
@@ -74,10 +75,8 @@ def parse(status: int, body: bytes | dict) -> AggregatorResult:
         # No vendor body and no vendor status: Orthogonal itself refused. 402 = ITS balance;
         # 401/403 = OUR key. Any other 4xx is Orthogonal's own per-request answer (a validation
         # 400, a 422 on the envelope, a 404 for a slug it no longer lists): request-scoped, no
-        # vendor call, no charge - `contract`, never a strike on the whole aggregator. Found
-        # 2026-09-08: one such 400 read as `malformed` took overflow:orthogonal offline for every
-        # org for 15 minutes. `malformed` is reserved for what is NOT an envelope at all: a
-        # non-JSON body, a 5xx, a 2xx that carries neither success nor data.
+        # vendor call, no charge - `contract`, never a strike on the whole aggregator.
+        # `malformed` is reserved for what is NOT an envelope at all: a non-JSON body, a 5xx, a 2xx that carries neither success nor data.
         if status == 402:
             kind = "aggregator_balance"
         elif status in (401, 403):

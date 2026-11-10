@@ -7,7 +7,7 @@ becomes N× weaker and an OTP written on one worker is invisible to another. Mov
 persists and is shared.
 
 Two shapes live here:
-  * **key/value with TTL** (`kv_put`/`kv_get`/`kv_pop`) — the OTP code + its attempt counter.
+  * **key/value with TTL** (`kv_put`/`kv_get`/`kv_pop`/`kv_take`) — the OTP code + its attempt counter.
   * **sliding-window rate limit** (`rate_check`) — the OTP-start + sandbox throttles; each key's row
     holds a list of recent hit timestamps (wall-clock epoch seconds, so they're comparable across
     processes — the old code used `time.monotonic()`, which is per-process and can't be shared).
@@ -58,10 +58,10 @@ async def kv_put(db: AsyncSession, ns: str, k: str, v: dict, ttl_s: float | None
     the code's lifetime)."""
     row = await db.get(Ephemeral, (ns, k))
     if row is None:
-        # An INSERT that another process may be racing: two uvicorn workers striking the same
-        # provider write the same `capacity:lock` key within the same millisecond, and the loser
-        # of a plain INSERT died on `ephemeral_pkey` (prod, 2026-09-06). ON CONFLICT makes the
-        # last writer win, which is what a key/value put means.
+        # An INSERT that another process may be racing: two processes striking the same provider
+        # write the same `capacity:lock` key within the same millisecond, and the loser of a plain
+        # INSERT dies on `ephemeral_pkey`. ON CONFLICT makes the last writer win, which is what a
+        # key/value put means.
         exp = _utcnow_naive() + timedelta(seconds=ttl_s or 0)
         await db.execute(_upsert(db.get_bind().dialect.name, ns=ns, k=k, v=v, expires_at=exp))
         return
@@ -90,6 +90,18 @@ async def kv_pop(db: AsyncSession, ns: str, k: str) -> dict | None:
     v, exp = row.v, row.expires_at
     await db.delete(row)
     return v if exp >= _utcnow_naive() else None
+
+
+async def kv_take(db: AsyncSession, ns: str, k: str) -> dict | None:
+    """Delete (ns, k) in one statement and return its value if it was still live. Of concurrent
+    callers exactly one gets the value, so it suits a single-use code."""
+    row = (await db.execute(
+        delete(Ephemeral).where(Ephemeral.ns == ns, Ephemeral.k == k)
+        .returning(Ephemeral.v, Ephemeral.expires_at)
+    )).first()
+    if row is None or row.expires_at < _utcnow_naive():
+        return None
+    return row.v
 
 
 async def rate_check(

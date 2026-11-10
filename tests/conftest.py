@@ -7,11 +7,17 @@ The `clients` fixture also registers a user and authes the client by default.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import glob
+import hashlib
+import hmac
+import json
 import os
 import socket
 import tempfile
+import time
+from pathlib import Path
 
 # Tests and their CLI subprocesses must never emit production analytics.
 os.environ["TREG_TELEMETRY"] = "0"
@@ -64,6 +70,32 @@ if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
 os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
 # Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
 os.environ["TREG_READ_DATABASE_URL"] = ""
+os.environ["TREG_WORKOS_API_KEY"] = ""
+os.environ["TREG_WORKOS_CLIENT_ID"] = ""
+os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
+os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
+os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
+os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
+os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
+# A merged local .env can carry newly added funded platform keys that the fixed list below has not
+# learned yet. Blank their names without reading values into logs or exposing them to tests.
+_local_env = Path(__file__).resolve().parents[1] / ".env"
+_platform_names = {name for name in os.environ if name.startswith("TREG_PLATFORM_KEY_")}
+if _local_env.exists():
+    _platform_names.update(line.split("=", 1)[0].strip() for line in _local_env.read_text().splitlines()
+                           if line.startswith("TREG_PLATFORM_KEY_") and "=" in line)
+for _platform_name in _platform_names:
+    os.environ[_platform_name] = ""
+# Never let a developer's Redis URL or rollout settings turn tests into shared-store traffic.
+os.environ["TREG_KV_URL"] = ""
+os.environ["TREG_ORG_ENDPOINT_QUOTA_ENABLED"] = "false"
+os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
+os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
+os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
+os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
+os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
 os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
@@ -91,10 +123,11 @@ for _k in (
     "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_PROSPEO", "PLATFORM_KEY_AIARK", "PLATFORM_KEY_WIZA",
     "PLATFORM_KEY_SCRUBBY", "PLATFORM_KEY_ZEROBOUNCE", "PLATFORM_KEY_SUMBLE", "PLATFORM_KEY_MOLTSETS",
     "PLATFORM_KEY_OPENMART", "PLATFORM_KEY_LIMADATA", "PLATFORM_KEY_HARVESTAPI", "PLATFORM_KEY_FETCHINIO",
-    "PLATFORM_KEY_DROPLEADS",
+    "PLATFORM_KEY_DROPLEADS", "PLATFORM_KEY_BLITZAPI", "PLATFORM_KEY_ANYMAILFINDER",
     "PLATFORM_KEY_FINANCIALDATASETS",
     "PLATFORM_KEY_ADYNTEL", "PLATFORM_EMAIL_ADYNTEL",
     "PLATFORM_KEY_KEENABLE", "PLATFORM_KEY_OLOSTEP",
+    "PLATFORM_KEY_SEARCH1API", "PLATFORM_KEY_BRAVESEARCH",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -109,6 +142,7 @@ from treg import archive  # noqa: E402
 from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
 from treg.domain.identity import api_keys as managed_keys  # noqa: E402
+from treg.application import media as media_app  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
@@ -139,6 +173,25 @@ def fake_getaddrinfo(monkeypatch):
         monkeypatch.setattr(socket, "getaddrinfo", resolve)
 
     return install
+
+
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
+def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
+    """Block the event loop, as a GC pause does, once every Redis call is in flight."""
+    entered = 0
+    for store in stores:
+        evaluate = store._client.eval
+
+        async def paused(*args, evaluate=evaluate):
+            nonlocal entered
+            entered += 1
+            if entered == calls:
+                asyncio.get_running_loop().call_soon(time.sleep, seconds)
+            return await evaluate(*args)
+
+        store._client.eval = paused
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
@@ -182,9 +235,25 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return JSONResponse({"error": {"message": "invalid token"}}, status_code=401)
         return {"user_id": "17841400000000000", "username": "direct_ig"}
 
+    def _meta_proof_missing(request: Request) -> JSONResponse | None:
+        # treg's Meta app requires App Secret Proof: a token it issued (META-TOKEN, PAGE-TOKEN-*) is
+        # refused unless paired with HMAC-SHA256(app secret, token), as Graph does in production.
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        if token != "META-TOKEN" and not token.startswith("PAGE-TOKEN"):
+            return None
+        app_secret = os.environ.get("TREG_META_CLIENT_SECRET", "").encode()
+        want = hmac.new(app_secret, token.encode(), hashlib.sha256).hexdigest()
+        if request.query_params.get("appsecret_proof") == want:
+            return None
+        return JSONResponse({"error": {
+            "message": "API calls from the server require an appsecret_proof argument",
+            "type": "GraphMethodException", "code": 100}}, status_code=400)
+
     @up.get("/me/accounts")
     @up.get("/v25.0/me/accounts")
-    async def meta_pages(request: Request) -> dict:
+    async def meta_pages(request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         # Meta's primary Page listing: what the user manages through a PERSONAL Page role. One row
         # carries both the facebook shape (id/name) and the instagram shape (nested professional
         # account), so both Meta providers can discover against the same stand-in.
@@ -199,6 +268,8 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     @up.get("/me/businesses")
     @up.get("/v25.0/me/businesses")
     async def meta_businesses(request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         # Meta's Business walk (needs business_management): each business row nests owned_pages /
         # client_pages whose entries are shaped like /me/accounts rows. PAGE-DIRECT reappears here
         # (a personal-role Page is usually also Business-owned) to exercise dedup, and the
@@ -233,6 +304,8 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
 
     @up.get("/v25.0/{page_id}/conversations")
     async def instagram_conversations(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         if request.headers.get("authorization") == "Bearer IG-LONG-TOKEN":
             return {
                 "auth": request.headers["authorization"],
@@ -250,8 +323,28 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return {"data": []}
         return {"data": [{"id": "IG-CONVERSATION-1", "page_id": page_id}]}
 
+    @up.get("/v25.0/{page_id}/posts")
+    async def facebook_page_posts(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
+        # Meta's new Pages experience answers a user token on a Page edge with code 190 /
+        # subcode 2069032. Only the token of the Page in the path is accepted.
+        expected_token = {
+            "PAGE-DIRECT": "PAGE-TOKEN-DIRECT",
+            "PAGE-CLIENT": "PAGE-TOKEN-CLIENT",
+        }.get(page_id)
+        if request.headers.get("authorization") != f"Bearer {expected_token}":
+            return JSONResponse(
+                {"error": {"message": "A Page access token is required for this call",
+                           "code": 190, "error_subcode": 2069032}},
+                status_code=400,
+            )
+        return {"data": [{"id": f"{page_id}_POST-1", "message": "hello"}]}
+
     @up.post("/v25.0/{page_id}/subscribed_apps")
     async def instagram_subscribe(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         expected_token = {
             "PAGE-DIRECT": "PAGE-TOKEN-DIRECT",
             "PAGE-CLIENT": "PAGE-TOKEN-CLIENT",
@@ -369,7 +462,7 @@ async def verified_identity(client, email):
         with patch.object(email_sender, "send_otp", receive):
             started = await client.post("/auth/email/start", json={"email": email})
         assert started.status_code == 200, started.text
-        code = started.json().get("dev_code") or delivered[email]
+        code = started.json().get("dev_code") or delivered[started.json()["email"]]
         proof = await client.post("/auth/email/verify", json={"email": email, "code": code})
         assert proof.status_code == 200, proof.text
         return proof.json()["token"]
@@ -377,17 +470,18 @@ async def verified_identity(client, email):
         client.cookies = previous_cookies
 
 
-async def verified_signup(client, *, json, headers=None):
-    """Funded test identity through OTP and team creation, with fixture identity fields."""
+async def verified_signup(client, *, json, headers=None, cookies=None):
+    """Funded test identity through OTP and team creation, with fixture identity fields. `cookies`
+    reach the team creation, where attribution is read."""
     import httpx
     from sqlmodel import select
     from treg.infra.db import session_maker
     from treg.models import User
 
-    email = json["email"]
-    token = await verified_identity(client, email)
+    token = await verified_identity(client, json["email"])
+    email = json["email"].strip().lower()
     response = await client.post("/orgs", json={"name": email},
-        headers={**(headers or {}), "X-Treg-Token": token})
+        headers={**(headers or {}), "X-Treg-Token": token}, cookies=cookies)
     if response.status_code != 200:
         return response
     async with session_maker() as db:
@@ -397,22 +491,67 @@ async def verified_signup(client, *, json, headers=None):
         json={**response.json(), "id": user_id, "email": email}, request=response.request)
 
 
-async def funded_user(client, email, *, micro=1_000_000):
-    """A per-org token whose team holds money.
+async def accept_with_code(client, *, json, headers=None):
+    """Redeem an invite code the way an invitee does: prove the invited email, then accept."""
+    token = await verified_identity(client, json["email"])
+    return await client.post("/invites/accept", json=json,
+                             headers={**(headers or {}), "X-Treg-Token": token})
 
-    `POST /users` is legacy registration: the user it mints is UNVERIFIED, and the signup credit is
-    now verified-only (`claim_signup_promo`), so that team starts at zero. A test that has to PAY
-    for something funds the team here instead of leaning on a promo that no longer arrives.
+
+async def unproven_member(client, email):
+    """A member with no inbox proof, as the invite-code door created them before it required one."""
+    from treg.domain.identity import session as sess
+    from treg.domain.identity import api_keys as managed_keys
+    from treg.infra.db import session_maker
+    from treg.models import Membership, Org, User
+
+    org_id = (await client.get("/auth/me")).json()["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        user = User(email=email)
+        db.add(user)
+        await db.flush()
+        membership = Membership(user_id=user.id, org_id=org_id, role="member", token_hash="")
+        db.add(membership)
+        await db.flush()
+        default = await managed_keys.ensure_default_key(db, membership, user)
+        token = sess.make_identity(
+            user.id, user.token_version, org=org.slug,
+            key_generation=default.default_generation if default else None, scope=sess.TEAM_SCOPE,
+        )
+        await db.commit()
+    return {"org": org.slug, "org_id": org_id, "role": "member", "token": token}
+
+
+async def funded_user(client, email, *, micro=1_000_000):
+    """A per-org token whose team holds `micro` on top of any signup credit.
     Returns the whole registration body, so `["token"]` and `["org_id"]` both work.
     """
     from treg.domain import money
     from treg.infra.db import session_maker
 
-    body = (await client.post("/users", json={"email": email})).json()
+    body = (await verified_signup(client, json={"email": email})).json()
     async with session_maker() as db:
         await money.grant(db, body["org_id"], amount_micro=micro, kind="promotional")
         await db.commit()
     return body
+
+
+def mcp_text_result(name: str, payload: dict) -> dict:
+    """The text block a host shows, after checking that `structuredContent` (what a host may read
+    instead) carries every key it does: the output schema silently drops an undeclared one."""
+    result = payload.get("result") or {}
+    content = result.get("content") or []
+    if not (content and content[0].get("type") == "text"):
+        return payload
+    try:
+        text = json.loads(content[0]["text"])
+    except ValueError:
+        return {"_text": content[0]["text"]}
+    if isinstance(text, dict) and isinstance(result.get("structuredContent"), dict):
+        dropped = {k for k, v in text.items() if v is not None} - set(result["structuredContent"])
+        assert not dropped, f"{name}: structuredContent drops {sorted(dropped)}"
+    return text
 
 
 async def drain_background_writes():
@@ -429,6 +568,8 @@ async def drain_background_writes():
     # throttle claim left over from one test would land on, or suppress, the next test's key.
     await managed_keys.drain_last_used()
     managed_keys._last_used_claims.clear()
+    # And `treg host`'s background object deleter.
+    await media_app.drain()
 
 
 @pytest.fixture(autouse=True)
@@ -464,6 +605,14 @@ async def clients():
         await app.state.http.aclose()
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _provider_labels():
+    """The provider display names search matches ("people data labs"), wired as `create_app` wires
+    them, for the tests that search without building an app."""
+    from treg import bootstrap
+    bootstrap.configure_provider_labels()
+
+
 @pytest.fixture(autouse=True)
 def _reset_call_path_caches():
     """The call path keeps in-process copies of ratestore state (the capacity view: 'provider X is
@@ -490,6 +639,8 @@ def _reset_call_path_caches():
         try:
             from treg.infra.upstream.limiter import limiter
             limiter.reset()
+            from treg.application.call import keyslots
+            keyslots._rotation.clear()
         except ImportError:
             pass
         # The shared store's in-process fallback (the review-invitation budget): org ids restart
@@ -499,6 +650,9 @@ def _reset_call_path_caches():
         # Who a key is, for the hub's lists: remembered a minute, and keys repeat across resets.
         from treg.routers import hub_gate
         hub_gate._readers.clear()
+        # Teams at today's trial allowance: org ids restart with every reset_db().
+        from treg.application.call import reserve as call_reserve
+        call_reserve._spent_trials.clear()
         # The catalog's agent verdicts: a five-minute fold of callreview, which reset_db() empties.
         from treg.application import feedback
         feedback.forget_endpoint_verdicts()

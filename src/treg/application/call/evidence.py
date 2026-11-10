@@ -15,7 +15,6 @@ from ...infra.upstream import injectors
 from ...models import Secret, Tool
 
 
-# ---- failure evidence: what a failed call is allowed to leave behind ----------------------------
 # Sized to hold a real provider error whole — a typical 400 body is 80-300 characters and a verbose
 # JSON one about 800 — while still capping a ~14KB CDN error page and a caller stuck in a retry loop.
 _ERROR_RESPONSE_MAX = 2000
@@ -38,12 +37,11 @@ _QUERY_CRED_RE = re.compile(
 _URL_USERINFO_RE = re.compile(r"://[^/\s:@]+:[^/\s@]+@")
 
 # `_ARGV_SECRET_RE`'s catch-all masks ANY 24+ run of [A-Za-z0-9_-], which is right for an argv log and
-# wrong here: it deletes 100% of provider correlation identifiers — UUIDs, ULIDs, 32-char trace ids,
-# request ids — which are exactly what you quote to a provider's support desk. Measured on real error
-# bodies: the prose always survived, the correlation field never did. So for evidence we keep the
-# TARGETED half (known key prefixes, JWTs) and drop the catch-all. Platform credentials do not depend
-# on it — they have exact masking plus the fail-closed backstop below — and the owner has accepted
-# that a third-party secret may occasionally survive here.
+# wrong here: it deletes every provider correlation identifier - UUIDs, ULIDs, 32-char trace ids,
+# request ids - which are exactly what you quote to a provider's support desk. So for evidence we keep
+# the TARGETED half (known key prefixes, JWTs) and drop the catch-all. Platform credentials do not
+# depend on it - they have exact masking plus the fail-closed backstop below - and a third-party
+# secret may occasionally survive here by accepted design.
 _EVIDENCE_SECRET_RE = re.compile(
     r"\b(?:sk|pk|rk|ghp|gho|ghs|ghu|glpat|AKIA|ASIA|AIza|xox[baprs])[A-Za-z0-9_\-]{6,}\b"
     # Anchored + possessive for the same reason as the argv rule above, and it matters MORE here:
@@ -110,18 +108,18 @@ def _secret_renderings(tool: Tool, secrets: dict[int, Secret]) -> list[str]:
         fmt = str(binding.get("format") or "{secret}")
         # A constant provider header can share the binding's credential reference so the normal
         # injector owns the whole protocol shape, but it does not inject that credential. Treating
-        # its literal format as a secret spelling masked ordinary dates such as Crustdata's API
+        # its literal format as a secret spelling would mask ordinary dates such as Crustdata's API
         # version from every failure-evidence snippet.
         if "{secret}" not in fmt:
             continue
         setting = binding.get("platform_setting")
         if setting:
-            value = getattr(get_settings(), setting, None)
-            if not isinstance(value, str) or not value.strip():
-                continue
-            value = value.strip()
-            add_credential(value)
-            add(fmt.format(secret=value))
+            # Every account's value, not only the injected one: a provider that echoes a key it
+            # was not sent this time (a cached error page, another account's request) is still
+            # echoing treg's credential.
+            for value in get_settings().platform_credential_values(setting):
+                add_credential(value)
+                add(fmt.format(secret=value))
             continue
 
         sid = binding.get("secret_id")
@@ -279,3 +277,87 @@ def _error_response_evidence(
                            headers.get("content-type", "")),
         secrets, _ERROR_RESPONSE_MAX)
     return evidence or "<no response body or headers>"
+
+
+# Masks injected credentials out of an error body BEFORE it reaches the caller. The admin evidence
+# redaction above reads an 8 KiB slice; this reads every byte the caller is about to receive.
+#
+# Exact masking only. The pattern nets above (`_QUERY_CRED_RE`, `_EVIDENCE_SECRET_RE`) are right for an
+# admin log and wrong here: they rewrite ordinary fields (`"key": "uniqueId"`, `"monkey": …`) in an
+# answer that is otherwise relayed faithfully. treg protects what it injected, and that it knows
+# exactly; the case-insensitive, decoded re-check below is the backstop for a transform we missed.
+
+# Largest (decompressed) error body this scans. A bigger one, or one in an encoding the stdlib cannot
+# decode (br, zstd), cannot be proven clean, so on a credentialed call it is replaced, not relayed.
+_ERROR_SCAN_MAX = 8 * 1024 * 1024
+_REDACTED_BODY = (b'{"error":"response_redacted",'
+                  b'"message":"upstream response may have contained credentials and was redacted"}')
+UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
+                          b'"message":"upstream error response could not be scanned for credentials"}')
+
+
+def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
+    """The identity bytes of `raw`, or None when they cannot be had whole within `_ERROR_SCAN_MAX`.
+
+    Own-key calls mirror the caller's `Accept-Encoding`, so a caller asking for gzip gets the
+    provider's error gzipped, and a credential inside it is invisible until decoded.
+    """
+    enc = content_encoding.strip().lower()
+    if enc in ("", "identity"):
+        return raw
+    if enc not in ("gzip", "x-gzip", "deflate"):
+        return None
+    # 32+MAX_WBITS auto-detects a gzip or zlib header; raw deflate is the other "deflate" in the wild.
+    for wbits in (32 + zlib.MAX_WBITS, -zlib.MAX_WBITS):
+        d = zlib.decompressobj(wbits)
+        try:
+            out = d.decompress(raw, _ERROR_SCAN_MAX + 1)
+        except zlib.error:
+            continue
+        # Bounded output (a bomb stops here), and the WHOLE input: a second gzip member is unscanned.
+        if len(out) > _ERROR_SCAN_MAX or d.unconsumed_tail or d.unused_data or not d.eof:
+            return None
+        return out
+    return None
+
+
+def _redact_caller_response(body: bytes, secrets: list[str]) -> tuple[bytes, bool]:
+    """Mask every spelling of an injected credential in `body`. Returns (body, was_redacted).
+
+    `surrogateescape` round-trips any byte that is not UTF-8, so masking never rewrites the bytes
+    around a credential. If a credential still survives in a normalised (percent-decoded,
+    JSON-unescaped, lowercased) copy, the whole body is replaced: fail closed rather than leak.
+    """
+    if not body or not secrets:
+        return body, False
+    text = body.decode("utf-8", "surrogateescape")
+    masked = text
+    for secret in secrets:  # longest first (see `_secret_renderings`)
+        masked = masked.replace(secret, "***")
+    probe = unquote(masked.replace("\\/", "/")).lower()
+    if any(s.lower() in probe for s in secrets):
+        return _REDACTED_BODY, True
+    if masked == text:
+        return body, False
+    return masked.encode("utf-8", "surrogateescape"), True
+
+
+def redact_error_response(
+    body: bytes, tool: Tool, secrets: dict[int, Secret], *, content_encoding: str = "",
+) -> tuple[bytes, bool]:
+    """Redact injected credentials from a whole error body before it reaches the caller.
+
+    Returns (body, was_redacted). An unchanged body comes back as the original bytes, still in
+    its original encoding. A redacted one is always identity-encoded: the caller must drop
+    `Content-Encoding` and recompute `Content-Length`.
+    """
+    if not body:
+        return body, False
+    renderings = _safe_secret_renderings(tool, secrets)
+    if renderings is None:
+        return UNSCANNABLE_ERROR_BODY, True
+    plain = _decompress_for_scan(body, content_encoding)
+    if plain is None:
+        return (UNSCANNABLE_ERROR_BODY, True) if renderings else (body, False)
+    redacted, masked = _redact_caller_response(plain, renderings)
+    return (redacted, True) if masked else (body, False)

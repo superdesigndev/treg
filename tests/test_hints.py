@@ -1,5 +1,7 @@
 """Deterministic config sampling and best-effort streaming invitations."""
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+import asyncio
 import hashlib
 
 import pytest
@@ -145,6 +147,38 @@ async def test_unavailable_store_withholds_the_review_but_not_the_answer(clients
     response = await clients.get('/call/example.search')
     assert response.status_code == 200 and response.content == b'{}'
     assert response.headers.get('X-Treg-Hint') == 'feedback'  # the lighter hint still rides along
+    assert 'X-Treg-Review' not in response.headers
+
+
+async def test_slow_counter_does_not_hold_the_response_for_the_money_timeout(clients, monkeypatch):
+    from treg.infra import kv
+
+    stopped = asyncio.Event()
+
+    async def blocked_counter():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    pipe = MagicMock()
+    pipe.__aenter__.return_value = pipe
+    pipe.execute = AsyncMock(side_effect=blocked_counter)
+    store = kv.RedisStore.__new__(kv.RedisStore)
+    store._client = SimpleNamespace(pipeline=lambda **kwargs: pipe, aclose=AsyncMock())
+    monkeypatch.setattr(kv, '_store', store)
+    monkeypatch.setattr(kv, '_note_fault', lambda exc: None)
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
+    monkeypatch.setattr(get_settings(), 'feedback_hint_rate', 1)
+
+    # Exercise the actual route -> invitation -> RedisStore.take timeout chain.
+    async with asyncio.timeout(0.8):
+        response = await clients.get('/call/example.search')
+    assert stopped.is_set()
+    pipe.__aexit__.assert_awaited_once()
+    assert response.status_code == 200 and response.content == b'{}'
+    assert response.headers.get('X-Treg-Hint') == 'feedback'
     assert 'X-Treg-Review' not in response.headers
 
 

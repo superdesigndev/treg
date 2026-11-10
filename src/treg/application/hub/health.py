@@ -1,4 +1,4 @@
-"""Health of a hub tool (docs/HUB-DECISIONS.md round 2 q8, round 5 q7), and the scheduled check.
+"""Health of a hub tool, and the scheduled check.
 
 Health is DERIVED, never stored: a version is `failing` when its last three runs (callers' runs
 and scheduled checks alike) all failed, else `ok`; `unknown` before any run. Nothing to keep in
@@ -107,7 +107,7 @@ async def _maker_caller(db: AsyncSession, row: HubTool):
     if membership is None or user is None:
         return None
     # `api_key` is None: the scheduled check is not an API-key call, it runs as the maker's
-    # membership (the managed-keys field arrived on main, 2026-09).
+    # membership.
     return Caller(membership=membership, user=user, org=org, api_key=None)
 
 
@@ -151,7 +151,7 @@ async def check_as_maker(db: AsyncSession, row: HubTool, upstream_client) -> dic
     except CallFailure as exc:
         v = verdict_from(row, exc.status_code, {"detail": exc.detail}, {})
     v["scheduled"] = True
-    # A failing check never retires a tool by itself (round 2 q8): health says it, the maker decides.
+    # A failing check never retires a tool by itself: health says it, the maker decides.
     row.check_result = v
     db.add(row)
     return v

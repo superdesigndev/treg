@@ -7,10 +7,7 @@ Create Date: 2026-09-06
 `governance/usage.enforce_daily_cap` runs on every call and run a capped member makes. Until now it
 counted the member's `callrecord` and `runrecord` rows since midnight. Revision 0023's
 `(org_id, user_email, created_at)` index turned that into an index-only scan, but today's pages are
-not yet all-visible until autovacuum reaches them, so every row still fetched the heap — measured
-on prod 2026-09-06 for the busiest member (110k rows today):
-
-    Index Only Scan ... Heap Fetches: 110,166   Buffers: shared hit=81,738 read=14,436   2,777 ms
+not yet all-visible until autovacuum reaches them, so every row still fetched the heap.
 
 O(this member's rows today), per call, on an api-pool connection. Same disease as `spent_today`
 (revision 0022), same cure: a counter on the row the gate already has. `take_daily_slot` is one
@@ -19,9 +16,8 @@ concurrency and a refused call is not counted. Only capped members are counted; 
 `/usage/me` keep reading the journal (`count_today`), and `seed_counter` copies today's journal
 onto the row when a cap is first set, so a member capped mid-day does not start from zero.
 
-**Backfill, in its own autocommit step, capped members only.** 123 of 9,239 memberships carry a
-cap; each backfill row is one journal count over 0023's index — the heaviest ~3 s, the rest
-milliseconds. It runs after the ALTER commits, so the ACCESS EXCLUSIVE lock on `membership`
+**Backfill, in its own autocommit step, capped members only.** Each backfill row is one journal
+count over 0023's index. It runs after the ALTER commits, so the ACCESS EXCLUSIVE lock on `membership`
 (read on every request) lasts milliseconds, not the length of those counts.
 
 Rollback floor: `calls_today` is NOT NULL with a server default kept (the model carries the same

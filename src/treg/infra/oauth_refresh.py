@@ -30,9 +30,7 @@ class HTTPXOAuthRefreshPort:
             data[cid_param] = cid
 
         # Client authentication must match what the provider demands, same as exchange_code: X and
-        # Pinterest REQUIRE HTTP Basic and reject a secret in the body. This bit the connect path first
-        # and was fixed there — then every X connection died ~2h later anyway, because the REFRESH
-        # still posted the secret in the body (the provider answered 401, surfaced to callers as
+        # Pinterest REQUIRE HTTP Basic and reject a secret in the body (a 401, surfaced to callers as
         # `502 oauth refresh failed`). The method is recorded in the blob at exchange time; blobs
         # minted before that field existed fall back to body auth, then RETRY once with Basic on a
         # 4xx — and stamp the method that worked so the next refresh skips the dance.

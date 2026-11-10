@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude for people search: lead enrichment for agents | treg.to</title>
-<meta name="description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0089 a call. Real run: 27 people, 20 verified emails, $0.58.">
+<meta name="description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0005 a call. Real run: 27 people, 20 verified emails, $0.58.">
 <link rel="canonical" href="https://treg.to/people-search"/>
 <meta property="og:title" content="Claude for people search: lead enrichment for agents | treg.to"/>
-<meta property="og:description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0089 a call. Real run: 27 people, 20 verified emails, $0.58."/>
+<meta property="og:description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0005 a call. Real run: 27 people, 20 verified emails, $0.58."/>
 <meta property="og:url" content="https://treg.to/people-search"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
@@ -34,7 +34,7 @@
     --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  #bench, #pricing, #tools, #usecases, #receipt { scroll-margin-top: 70px; }
+  #bench, #vs, #pricing, #tools, #usecases, #receipt { scroll-margin-top: 70px; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: var(--text); font-size: 16px; line-height: 1.55;
@@ -200,6 +200,8 @@
     font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .uc-foot b { color: var(--green); font-weight: 500; }
+  .uc-foot a { color: var(--green); text-decoration: none; }
+  .uc-foot a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .uc-row {
     display: flex; align-items: center; gap: 7px; background: #FBFAF8; border: 1px solid var(--line);
     border-radius: 8px; padding: 5px 9px; font-size: 11.5px; line-height: 1.35;
@@ -313,14 +315,14 @@
     position: sticky; top: 0; min-height: 100vh; display: flex; flex-direction: column;
     align-items: center; justify-content: center; padding: 70px 24px 24px;
   }
-  .bench-stage .lede { margin-bottom: 30px; }
+  .bench-stage .lede { margin-bottom: 18px; }
   .bench-stage .fineprint { margin-top: 8px; }
   .d-bar, .bbar { transition: transform .1s linear; }
   .d-val, .d-lab, .d-cat, .bgroups, .bcol em { transition: opacity .1s linear; }
-  .bstage-wrap { position: relative; width: 100%; max-width: 1080px; height: 470px; margin: 0 auto; }
+  .bstage-wrap { position: relative; width: 100%; max-width: 1080px; height: 360px; margin: 0 auto 16px; }
   .duel {
     position: absolute; inset: 0; display: flex; justify-content: center; gap: 110px; align-items: flex-end;
-    padding-bottom: 120px;
+    padding-bottom: 80px;
   }
   .d-col { position: relative; width: 200px; display: flex; flex-direction: column; align-items: center; }
   .d-bar {
@@ -360,12 +362,12 @@
   /* below one-row width the chart is an explicit 2×2 — never 3+1 */
   @media (max-width: 1120px) {
     .bgroups { grid-template-columns: repeat(2, max-content); gap: 44px 48px; }
-    .bstage-wrap { height: 780px; }
+    .bstage-wrap { height: 700px; }
   }
   /* compact bench: smaller bars, tighter 2×2 — nothing may escape the sticky stage */
   @media (max-width: 960px) {
     .bench-stage { padding: 56px 14px 14px; }
-    .bstage-wrap { height: 600px; }
+    .bstage-wrap { height: 500px; }
     .bgroups { gap: 26px 22px; }
     .bcols { height: 150px; gap: 7px; }
     .bcol { width: 30px; }
@@ -380,6 +382,92 @@
     .d-lab { font-size: 12.5px; gap: 6px; }
     .d-lab img, .d-lab svg { width: 20px; height: 20px; }
     .d-cat { font-size: 11px; bottom: 66px; }
+  }
+  /* ---- lead signals band: the "when" after the "who", links to /leads-signals ---- */
+  .sig-sec { margin-top: 14px; }
+  .sig-sec .fineprint { margin-top: 14px; }
+  .sig-band { max-width: 1060px; margin: 0 auto; display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding: 44px 48px; border-radius: 24px; background: #151514; color: #F4F3EF; text-decoration: none; overflow: hidden; position: relative; transition: transform .25s ease; }
+  .sig-band:hover { transform: translateY(-2px); }
+  .sig-band::before { content: ""; position: absolute; right: -120px; top: -120px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(closest-side, rgba(17,132,83,.35), transparent); pointer-events: none; }
+  .sig-kicker { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #7FDCAE; }
+  .sig-kicker i { width: 8px; height: 8px; border-radius: 50%; background: #3DDC97; box-shadow: 0 0 0 0 rgba(61,220,151,.6); animation: sigPulse 1.8s infinite; }
+  @keyframes sigPulse { 70% { box-shadow: 0 0 0 8px rgba(61,220,151,0); } 100% { box-shadow: 0 0 0 0 rgba(61,220,151,0); } }
+  .sig-copy h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.1; font-size: clamp(30px, 4vw, 44px); margin: 14px 0 14px; text-align: left; }
+  .sig-copy .hl2 { color: #3DDC97; }
+  .sig-copy p { color: #B8B8B4; font-size: 15.5px; margin: 0 0 22px; max-width: 46ch; }
+  .sig-stat { font-family: var(--mono); font-size: 15px; color: #D8D8D6; margin-bottom: 24px; }
+  .sig-stat b { color: #fff; font-size: 22px; font-weight: 500; }
+  .sig-stat small { display: block; color: #8A8885; font-size: 12px; margin-top: 4px; }
+  .sig-band .pill.dark { background: #fff; color: var(--ink); border-color: #fff; }
+  .sig-viz { position: relative; display: flex; flex-direction: column; align-items: center; }
+  .sg-radar { position: relative; width: 230px; height: 230px; margin: 4px 0 -36px; }
+  .sg-ring { position: absolute; border-radius: 50%; border: 1px solid rgba(61,220,151,.22); }
+  .sg-ring.r1 { inset: 0; background: radial-gradient(closest-side, rgba(61,220,151,.08), transparent); }
+  .sg-ring.r2 { inset: 22%; } .sg-ring.r3 { inset: 41%; }
+  .sg-sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 280deg, rgba(61,220,151,.35) 360deg); animation: sgSweep 3s linear infinite; }
+  @keyframes sgSweep { to { transform: rotate(360deg); } }
+  .sg-blip { position: absolute; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: #3DDC97; animation: sgBlip 2.6s ease-out infinite; }
+  @keyframes sgBlip { 0%, 100% { opacity: .25; box-shadow: 0 0 0 0 rgba(61,220,151,.6); } 20% { opacity: 1; } 60% { box-shadow: 0 0 0 10px rgba(61,220,151,0); } }
+  .sg-core { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px; border-radius: 11px; box-shadow: 0 0 0 5px rgba(255,255,255,.08), 0 0 30px rgba(61,220,151,.4); }
+  .sg-core svg { width: 100%; height: 100%; display: block; }
+  .sg-p { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; font: 700 12.5px var(--text); }
+  .sg-p svg { width: 14px; height: 14px; }
+  .sg-p.li { background: #0A66C2; } .sg-p.rd { background: #FF4500; } .sg-p.x, .sg-p.gh { background: #101010; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+  .sg-orb { position: absolute; margin: -14px; box-shadow: 0 6px 16px -6px rgba(0,0,0,.6); }
+  .sg-stack { position: relative; z-index: 1; display: grid; width: 100%; max-width: 440px; }
+  .sg-card { grid-area: 1 / 1; background: #fff; color: var(--ink); border-radius: 16px; padding: 14px; box-shadow: 0 30px 60px -28px rgba(0,0,0,.7); opacity: 0; transform: translateY(10px) scale(.98); transition: opacity .45s ease, transform .55s cubic-bezier(.3,.7,.3,1); }
+  .sg-card.on { opacity: 1; transform: none; }
+  .sg-sig { display: flex; gap: 11px; align-items: flex-start; }
+  .sg-sig > div { min-width: 0; flex: 1; }
+  .sg-sig s { display: block; text-decoration: none; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .sg-sig q { display: block; font-size: 14px; font-weight: 500; line-height: 1.35; margin-top: 2px; }
+  .sg-sig em { font-style: normal; font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); }
+  .sg-sig em.hot { background: rgba(192,54,47,.1); color: var(--red); }
+  .sg-link { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+  .sg-link i { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, rgba(17,132,83,.45) 0 4px, transparent 4px 8px); }
+  .sg-person { display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 12px; background: #F2F8F4; box-shadow: inset 0 0 0 1px rgba(17,132,83,.18); }
+  .sg-person img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; }
+  .sg-person > div { min-width: 0; flex: 1; }
+  .sg-person b { display: block; font-size: 14px; font-weight: 600; }
+  .sg-person s { display: block; text-decoration: none; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sg-mail { font-family: var(--mono); font-size: 11.5px; color: var(--ink); white-space: nowrap; }
+  .sg-mail em { font-style: normal; color: var(--green); }
+  @media (max-width: 520px) { .sg-person { flex-wrap: wrap; } .sg-mail { flex-basis: 100%; padding-left: 47px; } .sg-radar { width: 190px; height: 190px; } }
+  @media (prefers-reduced-motion: reduce) { .sg-sweep, .sg-blip { animation: none; } }
+  .sig-copy, .sig-viz { min-width: 0; }
+  @media (max-width: 860px) { .sig-band { grid-template-columns: minmax(0, 1fr); padding: 32px 22px; gap: 28px; } }
+  @media (prefers-reduced-motion: reduce) { .sig-kicker i { animation: none; } }
+  /* ---- harness strip under the bench chart: same agent with and without treg, real requests ---- */
+  .h-strip { width: 100%; max-width: 860px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: #fff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 6px 20px -10px rgba(20,18,12,.12); }
+  .h-strip > div { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+  .h-strip > div + div { border-left: 1px solid var(--line); }
+  .h-strip b { font-family: var(--display); font-weight: 600; font-size: 24px; letter-spacing: -.02em; color: var(--green); white-space: nowrap; }
+  .h-strip span { font-size: 13px; line-height: 1.35; color: var(--muted); white-space: nowrap; }
+  .h-strip s { display: block; text-decoration: none; font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+  @media (max-width: 760px) {
+    .h-strip > div { flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; }
+    .h-strip b { font-size: 17px; }
+    .h-strip span { font-size: 11px; white-space: normal; }
+    .h-strip s { font-size: 10px; }
+  }
+  /* ---- head-to-head table (data: videos/treg-people-search-launch/RESULTS.md §2–3) ---- */
+  .vs-wrap { max-width: 920px; margin: 0 auto; overflow-x: auto; background: #fff; border-radius: 16px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 8px 28px -12px rgba(20,18,12,.12); }
+  .vs-t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14.5px; }
+  .vs-t th, .vs-t td { padding: 12px 16px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  .vs-t th:first-child, .vs-t td:first-child { text-align: left; }
+  .vs-t th { font-weight: 600; font-size: 14px; background: #FBFAF7; }
+  .vs-t th span { display: inline-flex; align-items: center; gap: 7px; }
+  .vs-t th img, .vs-t th svg { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
+  .vs-t td { font-family: var(--mono); font-size: 13.5px; color: var(--muted); }
+  .vs-t td:first-child { font-family: var(--text); font-size: 14.5px; color: var(--ink); }
+  .vs-t .me { background: var(--green-soft); color: var(--green); font-weight: 600; }
+  .vs-t th.me { color: var(--ink); }
+  .vs-t tbody tr:last-child td { border-bottom: 0; }
+  #vs .fineprint { max-width: 920px; margin-left: auto; margin-right: auto; }
+  @media (max-width: 640px) {
+    .vs-t th, .vs-t td { padding: 10px 10px; }
+    .vs-t td:first-child { position: sticky; left: 0; z-index: 1; background: #fff; white-space: normal; min-width: 130px; font-size: 13px; }
+    .vs-t th:first-child { position: sticky; left: 0; z-index: 1; }
   }
   @media (max-width: 880px) {
     .bill { flex-direction: column; gap: 30px; }
@@ -426,7 +514,14 @@
     background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left;
   }
   .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
-  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 16px; white-space: nowrap; overflow: hidden; flex: 1; }
+  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 16px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .cmd .cline[hidden] { display: none; }
+  .cmd-tabs { display: inline-flex; gap: 4px; padding: 4px; margin: 0 auto 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+  .cmd-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--muted); font: 500 14px var(--text); padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+  .cmd-tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(20,18,12,.12); }
+  .ct-ico { display: inline-flex; }
+  .ct-ico img { width: 18px; height: 18px; border-radius: 5px; margin-left: -4px; border: 1.5px solid #fff; background: #fff; }
+  .ct-ico img:first-child { margin-left: 0; }
   .cmd .cline a { color: #8FD4F2; text-decoration: none; }
   .cmd button {
     flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono);
@@ -451,14 +546,26 @@
     .strip .cur, .uc-strip .c, .uc-tick { animation: none; }
     .hw { opacity: 1; transform: none; }
   }
+
+  /* ---------- launch video: hero play pill + lightbox ---------- */
+  .pill.play { gap: 9px; padding: 7px 18px 7px 7px; font-family: inherit; }
+  .pill.play .pi { width: 26px; height: 26px; border-radius: 50%; background: var(--green); display: grid; place-items: center; }
+  .pill.play .pi svg { width: 10px; height: 10px; margin-left: 2px; fill: #fff; }
+  .pill.play .dur { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .vbox { border: 0; padding: 0; background: transparent; width: min(1100px, 92vw); max-width: none; overflow: visible; }
+  .vbox::backdrop { background: rgba(10,10,10,.82); backdrop-filter: blur(4px); }
+  .vbox video { display: block; width: 100%; aspect-ratio: 16/9; border-radius: 14px; background: #000; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .vbox .x { position: absolute; top: -44px; right: 0; width: 36px; height: 36px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+  .vbox .x:hover { background: rgba(255,255,255,.26); }
 </style>
+<script src="/captcha.js" defer></script>
 </head>
 <body>
 
 <nav class="nav" id="nav">
   <span class="wordmark"><span class="wm-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span> <span class="wm-x" style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">People search</span></span>
   <span style="display:flex;gap:8px">
-    <span class="nav-links"><a href="#bench">#1 in benchmark</a><a href="#pricing">Pricing</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
+    <span class="nav-links"><a href="#bench">#1 in benchmark</a><a href="#vs">vs Clay</a><a href="/leads-signals">Lead signals</a><a href="#pricing">Pricing</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
     <a class="pill dark" href="/app?ref=people-search" id="ctaNav">Set up treg</a>
   </span>
 </nav>
@@ -470,8 +577,14 @@
   <div class="ctas">
     <a class="pill dark" href="/app?ref=people-search" id="ctaHero">Setup treg</a>
     <a class="pill" href="#pricing">Pricing: pay per lead</a>
+    <button type="button" class="pill play" id="playLaunch"><span class="pi"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z"/></svg></span>Watch the launch <span class="dur">0:50</span></button>
   </div>
 </header>
+<dialog class="vbox" id="vbox" aria-label="Launch video">
+  <form method="dialog"><button class="x" aria-label="Close">×</button></form>
+  <video src="media/people-search/launch.mp4" poster="media/people-search/launch-poster.jpg" controls playsinline preload="none"></video>
+</dialog>
+
 
 <div class="demo-wrap">
   <div class="demo" aria-label="Demo: an agent filling a lead sheet through treg">
@@ -491,9 +604,9 @@
       <div class="bd-sub" id="bdSub">ranked by cost per useful result</div>
       <div id="bdA">
         <div class="bd-row"><img src="media/people-search/apollo.png" alt=""><b>Apollo</b><span class="pr2">$0.026 · 98%</span></div>
-        <div class="bd-row"><img src="media/people-search/thecompaniesapi.png" alt=""><b>TheCompaniesAPI</b><span class="pr2">$0.004 · 91%</span></div>
-        <div class="bd-row"><img src="media/people-search/crustdata.png" alt=""><b>Crustdata</b><span class="pr2">$0.010 · 96%</span></div>
-        <div class="bd-row"><img src="media/people-search/coresignal.png" alt=""><b>Coresignal</b><span class="pr2">$0.020 · 94%</span></div>
+        <div class="bd-row"><img src="media/people-search/thecompaniesapi.png" alt=""><b>TheCompaniesAPI</b><span class="pr2">$0.0019 · 91%</span></div>
+        <div class="bd-row"><img src="media/people-search/crustdata.png" alt=""><b>Crustdata</b><span class="pr2">$0.009 · 96%</span></div>
+        <div class="bd-row"><img src="media/people-search/coresignal.png" alt=""><b>Coresignal</b><span class="pr2">free · 94%</span></div>
         <div class="bd-more bd-row" style="border:0;background:none">+7 more ranked</div>
         <div class="bd-scan" id="bdScan"></div>
       </div>
@@ -516,7 +629,7 @@
 
 <section class="section" id="receipt" style="padding-top:70px;padding-bottom:70px">
   <h2>Real run receipt.<br><span class="hl2">27 people, 20 verified emails, $0.58.</span></h2>
-  <p class="lede">From the workflow run of 2026-09-23: list 50 Series-A software companies, let jev keep the 27 that fit the ICP, name the marketing lead at each, find a work email and verify it. Every miss at Hunter and Kitt settled at $0.00. Tomba, the cheapest finder, was out of capacity on treg.to&#x27;s key that day and billed nothing.</p>
+  <p class="lede">From the workflow run of 2026-09-23: list 50 Series-A software companies, let jev keep the 27 that fit the ICP, name the marketing lead at each, find a work email and verify it. Every miss at Hunter and Kitt settled at $0.00. Tomba was out of capacity on treg.to&#x27;s key that day and billed nothing.</p>
   <div style="max-width:800px;margin:0 auto">
     <table class="receipt-table" style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08)">
       <thead>
@@ -586,7 +699,7 @@
         <div class="uc-row"><img src="media/people-search/hunter.png" alt=""><b>Hunter</b><span class="st">···</span></div>
         <div class="uc-em">jdoe@outerbounds.com <b>✓ verified</b></div>
       </div>
-      <div class="uc-foot">people.email.find · <b>routed</b> · from $0.0089</div>
+      <div class="uc-foot">people.email.find · <b>routed</b> · from $0.0005</div>
     </div>
 
     <div class="uc" data-uc="phone">
@@ -609,7 +722,7 @@
           <span class="uc-chip">San Francisco</span><span class="uc-chip">in · x · github</span>
         </div>
       </div>
-      <div class="uc-foot">people.enrich · from $0.028</div>
+      <div class="uc-foot">people.enrich · from $0.0005</div>
     </div>
 
     <div class="uc" data-uc="company">
@@ -622,7 +735,7 @@
           <span class="uc-chip">New York</span><span class="uc-chip">51–200 employees</span>
         </div>
       </div>
-      <div class="uc-foot">companies.enrich · from $0.010</div>
+      <div class="uc-foot">companies.enrich · from $0.0005</div>
     </div>
 
     <div class="uc" data-uc="lookalike">
@@ -633,7 +746,7 @@
         <div class="uc-row"><img src="media/people-search/beam.png" alt=""><b>Beam</b><span class="uc-bar" style="--w:88%"><i></i></span></div>
         <div class="uc-row"><img src="media/people-search/cerebrium.png" alt=""><b>Cerebrium</b><span class="uc-bar" style="--w:84%"><i></i></span></div>
       </div>
-      <div class="uc-foot">companies.similar · from $0.049</div>
+      <div class="uc-foot">companies.similar · from $0.0089</div>
     </div>
 
     <div class="uc" data-uc="verify">
@@ -645,7 +758,7 @@
         <div class="uc-row"><span style="font-family:var(--mono);font-size:11px">maya@globex.co</span><span class="st">···</span></div>
         <div class="uc-chips"><span class="uc-chip ok">3/4 deliverable</span></div>
       </div>
-      <div class="uc-foot">email.verify · $0.003 / check</div>
+      <div class="uc-foot">email.verify · from $0 / check</div>
     </div>
 
     <div class="uc" data-uc="role">
@@ -667,7 +780,7 @@
         <div class="uc-row"><span class="st" style="margin:0">🌍</span><b>Shipped enterprise tier</b><span class="st">new</span></div>
         <div class="uc-chips"><span class="uc-chip ok">reach out now</span></div>
       </div>
-      <div class="uc-foot">funding &amp; hiring · Crunchbase · Coresignal</div>
+      <div class="uc-foot">funding &amp; hiring · <a href="/leads-signals">all lead signals →</a></div>
     </div>
 
     <a class="uc uc-more" href="#tools">
@@ -676,16 +789,16 @@
         <h3><b>{ENDPOINTS}</b> tools</h3>
         <div class="uc-tickwrap"><ul class="uc-tick">
           <li>serp.google <s>· live results</s></li>
-          <li>keywords.volume <s>· $0.006</s></li>
-          <li>backlinks.list <s>· $0.012</s></li>
+          <li>keywords.volume <s>· from $0.0018</s></li>
+          <li>backlinks.list <s>· from $0.00018</s></li>
           <li>tiktok.trends <s>· sounds &amp; tags</s></li>
           <li>x.posts <s>· search &amp; profiles</s></li>
           <li>reviews.google <s>· any place</s></li>
           <li>ads.library <s>· Meta · Google</s></li>
           <li>scrape.page <s>· any URL</s></li>
           <li>serp.google <s>· live results</s></li>
-          <li>keywords.volume <s>· $0.006</s></li>
-          <li>backlinks.list <s>· $0.012</s></li>
+          <li>keywords.volume <s>· from $0.0018</s></li>
+          <li>backlinks.list <s>· from $0.00018</s></li>
           <li>tiktok.trends <s>· sounds &amp; tags</s></li>
           <li>x.posts <s>· search &amp; profiles</s></li>
           <li>reviews.google <s>· any place</s></li>
@@ -697,7 +810,49 @@
     </a>
 
   </div>
+  <div class="sig-sec" id="signals">
+  <a class="sig-band" href="/leads-signals">
+    <div class="sig-copy">
+      <span class="sig-kicker"><i></i>Lead signals</span>
+      <h2>Reach buyers<br><span class="hl2">the moment they’re ready.</span></h2>
+      <p>Your agent watches LinkedIn, Reddit, X and GitHub for hiring, funding, job changes and people asking for what you sell, then finds the person behind each one.</p>
+      <div class="sig-stat"><b>4,710</b> signals for <b>$0.52</b><small>real run · pay per check, no plan</small></div>
+      <span class="pill dark">See lead signals →</span>
+    </div>
+    <div class="sig-viz" aria-hidden="true">
+      <div class="sg-radar">
+        <span class="sg-ring r1"></span><span class="sg-ring r2"></span><span class="sg-ring r3"></span>
+        <span class="sg-sweep"></span>
+        <span class="sg-blip" style="left:28%;top:30%"></span><span class="sg-blip" style="left:70%;top:24%;animation-delay:.7s"></span><span class="sg-blip" style="left:62%;top:66%;animation-delay:1.3s"></span><span class="sg-blip" style="left:22%;top:62%;animation-delay:1.9s"></span>
+        <span class="sg-p li sg-orb" style="left:50%;top:0">in</span>
+        <span class="sg-p rd sg-orb" style="left:100%;top:50%">r/</span>
+        <span class="sg-p x sg-orb" style="left:50%;top:100%"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></span>
+        <span class="sg-p gh sg-orb" style="left:0;top:50%"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></span>
+        <span class="sg-core"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span>
+      </div>
+      <div class="sg-stack">
+        <div class="sg-card on">
+          <div class="sg-sig"><span class="sg-p rd">r/</span><div><s>Reddit · r/sales · 5h</s><q>our enrichment tool bounces 30% of emails, what are you all using?</q></div><em class="hot">intent</em></div>
+          <div class="sg-link"><i></i>treg found the buyer<i></i></div>
+          <div class="sg-person"><img src="media/leads-signals/f4.jpg" alt=""><div><b>Priya Shah</b><s>Head of Sales Ops · Northloop</s></div><span class="sg-mail">priya@northloop.io <em>✓</em></span></div>
+        </div>
+        <div class="sg-card">
+          <div class="sg-sig"><span class="sg-p li">in</span><div><s>LinkedIn · job post · 2h</s><q>Hiring 3 SDRs to build outbound from zero</q></div><em>hiring</em></div>
+          <div class="sg-link"><i></i>treg found the buyer<i></i></div>
+          <div class="sg-person"><img src="media/leads-signals/f0.jpg" alt=""><div><b>Marcus Lee</b><s>VP Revenue · Lumenly</s></div><span class="sg-mail">marcus@lumenly.ai <em>✓</em></span></div>
+        </div>
+        <div class="sg-card">
+          <div class="sg-sig"><span class="sg-p x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></span><div><s>X · founder post · 1d</s><q>We just closed our $12M Series A</q></div><em>funding</em></div>
+          <div class="sg-link"><i></i>treg found the buyer<i></i></div>
+          <div class="sg-person"><img src="media/leads-signals/f12.jpg" alt=""><div><b>Ana Ruiz</b><s>Co-founder & CEO · Fieldkit</s></div><span class="sg-mail">ana@fieldkit.com <em>✓</em></span></div>
+        </div>
+      </div>
+    </div>
+  </a>
+  <p class="fineprint">Signals and people shown are illustrative.</p>
+  </div>
 </section>
+
 
 <section class="wf-sec" id="bench">
  <div class="bench-track" id="benchTrack">
@@ -759,9 +914,37 @@
     </div>
   </div>
   </div>
-  <p class="fineprint">treg · Lessie · Exa · Claude Code alone — <a href="https://github.com/LessieAI/people-search-bench">github.com/LessieAI/people-search-bench</a></p>
+  <div class="h-strip">
+    <div><b>2.6×</b><span>more right people per list<s>1.8 → 4.7</s></span></div>
+    <div><b>2× faster</b><span>request to finished list<s>2.8 → 1.4 min</s></span></div>
+    <div><b>38% fewer</b><span>tokens, half the turns<s>per list</s></span></div>
+  </div>
+  <p class="fineprint">Bars: <a href="https://github.com/LessieAI/people-search-bench">LessieAI People Search Bench</a>. Strip: Claude Code (Opus 5.5) ± treg on 117 real requests from treg users, same judge.</p>
   </div>
  </div>
+</section>
+
+<section class="section" id="vs">
+  <h2>85% cheaper than Clay.<br><span class="hl2">More correct emails.</span></h2>
+  <p class="lede">The same 100 leads (name + company domain) through five work-email tools, checked against each company's published address.</p>
+  <div class="vs-wrap">
+    <table class="vs-t">
+      <thead><tr><th></th>
+        <th class="me"><span><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></th>
+        <th><span><img src="media/people-search/clay.png" alt="">Clay</span></th>
+        <th><span><img src="media/people-search/apollo.png" alt="">Apollo</span></th>
+        <th><span><img src="media/people-search/deepline.png" alt="">Deepline</span></th>
+        <th><span><img src="media/people-search/hunter.png" alt="">Hunter</span></th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Correct work emails</td><td class="me">92</td><td>84</td><td>77</td><td>80</td><td>84</td></tr>
+        <tr><td>Precision (correct ÷ found)</td><td class="me">94%</td><td>88%</td><td>90%</td><td>87%</td><td>93%</td></tr>
+        <tr><td>Cost for the 100 leads</td><td class="me">$0.53</td><td>~$3.35</td><td>~$2.24</td><td>$2.74</td><td>$2.21</td></tr>
+        <tr><td>Cost per 100 correct emails</td><td class="me">$0.58</td><td>$3.77</td><td>~$2.91</td><td>$3.40</td><td>$2.63</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fineprint">Oct 2026, exact match to the address each company publishes. List prices on the day; a gap of a few rows is a tie. <a href="https://x.com/jasonzhou1993/status/2107423956395589784" target="_blank" rel="noopener">Watch the head-to-head ↗</a></p>
 </section>
 
 <section class="section bill-sec" id="pricing" style="padding-top:40px">
@@ -782,8 +965,8 @@
     <div class="bill-divider" aria-hidden="true"></div>
     <div class="bill-right">
       <div class="bk">with <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
-      <div class="bb">$0.0089<small>per verified email</small></div>
-      <div class="bnote">cheapest email-find on the catalog today · the film's run: 100 leads, $1.76</div>
+      <div class="bb">$0.0005<small>per email found</small></div>
+      <div class="bnote">cheapest email-find on the catalog today, from a LinkedIn URL · the film's run: 100 leads, $1.76</div>
     </div>
   </div>
   <p class="fineprint">Current catalog rates. New teams start with $1.00 free.</p>
@@ -795,18 +978,18 @@
   <p class="lede">People search is one aisle. The same token reaches social, SEO, ads, scraping — and your own keys always win over treg's.</p>
   <div class="catwrap">
     <div class="pgrid">
-      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.010 / query</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.007 / query</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/apollo.png" alt=""></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/tomba.png" alt=""></span><span class="pt"><b>Email finder</b><s>Tomba · $0.0089 / find</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.003 / check</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.028</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.010 / co</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.0123 / check</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.28</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.009 / co</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/icypeas.svg" alt=""></span><span class="pt"><b>Email from LinkedIn</b><s>Icypeas · $0.019</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/leadmagic.png" alt=""></span><span class="pt"><b>People at a company</b><s>LeadMagic · $0.025</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/linkedin.svg" alt=""></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/crunchbase.png" alt=""></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/x.svg" alt=""></span><span class="pt"><b>X posts &amp; profiles</b><s class="was">X API · $200/mo</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/coresignal.png" alt=""></span><span class="pt"><b>Job postings</b><s>Coresignal · $0.020</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/predictleads.svg" alt=""></span><span class="pt"><b>Job postings</b><s>PredictLeads · $0.04 / co</s></span></div>
     </div>
     <div class="morewrap" aria-hidden="true">
       <div class="pgrid">
@@ -829,9 +1012,14 @@
 
 <section class="cta-final">
   <h2>Give your agent<br>1B+ contacts.</h2>
+  <div class="cmd-tabs" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-tab="agent"><span class="ct-ico"><img src="media/people-search/claude-code.png" alt=""><img src="media/people-search/codex.png" alt=""><img src="media/people-search/openclaw.png" alt=""></span>Connect to your agent</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="dev">Developers</button>
+  </div>
   <div class="cmd">
     <span class="ps">$</span>
     <span class="cline" id="cmdLine">set up treg — <a href="https://treg.to/llms.txt">treg.to/llms.txt</a></span>
+    <span class="cline" id="cmdDev" hidden>Read <a href="https://treg.to/integrate.md">https://treg.to/integrate.md</a> and integrate treg into our product, including per-customer usage tracking and billing.</span>
     <button id="copyBtn" type="button">copy</button>
   </div>
   <div class="ctas">
@@ -842,6 +1030,14 @@
 <section class="section" id="related" style="padding-top:60px;padding-bottom:80px">
   <h2 style="margin-bottom:28px">Related</h2>
   <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+    <!--hosted--><a href="/gtm-engineering" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">GTM engineering playbook</b>
+      <span style="font-size:13px;color:var(--muted)">16 chapters from ICP to rollout, the data steps tested on real runs</span>
+    </a><!--/hosted-->
+    <a href="/leads-signals" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Lead signals</b>
+      <span style="font-size:13px;color:var(--muted)">Watch for hiring, funding, job changes and buyer intent</span>
+    </a>
     <a href="/use-cases/people-search" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
       <b style="display:block;font-size:15px;margin-bottom:4px">Compare providers</b>
       <span style="font-size:13px;color:var(--muted)">Priced comparison of people search APIs</span>
@@ -881,11 +1077,13 @@
     </div>
     <nav class="bf-cols" aria-label="Site">
       <div class="bf-col"><div class="lab">Explore</div>
-        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
       <div class="bf-col"><div class="lab">Build</div>
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+      <!--hosted--><div class="bf-col"><div class="lab">Compare</div>
+        <a href="/compare/treg-vs-clay">treg vs Clay</a><a href="/compare/treg-vs-apollo">treg vs Apollo</a><a href="/compare/treg-vs-composio">treg vs Composio</a><a href="/compare/treg-vs-zapier">treg vs Zapier MCP</a><a href="/compare/treg-vs-apify">treg vs Apify</a><a href="/compare/treg-vs-openrouter">treg vs OpenRouter</a><a href="/compare">All comparisons →</a></div><!--/hosted-->
     </nav>
   </div>
   <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
@@ -901,7 +1099,7 @@
     <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
-      <input id="em-input" type="email" placeholder="you@work.com"/>
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
       <button class="pill" id="em-btn1">Email me a sign-in code</button>
     </div>
     <div id="em-step2" style="display:none">
@@ -997,8 +1195,8 @@
     var em = document.getElementById('em-input').value.trim();
     var err = document.getElementById('em-err');
     if (!em) { err.textContent = 'Enter your email address.'; return; }
-    document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
-    fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em }) })
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) throw new Error(d.detail || 'could not send the code');
@@ -1012,7 +1210,7 @@
         else { err.style.color = ''; }
         document.getElementById('em-code').focus();
       })
-      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
   }
   function emailVerify() {
     var em = document.getElementById('em-input').value.trim();
@@ -1104,7 +1302,7 @@
       bRows.forEach(function (r) { r.classList.add('in'); });
       bSts[0].textContent = 'miss · $0.00'; bSts[0].className = 'st miss';
       bSts[1].textContent = '429 · $0.00'; bSts[1].className = 'st miss';
-      bSts[2].textContent = '✓ $0.024'; bSts[2].className = 'st hit';
+      bSts[2].textContent = '✓ $0.0245'; bSts[2].className = 'st hit';
       bRows[2].classList.add('picked'); bdBadge.classList.add('in');
       dMeter.textContent = '$1.7600'; dStatus.textContent = '100 verified emails · misses free';
       return;
@@ -1145,7 +1343,7 @@
     at(9500, function () { bSts[0].textContent = 'miss · $0.00'; bSts[0].className = 'st miss'; bRows[0].classList.add('dim'); });
     at(10100, function () { bSts[1].textContent = '429 · $0.00'; bSts[1].className = 'st miss'; bRows[1].classList.add('dim'); });
     at(10700, function () {
-      bSts[2].textContent = '✓ $0.024'; bSts[2].className = 'st hit'; bRows[2].classList.add('picked');
+      bSts[2].textContent = '✓ $0.0245'; bSts[2].className = 'st hit'; bRows[2].classList.add('picked');
       dStatus.textContent = 'Hunter hit — only the hit is billed';
     });
     at(11000, function () { bdBadge.classList.add('in'); });
@@ -1176,6 +1374,18 @@
   }, { threshold: 0.25 });
   document.querySelectorAll('.bill-sec').forEach(function (s) { io.observe(s); });
 
+  /* ---------- lead-signals band: cycle the caught signal while on screen ---------- */
+  (function () {
+    var cards = document.querySelectorAll('.sg-card'), i = 0, timer = null;
+    if (!cards.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting && !timer) timer = setInterval(function () {
+        cards[i].classList.remove('on'); i = (i + 1) % cards.length; cards[i].classList.add('on');
+      }, 3200);
+      else if (!es[0].isIntersecting) { clearInterval(timer); timer = null; }
+    }).observe(document.querySelector('.sig-viz'));
+  })();
+
   /* ---------- use-case cards: each loops its mini film while on screen ---------- */
   (function () {
     var PHONE_FROM = '+1 (•••) •••-••••', PHONE_TO = '+1 (415) 630-2214';
@@ -1191,7 +1401,7 @@
         rows.forEach(function (r, i) { at(200 + i * 160, function () { r.classList.add('in'); }); });
         at(1000, function () { sts[0].textContent = 'miss · $0.00'; sts[0].className = 'st miss'; rows[0].classList.add('dim'); });
         at(1550, function () { sts[1].textContent = '429 · $0.00'; sts[1].className = 'st miss'; rows[1].classList.add('dim'); });
-        at(2100, function () { sts[2].textContent = '✓ $0.024'; sts[2].className = 'st hit'; rows[2].classList.add('picked'); });
+        at(2100, function () { sts[2].textContent = '✓ $0.0245'; sts[2].className = 'st hit'; rows[2].classList.add('picked'); });
         at(2500, function () { el.q('.uc-em').classList.add('in'); });
       },
       phone: function (at, el) {
@@ -1372,10 +1582,20 @@
   }, { passive: true });
   benchScrub();
 
+  /* ---------- install prompt tabs: agent setup vs product integration ---------- */
+  document.querySelectorAll('.cmd-tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var dev = b.dataset.tab === 'dev';
+      document.querySelectorAll('.cmd-tabs button').forEach(function (o) { o.setAttribute('aria-selected', String(o === b)); });
+      document.getElementById('cmdLine').hidden = dev;
+      document.getElementById('cmdDev').hidden = !dev;
+    });
+  });
+
   /* ---------- copy the install command ---------- */
   var copyBtn = document.getElementById('copyBtn');
   copyBtn.addEventListener('click', function () {
-    var txt = 'set up treg — treg.to/llms.txt';
+    var txt = document.querySelector('.cmd .cline:not([hidden])').textContent.trim();
     function copied() {
       copyBtn.textContent = 'copied ✓';
       setTimeout(function () { copyBtn.textContent = 'copy'; }, 1600);
@@ -1416,5 +1636,16 @@
 </script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
+<script>
+(function () {
+  var box = document.getElementById('vbox'), v = box.querySelector('video');
+  document.getElementById('playLaunch').addEventListener('click', function () {
+    box.showModal(); v.play().catch(function () {});
+  });
+  box.addEventListener('close', function () { v.pause(); });
+  box.addEventListener('click', function (e) { if (e.target === box) box.close(); });
+})();
+</script>
 </body>
 </html>

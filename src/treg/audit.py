@@ -1,6 +1,7 @@
 """Audit writes — deferred and fire-and-forget (rule #2: never block the proxied response).
 
-`record_call` queues a row and returns immediately; the response streams without waiting. One
+`record_call` and terminal hit corrections queue their writes and return immediately; the
+response streams without waiting. One
 writer task per process drains the queue in batches on one connection (a strong reference to it
 is held until it finishes, otherwise the event loop may GC a bare create_task). Failures are
 swallowed: an audit hiccup must never break a real call. `drain()` flushes pending writes on
@@ -9,7 +10,7 @@ shutdown / in tests.
 Back-pressure (why this matters): the writer's connection comes from the BACKGROUND pool (db.py),
 so a burst here can starve other background work but never real calls. Rows queue in-process, not
 as pooled connections: one writer per process takes them off the queue `_BATCH` at a time and lands
-each batch in one INSERT round trip, which is what keeps `drain()` deterministic on sqlite, where
+inserts in batches, which is what keeps `drain()` deterministic on sqlite, where
 all three makers share one engine. Under an extreme burst we DROP audit rows past `_MAX_PENDING`
 rather than grow without bound — audit is best-effort; never OOM or wedge the server for it.
 """
@@ -20,19 +21,27 @@ import asyncio
 import logging
 from collections import deque
 
+from sqlalchemy import select, update
+
+from .infra.catalog_stat_dirty import mark_dirty
 from .infra.db import background_session_maker
-from .models import CallRecord, RunRecord, SearchLog, SearchMiss
+from .models import AsyncTaskRecord, CallRecord, RunRecord, SearchLog, SearchMiss
 
 _pending: set[asyncio.Task] = set()
 # ONE writer per process, and it writes in batches. Audit rows are single-row inserts that cost
-# milliseconds each, so four concurrent writers bought nothing but four `background` slots - and
-# every slot is paid twice (two uvicorn workers) and again at every deploy against the database's
-# 103-connection ceiling (ops/deploy.md). One writer draining a queue in batches of `_BATCH` rows
-# lands the same rows in fewer round trips and holds one connection.
+# milliseconds each, so concurrent writers buy nothing but `background` slots, each paid per
+# process and again at every deploy against the database's connection ceiling. One writer
+# draining a queue in batches of `_BATCH` rows lands the same rows in fewer round trips and holds
+# one connection.
 _MAX_CONCURRENT_WRITES = 1
 _MAX_PENDING = 5000          # shed load past this: drop the audit row rather than grow unbounded
-_BATCH = 200                 # rows per INSERT round trip; a failed batch retries row by row
+_BATCH = 200                 # queued operations per batch; a failed batch retries one by one
 _queue: deque[tuple[type, dict]] = deque()
+
+
+class _AsyncHitUpdate:
+    """Queued audit mutation, ordered with inserts on the same writer."""
+
 
 _sem: asyncio.Semaphore | None = None
 _sem_loop = None
@@ -53,6 +62,7 @@ def record_call(
     status_code: int, client: str = "", refused_by: str | None = None, telemetry: dict | None = None,
     api_key_id: int | None = None, api_key_name: str | None = None,
     api_key_prefix: str | None = None,
+    async_submission: bool = False,
 ) -> None:
     """`telemetry` carries the marketplace/spend columns (endpoint_id, provider, credential_tier,
     cost_*_micro, duration_ms, response_bytes, params_hash) — absent for a plain tool call, where they
@@ -64,7 +74,19 @@ def record_call(
         method=method, path=path, status_code=status_code, client=client, refused_by=refused_by,
         api_key_id=api_key_id, api_key_name=api_key_name, api_key_prefix=api_key_prefix,
         **_known_fields(CallRecord, telemetry),
+        **({"_async_submission": True} if async_submission else {}),
     ))
+
+
+def record_async_call_hit(call_id: str, endpoint_id: str, org_id: int, hit: bool, *,
+                          verdict: str | None = None) -> None:
+    """Queue the terminal audit correction without delaying the provider's response.
+
+    If the insert has not landed, its task-row read supplies the durable verdict. If it
+    has landed, this update corrects it. Both operations use the one audit writer.
+    """
+    _enqueue(_AsyncHitUpdate, dict(call_id=call_id, endpoint_id=endpoint_id,
+                                   org_id=org_id, hit=hit, verdict=verdict))
 
 
 def _known_fields(model, telemetry: dict | None) -> dict:
@@ -86,11 +108,13 @@ def _known_fields(model, telemetry: dict | None) -> dict:
     return known
 
 
-def record_search_miss(*, query: str, source: str) -> None:
+def record_search_miss(*, query: str, source: str, reason: str | None = None,
+                       engine: str | None = None) -> None:
     """A catalog search that matched nothing — logged so the misses can steer ingest (see
-    models.SearchMiss). Same contract as every write here: fire-and-forget, and a dropped row
-    under load costs a data point, never a search response."""
-    _enqueue(SearchMiss, dict(query=query[:300], source=source))
+    models.SearchMiss). On a find, `reason` says why the answer was empty and `engine` which find
+    answered. Same contract as every write here: fire-and-forget, and a dropped row under load
+    costs a data point, never a search response."""
+    _enqueue(SearchMiss, dict(query=query[:300], source=source, reason=reason, engine=engine))
 
 
 def record_search(*, query: str, source: str, org_id: int | None, user_email: str | None,
@@ -177,10 +201,44 @@ async def _flush() -> None:
 async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
     try:
         async with background_session_maker() as session:
-            session.add_all([model(**fields) for model, fields in rows])
+            # Lock task rows before reading their verdicts. The terminal finalizer holds the
+            # same row lock while committing its verdict, so whichever side wins the race,
+            # the inserted CallRecord gets the terminal hit or the later update finds it.
+            async_ids = [fields["call_ref"] for model, fields in rows
+                         if model is CallRecord and fields.get("_async_submission")]
+            tasks = {}
+            if async_ids:
+                tasks = {row.call_id: row for row in (await session.execute(
+                    select(AsyncTaskRecord).where(AsyncTaskRecord.call_id.in_(async_ids))
+                    .with_for_update())).scalars()}
+            records = []
+            dirty: set[tuple[str, str]] = set()
+            for model, fields in rows:
+                if model is _AsyncHitUpdate:
+                    # Earlier inserts in this batch must be visible to the UPDATE.
+                    if records:
+                        session.add_all(records)
+                        records = []
+                        await session.flush()
+                    corrected = await session.execute(update(CallRecord).where(
+                        CallRecord.call_ref == fields["call_id"],
+                        CallRecord.endpoint_id == fields["endpoint_id"],
+                        CallRecord.org_id == fields["org_id"],
+                    ).values(hit=fields["hit"], verdict=fields["verdict"])
+                      .returning(CallRecord.endpoint_id, CallRecord.created_at))
+                    dirty.update((endpoint_id, created_at.strftime("%Y-%m-%d"))
+                                 for endpoint_id, created_at in corrected.all())
+                    continue
+                values = {k: v for k, v in fields.items() if k != "_async_submission"}
+                if fields.get("_async_submission") and (task := tasks.get(fields["call_ref"])) is not None:
+                    values["hit"] = task.hit
+                    values["verdict"] = task.verdict
+                records.append(model(**values))
+            session.add_all(records)
+            await mark_dirty(session, dirty)
             await session.commit()
         return True
-    except Exception:  # noqa: BLE001 — audit must never surface into a call's result
+    except Exception:
         # Swallowed on purpose, but neither silent nor local: the row is lost — that is the
         # contract — and ERROR is what puts that loss in front of someone. At WARNING it stayed
         # in the container's stdout, below the fault handler's threshold, so the only way to
@@ -192,18 +250,6 @@ async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
 
 
 async def drain() -> None:
-    # Loop until quiescent, not a one-shot snapshot: a call finishing DURING shutdown enqueues a new
-    # record_call after we'd have gathered, and that audit write would otherwise be dropped.
-    #
-    # Drain must remove what it gathered ITSELF. A finished task leaves `_pending` through a
-    # call_soon'd done-callback — and awaiting a gather whose tasks are all already complete never
-    # suspends, so a loop keyed only on the callback spins synchronously forever while that callback
-    # (and every timer on the loop) starves. Latent since the first import; a CI Postgres runner hit
-    # the window deterministically and wedged whole 15-minute jobs on it.
-    #
-    # Whatever is still queued once no writer is running is flushed HERE, inline, not through
-    # `_schedule`: a drain that depends on scheduling a task to make progress spins forever the
-    # moment scheduling is stubbed out (a test kills the pipeline exactly that way).
     while True:
         tasks = list(_pending)
         if tasks:

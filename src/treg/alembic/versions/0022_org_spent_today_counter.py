@@ -7,13 +7,9 @@ Create Date: 2026-09-06
 `ledger.spent_today` is the fail-closed per-org daily cap and runs inside EVERY metered call's
 reserve transaction on an api-pool connection. Until now it was two aggregates over `ledgerentry`
 and `hold` since midnight. Revision 0021 gave the ledger half an `(org_id, created_at)` index and
-that fixed light orgs and `/billing`, but not the two orgs that write half the platform's day:
-their rows sit on nearly every heap page of the day, so the planner (correctly) keeps walking the
-whole day's `created_at` range — measured after 0021 on prod 2026-09-06:
-
-    org 5430  Rows Removed by Filter: 166,760   Buffers: shared hit=394,248   439 ms warm
-    org 4645  Rows Removed by Filter: 385,118   Buffers: shared hit=395,506   1,797 ms warm
-    cold (day's pages evicted by another scan): 56–171 s, holding an api-pool slot throughout
+that fixed light orgs and `/billing`, but not the heaviest orgs: their rows sit on nearly every
+heap page of the day, so the planner (correctly) keeps walking the whole day's `created_at` range,
+and on a cold cache that holds an api-pool slot throughout.
 
 No index can make "sum of this org's rows today" cheaper than "this org's pages today" — for a
 heavy org that IS the day. The counter makes it one primary-key read: `domain/money` folds every
@@ -25,7 +21,7 @@ resets it). `spent_today_from_ledger` keeps the journal view for reconciliation.
 row-updated table (every reserve); adding a column with a constant default is metadata-only on this
 Postgres and holds that lock for milliseconds. The backfill — one range aggregate over today's
 ledger and holds — would hold it for seconds if it ran in the same transaction, which is exactly
-the 2026-08-15 shape. So the ALTER commits first, then the two UPDATEs run autocommit, taking
+the shape `env.py`'s lock rule forbids. So the ALTER commits first, then the two UPDATEs run autocommit, taking
 only row locks on the orgs that moved money today. Calls that reserve between the backfill and the
 new code starting are missed by at most that window; the cap is a blast-radius guard, not a bill.
 

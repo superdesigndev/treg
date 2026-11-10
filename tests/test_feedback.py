@@ -13,6 +13,7 @@ from treg.config import get_settings
 from treg.feedback_contract import FEEDBACK_CATEGORIES
 from treg.infra.db import session_maker
 from treg.models import CallRecord, Feedback, FeedbackHandling, FeedbackHandlingEvent, LedgerEntry
+from conftest import verified_signup
 
 
 async def rows():
@@ -34,7 +35,7 @@ async def test_feedback_is_durable_and_private_to_the_team(clients):
     assert row.id == receipt["feedback_id"]
     assert row.user_email == "tim@superdesign.dev"
 
-    other = (await clients.post("/users", json={"email": "other-feedback@example.test"})).json()
+    other = (await verified_signup(clients, json={"email": "other-feedback@example.test"})).json()
     denied = await clients.get(f"/feedback/{row.id}", headers={"X-Treg-Token": other["token"]})
     assert denied.status_code == 404
     assert (await clients.get("/admin/feedback")).status_code == 403
@@ -146,16 +147,12 @@ def test_cli_feedback_sends_only_the_declared_fields(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["feedback_id"] == 7
 
 
-@pytest.mark.parametrize("surface", ["team", "directory"])
-async def test_both_mcp_surfaces_submit_to_the_same_intake(clients, surface):
+async def test_team_mcp_submits_to_the_intake(clients):
     from test_mcp import _call_tool as team_call, mcp_session
-    from test_mcp_directory import _call_tool as directory_call, directory_session
 
     token = clients.headers["X-Treg-Token"]
-    context = mcp_session(clients) if surface == "team" else directory_session()
-    call = team_call if surface == "team" else directory_call
-    async with context as client:
-        result = await call(client, "feedback", {
+    async with mcp_session(clients) as client:
+        result = await team_call(client, "feedback", {
             "category": "pricing", "message": "The price unit is unclear.",
         }, token=token)
     assert result["status"] == "received", result
@@ -167,14 +164,15 @@ async def test_both_mcp_surfaces_submit_to_the_same_intake(clients, surface):
 async def test_mcp_exposes_the_small_category_enum():
     from treg.mcp import mcp, directory_mcp
 
-    for server in [mcp, directory_mcp]:
-        tool = next(tool for tool in await server.list_tools() if tool.name == "feedback")
-        properties = tool.input_schema["properties"]
-        assert properties["category"]["enum"] == list(FEEDBACK_CATEGORIES)
-        assert tool.input_schema["required"] == ["category", "message"]
-        assert tool.annotations.read_only_hint is False
-        assert tool.annotations.destructive_hint is False
-        assert tool.annotations.open_world_hint is False
+    tool = next(tool for tool in await mcp.list_tools() if tool.name == "feedback")
+    properties = tool.input_schema["properties"]
+    assert properties["category"]["enum"] == list(FEEDBACK_CATEGORIES)
+    assert tool.input_schema["required"] == ["category", "message"]
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is False
+    assert tool.annotations.open_world_hint is True
+    # the directory listing was submitted without it
+    assert "feedback" not in {tool.name for tool in await directory_mcp.list_tools()}
 
 
 async def test_deleting_a_team_removes_its_feedback(clients):

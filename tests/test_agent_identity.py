@@ -23,7 +23,7 @@ from sqlmodel import select
 
 from conftest import make_upstream
 
-from treg import crypto
+from treg import audit, crypto
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
 from treg.models import IdempotentCall, Membership, Org, User
@@ -96,10 +96,7 @@ async def test_agent_can_call_but_cannot_act_as_a_user(env):
 async def test_no_login_door_can_resolve_an_agent_address(env):
     """The address is unroutable, but the block is explicit so no door can hand a human the identity."""
     email = (await _agent(env))["email"]
-    # open registration must not squat/reuse the address
-    r = await env.c.post("/users", json={"email": email})
-    assert r.status_code == 403 and "cannot be used to sign in" in r.text
-    # nor the email one-time-code door: refused up front, so no code is ever minted for it
+    # the email one-time-code door refuses it up front, so no code is ever minted for it
     r = await env.c.post("/auth/email/start", json={"email": email})
     assert r.status_code == 403 and "cannot be used to sign in" in r.text
 
@@ -228,10 +225,15 @@ async def test_agent_inherits_its_own_daily_cap(env):
     assert (await env.c.get("/call/alpha/ok", headers=_h(env.owner))).status_code == 200
 
 
-async def test_agent_traffic_is_attributed_to_the_agent(env):
+@pytest.mark.parametrize("defer_audit", [False, True])
+async def test_agent_traffic_is_attributed_to_the_agent(env, monkeypatch, defer_audit):
     """Per-agent logging falls out of identity: CallRecord already stamps user_email."""
+    if defer_audit:
+        # A call can finish before its background audit writer gets a turn.
+        monkeypatch.setattr(audit, "_schedule", lambda coro: coro.close())
     a = await _agent(env, name="logger")
     assert (await env.c.get("/call/alpha/ok", headers=_h(a["token"]))).status_code == 200
+    await audit.drain()  # Attribution reads persisted audit rows, not response completion.
     calls = (await env.c.get("/calls", headers=_h(env.owner))).json()
     assert any(c["user_email"] == a["email"] and c["tool_name"] == "alpha" for c in calls), calls
 

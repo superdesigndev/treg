@@ -32,6 +32,7 @@ source:
   - https://developers.google.com/youtube/v3/determine_quota_cost
 endpoints:
 - id: youtube.x.youtube-captions-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -71,6 +72,7 @@ endpoints:
       required: true
       note: JSON body — the Caption resource; see the method's API reference for its fields
 - id: youtube.x.youtube-captions-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -110,6 +112,7 @@ endpoints:
       required: true
       note: JSON body — the Caption resource; see the method's API reference for its fields
 - id: youtube.x.youtube-channelbanners-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -145,6 +148,7 @@ endpoints:
       required: true
       note: JSON body — the ChannelBannerResource resource; see the method's API reference for its fields
 - id: youtube.x.youtube-playlistimages-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -180,6 +184,7 @@ endpoints:
       required: true
       note: JSON body — the PlaylistImage resource; see the method's API reference for its fields
 - id: youtube.x.youtube-playlistimages-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -211,6 +216,7 @@ endpoints:
       required: true
       note: JSON body — the PlaylistImage resource; see the method's API reference for its fields
 - id: youtube.x.youtube-watermarks-set
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -241,6 +247,7 @@ endpoints:
       required: true
       note: JSON body — the InvideoBranding resource; see the method's API reference for its fields
 - id: youtube.x.youtube-abusereports-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -268,6 +275,7 @@ endpoints:
       required: true
       note: JSON body — the AbuseReport resource; see the method's API reference for its fields
 - id: youtube.x.youtube-activities-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -315,6 +323,7 @@ endpoints:
         type: string
         required: false
 - id: youtube.x.youtube-captions-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -344,6 +353,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-captions-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -381,6 +391,7 @@ endpoints:
         required: true
         note: Returns the captions for the specified video.
 - id: youtube.x.youtube-captions-download
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -419,6 +430,7 @@ endpoints:
         required: false
         note: tlang is the language code; machine translate the captions into this language.
 - id: youtube.x.youtube-channelsections-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -444,6 +456,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-channelsections-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -485,6 +498,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more channelSection resource properties that the API response will include. The part names that you can include in the parameter value are id, snippet, and contentDetails. If the parameter identifies a property that contains child prope
 - id: youtube.x.youtube-channelsections-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -520,6 +534,7 @@ endpoints:
       required: true
       note: JSON body — the ChannelSection resource; see the method's API reference for its fields
 - id: youtube.x.youtube-channelsections-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -551,6 +566,7 @@ endpoints:
       required: true
       note: JSON body — the ChannelSection resource; see the method's API reference for its fields
 - id: youtube.x.youtube-channels-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -582,6 +598,7 @@ endpoints:
       required: true
       note: JSON body — the Channel resource; see the method's API reference for its fields
 - id: youtube.x.youtube-commentthreads-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -609,6 +626,7 @@ endpoints:
       required: true
       note: JSON body — the CommentThread resource; see the method's API reference for its fields
 - id: youtube.x.youtube-comments-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -630,6 +648,7 @@ endpoints:
         type: string
         required: true
 - id: youtube.x.youtube-comments-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -675,6 +694,7 @@ endpoints:
         - html
         - plainText
 - id: youtube.x.youtube-comments-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -702,6 +722,7 @@ endpoints:
       required: true
       note: JSON body — the Comment resource; see the method's API reference for its fields
 - id: youtube.x.youtube-comments-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -729,6 +750,7 @@ endpoints:
       required: true
       note: JSON body — the Comment resource; see the method's API reference for its fields
 - id: youtube.x.youtube-comments-markasspam
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -751,6 +773,7 @@ endpoints:
         required: true
         note: Flags the comments with the given IDs as spam in the caller's opinion.
 - id: youtube.x.youtube-comments-setmoderationstatus
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -786,6 +809,7 @@ endpoints:
         - likelySpam
         - rejected
 - id: youtube.x.youtube-i18nlanguages-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: youtube
@@ -811,6 +835,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the i18nLanguage resource properties that the API response will include. Set the parameter value to snippet.
 - id: youtube.x.youtube-i18nregions-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: youtube
@@ -836,6 +861,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the i18nRegion resource properties that the API response will include. Set the parameter value to snippet.
 - id: youtube.x.youtube-livebroadcasts-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -866,6 +892,7 @@ endpoints:
         required: false
         note: This parameter can only be used in a properly authorized request. *Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwnerChannel* parameter specifies the YouTube channel ID of the channel to which a video is being added. This parameter is required whe
 - id: youtube.x.youtube-livebroadcasts-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -929,6 +956,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more liveBroadcast resource properties that the API response will include. The part names that you can include in the parameter value are id, snippet, contentDetails, status and statistics.
 - id: youtube.x.youtube-livebroadcasts-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -964,6 +992,7 @@ endpoints:
       required: true
       note: JSON body — the LiveBroadcast resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livebroadcasts-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -999,6 +1028,7 @@ endpoints:
       required: true
       note: JSON body — the LiveBroadcast resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livebroadcasts-bind
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1037,6 +1067,7 @@ endpoints:
         required: false
         note: Stream to bind, if not set unbind the current one.
 - id: youtube.x.youtube-livebroadcasts-insertcuepoint
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1076,6 +1107,7 @@ endpoints:
       required: true
       note: JSON body — the Cuepoint resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livebroadcasts-transition
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1119,6 +1151,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more liveBroadcast resource properties that the API response will include. The part names that you can include in the parameter value are id, snippet, contentDetails, and status.
 - id: youtube.x.youtube-livechatbans-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1140,6 +1173,7 @@ endpoints:
         type: string
         required: true
 - id: youtube.x.youtube-livechatbans-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1167,6 +1201,7 @@ endpoints:
       required: true
       note: JSON body — the LiveChatBan resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livechatmessages-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1188,6 +1223,7 @@ endpoints:
         type: string
         required: true
 - id: youtube.x.youtube-livechatmessages-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1229,6 +1265,7 @@ endpoints:
         required: false
         note: Specifies the size of the profile image that should be returned for each user.
 - id: youtube.x.youtube-livechatmessages-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1256,6 +1293,7 @@ endpoints:
       required: true
       note: JSON body — the LiveChatMessage resource; see the method's API reference for its fields
 - id: youtube.x.youtube-youtube-v3-livechat-messages-stream
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1297,6 +1335,7 @@ endpoints:
         required: false
         note: Specifies the size of the profile image that should be returned for each user.
 - id: youtube.x.youtube-livechatmessages-transition
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1326,6 +1365,7 @@ endpoints:
         - statusUnspecified
         - closed
 - id: youtube.x.youtube-livechatmoderators-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1347,6 +1387,7 @@ endpoints:
         type: string
         required: true
 - id: youtube.x.youtube-livechatmoderators-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1380,6 +1421,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the liveChatModerator resource parts that the API response will include. Supported values are id and snippet.
 - id: youtube.x.youtube-livechatmoderators-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1407,6 +1449,7 @@ endpoints:
       required: true
       note: JSON body — the LiveChatModerator resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livestreams-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1436,6 +1479,7 @@ endpoints:
         required: false
         note: This parameter can only be used in a properly authorized request. *Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwnerChannel* parameter specifies the YouTube channel ID of the channel to which a video is being added. This parameter is required whe
 - id: youtube.x.youtube-livestreams-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1480,6 +1524,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more liveStream resource properties that the API response will include. The part names that you can include in the parameter value are id, snippet, cdn, and status.
 - id: youtube.x.youtube-livestreams-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1515,6 +1560,7 @@ endpoints:
       required: true
       note: JSON body — the LiveStream resource; see the method's API reference for its fields
 - id: youtube.x.youtube-livestreams-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1550,6 +1596,7 @@ endpoints:
       required: true
       note: JSON body — the LiveStream resource; see the method's API reference for its fields
 - id: youtube.x.youtube-members-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1596,6 +1643,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the member resource parts that the API response will include. Set the parameter value to snippet.
 - id: youtube.x.youtube-membershipslevels-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1618,6 +1666,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the membershipsLevel resource parts that the API response will include. Supported values are id and snippet.
 - id: youtube.x.youtube-playlistimages-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1644,6 +1693,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-playlistimages-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1685,6 +1735,7 @@ endpoints:
         required: false
         note: The *part* parameter specifies a comma-separated list of one or more playlistImage resource properties that the API response will include. If the parameter identifies a property that contains child properties, the child properties will be included in the response.
 - id: youtube.x.youtube-playlistitems-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1710,6 +1761,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-playlistitems-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1741,6 +1793,7 @@ endpoints:
       required: true
       note: JSON body — the PlaylistItem resource; see the method's API reference for its fields
 - id: youtube.x.youtube-playlistitems-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1772,6 +1825,7 @@ endpoints:
       required: true
       note: JSON body — the PlaylistItem resource; see the method's API reference for its fields
 - id: youtube.x.youtube-playlists-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1797,6 +1851,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-playlists-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -1850,6 +1905,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more playlist resource properties that the API response will include. If the parameter identifies a property that contains child properties, the child properties will be included in the response. For example, in a playlist resource, the
 - id: youtube.x.youtube-playlists-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1885,6 +1941,7 @@ endpoints:
       required: true
       note: JSON body — the Playlist resource; see the method's API reference for its fields
 - id: youtube.x.youtube-playlists-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1916,6 +1973,7 @@ endpoints:
       required: true
       note: JSON body — the Playlist resource; see the method's API reference for its fields
 - id: youtube.x.youtube-subscriptions-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -1937,6 +1995,7 @@ endpoints:
         type: string
         required: true
 - id: youtube.x.youtube-subscriptions-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2006,6 +2065,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies a comma-separated list of one or more subscription resource properties that the API response will include. If the parameter identifies a property that contains child properties, the child properties will be included in the response. For example, in a subscription resou
 - id: youtube.x.youtube-subscriptions-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2033,6 +2093,7 @@ endpoints:
       required: true
       note: JSON body — the Subscription resource; see the method's API reference for its fields
 - id: youtube.x.youtube-superchatevents-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2066,6 +2127,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the superChatEvent resource parts that the API response will include. This parameter is currently not supported.
 - id: youtube.x.youtube-tests-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2098,6 +2160,7 @@ endpoints:
       required: true
       note: JSON body — the TestItem resource; see the method's API reference for its fields
 - id: youtube.x.youtube-thirdpartylinks-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2136,6 +2199,7 @@ endpoints:
         - channelToStoreLink
         - channelToAffiliateProgramLink
 - id: youtube.x.youtube-thirdpartylinks-list
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2173,6 +2237,7 @@ endpoints:
         - channelToStoreLink
         - channelToAffiliateProgramLink
 - id: youtube.x.youtube-thirdpartylinks-insert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2204,6 +2269,7 @@ endpoints:
       required: true
       note: JSON body — the ThirdPartyLink resource; see the method's API reference for its fields
 - id: youtube.x.youtube-thirdpartylinks-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2235,6 +2301,7 @@ endpoints:
       required: true
       note: JSON body — the ThirdPartyLink resource; see the method's API reference for its fields
 - id: youtube.x.youtube-videoabusereportreasons-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: youtube
@@ -2260,6 +2327,7 @@ endpoints:
         required: true
         note: The *part* parameter specifies the videoCategory resource parts that the API response will include. Supported values are id and snippet.
 - id: youtube.x.youtube-videocategories-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: youtube
@@ -2292,6 +2360,7 @@ endpoints:
         type: string
         required: false
 - id: youtube.x.youtube-videotrainability-get
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2313,6 +2382,7 @@ endpoints:
         required: false
         note: The ID of the video to retrieve.
 - id: youtube.x.youtube-videos-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2338,6 +2408,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-videos-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2369,6 +2440,7 @@ endpoints:
       required: true
       note: JSON body — the Video resource; see the method's API reference for its fields
 - id: youtube.x.youtube-videos-getrating
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2393,6 +2465,7 @@ endpoints:
         required: false
         note: '*Note:* This parameter is intended exclusively for YouTube content partners. The *onBehalfOfContentOwner* parameter indicates that the request''s authorization credentials identify a YouTube CMS user who is acting on behalf of the content owner specified in the parameter value. This parameter is inte'
 - id: youtube.x.youtube-videos-rate
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2421,6 +2494,7 @@ endpoints:
         - like
         - dislike
 - id: youtube.x.youtube-videos-reportabuse
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube
@@ -2448,6 +2522,7 @@ endpoints:
       required: true
       note: JSON body — the VideoAbuseReport resource; see the method's API reference for its fields
 - id: youtube.x.youtube-videos-batchgetstats
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
@@ -2477,6 +2552,7 @@ endpoints:
         required: false
         note: Required. The `**part**` parameter specifies a comma-separated list of one or more `videoStat` resource properties that the API response will include. If the parameter identifies a property that contains child properties, the child properties will be included in the response. For example, in a `vide
 - id: youtube.x.youtube-watermarks-unset
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: youtube

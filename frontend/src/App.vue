@@ -1,6 +1,6 @@
 <script>
 import controller from './state/controller.js'
-import { pages, dialogs, LegacyPlatformPage } from './views'
+import { pages, dialogs } from './views'
 import SignedOutPage from './components/SignedOutPage.vue'
 import BrandMark from './components/BrandMark.vue'
 import PublicNavigation from './components/PublicNavigation.vue'
@@ -9,11 +9,11 @@ import DashboardNavigation from './components/DashboardNavigation.vue'
 import SignInDialog from './components/SignInDialog.vue'
 // The shell (navigation, sign-in) is bundled with the entry; pages and dialogs load on demand (views.ts).
 const {
-  connections: CatalogPage, find: SearchPage, provider: ProviderPage, platform: PlatformPage, tools: ToolsPage,
+  catalog: CatalogPage, connections: ConnectionsPage, find: SearchPage, provider: ProviderPage, platform: PlatformPage, tools: ToolsPage,
   detail: DetailPage, secrets: SecretsPage, resources: TeamResourcesPage, orgs: TeamPage, activity: ActivityPage,
   admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage,
 } = pages
-export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ProviderPage, PlatformPage, LegacyPlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
+export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
 </script>
 
 <template>
@@ -46,9 +46,6 @@ export default { ...controller, components: { ...controller.components, ...dialo
     <span class="rd-sr-only" role="status">{{startCopied ? 'Copied to clipboard' : ''}}</span>
     <div class="layout" :class="{solo:publicCatalog}">
       <main id="maincontent" tabindex="-1" :class="{flush:view==='find'}">
-        <!-- The Catalog page has its own, larger search (CatalogPage.vue): there it also finds tools
-             for a described job. -->
-        <div v-if="!publicCatalog && (view==='tools'||view==='resources')" class="rd-view-search search"><img src="/media/redesign/search.svg" alt=""><input :ref="el => setElement('search', el)" v-model="q" :placeholder="view==='resources'?'Search team resources…':'Search your own tools…'" aria-label="Search"></div>
         <div v-if="err" class="banner">{{err}}</div>
         <div v-if="pendingInvites.length" class="banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span>You've been invited:</span>
@@ -58,39 +55,36 @@ export default { ...controller, components: { ...controller.components, ...dialo
           </span>
         </div>
 
-        <!-- TOOLS -->
-        <CatalogPage v-if="view==='connections'" />
+        <!-- CATALOG: every platform, by category -->
+        <CatalogPage v-if="view==='catalog'" />
+
+        <!-- CONNECTIONS: the team's own accounts and keys, and every provider one can be added for -->
+        <ConnectionsPage v-if="view==='connections'" />
 
         <!-- FIND: /search, a described job answered over the platform pile -->
         <SearchPage v-if="view==='find'" />
 
-        <!-- MARKETPLACE: one integration -->
-        <ProviderPage v-if="view==='provider' && mkProvider" />
+        <!-- CATALOG: one integration -->
+        <ProviderPage v-if="view==='provider' && (mkProvider || mkPaused)" />
 
-        <!-- MARKETPLACE: one platform, from the endpoint catalog -->
-        <LegacyPlatformPage v-if="view==='platform' && catalogLegacy" />
-        <PlatformPage v-else-if="view==='platform'" />
+        <!-- CATALOG: one platform, from the endpoint catalog -->
+        <PlatformPage v-if="view==='platform'" />
 
         <ToolsPage v-if="view==='tools'" />
 
         <!-- DETAIL (shareable deep links: /app/skills/<name> + /app/tools/<name>) -->
         <DetailPage v-if="view==='detail' && detail" />
 
-        <!-- SECRETS -->
         <SecretsPage v-if="view==='secrets'" />
 
         <TeamResourcesPage v-if="view==='resources'" />
 
-        <!-- ORGS -->
         <TeamPage v-if="view==='orgs'" />
 
-        <!-- ACTIVITY -->
         <ActivityPage v-if="view==='activity'" />
 
-        <!-- ADMIN -->
         <AdminPage v-if="view==='admin'" />
 
-        <!-- GETTING STARTED -->
         <GettingStartedPage v-if="view==='start'" />
 
         <!-- REFERRALS — a person's link and everyone who used it. A top-level view (never nested):
@@ -99,17 +93,17 @@ export default { ...controller, components: { ...controller.components, ...dialo
         <HubPage v-if="view==='hub'" />
         <HubRunPage v-if="view==='run'" />
 
-        <!-- HELP -->
         <HelpPage v-if="view==='help'" />
       </main>
     </div>
 
     <div v-if="keyMenu" class="key-actions-menu" role="menu" :style="{top:keyMenu.top+'px',right:keyMenu.right+'px'}" @click.stop>
+      <p v-if="credentialIssue" id="key-action-blocked" class="sub" style="max-width:240px;margin:0;padding:6px 10px" role="status">{{keyActionBlockReason()}}</p>
       <button v-if="keyMenu.key.can_rename" role="menuitem" @click="editKey=keyMenu.key.id; editKeyName=keyMenu.key.name; keyMenu=null">Rename</button>
-      <button v-if="keyMenu.key.can_disable" role="menuitem" @click="requestKeyAction(keyMenu.key,'disable')">Disable</button>
-      <button v-if="keyMenu.key.can_enable" role="menuitem" @click="requestKeyAction(keyMenu.key,'enable')">Enable</button>
-      <button v-if="keyMenu.key.can_revoke" class="danger" role="menuitem" @click="requestKeyAction(keyMenu.key,'revoke')">Revoke</button>
-      <button v-if="keyMenu.key.can_hide && keyMenu.key.state==='revoked'" role="menuitem" @click="requestKeyAction(keyMenu.key,'hide')">Hide</button>
+      <button v-if="keyMenu.key.can_disable" role="menuitem" :disabled="!!credentialIssue" :aria-describedby="credentialIssue?'key-action-blocked':null" @click="requestKeyAction(keyMenu.key,'disable')">Disable</button>
+      <button v-if="keyMenu.key.can_enable" role="menuitem" :disabled="!!credentialIssue" :aria-describedby="credentialIssue?'key-action-blocked':null" @click="requestKeyAction(keyMenu.key,'enable')">Enable</button>
+      <button v-if="keyMenu.key.can_revoke" class="danger" role="menuitem" :disabled="!!credentialIssue" :aria-describedby="credentialIssue?'key-action-blocked':null" @click="requestKeyAction(keyMenu.key,'revoke')">Revoke</button>
+      <button v-if="keyMenu.key.can_hide && keyMenu.key.state==='revoked'" role="menuitem" :disabled="!!credentialIssue" :aria-describedby="credentialIssue?'key-action-blocked':null" @click="requestKeyAction(keyMenu.key,'hide')">Hide</button>
     </div>
 
     <div v-if="keyConfirm" class="scrim" role="dialog" aria-modal="true" aria-labelledby="key-confirm-title" v-dialog="() => { keyConfirm=null }" @click.self="keyConfirm=null">
@@ -119,14 +113,13 @@ export default { ...controller, components: { ...controller.components, ...dialo
         <p v-else-if="keyConfirm.action==='disable'" class="sub" style="margin:12px 0 0">Calls using this key will stop until you enable it again. Its value will not change.</p>
         <p v-else-if="keyConfirm.action==='revoke'" class="sub" style="margin:12px 0 0"><template v-if="keyConfirm.key.kind==='agent'">This removes the agent from the team and revokes all its keys. Historical Activity will remain available.</template><template v-else>This key will stop working permanently. Historical Activity will remain available.</template></p>
         <p v-else class="sub" style="margin:12px 0 0">This revoked key will disappear from the API Keys list. Historical Activity will remain available.</p>
-        <div class="row-actions" style="display:flex;justify-content:flex-end;margin-top:20px"><button class="btn sm" @click="keyConfirm=null">Cancel</button><button class="btn sm" :class="{danger:keyConfirm.action!=='hide'}" :disabled="keyBusy" @click="confirmKeyAction">{{keyBusy?'…':'Confirm '+keyConfirm.action}}</button></div>
+        <p v-if="credentialIssue" class="banner" role="alert" style="margin-top:12px">{{keyActionBlockReason()}}</p>
+        <div class="row-actions" style="display:flex;justify-content:flex-end;margin-top:20px"><button class="btn sm" @click="keyConfirm=null">Cancel</button><button class="btn sm" :class="{danger:keyConfirm.action!=='hide'}" :disabled="keyBusy||!!credentialIssue" @click="confirmKeyAction">{{keyBusy?'…':'Confirm '+keyConfirm.action}}</button></div>
       </div>
     </div>
 
-    <!-- REGISTER SKILL (bundle) -->
-    <!-- Marketplace dialogs. App-ROOT level, like every other dialog: nested inside the
-         view==='connections' template they simply did not render on an integration page, so
-         Connect looked dead and the modal appeared on the list view once you navigated back. -->
+    <!-- Catalog dialogs. App-ROOT level, like every other dialog: nested inside the catalog
+         view's template they do not render on an integration page. -->
     <ConnectTokenDialog v-if="tokenAsk" />
 
     <!-- TOP UP. Four presets + Other, the bonus each earns, and auto top-up as a toggle that is
@@ -144,7 +137,6 @@ export default { ...controller, components: { ...controller.components, ...dialo
 
     <ExtraCredentialDialog v-if="newSkill" />
 
-    <!-- ADD / EDIT TOOL -->
     <EditToolDialog v-if="newTool" />
 
     <!-- JOIN BY CODE -->
@@ -162,7 +154,7 @@ export default { ...controller, components: { ...controller.components, ...dialo
          users already in other teams. Decline → create-your-own (first run) or just close. -->
     <AcceptInvitesDialog v-if="inviteChoice && pendingInvites.length" />
 
-    <!-- FIRST-RUN WELCOME: name your team → pick your agent → the setup line (the primary onboarding path) -->
+    <!-- FIRST-RUN WELCOME: pick your agent → the setup line → a first prompt (the team is already made) -->
     <WelcomeDialog v-if="welcome.on" />
 
     <!-- CREATE TEAM -->
@@ -185,14 +177,13 @@ export default { ...controller, components: { ...controller.components, ...dialo
         </div></div>
     </div>
 
-    <!-- COPY -->
     <CopyToolDialog v-if="copyTool" />
 
     <!-- INSTALL A RECIPE (recipe-only bundle: how to install/use, no proxy call) -->
     <div class="scrim" role="dialog" aria-labelledby="install-recipe-title" aria-modal="true" v-if="copyRecipe" v-dialog="() => { copyRecipe=null }" @click.self="copyRecipe=null">
       <div class="modal"><div class="hd"><b id="install-recipe-title">Install “{{copyRecipe.name}}”</b><button class="btn sm ico" @click="copyRecipe=null" aria-label="Close">✕</button></div>
         <div style="padding:16px 18px">
-          <div class="tabs"><button v-for="t in ['cURL','CLI','Claude Code']" :key="t" :class="{active:recipeTab===t}" @click="recipeTab=t">{{t}}</button></div>
+          <div class="tabs"><button v-for="t in ['CLI','Claude Code']" :key="t" :class="{active:recipeTab===t}" @click="recipeTab=t">{{t}}</button></div>
           <p class="explain">A recipe is know-how (a <span class="mono">SKILL.md</span>), not an API - you don't call it, you <b>install</b> it into <span class="mono">.claude/skills/</span> so an agent can use it.</p>
           <pre class="code" v-html="recipeSnip.html"></pre>
           <div style="margin-top:12px"><button class="btn primary" @click="copy(recipeSnip.text)">⧉ {{copied?'Copied!':'Copy'}}</button></div>
@@ -221,17 +212,17 @@ export default { ...controller, components: { ...controller.components, ...dialo
     <!-- VIEW A RECIPE (the SKILL.md content) -->
     <RecipeDialog v-if="viewRecipe" />
 
-    <!-- TRY -->
     <!-- USE drawer: one entry point, two verbs — API call (proxy) / CLI run (server) -->
     <RunToolDialog v-if="tryTool" />
 
-    <!-- Try a MARKETPLACE endpoint right here. Same relay as any call — served by the org's own
-         key when one exists, else by a verified public upstream route when declared, else treg's
-         key billed to the team balance — and logged in Activity exactly like a CLI call. -->
     <!-- Activity → one call. The archive's copy of what was asked and what came back (metered
          platform calls only — own-key and own-tool calls are relayed without being stored). -->
     <CallDetailsDialog v-if="callView" />
+    <!-- Try a catalog endpoint right here. Same relay as any call - served by the org's own
+         key when one exists, else by a verified public upstream route when declared, else treg's
+         key billed to the team balance - and logged in Activity exactly like a CLI call. -->
     <TryEndpointDialog v-if="epTry" />
+    <UserAvatarDialog v-if="avatarDialog" />
 
     <!-- Toasts, bottom right: a newer dashboard build is live, and the access reminder (fired when
          a new tool is registered while some members have customized access). -->
@@ -245,9 +236,8 @@ export default { ...controller, components: { ...controller.components, ...dialo
     </div>
   </template>
 
-  <!-- SIGN-IN MODAL — a SIBLING of both branches. It used to live inside the logged-out
-       landing, which meant the public catalog (which renders the app shell, not that branch)
-       had no way to sign anyone in and every CTA had to navigate away to find one. -->
+  <!-- SIGN-IN MODAL - a SIBLING of both branches, so the public catalog (which renders the app
+       shell, not the logged-out landing) can sign anyone in without navigating away. -->
   <FishVoiceDialog v-if="fishVoiceDialog" />
   <SignInDialog  />
 </div>

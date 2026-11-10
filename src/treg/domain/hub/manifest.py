@@ -1,6 +1,6 @@
 """The hub manifest validator — pure rules over one `recipe.json`, no I/O.
 
-A hub tool is a tool a maker publishes on treg, made of other tools (docs/HUB-DECISIONS.md). Its
+A hub tool is a tool a maker publishes on treg, made of other tools. Its
 manifest is the reviewer's whole view of it: what it takes, which tools it may reach, what it
 returns, what it costs. Every refusal here names the FIELD and the RULE, because the maker is
 usually an agent that must fix the file without a person reading a stack trace.
@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-# The ceilings of version one (HUB-DECISIONS round 2 q6). A manifest may declare smaller limits,
+# The ceilings of version one. A manifest may declare smaller limits,
 # never larger.
 MAX_STEPS = 20
 MAX_WALL_S = 120
@@ -28,7 +28,7 @@ MAX_SUMMARY = 200
 MAX_README = 4000
 MAX_PRICE_USD = 100.0
 MAX_COST_USD = 100.0
-# One pricing rule per kind (docs/hub-pricing-decisions.md round 4, 2026-09-24):
+# One pricing rule per kind:
 #   steps  -> {"price_usd": N}: a fixed price per successful run; a JSON recipe has no code to count.
 #   script -> {"max_price_usd": N}: the script prices itself with ctx.charge(usd, note) (a fee, per
 #             result, a margin on ctx.call's cost_usd, a vendor's cost); N is the most one run may
@@ -141,16 +141,14 @@ def validate(
             raise _fail("script", f"must be {SCRIPT_FILE!r}, the file beside the manifest")
         steps = None
         output = _validate_output_script(raw.get("output"))
-        output_fields = set(output["fields"])
     else:
         kind = "steps"
         script = None
         steps = _validate_steps(raw["steps"], uses, limits["steps"])
         output = _validate_output_steps(raw.get("output"))
-        output_fields = set(output)
 
     pricing_public, pricing_micro = _validate_pricing(raw, is_script=has_script)
-    # The job this tool does, in the catalog's words (docs/hub-listing-decisions.md round 3): only a
+    # The job this tool does, in the catalog's words: only a
     # proposal. It takes effect when treg approves the listing, which puts the tool beside the
     # catalog providers of that job.
     capability = raw.get("capability")
@@ -227,7 +225,7 @@ def _validate_uses(raw: Any, catalog_ids: set[str], own_tools: set[str],
         raise _fail("uses", "a non-empty list of the tools this recipe may call")
     # The runner tells an own tool from a catalog id by the dot. An own tool NAMED like a catalog
     # id would run as the caller and could later resolve to a hub tool of that name: a nested
-    # run with an undisclosed price (8.1 review). Refused here, by name.
+    # run with an undisclosed price. Refused here, by name.
     for i, u in enumerate(raw):
         if isinstance(u, str) and u in own_tools and "." in u:
             raise _fail(f"uses[{i}]", f"own tool {u!r} is named like a catalog id; rename it without a dot")
@@ -443,7 +441,7 @@ def fees_label(manifest: dict[str, Any], rng: dict[str, Any] | None = None) -> s
     if not any("." in u for u in manifest.get("uses", [])):
         return ""
     cap = (manifest.get("limits") or {}).get("cost_usd") or 1.0
-    # The limit alone read as the likely cost (hub simulation run 3); what runs have paid comes first.
+    # The limit alone reads as the likely cost; what runs have paid comes first.
     lo, hi = (rng or {}).get("fees_low_micro"), (rng or {}).get("fees_high_micro")
     if lo is None or hi is None:
         return f" + provider fees (at most ${float(cap):.6g} a run)"
@@ -467,7 +465,7 @@ def seller_part_micro(manifest: dict[str, Any], observed_price_micro: int | None
 
 def range_label(manifest: dict[str, Any], low_micro: int | None, high_micro: int | None) -> str:
     """The headline price a caller reads: what one successful run has actually cost, steps and
-    seller price together, over recent runs (docs/hub-pricing-decisions.md). One number when
+    seller price together, over recent runs. One number when
     every run cost the same, a range otherwise, and before any run the declared price with the
     steps unknown."""
     p = stored_pricing(manifest)
@@ -478,8 +476,7 @@ def range_label(manifest: dict[str, Any], low_micro: int | None, high_micro: int
         return (f"${p['price_usd']:.6g}/run" if p["price_usd"] else "free") + fees
     lo, hi = low_micro / 1_000_000, high_micro / 1_000_000
     span = (f"${lo:.6g}/run" if low_micro else "free") if low_micro == high_micro else f"${lo:.6g}–${hi:.6g}/run"
-    # A script's recent runs may all have charged little; the cap says what a run CAN charge (found in
-    # hub simulation run 1: search showed $0.0103 while a good result cost $0.0163).
+    # A script's recent runs may all have charged little; the cap says what a run CAN charge.
     if p["mode"] == "charge" and p["max_price_usd"]:
         return f"{span} so far · seller up to ${p['max_price_usd']:.6g} a run"
     return span
@@ -602,8 +599,8 @@ def validate_readme(raw: Any) -> str:
     return raw
 
 
-# A hub tool beside catalog providers needs a success rate to compare, and a new one has no runs
-# (docs/hub-listing-decisions.md round 3). It starts at SEED_OK_RATE counted as SEED_RUNS runs; each
+# A hub tool beside catalog providers needs a success rate to compare, and a new one has no runs.
+# It starts at SEED_OK_RATE counted as SEED_RUNS runs; each
 # run by another team moves it, so after ~20 real runs the seed barely counts. Until then the number
 # is marked `estimated`.
 SEED_OK_RATE = 0.9

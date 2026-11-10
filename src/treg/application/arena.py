@@ -21,6 +21,7 @@ from sqlmodel import select
 
 from .. import analytics, crypto
 from ..domain import arena as rules, money
+from ..domain import asynctasks as asynctasks_rules
 from . import asynctasks as async_task_app
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog.routing.paths import country_name
@@ -67,7 +68,7 @@ def public_tasks() -> list[dict]:
             candidates, _ = route.candidates_for(contract, cat.for_capability(contract.capability), cat.adapters, identity)
             providers = {}
             for ep, adapter, accepted in candidates:
-                if not rules.supports_discovery(t.capability, {k: probe[k] for k in variant}, accepted) or route.ignored_filters(adapter, contract, identity):
+                if not rules.supports_discovery(t.capability, {k: probe[k] for k in variant}, accepted) or route.ignored_filters(adapter, contract, identity, set(variant)):
                     continue
                 if ep["id"] in rules.EXCLUDED or ".bulk" in ep["id"]:
                     continue
@@ -638,7 +639,8 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                 except (ValueError, UnicodeDecodeError):
                     doc = None
                 async_outcome = ""
-                if ep.get("async") and 200 <= response.status < 300 and not oversized:
+                if (ep.get("async") and 200 <= response.status < 300 and not oversized
+                        and not asynctasks_rules.finished_on_submission(ep["async"], doc)):
                     descriptor = ep["async"]
                     reserved = int(route._header(response, "X-Treg-Cost-Micro") or 0)
                     kickoff = bytes(buf)
@@ -655,6 +657,8 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                             method=poll_ep["method"], raw_rest=poll_ep["id"], raw_headers=poll_headers,
                             query_items=((name, task_id),), raw_query=urlencode({name: task_id}),
                             body=route._Bytes(b""), caller=current, client_ip=client_ip))
+                        poll_context.quota_admissions = context.quota_admissions | {
+                            (current.org_id, poll_ep["id"])}
                         poll_response = await service.execute_call(poll_context, client)
                         return poll_response, await route._read(poll_response)
 
@@ -761,7 +765,7 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                 await attempt(a["verification"], policy["capability"])
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a failed check is recorded on the arena row, never raised
                 if not a.get("verification"):
                     detail = str(exc) if isinstance(exc, rules.ArenaError) else "Verification unavailable; the found value is preserved."
                     a["verification"] = {"state":"error", "not_started":True, "automatic":True, "capability":policy["capability"], "provider":policy["provider"], "charged_micro":0, "output":{}, "detail":detail}

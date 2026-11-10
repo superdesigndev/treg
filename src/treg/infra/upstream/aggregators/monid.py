@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 
+from .... import jsontext
 from . import AggregatorRequest, AggregatorResult
 
 BASE = "https://api.monid.ai/v1"
@@ -28,6 +29,14 @@ _FLOAT = re.compile(r"-?\d+\.\d+")
 _ARRAY_QUERY_PARAMS = {
     ("akta", "/v1/company/enrichment"): frozenset({"sections"}),
 }
+
+# Monid models these PDL GET endpoint identifiers and search filters as input.body.
+_BODY_QUERY_ENDPOINTS = frozenset({
+    ("pdl", "/v5/person/enrich"),
+    ("pdl", "/v5/company/enrich"),
+    ("pdl", "/v5/person/search"),
+    ("pdl", "/v5/company/search"),
+})
 
 
 def _typed(v):
@@ -62,6 +71,7 @@ def _query_params(route, query: list[tuple[str, str]] | dict) -> dict:
 def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | None,
           path_params: dict | None = None, *, params_as_body: bool = False) -> AggregatorRequest:
     items = _query_params(route, query)
+    params_as_body = params_as_body or (route.agg_slug, route.agg_path.rstrip("/")) in _BODY_QUERY_ENDPOINTS
     parsed: dict = {}
     if body:
         try:
@@ -81,7 +91,7 @@ def poll_request(run_id: str, key: str) -> AggregatorRequest:
 
 
 def _dump(value) -> bytes:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    return jsontext.dumps_bytes(value, separators=(",", ":"))
 
 
 def _cost_micro(doc: dict) -> int | None:

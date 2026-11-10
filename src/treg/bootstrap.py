@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -20,32 +21,46 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import BaseRoute, Mount
 
-from . import adsconv, analytics, archive, audit
+from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena
-from . import bootstrap_handlers
+from .application import arena, find_index, media
+from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
+    _DevTitleMiddleware,
+    _ClientNoticeMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
-from .config import get_settings
-from .infra import kv
-from .infra.db import background_session_maker, verify_db
+from .config import TREG_USER_AGENT, get_settings
+from .infra import kv, money_timing, org_traffic, turnstile
+from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
+from .infra.money_trace_runner import start_money_trace, stop_money_trace
+from .infra.db import ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
 )
 from .routers import call as call_routes
+from .routers import view as view_routes
 
 
 AppRole = Literal["all", "dataplane", "control"]
 RouteKey = tuple[str, tuple[str, ...], str]
 
-# Every HTTP route has one workload owner. A new decorator in api.py fails app creation until its
-# key is placed here, so the dataplane cannot silently acquire a management or runner endpoint.
 _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/enrich-arena', ('GET',), 'enrich_arena_page'),
+    ('/web-arena', ('GET',), 'web_arena_page'),
+    ('/web-arena/leaderboard', ('GET',), 'web_arena_old_leaderboard'),
+    ('/web-arena/{asset}', ('GET',), 'web_arena_asset'),
+    ('/web-arena/api/tasks', ('GET',), 'web_arena_tasks'),
+    ('/web-arena/api/leaderboard', ('GET',), 'web_arena_leaderboard'),
+    ('/web-arena/api/quotes', ('POST',), 'web_arena_quote'),
+    ('/web-arena/api/runs/{run_id}/start', ('POST',), 'web_arena_start'),
+    ('/web-arena/api/runs', ('GET',), 'web_arena_history'),
+    ('/web-arena/api/runs/{run_id}', ('GET',), 'web_arena_run'),
+    ('/web-arena/api/runs/{run_id}/cancel', ('POST',), 'web_arena_cancel'),
+    ('/web-arena/api/runs/{run_id}/attempts/{attempt_id}/rating', ('POST',), 'web_arena_rating'),
     ('/enrich-arena/people-search-bench', ('GET',), 'enrich_arena_page'),
     ('/enrich-arena/leaderboard', ('GET',), 'enrich_arena_page'),
     ('/enrich-arena/{asset}', ('GET',), 'enrich_arena_asset'),
@@ -72,6 +87,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/catalog/find', ('GET',), 'catalog_find'),
     ('/catalog/providers/{service}', ('GET',), 'catalog_provider'),
     ('/catalog/endpoints/{endpoint_id}', ('GET',), 'catalog_endpoint'),
+    ('/table-columns/{tool_id:path}', ('GET',), 'table_columns'),
+    ('/table-account', ('GET',), 'table_account'),
     ('/catalog/examples/{endpoint_id}', ('GET',), 'catalog_example'),
     ('/catalog', ('GET',), 'catalog_index'),
     ('/catalog/{slug}', ('GET',), 'catalog_page'),
@@ -119,12 +136,19 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),
     ('/auth/google/callback', ('GET',), 'auth_google_callback'),
+    ('/auth/social/check', ('GET',), 'auth_social_check_page'),
+    ('/auth/social/check', ('POST',), 'auth_social_check'),
     ('/auth/cli/start', ('POST',), 'auth_cli_start'),
     ('/auth/cli/poll', ('GET',), 'auth_cli_poll'),
     ('/auth/cli/orgs', ('GET',), 'auth_cli_orgs'),
     ('/auth/cli/approve', ('POST',), 'auth_cli_approve'),
     ('/login', ('GET',), 'login_page'),
     ('/auth/me', ('GET',), 'auth_me'),
+    ('/auth/sso/callback', ('GET',), 'sso_callback'),
+    ('/auth/sso/discover', ('POST',), 'sso_discover'),
+    ('/auth/sso/idp/start', ('GET',), 'sso_idp_start'),
+    ('/auth/sso/workos/webhook', ('POST',), 'sso_workos_webhook'),
+    ('/auth/sso/{org_slug}/start', ('GET',), 'sso_start'),
     ('/auth/logout', ('POST',), 'auth_logout'),
     ('/auth/email/start', ('POST',), 'auth_email_start'),
     ('/auth/email/verify', ('POST',), 'auth_email_verify'),
@@ -141,6 +165,12 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sitemap.xml', ('GET',), 'sitemap_xml'),
     ('/7c2e4a91b5d3f8e6treg2026.txt', ('GET',), 'indexnow_key'),
     ('/install.sh', ('GET',), 'install_sh'),
+    ('/install.ps1', ('GET',), 'install_ps1'),
+    ('/cli/latest', ('GET',), 'cli_latest'),
+    ('/cli/latest/{platform}', ('GET',), 'cli_latest_download'),
+    ('/cli/events', ('POST',), 'cli_events'),
+    ('/i/{code}', ('GET',), 'install_sh_linked'),
+    ('/i', ('POST',), 'ad_link_mint'),
     ('/selfhost.sh', ('GET',), 'selfhost_sh'),
     ('/quickstart.md', ('GET',), 'quickstart_md'),
     ('/tutorial.md', ('GET',), 'tutorial_md'),
@@ -152,6 +182,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skill.md', ('GET',), 'skill_md'),
     ('/skills/ugc/SKILL.md', ('GET',), 'make_ugc_skill_md'),
     ('/skills/lead-signals/SKILL.md', ('GET',), 'lead_signals_skill_md'),
+    ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
+    ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
+    ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
+    ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
     ('/favicon.svg', ('GET',), 'favicon'),
@@ -159,21 +193,64 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/legal.css', ('GET',), 'legal_css'),
     ('/terms', ('GET',), 'terms_page'),
     ('/privacy', ('GET',), 'privacy_page'),
+    ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
     ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
     ('/gtag.js', ('GET',), 'gtag_js'),
     ('/resources', ('GET',), 'resources_page'),
     ('/blog', ('GET',), 'blog_index'),
     ('/blog/people-search-bench', ('GET',), 'blog_people_search_bench'),
+    ('/blog/security-incident-2026-10-23', ('GET',), 'blog_security_incident_2026_10_23'),
     ('/blog/work-email-finding-bench', ('GET',), 'blog_work_email_finding_bench'),
     ('/grokbot', ('GET',), 'grokbot_page'),
     ('/fable', ('GET',), 'fable_page'),
     ('/astra', ('GET',), 'astra_page'),
     ('/gpt6', ('GET',), 'gpt6_page'),
     ('/ugc', ('GET',), 'ugc_page'),
+    ('/aeo', ('GET',), 'aeo_page'),
+    ('/rea-growth', ('GET',), 'rea_growth_page'),
+    ('/rea-growth.md', ('GET',), 'rea_growth_md'),
+    ('/social', ('GET',), 'social_search_page'),
+    ('/showcase', ('GET',), 'showcase_page'),
+    ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
+    ('/showcase/votes/me', ('GET',), 'showcase_my_votes'),
+    ('/showcase/vote', ('POST',), 'showcase_vote'),
+    ('/showcase/my-teams', ('GET',), 'showcase_my_teams'),
+    ('/showcase/teams/{org_id}/apps', ('GET',), 'showcase_team_apps'),
+    ('/showcase/teams/{org_id}/apps', ('POST',), 'showcase_apply'),
+    ('/showcase/apps/{app_id}', ('PATCH',), 'showcase_edit'),
+    ('/showcase/apps/{app_id}', ('DELETE',), 'showcase_withdraw'),
+    ('/showcase/teams/{org_id}/keys', ('GET',), 'showcase_team_keys'),
+    ('/showcase/apps/{app_id}/usage', ('PUT',), 'showcase_set_usage'),
+    ('/showcase/apps/{app_id}/remove', ('POST',), 'showcase_remove'),
+    ('/admin/showcase/apps', ('GET',), 'staff_queue'),
+    ('/admin/showcase/apps/{app_id}', ('GET',), 'staff_app'),
+    ('/admin/showcase/apps/{app_id}/approve', ('POST',), 'staff_approve'),
+    ('/admin/showcase/apps/{app_id}/reject', ('POST',), 'staff_reject'),
+    ('/admin/showcase/apps/{app_id}/hide', ('POST',), 'staff_hide'),
+    ('/admin/showcase/apps/{app_id}', ('PATCH',), 'staff_edit'),
+    ('/admin/showcase/teams/{org_id}/apps', ('POST',), 'staff_create'),
+    ('/admin/showcase/teams/{org_id}', ('GET',), 'staff_team'),
+    ('/rankings', ('GET',), 'rankings_page'),
+    ('/rankings/data/{board}', ('GET',), 'rankings_board'),
+    ('/compare', ('GET',), 'compare_hub'),
+    ('/compare/{slug}', ('GET',), 'compare_page'),
+    ('/admin/images/{kind}', ('POST',), 'staff_upload'),
+    ('/admin/images/staging/{key:path}', ('GET',), 'staff_staged_image'),
+    ('/images/{kind}', ('POST',), 'upload_image'),
+    ('/images/staging/{key:path}', ('GET',), 'staged_image'),
+    ('/media-files/{key:path}', ('GET',), 'public_image'),
+    ('/me/avatar', ('PUT',), 'set_my_avatar'),
+    ('/orgs/{org_id}/avatar', ('PUT',), 'set_team_avatar'),
     ('/people-search', ('GET',), 'people_search_page'),
+    ('/start', ('GET',), 'start_page'),
     ('/leads-signals', ('GET',), 'leads_signals_page'),
+    ('/recruit', ('GET',), 'recruit_page'),
+    ('/web-access', ('GET',), 'web_access_page'),
+    ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
+    ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
     ('/jev', ('GET',), 'jev_page'),
     ('/jev/xboost.json', ('GET',), 'jev_xboost_json'),
     ('/jev/xboost/judge', ('POST',), 'jev_xboost_judge'),
@@ -190,6 +267,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/.well-known/skills/treg/SKILL.md', ('GET',), 'well_known_skill_md'),
     ('/.well-known/skills/make-ugc/SKILL.md', ('GET',), 'well_known_make_ugc_md'),
     ('/.well-known/skills/lead-signals/SKILL.md', ('GET',), 'well_known_lead_signals_md'),
+    ('/.well-known/skills/web-access/SKILL.md', ('GET',), 'well_known_web_access_md'),
+    ('/.well-known/skills/recruit/SKILL.md', ('GET',), 'well_known_recruit_md'),
     ('/connect-demo', ('GET',), 'connect_demo_page'),
     ('/connect-demo/callback', ('GET',), 'connect_demo_callback'),
     ('/help', ('GET',), 'support_page'),
@@ -198,24 +277,21 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tutorial', ('GET',), 'tutorial_page'),
     ('/auth/cli-token', ('GET',), 'auth_cli_token'),
     ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
-    ('/users', ('POST',), 'register_user'),
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
     ('/orgs', ('GET',), 'list_orgs'),
+    ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
     ('/invites/accept', ('POST',), 'accept_invite'),
     ('/invites/mine', ('GET',), 'my_invites'),
     ('/onboard/demo', ('POST',), 'onboard_demo'),
     ('/onboard/skip', ('POST',), 'onboard_skip'),
     ('/onboard/reset', ('POST',), 'onboard_reset'),
+    ('/onboard/team', ('POST',), 'onboard_team'),
     ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
     ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
-    ('/stripe/webhook', ('POST',), 'stripe_webhook'),
-    ('/landing/stripe-feed', ('GET',), 'landing_stripe_feed'),
     ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
-    ('/skills/samples', ('GET',), 'skill_samples'),
-    ('/skills/{name}/install.sh', ('GET',), 'skill_install'),
     ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
     ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
     ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
@@ -223,6 +299,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/invites/{invite_id}', ('DELETE',), 'revoke_invite'),
     ('/orgs/{org_id}/members', ('GET',), 'list_members'),
     ('/orgs/{org_id}/usage', ('GET',), 'org_usage'),
+    ('/orgs/{org_id}/usage/spend', ('GET',), 'usage_spend'),
     ('/orgs/{org_id}/balance', ('GET',), 'org_balance'),
     ('/orgs/{org_id}/tag-keys', ('GET',), 'list_tag_keys'),
     ('/orgs/{org_id}/usage/by-tag', ('GET',), 'usage_by_tag'),
@@ -240,6 +317,14 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/referrals', ('GET',), 'my_referrals'),
     ('/referrals/code', ('POST',), 'mint_referral_code'),
     ('/billing/stripe/webhook', ('POST',), 'billing_stripe_webhook'),
+    ('/orgs/{org_id}/sso', ('GET',), 'sso_status'),
+    ('/orgs/{org_id}/sso/blocked', ('GET',), 'sso_blocked_members'),
+    ('/orgs/{org_id}/sso/blocked/{user_id}/restore', ('POST',), 'sso_restore_member'),
+    ('/orgs/{org_id}/sso/checkout', ('POST',), 'sso_checkout'),
+    ('/orgs/{org_id}/sso/cancel', ('POST',), 'sso_cancel'),
+    ('/orgs/{org_id}/sso/enforce', ('POST',), 'sso_enforce'),
+    ('/orgs/{org_id}/sso/invite-it', ('POST',), 'sso_invite_it'),
+    ('/orgs/{org_id}/sso/setup/{intent}', ('POST',), 'sso_setup'),
     ('/orgs/{org_id}/members/{user_id}/cap', ('PATCH',), 'set_member_cap'),
     ('/orgs/{org_id}/members/{user_id}/access', ('PATCH',), 'set_member_access'),
     ('/usage/me', ('GET',), 'my_usage'),
@@ -252,10 +337,12 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/public-token', ('DELETE',), 'delete_public_token'),
     ('/orgs/{org_id}/agents', ('POST',), 'create_agent'),
     ('/orgs/{org_id}/agents', ('GET',), 'list_agents'),
+    ('/orgs/{org_id}/agents/{user_id}/connection', ('GET',), 'agent_connection'),
     ('/agents/checkin', ('POST',), 'agent_checkin'),
     ('/orgs/{org_id}/agents/observed', ('GET',), 'list_observed_agents'),
     ('/orgs/{org_id}/agents/{user_id}', ('DELETE',), 'revoke_agent'),
     ('/orgs/{org_id}/api-keys', ('GET',), 'list_api_keys'),
+    ('/orgs/{org_id}/api-keys/spend', ('GET',), 'api_key_spend'),
     ('/orgs/{org_id}/api-keys', ('POST',), 'create_api_key'),
     ('/orgs/{org_id}/api-keys/{key_id}', ('PATCH',), 'rename_api_key'),
     ('/orgs/{org_id}/api-keys/{key_id}/disable', ('POST',), 'disable_api_key'),
@@ -298,6 +385,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/calls/{call_id}/result', ('GET',), 'get_call_result'),
     ('/calls/{call_ref}', ('GET',), 'get_call'),
     ('/runs', ('GET',), 'list_runs'),
+    ('/activity', ('GET',), 'activity_feed'),
     ('/oauth/providers', ('GET',), 'oauth_providers_list'),
     ('/oauth/start', ('POST',), 'oauth_start'),
     ('/oauth/callback', ('GET',), 'oauth_callback'),
@@ -321,6 +409,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/hub/updates', ('GET',), 'admin_hub_updates'),
     ('/admin/hub/updates/{tool_id}', ('POST',), 'admin_hub_update_decide'),
     ('/admin/calls', ('GET',), 'admin_calls'),
+    ('/admin/shadow', ('GET',), 'admin_shadow'),
+    ('/admin/share', ('GET',), 'admin_share'),
+    ('/admin/daily', ('GET',), 'admin_daily'),
     ('/admin/errors', ('GET',), 'admin_errors'),
     ('/admin/health', ('GET',), 'admin_health'),
     ('/admin/kv', ('GET',), 'admin_kv'),
@@ -339,6 +430,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/archive/body', ('GET',), 'admin_archive_body'),
     ('/admin/archive/panel', ('GET',), 'admin_archive_panel'),
     ('/admin/referrals', ('GET',), 'admin_referrals'),
+    ('/admin/referrals/users', ('GET',), 'admin_referral_user_by_email'),
+    ('/admin/referrals/users/{user_id}', ('GET',), 'admin_referral_user'),
+    ('/admin/referrals/users/{user_id}/affiliate', ('PUT',), 'admin_set_referral_affiliate'),
     ('/catalog/endpoints/{endpoint_id}/access', ('GET',), 'catalog_endpoint_access'),
     ('/run', ('POST',), 'run_tool_server'),
 })
@@ -347,17 +441,20 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ("/catalog/call/{rest:path}",
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
+    ("/table/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "table_tool"),
+    ("/tasks/{call_id}", ("POST",), "task_submission"),
+    ("/tasks/{call_id}", ("GET",), "task_look"),
     # MCP is calling traffic, so its mount and its RFC 9728 resource metadata belong to the
     # dataplane. Token issuance (consent, /oauth/*) stays on control; the dataplane only validates.
     ('/.well-known/oauth-protected-resource/mcp', ('GET',), 'oauth_protected_resource'),
+    ('/.well-known/oauth-protected-resource/mcp/', ('GET',), 'oauth_protected_resource'),
     ('/.well-known/oauth-protected-resource/mcp/v2', ('GET',), 'oauth_protected_resource_v2'),
+    ('/.well-known/oauth-protected-resource/mcp/v2/', ('GET',), 'oauth_protected_resource_v2'),
 })
 
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
-    # Arena statistics moved out of the web processes: `treg-worker arena insights` (a cron)
-    # walks `callrecord` on its own schedule, so web processes no longer compete for the cursor
-    # row and a deploy no longer multiplies that scan. Only `/arena/insights` (a
-    # snapshot read) stays here.
+    # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
+    # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
     "all": ("treg.adsconv.worker",),
     "dataplane": (),
     "control": ("treg.adsconv.worker",),
@@ -383,7 +480,7 @@ _STATIC_ANCHOR = ("/auth/cli-token", ("GET",), "auth_cli_token")
 
 try:
     from . import mcp as _mcp
-except Exception:  # pragma: no cover - exercised by deploys without the optional dependency
+except ImportError:
     _mcp = None
 
 
@@ -456,7 +553,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
     for route in routes:
         cloned = copy(route)
         cloned.dependency_overrides_provider = app
-        cloned.app = request_response(cloned.get_route_handler())
+        cloned.app = view_routes.wrap(cloned.endpoint, request_response(cloned.get_route_handler()))
         app.router.routes.append(cloned)
 
 
@@ -556,6 +653,23 @@ _POOL_GAUGE_SAMPLE_S = 1.0
 _POOL_GAUGE_EMIT_S = 60.0
 
 
+def _emit_money_timings() -> None:
+    """One bounded aggregate and at most one slow sample per operation/window, with no DB I/O."""
+    try:
+        for props, slowest in money_timing.snapshot():
+            analytics.capture(analytics.SERVER_DISTINCT_ID, "money_operation_gauge", props)
+            if slowest is not None:
+                logging.getLogger("treg.ledger").warning(
+                    "slow money session sample %s", json.dumps({
+                        "operation": props["operation"],
+                        "process_instance": props["process_instance"], **slowest,
+                    }, separators=(",", ":")))
+    except Exception:  # noqa: BLE001 - diagnostics must not break a gauge or shutdown
+        pass
+    from .infra.money_admission_reporting import emit_snapshot
+    emit_snapshot(role="web")
+
+
 async def pool_gauge(*, sample_s: float = _POOL_GAUGE_SAMPLE_S,
                      emit_s: float = _POOL_GAUGE_EMIT_S) -> None:
     """Every minute, one `db_pool_gauge` event: the peak connections each pool had checked out in
@@ -575,25 +689,41 @@ async def pool_gauge(*, sample_s: float = _POOL_GAUGE_SAMPLE_S,
             samples += 1
             if time.monotonic() - opened >= emit_s:
                 snapshot = pool_snapshot()
-                props: dict = {"samples": samples, "window_s": round(time.monotonic() - opened)}
+                props: dict = {"samples": samples, "window_s": round(time.monotonic() - opened),
+                               "process_instance": money_timing.PROCESS_INSTANCE}
                 for name, row in snapshot.items():
                     props[f"{name}_peak"] = peaks.get(name, 0)
                     props[f"{name}_capacity"] = row["capacity"]
                     props[f"{name}_headroom"] = row["capacity"] - peaks.get(name, 0)
                 if snapshot:
                     analytics.capture(analytics.SERVER_DISTINCT_ID, "db_pool_gauge", props)
+                _emit_money_timings()
                 peaks, samples, opened = {}, 0, time.monotonic()
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - a gauge must never take the service down
+        except Exception:
             logging.getLogger("treg").exception("db pool gauge pass failed")
         await asyncio.sleep(sample_s)
 
 
+def configure_provider_labels() -> None:
+    """Composition seam: search reads a provider's display name through the catalog domain's hook,
+    so the domain never imports the provider registry."""
+    from . import oauth_providers
+    from .domain.catalog import store as catalog_store
+
+    def label(service: str) -> str:
+        p = oauth_providers.get(service)
+        return p.display_name if p else service
+    catalog_store.configure_provider_labels(label)
+
+
 def configure_archive_object_store(store) -> None:
-    """Composition seam shared by startup and in-memory tests."""
+    """Composition seam shared by startup and in-memory tests. Find's card vectors share the store."""
     from . import archive_bodies
+    from .application import find_index
     archive_bodies.configure(store)
+    find_index.configure(store)
 
 
 @asynccontextmanager
@@ -615,16 +745,23 @@ def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            media.validate_configuration()
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
                 logging.getLogger("treg").warning("kv configured but unreachable at startup")
+            # Published route rules (docs/context/architecture/route-rules.md) are read once before
+            # serving, so a new worker's first calls do not fall back to the YAML order.
+            from .application.call import route_rules as route_rules_app
+            await route_rules_app.warm()
 
             limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
             app.state.http = httpx.AsyncClient(
                 limits=limits,
                 timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+                # what a provider sees when no caller header says otherwise, never python-httpx/x
+                headers={"User-Agent": TREG_USER_AGENT},
             )
             ads_task = (
                 asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
@@ -632,6 +769,9 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Local transaction diagnostics run even when the analytics transport is disabled.
+            trace_runner = start_money_trace(role=role)
+            stall_watch = start_loop_stall_watch()
             # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
             # and a zero daily cap disables it without touching serving. Same discipline as the ads
             # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
@@ -647,13 +787,34 @@ def _lifespan(role: AppRole):
                 if ROLE_BACKGROUND_TASKS[role] and archive.prune_enabled()
                 else None
             )
+            # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
+            # instead of by the first find after a deploy; off without an embedding key.
+            find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
+            from .domain.capacity import rate_observe
+            rate_task = asyncio.create_task(rate_observe.flush_worker()) if rate_observe.enabled() else None
+            for name in rate_observe.unknown_enforced_names():
+                logging.getLogger("treg").warning("event=provider_rate_enforce_unknown name=%s", name)
             endpoint_observations = app.state.endpoint_observation_reader
             routed_call.configure_endpoint_observation_reader(endpoint_observations)
+            # Measured verdict quality for X-Treg-Route-Decisive; unset settings keep price order.
+            from .infra import route_quality
+            try:
+                quality_reader = route_quality.from_settings(get_settings())
+            except Exception:  # a bad quality config must never stop serving; the header keeps price order
+                logging.getLogger("treg").warning("event=route_quality_disabled", exc_info=True)
+                quality_reader = None
+            routed_call.configure_route_quality_reader(quality_reader)
+            if quality_reader is not None:
+                from .domain.catalog import store as catalog_store
+                quality_reader.warm(catalog_store.load().contracts)
             mcp_reader_bound = role != "control" and _mcp is not None
             if mcp_reader_bound:
                 _mcp.configure_endpoint_observation_reader(endpoint_observations)
             fault_handler = analytics.install_fault_handler()
             analytics.capture_service_started(role)
+            for problem in turnstile.misconfiguration():
+                logging.getLogger("treg").warning("event=turnstile_misconfigured problem=%s", problem)
+            traffic_reporting = org_traffic.start_reporting() if role != "control" else False
             try:
                 if role == "control" or _mcp is None:
                     yield
@@ -666,7 +827,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -676,18 +837,34 @@ def _lifespan(role: AppRole):
                     if mcp_reader_bound:
                         _mcp.clear_endpoint_observation_reader(endpoint_observations)
                     routed_call.clear_endpoint_observation_reader(endpoint_observations)
+                    routed_call.configure_route_quality_reader(None)
                     await arena.shutdown()
                     await endpoint_observations.aclose()
                     # analytics LAST: it is the sink the other two report their losses into, and a
-                    # drop during their drain is the one most worth hearing about. Draining it first
-                    # left those events queued behind a cancelled flusher.
+                    # drop during their drain is the one most worth hearing about.
                     await audit.drain()
                     await archive.drain()
+                    await call_events.drain()
+                    if gauge_task is not None:
+                        _emit_money_timings()
+                    if rate_task is not None:
+                        rate_observe.flush()
+                    await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .infra import provider_rate
+                    await provider_rate.drain()
                     await kv.close()
+                    from .infra import org_endpoint_quota
+                    await org_endpoint_quota.close()
                 finally:
-                    analytics.remove_fault_handler(fault_handler)
+                    if traffic_reporting:
+                        org_traffic.stop_reporting()
+                    try:
+                        await stop_loop_stall_watch(stall_watch)
+                        await stop_money_trace(trace_runner)
+                    finally:
+                        analytics.remove_fault_handler(fault_handler)
 
     return lifespan
 
@@ -699,6 +876,10 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
 
     # Deferred to avoid a cycle: api.py defines the router, then calls this factory for api:app.
     from . import api as api_module
+    from .application.call import keyslots
+
+    keyslots.check_accounts()  # an unusable TREG_PLATFORM_ACCOUNTS entry refuses to start
+    configure_provider_labels()
 
     expose_docs = role != "dataplane"
     app = FastAPI(
@@ -719,10 +900,15 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     # Registration order is part of the compatibility surface. add_middleware prepends entries.
     app.add_middleware(_LegacyHostRedirectMiddleware)
     app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_ClientNoticeMiddleware)
     app.add_middleware(_BodyDecodeMiddleware)
+    app.add_middleware(org_traffic.RequestLogMiddleware)
+    if get_settings().local_dev:
+        app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
     _include_role_routes(app, api_module, role)
@@ -746,4 +932,6 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
         "startup_checks": startup_checks,
     }
     app.state.archive_object_store = archive_object_store
+    # Last, so an extension's install sees the finished app. A missing required one refuses to start.
+    app.state.extensions = policy.load_extensions(app, get_settings().required_extensions)
     return app

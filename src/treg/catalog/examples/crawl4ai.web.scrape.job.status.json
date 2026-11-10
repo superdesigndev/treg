@@ -1,0 +1,22 @@
+{
+  "completes_by_ms": 1791295035607,
+  "counts": {
+    "done": 2,
+    "error": 0,
+    "pending": 0
+  },
+  "errors_by_class": {},
+  "job_id": "j_13108741c7e781bf5b1983b6a5482cb1",
+  "owner": null,
+  "paused_reason": null,
+  "results_available": 2,
+  "status": "done",
+  "usage": {
+    "boxes": [
+      "jobs"
+    ],
+    "credited": 0,
+    "net": 2,
+    "units": 2
+  }
+}

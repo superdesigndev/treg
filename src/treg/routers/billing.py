@@ -4,17 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..application import billing
+from ..application import billing, view_context
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.identity.access import Caller, _role_at_least, require_member
 from ..infra.db import get_session
 from ..models import Org
+from . import view
 from .auth_helpers import _is_https
 from .orgs import _require_admin_of
+from .views import account as account_views
 
 
-# app is the APIRouter alias so mechanically moved @app decorators stay byte-identical.
 app = APIRouter()
 
 
@@ -51,8 +52,7 @@ async def org_balance(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     balance = await ledger.balance_of(db, org_id)
-    # Auto-top-up's trigger point until phase 3 calls it right after `reserve`. Fire-and-forget by
-    # contract (see billing.maybe_schedule_autotopup): it starts a background task at most, so no
+    # An auto-top-up trigger point besides `reserve`. Fire-and-forget by contract (see billing.maybe_schedule_autotopup): it starts a background task at most, so no
     # Stripe latency lands in this response, and reading a balance can therefore never be slow.
     billing.maybe_schedule_autotopup(caller.org)
     blocks = await ledger.blocks_of(db, org_id)
@@ -89,6 +89,17 @@ async def org_balance(
     }
 
 
+@view.renders(org_balance)
+async def _balance_view(answer: view.Answer) -> str:
+    if answer.status >= 400:
+        return account_views.as_json(answer.json())
+    caller = await view.quietly(view.caller_of(answer.request))
+    if caller is None:
+        return account_views.balance(answer.object(), team="", autotopup=None)
+    autotopup = await view.quietly(view_context.autotopup(caller))
+    return account_views.balance(answer.object(), team=caller.org.slug if caller.org else "", autotopup=autotopup)
+
+
 balance_router = app
 
 
@@ -105,6 +116,7 @@ class AutoTopupIn(BaseModel):
     threshold_usd: float | None = None
     amount_usd: float | None = None
     monthly_cap_usd: float | None = None
+    per_hour: int | None = None  # automatic charges allowed per hour after a successful one (1-60)
     # False when the caller is about to open a top-up Checkout anyway (the dashboard's modal): that
     # page saves the card too, so a second card-capture session would be a wasted Stripe call.
     setup_url: bool = True
@@ -180,7 +192,7 @@ async def billing_autotopup(
             org.id, enabled=body.enabled, consent=body.consent,
             threshold_usd=body.threshold_usd, amount_usd=body.amount_usd,
             monthly_cap_usd=body.monthly_cap_usd, return_base=_return_base(request),
-            email=caller.email, setup_url=body.setup_url)
+            email=caller.email, setup_url=body.setup_url, per_hour=body.per_hour)
     except billing.BillingJourneyError as e:
         raise _translate_billing_error(e) from e
 
@@ -188,17 +200,16 @@ async def billing_autotopup(
 @app.get("/billing/history")
 async def billing_history(
     limit: int = Query(24, ge=1, le=100),
+    kind: str = Query("all"),
+    cursor: str = Query("", max_length=2048),
     caller: Caller = Depends(require_member),
 ) -> dict:
-    """This team's completed top-ups, newest first, each with its invoice PDF or card receipt.
-
-    Read-only in both directions: it moves no money, and the amounts come from our own credit blocks
-    rather than from Stripe, so the history can never contradict the balance. Stripe is asked only for
-    the document links, and `stripe_ok: false` says they were unavailable — the payments listed are
-    still correct.
-    """
+    """This team's paged top-ups and SSO invoices, newest first, with document links."""
     org = _billing_org(caller)
-    return await billing.get_payment_history(org.id, limit=limit)
+    try:
+        return await billing.get_payment_history(org.id, limit=limit, kind=kind, cursor=cursor)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @app.post("/billing/portal")
@@ -226,10 +237,7 @@ app = APIRouter()
 async def billing_stripe_webhook(request: Request) -> dict:
     """Stripe → treg: the ONLY door through which a payment becomes balance.
 
-    A DIFFERENT endpoint from the landing demo's `/stripe/webhook`, with a different signing secret:
-    they are different Stripe accounts' events with different consequences, and sharing a path would
-    mean one secret could authorize the other's effects. 404 when unconfigured, so a deploy without the
-    secret exposes no unauthenticated POST surface.
+    404 when unconfigured, so a deploy without the secret exposes no unauthenticated POST surface.
     """
     try:
         result = await billing.process_webhook(

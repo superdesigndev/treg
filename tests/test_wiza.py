@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 from sqlmodel import select
 
+from treg import audit
 from treg.application import asynctasks as async_task_app
 from treg.application.call import service as call_service
 from treg.application.call import route as call_route
@@ -16,7 +19,7 @@ from treg.config import get_settings
 from treg.domain.capacity import collectors, policy
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
-from treg.models import AsyncTaskRecord, Hold
+from treg.models import AsyncTaskRecord, CallRecord, Hold
 
 
 async def _balance(clients) -> int:
@@ -80,17 +83,22 @@ async def test_wiza_routed_email_waits_for_terminal_result_and_settles_exact_usa
     clients, monkeypatch, wiza_platform_on,
 ):
     calls = []
+    polls = 0
 
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        nonlocal polls
         body = b""
         async for chunk in request.body_stream():
             body += chunk
         calls.append((request.method, upstream_url, json.loads(body) if body else None))
-        doc = ({"data": {"id": 321, "status": "queued"}}
-               if request.method == "POST" else
-               {"data": {"id": 321, "status": "finished", "name": "Jane Example",
-                         "email": "jane@example.com", "email_status": "valid",
-                         "credits": {"api_credits": {"total": 2}}}})
+        if request.method == "POST":
+            doc = {"data": {"id": 321, "status": "queued"}}
+        else:
+            polls += 1
+            doc = ({"data": {"id": 321, "status": "resolving"}} if polls == 1 else
+                   {"data": {"id": 321, "status": "finished", "name": "Jane Example",
+                             "email": "jane@example.com", "email_status": "valid",
+                             "credits": {"api_credits": {"total": 2}}}})
         payload = json.dumps(doc).encode()
 
         async def stream():
@@ -122,10 +130,234 @@ async def test_wiza_routed_email_waits_for_terminal_result_and_settles_exact_usa
         "email_options": {"accept_work": True, "accept_personal": False, "accept_generic": False},
     }
     assert calls[1][0] == "GET" and calls[1][1].endswith("/api/individual_reveals/321")
+    assert polls == 2
+    await audit.drain()
     async with session_maker() as db:
         task = (await db.execute(select(AsyncTaskRecord))).scalars().first()
         assert task.status == "settled" and task.settled_micro == 50_000
         assert await db.get(Hold, task.call_id) is None
+        child = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == task.call_id,
+            CallRecord.endpoint_id == "wiza.people.email.find"))).scalar_one()
+        assert child.hit is True
+        assert child.verdict == task.verdict == "verified"
+
+
+# A finder's verdict is its own claim: Wiza's `risky` is a found address it did not confirm.
+@pytest.mark.parametrize("endpoint,level,terminal,expected_hit,expected_verdict", [
+    ("wiza.people.email.find", "partial",
+     {"email": "person@sample.example", "email_status": "risky"}, True, "unverified"),
+    ("wiza.people.phone.find", "phone", {"phone_status": "unfound"}, False, None),
+])
+async def test_wiza_direct_hit_waits_for_terminal_result(
+    clients, monkeypatch, wiza_platform_on, endpoint, level, terminal, expected_hit, expected_verdict,
+):
+    await audit.drain()
+    polls = 0
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        nonlocal polls
+        if request.method == "POST":
+            doc = {"data": {"id": 4321, "status": "queued"}}
+        else:
+            polls += 1
+            doc = ({"data": {"id": 4321, "status": "resolving"}} if polls == 1 else
+                   {"data": {"id": 4321, "status": "finished", **terminal,
+                             "credits": {"api_credits": {"total": 0}}}})
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    before = await _balance(clients)
+    response = await clients.post(f"/call/{endpoint}", json={
+        "individual_reveal": {"full_name": "Person Example", "domain": "sample.example"},
+        "enrichment_level": level,
+        **({"email_options": {"accept_work": True, "accept_personal": False,
+                               "accept_generic": False}} if level == "partial" else {}),
+    })
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "queued"
+    call_ref = response.headers["x-treg-call-id"]
+    await audit.drain()
+    async with session_maker() as db:
+        original = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == call_ref, CallRecord.endpoint_id == endpoint))).scalar_one()
+        assert original.hit is None and original.verdict is None
+
+    first = await clients.get("/call/wiza.people.reveal.get", params={"id": 4321})
+    second = await clients.get("/call/wiza.people.reveal.get", params={"id": 4321})
+    assert first.json()["data"]["status"] == "resolving"
+    assert second.json()["data"]["status"] == "finished"
+    await audit.drain()
+    async with session_maker() as db:
+        original = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == call_ref, CallRecord.endpoint_id == endpoint))).scalar_one()
+        task = await db.get(AsyncTaskRecord, call_ref)
+        assert original.hit is expected_hit
+        assert task.hit is expected_hit
+        assert original.verdict == task.verdict == expected_verdict
+        assert task.status == "settled" and task.settled_micro == 0
+    assert await _balance(clients) == before
+
+
+async def test_wiza_terminal_hit_precedes_audit_insert(clients, monkeypatch, wiza_platform_on):
+    await audit.drain()
+    # Simulate a busy audit writer: the terminal poll completes before its queued insert.
+    monkeypatch.setattr(audit, "_schedule", lambda coro: coro.close())
+    polls = 0
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        nonlocal polls
+        if request.method == "POST":
+            doc = {"data": {"id": 9876, "status": "queued"}}
+        else:
+            polls += 1
+            doc = ({"data": {"id": 9876, "status": "resolving"}} if polls == 1 else
+                   {"data": {"id": 9876, "status": "finished",
+                             "email": "person@sample.example", "email_status": "risky",
+                             "credits": {"api_credits": {"total": 0}}}})
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    response = await clients.post("/call/wiza.people.email.find", json={
+        "individual_reveal": {"full_name": "Person Example", "domain": "sample.example"},
+        "enrichment_level": "partial",
+        "email_options": {"accept_work": True, "accept_personal": False,
+                          "accept_generic": False},
+    })
+    assert response.status_code == 200
+    call_ref = response.headers["x-treg-call-id"]
+    await clients.get("/call/wiza.people.reveal.get", params={"id": 9876})
+    await clients.get("/call/wiza.people.reveal.get", params={"id": 9876})
+    await audit.drain()
+    async with session_maker() as db:
+        original = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == call_ref,
+            CallRecord.endpoint_id == "wiza.people.email.find"))).scalar_one()
+        assert original.hit is True
+        assert original.verdict == "unverified"
+
+
+async def test_wiza_terminal_poll_does_not_wait_for_audit_writer(
+    clients, monkeypatch, wiza_platform_on,
+):
+    await audit.drain()
+    writer_entered = asyncio.Event()
+    release_writer = asyncio.Event()
+    real_session_maker = audit.background_session_maker
+
+    @asynccontextmanager
+    async def gated_session_maker():
+        writer_entered.set()
+        await release_writer.wait()
+        async with real_session_maker() as session:
+            yield session
+
+    monkeypatch.setattr(audit, "background_session_maker", gated_session_maker)
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        doc = ({"data": {"id": 5432, "status": "queued"}} if request.method == "POST" else
+               {"data": {"id": 5432, "status": "finished", "email": "person@sample.example",
+                         "email_status": "risky", "credits": {"api_credits": {"total": 0}}}})
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    call_ref = None
+    try:
+        submitted = await asyncio.wait_for(clients.post("/call/wiza.people.email.find", json={
+            "individual_reveal": {"full_name": "Person Example", "domain": "sample.example"},
+            "enrichment_level": "partial",
+            "email_options": {"accept_work": True, "accept_personal": False,
+                              "accept_generic": False},
+        }), timeout=5)
+        assert submitted.status_code == 200
+        call_ref = submitted.headers["x-treg-call-id"]
+        await asyncio.wait_for(writer_entered.wait(), timeout=5)
+        polled = await asyncio.wait_for(clients.get(
+            "/call/wiza.people.reveal.get", params={"id": 5432}), timeout=5)
+        assert polled.status_code == 200
+        async with session_maker() as db:
+            assert (await db.get(AsyncTaskRecord, call_ref)).hit is True
+    finally:
+        release_writer.set()
+        await audit.drain()
+    async with session_maker() as db:
+        original = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == call_ref,
+            CallRecord.endpoint_id == "wiza.people.email.find"))).scalar_one()
+        assert original.hit is True
+        assert original.verdict == "unverified"
+
+
+@pytest.mark.parametrize("capability,terminal,expected_hit", [
+    ("email", {"email": "person@sample.example", "email_status": "risky"}, True),
+    ("phone", {"phone_status": "unfound"}, False),
+])
+async def test_wiza_routed_child_records_terminal_verdict(
+    clients, monkeypatch, wiza_platform_on, capability, terminal, expected_hit,
+):
+    endpoint = f"wiza.people.{capability}.find"
+    polls = 0
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        nonlocal polls
+        if request.method == "POST":
+            doc = {"data": {"id": 7654, "status": "queued"}}
+        else:
+            polls += 1
+            doc = ({"data": {"id": 7654, "status": "resolving"}} if polls == 1 else
+                   {"data": {"id": 7654, "status": "finished", **terminal,
+                             "credits": {"api_credits": {"total": 0}}}})
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    result = await clients.post(
+        f"/call/treg.people.{capability}.find",
+        headers={"X-Treg-Route-Prefer": "wiza", "X-Treg-Route-Waterfall": "0"},
+        json={"full_name": "Person Example", "domain": "sample.example"},
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["_treg"]["served_by"] == endpoint
+    assert result.json()["_treg"]["outcome"] == ("hit" if expected_hit else "miss")
+    assert polls == 2
+    await audit.drain()
+    async with session_maker() as db:
+        child = (await db.execute(select(CallRecord).where(
+            CallRecord.endpoint_id == endpoint))).scalar_one()
+        assert child.hit is expected_hit
+        task = await db.get(AsyncTaskRecord, child.call_ref)
+        assert task.hit is expected_hit and task.settled_micro == 0
 
 
 async def test_wiza_routed_timeout_is_pending_keeps_hold_and_does_not_resubmit(
@@ -275,4 +507,9 @@ async def test_wiza_failed_reveal_releases_hold_and_is_a_waterfall_miss(
     async with session_maker() as db:
         task = (await db.execute(select(AsyncTaskRecord))).scalars().first()
         assert task.status == "released" and task.settled_micro == 0
+        assert task.hit is False
+        child = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == task.call_id,
+            CallRecord.endpoint_id == "wiza.people.email.find"))).scalar_one()
+        assert child.hit is False
         assert await db.get(Hold, task.call_id) is None

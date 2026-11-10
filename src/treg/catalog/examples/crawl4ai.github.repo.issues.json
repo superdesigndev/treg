@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: github-issues: unclecode/crawl4ai · open · page 1 · 30 items, 7 rows"
+    ]
+  },
+  "recipe": "github-issues",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 196,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "IlPrezio",
+      "body": "## Summary Would you consider replacing the pinned `unclecode-litellm==1.81.13` dependency with a **recent, maintained, security-reviewed version of upstream `litellm`**, and validating the compatibility of `LLMExtractionStrategy` with newer reasoning models (including GPT-5.6 deployments such as Lu…",
+      "comments": 0,
+      "created": "2026-10-09T10:25:15Z",
+      "is_pull_request": false,
+      "labels": null,
+      "number": 2353,
+      "state": "open",
+      "title": "Feature request: Upgrade from unclecode-litellm to current upstream LiteLLM for newer reasoning models",
+      "updated": "2026-10-09T10:25:15Z",
+      "url": "https://github.com/unclecode/crawl4ai/issues/2353"
+    },
+    {
+      "author": "replynodes-ai",
+      "body": "Crawl4AI already makes websites available as clean Markdown for LLMs. One possible complementary workflow for users is a zero-setup HTTP fallback for a single ordinary public page, before installing/configuring a crawler or launching browser automation. ```bash curl 'https://md.replynodes.com/https:…",
+      "comments": 0,
+      "created": "2026-10-09T02:03:21Z",
+      "is_pull_request": false,
+      "labels": null,
+      "number": 2350,
+      "state": "open",
+      "title": "Feature suggestion: document a lightweight single-page Markdown fallback",
+      "updated": "2026-10-09T02:17:54Z",
+      "url": "https://github.com/unclecode/crawl4ai/issues/2350"
+    }
+  ]
+}

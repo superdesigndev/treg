@@ -23,7 +23,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v2/validate
-    name: Verify an email address
+    name: Verify an email address — catch-all and risk status
     summary: Check mailbox deliverability and risk status in real time
     input:
       queryParams:
@@ -44,6 +44,7 @@ endpoints:
       confidence: verified
       note: "One purchased credit per non-unknown result at the supplied $69 / 5,000-credit replacement rate. Official docs say unknown results consume no credit. Two fresh live validations reduced the balance by exactly one credit each: an invalid mailbox from 5,098 to 5,097 and a valid mailbox from 5,097 to 5,096."
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/zerobounce.people.email.verify.json
     docs_url: https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-validate-emails
 
@@ -82,6 +83,7 @@ endpoints:
       confidence: verified
       note: "20 PAYG credits or one subscription query per successful email; undetermined results are free. The account's first 10 successful Finder/Domain Search calls used a promotional allocation and left the PAYG balance unchanged; the next successful Email Finder call reduced the balance by exactly 20 credits."
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/zerobounce.people.email.find.json
     docs_url: https://www.zerobounce.net/docs/email-finder-api
 
@@ -116,5 +118,6 @@ endpoints:
       confidence: documented
       note: "20 PAYG credits or one subscription query per successful format; undetermined results are free. A live successful response used the shared 10-call promotional Finder/Domain Search allocation and left the PAYG balance unchanged. The 20-credit PAYG fallback was subsequently observed on Email Finder, which uses the same upstream route and shared allocation; this Domain Search price remains documented until its own paid result is observed."
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/zerobounce.companies.email_pattern.json
     docs_url: https://www.zerobounce.net/docs/domain-search-api

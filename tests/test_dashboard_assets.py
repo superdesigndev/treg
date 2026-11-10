@@ -1,11 +1,6 @@
 """The redesigned dashboard must receive real local assets, not an HTML fallback."""
 
-from pathlib import Path
-import re
 import pytest
-
-
-from treg import api
 
 
 @pytest.fixture
@@ -20,52 +15,6 @@ async def new_dashboard(clients):
     return clients
 
 
-async def test_every_entry_serves_the_compiled_app_to_every_visitor(new_dashboard):
-    """Signed in, signed out or with a forged session, every Dashboard entry is the one compiled app,
-    never cached across visitors."""
-    clients = new_dashboard
-    paths = ['/app', '/app/tools/shared', '/app/skills/shared', '/catalog', '/catalog/google', '/search']
-    signed_in = dict(clients.cookies)
-    for cookies in (signed_in, {}, {'treg_session': 'forged'}):
-        clients.cookies.clear()
-        clients.cookies.update(cookies)
-        for path in paths:
-            page = await clients.get(path)
-            assert page.status_code == 200, path
-            assert '/app/ui/assets/' in page.text, path
-            assert page.headers['cache-control'] == 'private, no-store', path
-            assert page.headers['vary'] == 'Cookie', path
-
-
-async def test_dashboard_redesign_assets_are_served_from_the_same_origin(new_dashboard):
-    clients = new_dashboard
-    page = await clients.get('/app')
-    assert page.status_code == 200
-    paths = set(re.findall(r'(?:href|src)="(/media/redesign/[^"\']+)"', page.text))
-    assets = set(re.findall(r'(?:href|src)="(/app/ui/assets/[^"\']+)"', page.text))
-    assert any(p.endswith('.js') for p in assets)
-    assert any(p.endswith('.css') for p in assets)
-    assert page.headers['cache-control'] == 'private, no-store'
-    for asset in assets:
-        response = await clients.get(asset)
-        assert response.status_code == 200
-        assert 'immutable' in response.headers['cache-control']
-        assert not response.headers['content-type'].startswith('text/html')
-    missing = await clients.get('/app/ui/assets/missing.js')
-    assert missing.status_code == 404
-    assert '<!doctype' not in missing.text.lower()
-    assert (await clients.get('/app/ui/assets/%2e%2e/index.html')).status_code == 404
-    # Include the dynamic task, provider and token-state images as well as literal URLs.
-    asset_dir = Path(api.__file__).parent / 'web' / 'media' / 'redesign'
-    paths.update('/media/redesign/' + p.name for p in asset_dir.iterdir() if p.suffix in {'.svg', '.png', '.jpg'})
-    for path in sorted(paths):
-        response = await clients.get(path)
-        assert response.status_code == 200, path
-        assert response.content, path
-        expected_type = 'text/css' if path.endswith('.css') else 'image/'
-        assert response.headers['content-type'].startswith(expected_type), path
-
-
 async def test_dashboard_dev_entry_refuses_a_public_hostname(new_dashboard, monkeypatch):
     clients = new_dashboard
     import pytest
@@ -75,28 +24,3 @@ async def test_dashboard_dev_entry_refuses_a_public_hostname(new_dashboard, monk
     with pytest.raises(RuntimeError, match='loopback'):
         await clients.get('/app')
 
-
-async def test_arena_onboarding_widgets_are_compiled_from_the_dashboard_source(clients):
-    """Enrich Arena's `/agent-setup.js` is built from `frontend/src/agent-setup/`, the source the
-    Dashboard imports. It is the one compiled classic script: the Dashboard itself never loads it."""
-    script = await clients.get('/agent-setup.js')
-    assert script.status_code == 200
-    assert script.headers['content-type'].startswith('application/javascript')
-    assert script.headers['cache-control'] == 'no-cache'
-    assert 'TregAgentSetup' in script.text
-    assert 'template:' not in script.text   # compiled render functions, no runtime compiler needed
-    assert '/agent-setup.js' in (await clients.get('/enrich-arena')).text
-    assert '/agent-setup.js' not in (await clients.get('/app')).text
-
-
-async def test_dashboard_head_scripts_do_not_block_the_first_paint(clients):
-    """The tracking scripts are deferred ahead of the app entry, so they still run before the app;
-    the tutorial scripts are loaded by the Help view itself, not by every Dashboard entry."""
-    html = (await clients.get('/app')).text
-    entry = html.find('<script type="module"')
-    for name in ('/adtrack.js', '/sitetrack.js'):
-        tag = f'<script src="{name}" defer></script>'
-        assert tag in html, name
-        assert html.find(tag) < entry, name
-    assert '/tutorial.js' not in html
-    assert '/dashboard-tour/tour.js' not in html

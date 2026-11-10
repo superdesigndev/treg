@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Free WebAccess for agents: free web search and page reads for agents | treg.to</title>
+<meta name="description" content="Your agent searches the web and reads any page for $0. When the free call comes back empty or blocked, treg tries the next vendor, so it still gets pages, sites, social posts, store listings and reviews through one API. Open source.">
+<link rel="canonical" href="{BASE}/web-access"/>
+<meta property="og:title" content="Free WebAccess for agents: free web search and page reads for agents | treg.to"/>
+<meta property="og:description" content="Free web search and page reads for your agent. When free fails, the next vendor answers. One API for pages, sites, social, stores and reviews."/>
+<meta property="og:url" content="{BASE}/web-access"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB;
+    --card: #F5F4F1;
+    --ink: #101010;
+    --muted: #8A8885;
+    --line: #E9E7E2;
+    --green: #118453;
+    --green-soft: rgba(17,132,83,.12);
+    --red: #C0362F;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --pixel: "Geist Pixel", "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--text); font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(17,132,83,.22); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px;
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center;
+    justify-content: space-between; padding: 14px 28px;
+    background: rgba(253,252,251,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid transparent; transition: border-color .3s;
+  }
+  .nav.scrolled { border-color: var(--line); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark img, .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .wm-agents { display: inline-flex; gap: 5px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 1020px) { .nav-links { display: none; } }
+
+
+  /* ---------- hero ---------- */
+  .hero { padding: 140px 24px 30px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500;
+    color: var(--green); background: var(--green-soft); border: 1px solid rgba(17,132,83,.3);
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 26px;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .hero h1 {
+    font-family: var(--display); font-weight: 500; letter-spacing: -.03em;
+    font-size: clamp(42px, 7vw, 78px); line-height: 1.04; margin: 0 auto 22px; max-width: 16ch; text-wrap: balance;
+  }
+  .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.01em; max-width: 21ch; }
+  .hero h1 .hl { color: var(--green); font-weight: 400; }
+  .hero p.sub { max-width: 54ch; margin: 0 auto 34px; color: var(--muted); font-size: 18px; text-wrap: balance; }
+  .hero p.sub strong { color: var(--ink); font-weight: 500; }
+  .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* hero B: the agent-logo cluster in "Run GTM from your … terminal." */
+  .hero-agents { display: inline-flex; align-items: center; gap: .14em; vertical-align: -.08em; }
+  .hero-agents img { width: .78em; height: .78em; border-radius: .18em; }
+
+  /* the rotating agent in the headline */
+  .ag { display: inline-flex; align-items: center; gap: .18em; vertical-align: -.08em;
+    transition: opacity .28s ease, transform .3s cubic-bezier(.3,.7,.3,1); }
+  .ag img { width: .82em; height: .82em; border-radius: .18em; }
+  .ag.out { opacity: 0; transform: translateY(-.22em); transition-timing-function: ease, cubic-bezier(.6,0,.8,.4); }
+  .ag.pre { opacity: 0; transform: translateY(.22em); transition: none; }
+
+  /* word-by-word entrance, like the film */
+  .hw { display: inline-block; opacity: 0; transform: translateY(14px); }
+  .hw.in { opacity: 1; transform: none; transition: opacity .4s ease, transform .45s cubic-bezier(.3,.7,.3,1); }
+
+  /* ---------- the hero film ---------- */
+  .demo-wrap { padding: 30px 24px 0; }
+  .demo-cap { text-align: center; color: var(--muted); font-size: 12.5px; margin: 16px auto 0; font-family: var(--mono); }
+  /* ---- sign-in modal (the home page's door, in this page's skin) ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal .cls:hover { color: var(--ink); }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; box-sizing: border-box; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+
+  /* ---------- sections ---------- */
+  .section { padding: 110px 24px; }
+  .section h2, .bench-stage h2, .cta-final h2 {
+    font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12;
+    font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance;
+  }
+  .section .lede, .bench-stage .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+  .hl2 { color: var(--green); font-weight: 600; }
+  /* ---- final CTA + command card ---- */
+  .cta-final { text-align: center; padding: 120px 24px 50px; }
+  .cmd {
+    max-width: 720px; margin: 0 auto 26px; display: flex; align-items: center; gap: 14px;
+    background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left;
+  }
+  .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
+  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 16px; white-space: nowrap; overflow: hidden; flex: 1; }
+  .cmd .cline a { color: #8FD4F2; text-decoration: none; }
+  .cmd button {
+    flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono);
+    font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  }
+  .cmd button:hover { background: #313130; }
+  .cta-final .cmd + .cmd { margin-top: -14px; }
+  @media (max-width: 640px) { .cmd { padding: 14px 16px; } .cmd .cline { white-space: normal; overflow-wrap: anywhere; font-size: 13.5px; } }
+  /* ---- the site footer, mirrored from the home page ---- */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 100px; padding: 46px 24px 40px; background: #FBFAF8; text-align: left; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); }
+  .bf-brand svg { width: 20px; height: 20px; border-radius: 6px; }
+  .bf-brand .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .bf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+
+  @media (max-width: 640px) {
+    .nav { padding: 12px 14px; }
+    .wm-agents, .wm-x { display: none; }
+    .section { padding: 70px 18px; }
+  }
+  .rel { display: block; padding: 18px 20px; background: #fff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); text-decoration: none; color: inherit; transition: box-shadow .24s; }
+  .rel:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .rel b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .rel span { font-size: 13px; color: var(--muted); }
+  #duel-sec, #route, #jobs { scroll-margin-top: 70px; }
+  :root { --gold: #E3B935; --gold-soft: #FFF7D6; --paper: #fff; --red-soft: rgba(192,54,47,.10); }
+
+  /* ---------- hero film: free vs paid ---------- */
+  .duel {
+    position: relative; max-width: 1040px; margin: 0 auto; display: grid;
+    grid-template-columns: 1fr 1fr; gap: 26px; align-items: stretch;
+  }
+  .dpan {
+    position: relative; border-radius: 22px; padding: 22px 22px 20px; overflow: hidden;
+    transition: transform .6s cubic-bezier(.3,.7,.3,1), box-shadow .6s ease, filter .6s ease, opacity .6s ease;
+  }
+  .dpan.free { background: var(--gold-soft); box-shadow: inset 0 0 0 1.5px #F0E3A8, 0 20px 50px -30px rgba(120,96,10,.35); }
+  .dpan.paid { background: #F0EFEC; box-shadow: inset 0 0 0 1.5px #E4E2DD; }
+  .duel.done .dpan.free { transform: translateY(-6px); box-shadow: inset 0 0 0 2.5px var(--gold), 0 30px 70px -28px rgba(200,160,20,.55); }
+  .duel.done .dpan.paid { filter: grayscale(1); opacity: .55; }
+  .dh { display: flex; align-items: center; gap: 9px; padding-bottom: 14px; }
+  .dh .lg { width: 30px; height: 30px; border-radius: 8px; flex: none; }
+  .dh .plus { color: var(--muted); font-size: 15px; }
+  .dh b { font-family: var(--display); font-weight: 500; font-size: 22px; letter-spacing: -.02em; margin-left: 4px; }
+  .dh .vl { display: inline-flex; gap: 6px; }
+  .dh .vl img { width: 26px; height: 26px; border-radius: 7px; background: #fff; padding: 3px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+  .dfeed { position: relative; height: 196px; overflow: hidden; border-top: 1.5px solid var(--ink); }
+  .paid .dfeed { border-top-color: #A9A7A2; }
+  .dfeed::after { content: ""; position: absolute; inset: auto 0 0 0; height: 56px; pointer-events: none; }
+  .free .dfeed::after { background: linear-gradient(transparent, var(--gold-soft)); }
+  .paid .dfeed::after { background: linear-gradient(transparent, #F0EFEC); }
+  .dr {
+    display: grid; grid-template-columns: 50px 1fr 18px 70px; gap: 8px; align-items: center;
+    height: 39px; border-bottom: 1px solid rgba(0,0,0,.06); font-family: var(--mono); font-size: 13px;
+    animation: drIn .38s cubic-bezier(.3,.7,.3,1);
+  }
+  .free .dr { border-bottom-color: #F1E6B8; }
+  @keyframes drIn { from { opacity: 0; transform: translateY(-10px); } }
+  .dr .v { color: var(--muted); font-size: 12px; }
+  .dr .q { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2A2927; }
+  .dr img { width: 16px; height: 16px; border-radius: 4px; }
+  .dr .p { text-align: right; color: var(--ink); }
+  .paid .dr .p { color: #5E5C58; }
+  .dfoot { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 14px; gap: 10px; }
+  .dfoot .n { font-family: var(--mono); font-size: 13px; color: var(--muted); padding-bottom: 12px; }
+  .dsum { font-family: var(--pixel); font-weight: 400; font-size: clamp(48px, 7vw, 76px); line-height: .95; letter-spacing: -.02em; position: relative; }
+  .free .dsum { padding: 0 8px; margin-right: -8px; }
+  .free .dsum::before {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 6%; height: 62%; background: #FFE04A; z-index: -1;
+    transform: scaleX(0); transform-origin: 0 50%; transition: transform .5s cubic-bezier(.3,.7,.3,1) .15s;
+  }
+  .free .dsum { z-index: 0; }
+  .duel.done .free .dsum::before { transform: scaleX(1); }
+  .paid .dsum { color: #8F8D88; }
+  .vs {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.6); z-index: 3; opacity: 0;
+    font-family: var(--pixel); font-size: 54px; line-height: 1; color: var(--ink); pointer-events: none;
+    text-shadow: -3px 0 0 rgba(229,57,53,.75), 3px 0 0 rgba(0,170,160,.75);
+    transition: transform .35s cubic-bezier(.2,1.6,.4,1), opacity .2s;
+  }
+  .duel.run .vs { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .duel.done .vs { opacity: 0; }
+  .fish {
+    position: absolute; width: 22px; height: 22px; z-index: 4; pointer-events: none; opacity: 0;
+    animation: swim 3.6s linear forwards;
+  }
+  @keyframes swim {
+    0% { opacity: 0; transform: translate(-60px, 0) scaleX(-1); }
+    10%, 85% { opacity: .9; }
+    100% { opacity: 0; transform: translate(560px, -24px) scaleX(-1); }
+  }
+
+  /* ---------- the route board ---------- */
+  .board {
+    max-width: 1080px; margin: 0 auto; background: var(--paper); border-radius: 22px; padding: 26px 26px 18px;
+    box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 24px 60px -36px rgba(20,18,12,.28);
+  }
+  .bhead, .brow { display: grid; grid-template-columns: 238px 54px 1fr 210px; gap: 16px; align-items: center; }
+  .bhead { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-bottom: 14px; }
+  .bhead span:nth-child(2) { text-align: center; }
+  .brows { position: relative; }
+  .rail {
+    position: absolute; left: calc(238px + 16px); width: 54px; top: 0; bottom: 0; border-radius: 27px;
+    border: 1.5px solid var(--ink); background: #fff; display: flex; flex-direction: column; align-items: center; padding-top: 12px; gap: 4px;
+    font-family: var(--mono); font-size: 11px; z-index: 1;
+  }
+  .rail svg { width: 28px; height: 28px; }
+  .brow { min-height: 78px; position: relative; }
+  .brow + .brow { border-top: 1px dashed var(--line); }
+  .ask {
+    background: #1B1B1A; color: #F1F1EF; border-radius: 12px; padding: 11px 13px; display: flex; gap: 10px; align-items: center;
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .ask img { width: 22px; height: 22px; border-radius: 6px; background: #fff; padding: 2px; flex: none; }
+  .ask i { color: #8A8885; font-style: normal; }
+  .tries { display: flex; align-items: center; gap: 0; position: relative; }
+  .tries::before { content: ""; position: absolute; left: -16px; right: 0; top: 50%; height: 1.5px; background: var(--line); }
+  .try {
+    position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 11px; background: #fff;
+    box-shadow: inset 0 0 0 1.5px var(--line); font-size: 12.5px; margin-right: 12px; min-width: 128px;
+    opacity: 0; transform: translateX(-10px); transition: opacity .3s ease, transform .35s cubic-bezier(.3,.7,.3,1), box-shadow .3s;
+  }
+  .try img { width: 20px; height: 20px; border-radius: 5px; flex: none; }
+  .try b { display: block; font-weight: 600; font-size: 12.5px; line-height: 1.2; }
+  .try s { display: block; text-decoration: none; font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+  .try .mk { position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; transform: scale(0); transition: transform .3s cubic-bezier(.2,1.6,.4,1) .15s; }
+  .try.on { opacity: 1; transform: none; }
+  .try.on .mk { transform: scale(1); }
+  .try.miss { background: #FDF7F6; }
+  .try.miss b { text-decoration: line-through; text-decoration-color: rgba(192,54,47,.6); color: #8a5b57; }
+  .try.miss .mk { background: var(--red); }
+  .try.hit { box-shadow: inset 0 0 0 2px var(--green); background: #F2FAF6; }
+  .try.hit .mk { background: var(--green); }
+  .try.hit s { color: var(--green); }
+  .try.sb { opacity: 0; background: #FAFAF8; box-shadow: inset 0 0 0 1.5px var(--line); }
+  .try.sb.on { opacity: .5; }
+  .try.sb b { font-weight: 500; color: var(--muted); }
+  .got {
+    display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 12px; padding: 9px 11px;
+    box-shadow: 0 1px 2px rgba(20,18,12,.06), 0 8px 20px -10px rgba(20,18,12,.2);
+    opacity: 0; transform: translateX(14px); transition: opacity .35s ease, transform .4s cubic-bezier(.3,.7,.3,1);
+  }
+  .got.on { opacity: 1; transform: none; }
+  .got img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex: none; }
+  .got b { display: block; font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .got s { display: block; text-decoration: none; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+  .board-cap { text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 14px; }
+
+  .twin { max-width: 1080px; margin: 26px auto 0; display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; }
+  .twin > *, .jpane > *, .duel > * { min-width: 0; }
+  .card { background: var(--paper); border-radius: 18px; padding: 22px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); }
+  .card h3 { font-family: var(--display); font-weight: 500; font-size: 19px; letter-spacing: -.015em; margin: 0 0 4px; }
+  .card p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .code {
+    background: #1B1B1A; color: #E6E6E3; border-radius: 12px; padding: 16px 18px; font-family: var(--mono); font-size: 12.5px;
+    line-height: 1.65; white-space: pre; overflow-x: auto; margin: 0;
+  }
+  .code .k { color: #8FD4F2; } .code .s { color: #F2C98F; } .code .g { color: #7FDCAE; } .code .r { color: #F28F8F; } .code .c { color: #7C7B77; }
+  .htab { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .htab td { padding: 10px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .htab tr:first-child td { border-top: 0; }
+  .htab code { font-family: var(--mono); font-size: 12px; background: var(--card); padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+  .htab td:last-child { color: #5E5C58; padding-left: 14px; }
+
+  /* ---------- jobs stage ---------- */
+  .stage2 {
+    max-width: 1080px; margin: 0 auto; background: var(--paper); border-radius: 22px; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 30px 70px -40px rgba(20,18,12,.32);
+  }
+  .tabs { display: flex; gap: 4px; padding: 10px; background: #FAF9F6; border-bottom: 1px solid var(--line); overflow-x: auto; justify-content: safe center; }
+  .tabs button {
+    flex: none; display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 8px 14px; border-radius: 999px;
+    font: 500 13.5px var(--text); color: #6A6864; cursor: pointer; position: relative; overflow: hidden;
+  }
+  .tabs button img { width: 16px; height: 16px; }
+  .tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(20,18,12,.08), inset 0 0 0 1px var(--line); }
+  .tabs button .pg { position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px; border-radius: 2px; background: var(--green); transform: scaleX(0); transform-origin: 0 50%; }
+  .tabs button[aria-selected="true"] .pg { animation: pg var(--dur, 7s) linear forwards; }
+  .stage2.paused .tabs .pg { animation: none; transform: scaleX(0); }
+  @keyframes pg { to { transform: scaleX(1); } }
+  .jpane { display: grid; grid-template-columns: 1.15fr 1fr; min-height: 420px; }
+  .jpane[hidden] { display: none; }
+  .jl { padding: 24px; background: #F6F5F2; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+  .jr { background: #1B1B1A; color: #E6E6E3; padding: 20px 22px; display: flex; flex-direction: column; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+  .jr .jh { display: flex; justify-content: space-between; color: #8A8885; font-size: 11.5px; padding-bottom: 12px; border-bottom: 1px solid #2E2E2C; margin-bottom: 12px; }
+  .jr .jh b { color: #7FDCAE; font-weight: 400; }
+  .jr .out { flex: 1; white-space: pre-wrap; overflow: hidden; }
+  .jr .out .k { color: #8FD4F2; } .jr .out .s { color: #F2C98F; } .jr .out .n { color: #C6A8F2; } .jr .out .h { color: #F1F1EF; font-weight: 500; }
+  .jr .via { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid #2E2E2C; margin-top: 12px; color: #8A8885; font-size: 11.5px; flex-wrap: wrap; }
+  .jr .via img { width: 18px; height: 18px; border-radius: 5px; background: #fff; padding: 2px; }
+  .jr .via b { color: #F1F1EF; font-weight: 400; }
+  .jr .via em { font-style: normal; color: #7FDCAE; margin-left: auto; }
+  .browser { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(20,18,12,.06), 0 14px 30px -18px rgba(20,18,12,.25); }
+  .bbar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .bbar i { width: 8px; height: 8px; border-radius: 50%; background: #E4E2DD; }
+  .bbar span { margin-left: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--card); border-radius: 6px; padding: 3px 10px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bbody { padding: 18px; position: relative; }
+  .scan { position: absolute; left: 0; right: 0; height: 2px; background: var(--green); box-shadow: 0 0 18px 4px rgba(17,132,83,.35); top: 0; opacity: 0; }
+  .jpane.play .scan { animation: scan 1.6s ease-in-out .2s; }
+  @keyframes scan { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0; } }
+  .mk-hl { background: rgba(17,132,83,.14); box-shadow: 0 0 0 1.5px rgba(17,132,83,.35); border-radius: 4px; transition: background .3s; }
+  .stripe-h { font-family: var(--display); font-weight: 500; font-size: 22px; letter-spacing: -.02em; line-height: 1.2; margin: 6px 0 14px; }
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .plans div { border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 13px; }
+  .plans b { display: block; font-weight: 500; margin-bottom: 4px; }
+  .plans span { color: #635BFF; font-weight: 500; font-size: 15px; }
+  .plans u { display: block; height: 5px; border-radius: 3px; background: #EEEDEA; margin-top: 10px; text-decoration: none; }
+  .tree { font-family: var(--mono); font-size: 12.5px; line-height: 1.85; color: #43413E; }
+  .tree div { opacity: 0; transform: translateX(-6px); transition: opacity .25s, transform .3s; }
+  .tree div.on { opacity: 1; transform: none; }
+  .tree i { color: var(--muted); font-style: normal; }
+  .posts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .post { background: #fff; border-radius: 12px; padding: 12px; font-size: 12px; line-height: 1.45; box-shadow: 0 1px 2px rgba(20,18,12,.06); display: flex; flex-direction: column; gap: 8px; }
+  .post .who { display: flex; align-items: center; gap: 7px; }
+  .post .who img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+  .post .who b { font-size: 12px; font-weight: 600; line-height: 1.1; display: block; }
+  .post .who s { font-size: 10.5px; color: var(--muted); text-decoration: none; display: block; }
+  .post .who .pl { width: 14px; height: 14px; margin-left: auto; border-radius: 0; }
+  .post .media { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; }
+  .post .met { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: auto; }
+  .post .met mark { background: none; color: inherit; }
+  .post p { margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .shops { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .shop { background: #fff; border-radius: 12px; padding: 12px; box-shadow: 0 1px 2px rgba(20,18,12,.06); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .shop .st { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; }
+  .shop .st img { width: 16px; height: 16px; }
+  .shop .ph { width: 100%; aspect-ratio: 1; object-fit: contain; background: #FAFAF8; border-radius: 8px; }
+  .shop .tt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #43413E; line-height: 1.35; }
+  .shop .pr { font-weight: 600; font-size: 15px; }
+  .shop .rt { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+  .revs { display: grid; gap: 10px; }
+  .rev { background: #fff; border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 2px rgba(20,18,12,.06); }
+  .rev > img { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+  .rev .rs { flex: 1; min-width: 0; }
+  .rev b { display: block; font-size: 13.5px; font-weight: 600; }
+  .rev s { display: block; text-decoration: none; font-size: 11.5px; color: var(--muted); }
+  .rev .sc { text-align: right; font-family: var(--mono); }
+  .rev .sc strong { display: block; font-size: 20px; font-weight: 500; letter-spacing: -.02em; }
+  .rev .sc small { color: var(--muted); font-size: 10.5px; }
+  .stars { color: #E8A317; letter-spacing: 1px; font-size: 12px; }
+  .plats { max-width: 1080px; margin: 34px auto 0; text-align: center; }
+  .plats .lab { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  .plats .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .plats .row span { display: inline-flex; align-items: center; gap: 7px; background: #fff; border-radius: 999px; padding: 7px 13px 7px 9px; font-size: 13px; font-weight: 500; box-shadow: 0 1px 2px rgba(20,18,12,.05), inset 0 0 0 1px var(--line); }
+  .plats .row img { width: 16px; height: 16px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 960px) {
+    .bhead { display: none; }
+    .brow { grid-template-columns: 1fr; gap: 10px; padding: 16px 0; }
+    .rail, .brow > span:empty { display: none; }
+    .tries { flex-wrap: wrap; gap: 10px 0; }
+    .tries::before { display: none; }
+    .twin { grid-template-columns: 1fr; }
+    .jpane { grid-template-columns: 1fr; }
+    .posts, .shops { grid-template-columns: repeat(3, minmax(160px, 1fr)); overflow-x: auto; }
+  }
+  @media (max-width: 640px) {
+    .duel { grid-template-columns: 1fr; gap: 14px; }
+    .vs { top: 50%; font-size: 40px; }
+    .dr { grid-template-columns: 44px 1fr 16px 58px; font-size: 12px; }
+    .board { padding: 18px 14px 12px; }
+    .jl { padding: 16px; }
+    .posts, .shops { grid-template-columns: repeat(3, 72%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dr, .fish { animation: none; }
+    .try, .got, .tree div { transition: none; opacity: 1; transform: none; }
+    .try.sb { opacity: .5; }
+    .tabs button .pg, .jpane.play .scan { animation: none; }
+    .strip .cur { animation: none; }
+    .hw { opacity: 1; transform: none; }
+  }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><span class="wm-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span> <span class="wm-x" style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">Web access</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="/web-arena">Web Arena</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
+    <a class="pill dark" href="/app?ref=web-access" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <h1 id="heroA"><span class="hw">Free <span class="hl">WebAccess</span></span><br><span class="hw">for <span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code" title="Claude Code"><img src="media/people-search/codex.png" alt="Codex" title="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw" title="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes" title="Hermes"></span></span></h1>
+  <p class="sub">Your agent searches the web and reads any page <strong>for $0</strong>. When the free call comes back empty or blocked, treg tries the next vendor, so your agent still gets <strong>pages, sites, social posts, store listings and reviews</strong>, all through one API. Open source, no plan.</p>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=web-access" id="ctaHero">Set up treg</a>
+    <a class="pill" href="#route">How the fallback works</a>
+  </div>
+</header>
+
+<div class="demo-wrap" id="duel-sec">
+  <div class="duel" id="duel" aria-label="The same searches and page reads, free through treg and TinyFish, and billed at paid web API prices">
+    <div class="dpan free">
+      <div class="dh"><svg class="lg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg><span class="plus">+</span><img class="lg" src="logos/tinyfish.svg" alt="TinyFish"><b>WebAccess</b></div>
+      <div class="dfeed"><div id="freeRows"></div></div>
+      <div class="dfoot"><span class="n" id="freeN">0 calls</span><b class="dsum">$0</b></div>
+    </div>
+    <div class="dpan paid">
+      <div class="dh"><span class="vl"><img src="logos/exa.svg" alt="Exa"><img src="logos/tavily.svg" alt="Tavily"><img src="logos/firecrawl.svg" alt="Firecrawl"></span><b>Paid web APIs</b></div>
+      <div class="dfeed"><div id="paidRows"></div></div>
+      <div class="dfoot"><span class="n" id="paidN">0 calls</span><b class="dsum" id="paidSum">$0</b></div>
+    </div>
+    <div class="vs" aria-hidden="true">VS</div>
+  </div>
+  <div class="demo-cap" id="duelCap">10,000 calls = 5,000 searches + 5,000 page reads, at each vendor's current price on treg</div>
+</div>
+
+<section class="section" id="route">
+  <h2>When free fails,<br><span class="hl2">the next vendor answers.</span></h2>
+  <p class="lede">Your agent asks for a job, not a vendor. treg tries the vendors behind that job in order of hit rate, price and speed, and stops at the first real answer. A vendor that bills per success costs nothing when it misses.</p>
+  <div class="board" id="board">
+    <div class="bhead"><span>Your agent asks</span><span>treg</span><span>Vendors, tried in order</span><span>You get</span></div>
+    <div class="brows">
+      <div class="rail" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</div>
+      <div class="brow">
+        <div class="ask"><img src="logos/crunchbase.svg" alt=""><span><i>›</i> Stripe's Crunchbase page</span></div><span></span>
+        <div class="tries">
+          <div class="try miss"><img src="logos/tinyfish.svg" alt=""><span><b>TinyFish</b><s>empty page · $0</s></span><i class="mk">✕</i></div>
+          <div class="try miss"><img src="logos/crawl4ai.svg" alt=""><span><b>Crawl4AI</b><s>403 blocked · $0</s></span><i class="mk">✕</i></div>
+          <div class="try hit"><img src="logos/anyapi.svg" alt=""><span><b>AnyAPI</b><s>✓ $0.0009</s></span><i class="mk">✓</i></div>
+        </div>
+        <div class="got"><img src="media/web-access/stripe.webp" alt=""><span><b>Stripe</b><s>company profile, as markdown</s></span></div>
+      </div>
+      <div class="brow">
+        <div class="ask"><img src="media/web-access/p-amazon.svg" alt=""><span><i>›</i> wireless earbuds on Amazon</span></div><span></span>
+        <div class="tries">
+          <div class="try hit"><img src="logos/justoneapi.svg" alt=""><span><b>JustOneAPI</b><s>✓ $0.0148</s></span><i class="mk">✓</i></div>
+          <div class="try sb"><img src="logos/serpapi.svg" alt=""><span><b>SerpAPI</b><s>standby</s></span></div>
+        </div>
+        <div class="got"><img src="media/web-access/amazon.webp" alt=""><span><b>AirPods Pro 3</b><s>$199.00 · ★ 4.4</s></span></div>
+      </div>
+      <div class="brow">
+        <div class="ask"><img src="media/web-access/p-reddit.svg" alt=""><span><i>›</i> top posts in r/LocalLLaMA</span></div><span></span>
+        <div class="tries">
+          <div class="try hit"><img src="logos/scrapecreators.svg" alt=""><span><b>ScrapeCreators</b><s>✓ answered</s></span><i class="mk">✓</i></div>
+          <div class="try sb"><img src="logos/tikhub.svg" alt=""><span><b>TikHub</b><s>standby</s></span></div>
+        </div>
+        <div class="got"><img src="media/web-access/p-reddit.svg" alt=""><span><b>It's been 2 months</b><s>▲ 439 · 89 comments</s></span></div>
+      </div>
+      <div class="brow">
+        <div class="ask"><img src="media/web-access/p-youtube.svg" alt=""><span><i>›</i> comments on a YouTube video</span></div><span></span>
+        <div class="tries">
+          <div class="try hit"><img src="logos/crawl4ai.svg" alt=""><span><b>Crawl4AI</b><s>✓ $0.0009</s></span><i class="mk">✓</i></div>
+          <div class="try sb"><img src="logos/scrapecreators.svg" alt=""><span><b>ScrapeCreators</b><s>standby</s></span></div>
+          <div class="try sb"><img src="logos/tikhub.svg" alt=""><span><b>TikHub</b><s>standby</s></span></div>
+        </div>
+        <div class="got"><img src="media/web-access/yt.webp" alt=""><span><b>"Let's put the meme aside…"</b><s>👍 219K likes</s></span></div>
+      </div>
+    </div>
+    <div class="board-cap">real treg calls · standby = the next vendors in line, not called</div>
+  </div>
+
+  <div class="twin">
+    <div class="card">
+      <h3>The trace comes back with the answer</h3>
+      <p>Every routed call says who answered, who was tried first and what each one cost.</p>
+<pre class="code"><span class="c">// treg call treg.web.extract --data '{"url":"crunchbase.com/organization/stripe"}'</span>
+<span class="k">"_treg"</span>: {
+  <span class="k">"served_by"</span>: <span class="s">"anyapi.web.scrape"</span>,
+  <span class="k">"tried"</span>: [
+    { <span class="k">"provider"</span>: <span class="s">"tinyfish"</span>, <span class="k">"outcome"</span>: <span class="r">"miss"</span>,  <span class="k">"charged_micro"</span>: 0 },
+    { <span class="k">"provider"</span>: <span class="s">"crawl4ai"</span>, <span class="k">"outcome"</span>: <span class="r">"error"</span>, <span class="k">"status"</span>: 403, <span class="k">"charged_micro"</span>: 0 },
+    { <span class="k">"provider"</span>: <span class="s">"anyapi"</span>,   <span class="k">"outcome"</span>: <span class="g">"hit"</span>,   <span class="k">"charged_micro"</span>: 700 }
+  ],
+  <span class="k">"charged_micro"</span>: 700
+}</pre>
+    </div>
+    <div class="card">
+      <h3>Steer it with four headers</h3>
+      <p>Options ride as headers, never in the body, so the call stays the vendor's own request.</p>
+      <table class="htab">
+        <tr><td><code>X-Treg-Route-Prefer</code></td><td>Try a vendor first, like free TinyFish.</td></tr>
+        <tr><td><code>X-Treg-Route-Exclude</code></td><td>Skip a vendor that gave you bad answers.</td></tr>
+        <tr><td><code>X-Treg-Route-Max-Cost</code></td><td>Cap one call. Without it, a miss can walk up to $1 of vendors.</td></tr>
+        <tr><td><code>X-Treg-Route-Waterfall</code></td><td>Set to <code>0</code> to stop at the first miss.</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="jobs" style="padding-top:40px">
+  <h2>One API.<br><span class="hl2">Any web data.</span></h2>
+  <p class="lede">Platform data comes back as fields, not a page of HTML: fewer tokens for your agent, and nothing to fix when the site is redesigned.</p>
+  <div class="stage2" id="jobStage">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true"><img src="media/web-access/p-web.svg" alt="">Read a page<i class="pg"></i></button>
+      <button type="button" role="tab" aria-selected="false"><img src="media/web-access/p-google.svg" alt="">Map a site<i class="pg"></i></button>
+      <button type="button" role="tab" aria-selected="false"><img src="media/web-access/p-x.svg" alt="">Any social<i class="pg"></i></button>
+      <button type="button" role="tab" aria-selected="false"><img src="media/web-access/p-amazon.svg" alt="">Any store<i class="pg"></i></button>
+      <button type="button" role="tab" aria-selected="false"><img src="media/web-access/p-app-store.svg" alt="">App reviews<i class="pg"></i></button>
+    </div>
+
+    <div class="jpane" role="tabpanel">
+      <div class="jl">
+        <div class="browser"><div class="bbar"><i></i><i></i><i></i><span>stripe.com/pricing</span></div>
+          <div class="bbody"><div class="scan"></div>
+            <div style="color:#635BFF;font-weight:600;font-size:15px">stripe</div>
+            <div class="stripe-h"><span class="mk-hl">Pricing built for businesses of all sizes</span></div>
+            <div class="plans"><div><b>Standard</b><span class="mk-hl">2.9% + 30¢</span><u></u><u style="width:70%"></u></div><div><b>Custom</b><span>Contact sales</span><u></u><u style="width:60%"></u></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="jr"><div class="jh"><span>page.md</span><b>treg.web.extract</b></div>
+        <div class="out" data-type><span class="h"># Standard</span>
+Access a complete payments platform with
+simple, pay-as-you-go pricing.
+
+<span class="h">## 2.9% + 30¢</span>
+per successful transaction for domestic cards
+
+<span class="h"># Custom</span>
+IC+ pricing · Volume discounts
+* 100+ payment methods
+* Radar Lite fraud protection</div>
+        <div class="via">via <img src="logos/tinyfish.svg" alt=""><b>TinyFish</b> · next in line <img src="logos/crawl4ai.svg" alt=""><img src="logos/anyapi.svg" alt=""><img src="logos/firecrawl.svg" alt=""><em>$0</em></div>
+      </div>
+    </div>
+
+    <div class="jpane" role="tabpanel" hidden>
+      <div class="jl">
+        <div class="browser"><div class="bbar"><i></i><i></i><i></i><span>tailwindcss.com</span></div>
+          <div class="bbody"><div class="scan"></div>
+            <div class="tree" id="tree">
+              <div>tailwindcss.com/</div>
+              <div><i>├─</i> /docs/installation</div>
+              <div><i>├─</i> /docs/styling-with-utility-classes</div>
+              <div><i>├─</i> /docs/hover-focus-and-other-states</div>
+              <div><i>├─</i> /docs/responsive-design</div>
+              <div><i>├─</i> /docs/dark-mode</div>
+              <div><i>├─</i> /docs/theme</div>
+              <div><i>├─</i> /docs/colors</div>
+              <div><i>├─</i> /blog</div>
+              <div><i>└─</i> /plus</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="jr"><div class="jh"><span>urls.json</span><b>treg.web.map</b></div>
+        <div class="out" data-type>{ <span class="k">"links"</span>: [
+  <span class="s">"https://tailwindcss.com/docs/installation"</span>,
+  <span class="s">"https://tailwindcss.com/docs/styling-with-utility-classes"</span>,
+  <span class="s">"https://tailwindcss.com/docs/hover-focus-and-other-states"</span>,
+  <span class="s">"https://tailwindcss.com/docs/responsive-design"</span>,
+  <span class="s">"https://tailwindcss.com/docs/dark-mode"</span>,
+  …
+] }
+
+<span class="c" style="color:#7C7B77">// add "q": "dark mode" to rank the URLs for a topic,
+// then read only the pages that matter</span></div>
+        <div class="via">via <img src="logos/anyapi.svg" alt=""><b>AnyAPI</b> · next in line <img src="logos/firecrawl.svg" alt=""><img src="logos/tavily.svg" alt=""></div>
+      </div>
+    </div>
+
+    <div class="jpane" role="tabpanel" hidden>
+      <div class="jl">
+        <div class="posts">
+          <div class="post"><div class="who"><img src="media/web-access/x-av.webp" alt=""><span><b>Brij Pandey</b><s>@LearnWithBrij</s></span><img class="pl" src="media/web-access/p-x.svg" alt="X"></div>
+            <p>Google just dropped a 1-hour course on agentic engineering from scratch…</p><img class="media" src="media/web-access/x-media.webp" alt=""><div class="met">1.3K likes · 310K views</div></div>
+          <div class="post"><div class="who"><img src="media/web-access/li-av.webp" alt=""><span><b>Stripe</b><s>1,763,678 followers</s></span><img class="pl" src="media/web-access/p-linkedin.svg" alt="LinkedIn"></div>
+            <p>We're welcoming Parafin to Stripe. Together, we'll expand revenue opportunities for platforms…</p><img class="media" src="media/web-access/li-media.webp" alt=""><div class="met">1,073 reactions · 55 comments</div></div>
+          <div class="post"><div class="who"><img src="media/web-access/p-reddit.svg" alt=""><span><b>r/LocalLLaMA</b><s>subreddit</s></span><img class="pl" src="media/web-access/p-reddit.svg" alt="Reddit"></div>
+            <p><b>Qwen released QwenGyre</b>, an RL framework for training AI agents on extremely long, complex tasks</p><div class="met">▲ 409 upvotes · 37 comments</div></div>
+        </div>
+      </div>
+      <div class="jr"><div class="jh"><span>posts.json</span><b>x · linkedin · reddit</b></div>
+        <div class="out" data-type>[
+  { <span class="k">"author"</span>: <span class="s">"Brij Pandey"</span>,
+    <span class="k">"likes"</span>: <span class="n">1302</span>, <span class="k">"views"</span>: <span class="n">310178</span> },
+  { <span class="k">"company"</span>: <span class="s">"Stripe"</span>,
+    <span class="k">"reactions"</span>: <span class="n">1073</span>, <span class="k">"comments"</span>: <span class="n">55</span> },
+  { <span class="k">"subreddit"</span>: <span class="s">"LocalLLaMA"</span>,
+    <span class="k">"score"</span>: <span class="n">409</span>, <span class="k">"num_comments"</span>: <span class="n">37</span> }
+]</div>
+        <div class="via">via <img src="logos/anyapi.svg" alt=""><img src="logos/harvestapi.svg" alt=""><img src="logos/scrapecreators.svg" alt=""><img src="logos/tikhub.svg" alt=""><b>and more, per platform</b></div>
+      </div>
+    </div>
+
+    <div class="jpane" role="tabpanel" hidden>
+      <div class="jl">
+        <div class="shops">
+          <div class="shop"><div class="st"><img src="media/web-access/p-amazon.svg" alt="">Amazon</div><img class="ph" src="media/web-access/amazon.webp" alt=""><div class="tt">Apple AirPods Pro 3 Wireless Earbuds with Active Noise Cancellation</div><div class="pr">$199.00</div><div class="rt"><span class="stars">★★★★☆</span> 4.4 · 16,356</div></div>
+          <div class="shop"><div class="st"><img src="media/web-access/p-walmart.svg" alt="">Walmart</div><img class="ph" src="media/web-access/walmart.webp" alt=""><div class="tt">Apple AirPods Pro 3</div><div class="pr">$199.00</div><div class="rt"><span class="stars">★★★★☆</span> 4.4 · 18,279</div></div>
+          <div class="shop"><div class="st"><img src="media/web-access/p-ebay.svg" alt="">eBay</div><img class="ph" src="media/web-access/ebay.webp" alt=""><div class="tt">Apple AirPods Pro 3rd Wireless Active Noise Cancelling Earbuds</div><div class="pr">$169.99</div><div class="rt">open box · ★ 5.0 · 9</div></div>
+        </div>
+      </div>
+      <div class="jr"><div class="jh"><span>products.json</span><b>treg.amazon.search.products</b></div>
+        <div class="out" data-type>[
+  { <span class="k">"store"</span>: <span class="s">"Amazon"</span>, <span class="k">"price"</span>: <span class="s">"$199.00"</span>,
+    <span class="k">"rating"</span>: <span class="n">4.4</span>, <span class="k">"reviews"</span>: <span class="n">16356</span> },
+  { <span class="k">"store"</span>: <span class="s">"Walmart"</span>, <span class="k">"price"</span>: <span class="s">"$199.00"</span>,
+    <span class="k">"rating"</span>: <span class="n">4.4</span>, <span class="k">"reviews"</span>: <span class="n">18279</span> },
+  { <span class="k">"store"</span>: <span class="s">"eBay"</span>, <span class="k">"price"</span>: <span class="s">"$169.99"</span>,
+    <span class="k">"condition"</span>: <span class="s">"Open Box"</span> }
+]</div>
+        <div class="via">via <img src="logos/justoneapi.svg" alt=""><b>JustOneAPI</b> $0.0148 · <img src="logos/serpapi.svg" alt=""><b>SerpAPI</b> $0.015 each</div>
+      </div>
+    </div>
+
+    <div class="jpane" role="tabpanel" hidden>
+      <div class="jl">
+        <div class="revs">
+          <div class="rev"><img src="media/web-access/chatgpt.webp" alt=""><div class="rs"><b>ChatGPT</b><s><img src="media/web-access/p-app-store.svg" alt="" style="width:12px;height:12px;vertical-align:-1px"> App Store · iOS, US</s></div><div class="sc"><strong>4.83</strong><span class="stars">★★★★★</span><br><small>11.2M ratings</small></div></div>
+          <div class="rev"><img src="media/web-access/chatgpt.webp" alt=""><div class="rs"><b>ChatGPT</b><s><img src="media/web-access/p-google-play.svg" alt="" style="width:12px;height:12px;vertical-align:-1px"> Google Play · 1B+ installs</s></div><div class="sc"><strong>4.78</strong><span class="stars">★★★★★</span><br><small>64.2M reviews</small></div></div>
+          <div class="rev"><img src="media/web-access/p-trustpilot.svg" alt="" style="padding:6px;background:#F6F5F2"><div class="rs"><b>Notion</b><s>Trustpilot · "My most used tool in building my business."</s></div><div class="sc"><strong>2.2</strong><span class="stars">★★☆☆☆</span><br><small>438 reviews</small></div></div>
+        </div>
+      </div>
+      <div class="jr"><div class="jh"><span>reviews.json</span><b>app store · google play · trustpilot</b></div>
+        <div class="out" data-type>[
+  { <span class="k">"source"</span>: <span class="s">"App Store"</span>,
+    <span class="k">"rating"</span>: <span class="n">4.83</span>, <span class="k">"count"</span>: <span class="n">11212013</span> },
+  { <span class="k">"source"</span>: <span class="s">"Google Play"</span>,
+    <span class="k">"rating"</span>: <span class="n">4.78</span>, <span class="k">"count"</span>: <span class="n">64240563</span> },
+  { <span class="k">"source"</span>: <span class="s">"Trustpilot"</span>,
+    <span class="k">"rating"</span>: <span class="n">2.2</span>, <span class="k">"count"</span>: <span class="n">438</span> }
+]</div>
+        <div class="via">via <img src="logos/crawl4ai.svg" alt=""><b>Crawl4AI</b><em>from $0.00015 a page</em></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plats">
+    <div class="lab">search the catalog in plain words: "tiktok video comments", "glassdoor reviews", "google maps search"…</div>
+    <div class="row">
+      <span><img src="media/web-access/p-x.svg" alt="">X</span><span><img src="media/web-access/p-linkedin.svg" alt="">LinkedIn</span><span><img src="media/web-access/p-reddit.svg" alt="">Reddit</span><span><img src="media/web-access/p-tiktok.svg" alt="">TikTok</span><span><img src="media/web-access/p-instagram.svg" alt="">Instagram</span><span><img src="media/web-access/p-youtube.svg" alt="">YouTube</span><span><img src="media/web-access/p-threads.svg" alt="">Threads</span><span><img src="media/web-access/p-facebook.svg" alt="">Facebook</span><span><img src="media/web-access/p-amazon.svg" alt="">Amazon</span><span><img src="media/web-access/p-walmart.svg" alt="">Walmart</span><span><img src="media/web-access/p-ebay.svg" alt="">eBay</span><span><img src="media/web-access/p-shopify.svg" alt="">Shopify</span><span><img src="media/web-access/p-etsy.svg" alt="">Etsy</span><span><img src="media/web-access/p-app-store.svg" alt="">App Store</span><span><img src="media/web-access/p-google-play.svg" alt="">Google Play</span><span><img src="media/web-access/p-trustpilot.svg" alt="">Trustpilot</span><span><img src="media/web-access/p-apple-maps.svg" alt="">Maps</span>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <h2>Give your agent the web,<br>free first.</h2>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline">set up treg — <a href="{BASE}/llms.txt">treg.to/llms.txt</a></span>
+    <button type="button" data-copy="set up treg — treg.to/llms.txt">copy</button>
+  </div>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline">npx skills add superdesigndev/treg --skill web-access</span>
+    <button type="button" data-copy="npx skills add superdesigndev/treg --skill web-access">copy</button>
+  </div>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=web-access" id="ctaFinal">Get started</a>
+    <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">Open source on GitHub</a>
+  </div>
+</section>
+
+<section class="section" id="related" style="padding-top:60px;padding-bottom:80px">
+  <h2 style="margin-bottom:28px">Related</h2>
+  <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+    <a href="/web-arena" class="rel"><b>Web Arena</b><span>Race web search and scrape vendors on your own query</span></a>
+    <a href="/skills/web-access/SKILL.md" class="rel"><b>The web-access skill</b><span>When your agent should search, read, map or call a platform job</span></a>
+    <a href="/leads-signals" class="rel"><b>Leads signals</b><span>Buyer signals from LinkedIn, Reddit and X on a schedule</span></a>
+    <a href="/catalog" class="rel"><b>Catalog</b><span>Every tool your agent can call with one treg key</span></a>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><!--hosted--><a href="/compare">Compare</a><!--/hosted--><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
+</footer>
+
+<!-- sign-in modal: shown when a Setup CTA is clicked while signed out -->
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function arr(nodes) { return Array.prototype.slice.call(nodes); }
+
+  /* nav hairline */
+  var nav = document.getElementById('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  /* hero: word-by-word entrance, like the film */
+  document.querySelectorAll('#heroA .hw').forEach(function (w, i) { setTimeout(function () { w.classList.add('in'); }, 250 + i * 320); });
+
+  /* ---------- Setup CTAs: signed in → the app; signed out → the sign-in modal ---------- */
+  var scrim = document.getElementById('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); document.getElementById('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  document.getElementById('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; /* let new-tab clicks be */
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  document.getElementById('em-btn1').addEventListener('click', emailStart);
+  document.getElementById('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  document.getElementById('em-btn2').addEventListener('click', emailVerify);
+  document.getElementById('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = document.getElementById('em-input').value.trim();
+    var err = document.getElementById('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error(d.detail || 'could not send the code');
+          return d;
+        });
+      })
+      .then(function (d) {
+        document.getElementById('em-step1').style.display = 'none';
+        document.getElementById('em-step2').style.display = 'block';
+        if (d.dev_code) { document.getElementById('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        document.getElementById('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = document.getElementById('em-input').value.trim();
+    var code = document.getElementById('em-code').value.trim();
+    var err = document.getElementById('em-err');
+    if (!code) return;
+    document.getElementById('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn2').textContent = 'Sign in'; });
+  }
+
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+  function onSeen(el, fn, threshold) {
+    if (!('IntersectionObserver' in window)) { fn(); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { io.disconnect(); fn(); } });
+    }, { threshold: 0, rootMargin: '0px 0px -' + Math.round((threshold || 0.3) * 50) + '% 0px' });
+    io.observe(el);
+  }
+
+  /* copy buttons */
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-copy');
+      (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () {
+        b.textContent = 'copied'; setTimeout(function () { b.textContent = 'copy'; }, 1400);
+      }).catch(function () {});
+    });
+  });
+
+  /* ---------- live prices + leaderboard (one fetch; a snapshot when the arena is off) ---------- */
+  var SNAP = {"status":"snapshot","window_days":30,"updated_at":"2026-10-16T01:58:58.239524Z","task_results":{"search":[{"provider":"serper","success_rate":90.0,"median_provider_ms":1459,"current_catalog_price_usd":0.001,"runs":468797},{"provider":"tinyfish","success_rate":85.1,"median_provider_ms":1845,"current_catalog_price_usd":0.0,"runs":394585},{"provider":"crawl4ai","success_rate":80.7,"median_provider_ms":1721,"current_catalog_price_usd":0.00015,"runs":98389},{"provider":"exa","success_rate":98.0,"median_provider_ms":1567,"current_catalog_price_usd":0.007,"runs":98371},{"provider":"perplexity","success_rate":94.5,"median_provider_ms":291,"current_catalog_price_usd":0.001,"runs":27925},{"provider":"keenable","success_rate":99.0,"median_provider_ms":867,"current_catalog_price_usd":0.004,"runs":13440},{"provider":"search1api","success_rate":52.7,"median_provider_ms":4450,"current_catalog_price_usd":0.001,"runs":13162},{"provider":"spidercloud","success_rate":36.2,"median_provider_ms":3415,"current_catalog_price_usd":0.001,"runs":12588},{"provider":"branddev","success_rate":75.3,"median_provider_ms":1278,"current_catalog_price_usd":0.002534,"runs":6232},{"provider":"firecrawl","success_rate":99.8,"median_provider_ms":688,"current_catalog_price_usd":0.01,"runs":5493},{"provider":"tavily","success_rate":86.0,"median_provider_ms":2376,"current_catalog_price_usd":0.016,"runs":2575},{"provider":"olostep","success_rate":97.0,"median_provider_ms":1802,"current_catalog_price_usd":0.01,"runs":2466},{"provider":"parallel","success_rate":43.0,"median_provider_ms":635,"current_catalog_price_usd":0.001,"runs":1655},{"provider":"you","success_rate":78.6,"median_provider_ms":580,"current_catalog_price_usd":0.005,"runs":807},{"provider":"linkup","success_rate":93.9,"median_provider_ms":1627,"current_catalog_price_usd":0.055,"runs":681},{"provider":"octen","success_rate":85.1,"median_provider_ms":252,"current_catalog_price_usd":0.005,"runs":156},{"provider":"scrapegraphai","success_rate":64.9,"median_provider_ms":7924,"current_catalog_price_usd":0.16,"runs":154},{"provider":"diffbot","success_rate":22.4,"median_provider_ms":143,"current_catalog_price_usd":0.001196,"runs":85}],"fetch":[{"provider":"crawl4ai","success_rate":50.3,"median_provider_ms":1593,"current_catalog_price_usd":0.00015,"runs":789140},{"provider":"tinyfish","success_rate":87.1,"median_provider_ms":2598,"current_catalog_price_usd":0.0,"runs":375278},{"provider":"firecrawl","success_rate":42.0,"median_provider_ms":2128,"current_catalog_price_usd":0.005,"runs":102240},{"provider":"anyapi","success_rate":37.4,"median_provider_ms":3546,"current_catalog_price_usd":0.0009,"runs":99084},{"provider":"exa","success_rate":90.8,"median_provider_ms":90,"current_catalog_price_usd":0.001,"runs":88217},{"provider":"olostep","success_rate":80.5,"median_provider_ms":6042,"current_catalog_price_usd":0.002,"runs":27712},{"provider":"search1api","success_rate":52.8,"median_provider_ms":4962,"current_catalog_price_usd":0.001,"runs":22299},{"provider":"you","success_rate":62.4,"median_provider_ms":1351,"current_catalog_price_usd":0.001,"runs":11672},{"provider":"tavily","success_rate":71.2,"median_provider_ms":898,"current_catalog_price_usd":0.0032,"runs":9887},{"provider":"branddev","success_rate":60.0,"median_provider_ms":2132,"current_catalog_price_usd":0.002534,"runs":9789},{"provider":"linkup","success_rate":100.0,"median_provider_ms":1220,"current_catalog_price_usd":0.01,"runs":4996},{"provider":"keenable","success_rate":17.4,"median_provider_ms":335,"current_catalog_price_usd":0.004,"runs":4726},{"provider":"scrapegraphai","success_rate":62.9,"median_provider_ms":2410,"current_catalog_price_usd":0.004,"runs":4322},{"provider":"parallel","success_rate":30.0,"median_provider_ms":12167,"current_catalog_price_usd":0.001,"runs":2667},{"provider":"serper","success_rate":67.0,"median_provider_ms":1174,"current_catalog_price_usd":0.01,"runs":506}],"news":[{"provider":"serper","success_rate":71.9,"median_provider_ms":850,"current_catalog_price_usd":0.001,"runs":116636},{"provider":"tinyfish","success_rate":81.3,"median_provider_ms":1340,"current_catalog_price_usd":0.0,"runs":86492},{"provider":"dataforseo","success_rate":100.0,"median_provider_ms":3966,"current_catalog_price_usd":0.002,"runs":40309},{"provider":"anyapi","success_rate":85.9,"median_provider_ms":943,"current_catalog_price_usd":0.00099,"runs":25730},{"provider":"exa","success_rate":99.3,"median_provider_ms":513,"current_catalog_price_usd":0.007,"runs":9292},{"provider":"litescrape","success_rate":30.8,"median_provider_ms":5727,"current_catalog_price_usd":0.00015,"runs":2716},{"provider":"cloro","success_rate":16.5,"median_provider_ms":13159,"current_catalog_price_usd":0.002,"runs":1406},{"provider":"search1api","success_rate":81.7,"median_provider_ms":2245,"current_catalog_price_usd":0.001,"runs":1193},{"provider":"serpapi","success_rate":null,"median_provider_ms":3490,"current_catalog_price_usd":0.015,"runs":779},{"provider":"tavily","success_rate":null,"median_provider_ms":1416,"current_catalog_price_usd":0.008,"runs":371}],"maps":[{"provider":"dataforseo","success_rate":100.0,"median_provider_ms":6990,"current_catalog_price_usd":0.002,"runs":253443},{"provider":"serpapi","success_rate":100.0,"median_provider_ms":1028,"current_catalog_price_usd":0.015,"runs":4561},{"provider":"apify","success_rate":98.4,"median_provider_ms":27104,"current_catalog_price_usd":0.009,"runs":1161}]}};
+  var NAMES = { tinyfish: 'TinyFish', exa: 'Exa', tavily: 'Tavily', firecrawl: 'Firecrawl', serper: 'Serper', crawl4ai: 'Crawl4AI',
+    perplexity: 'Perplexity', keenable: 'Keenable', anyapi: 'AnyAPI', dataforseo: 'DataForSEO', serpapi: 'SerpAPI', apify: 'Apify',
+    you: 'You.com', linkup: 'Linkup', olostep: 'Olostep', branddev: 'Context.dev', parallel: 'Parallel', search1api: 'Search1API',
+    octen: 'Octen', diffbot: 'Diffbot', spidercloud: 'Spider', scrapegraphai: 'ScrapeGraphAI', brightdata: 'Bright Data' };
+  var lbData = fetch('/web-arena/api/leaderboard', { credentials: 'same-origin' })
+    .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function (d) {
+      var rows = d && d.task_results ? Object.keys(d.task_results).reduce(function (a, k) { return a.concat(d.task_results[k]); }, []) : [];
+      return rows.some(function (r) { return r.success_rate != null; }) ? d : SNAP;   /* no measured runs yet (a fresh install): the snapshot */
+    })
+    .catch(function () { return SNAP; });
+
+  function price(task, p, d) {
+    var r = (d.task_results[task] || []).filter(function (x) { return x.provider === p; })[0];
+    return r && r.current_catalog_price_usd != null ? r.current_catalog_price_usd : null;
+  }
+  function usd(v) { return v >= 100 ? '$' + Math.round(v) : v >= 10 ? '$' + v.toFixed(0) : '$' + v.toFixed(2); }
+  function per(v) { return v === 0 ? 'free' : v < .001 ? '$' + v.toFixed(5).replace(/0+$/, '') : '$' + v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); }
+
+  /* ---------- hero film: free vs paid ---------- */
+  var QS = ["postgres 18 async io benchmark results", "how to fix 'ERR_REQUIRE_ESM' when importing node-fetch in jest", "OpenAI Agents SDK handoffs vs Claude Agent SDK subagents", "rust tokio select! cancellation safety explained", "best pho restaurant near Pike Place Market Seattle", "pricing of Supabase compute add-ons 2026", "stripe billing meters API usage-based pricing example", "kubernetes pod stuck in ContainerCreating after node reboot", "who is the CEO of Perplexity AI", "FDA approval GLP-1 pill 2026", "python uv workspace monorepo setup guide", "apple vision pro 2 release date rumors", "tailwind v4 migrate from tailwind.config.js to css @theme", "sqlite WAL mode concurrent writers limitations"], US = ["docs.python.org/3/library/asyncio-task.html", "en.wikipedia.org/wiki/Retrieval-augmented_generation", "stripe.com/pricing", "www.anthropic.com/news", "vercel.com/docs/functions/runtimes", "news.ycombinator.com", "github.com/astral-sh/uv", "www.bbc.com/news/technology", "linear.app/pricing", "react.dev/reference/react/useEffect", "www.notion.com/product", "supabase.com/docs/guides/database/overview", "www.apple.com/iphone", "arxiv.org/abs/1706.03762"];
+  var PAID = ['exa', 'tavily', 'firecrawl'];
+  lbData.then(function (d) {
+    var cost = PAID.map(function (p) {
+      var s = price('search', p, d), f = price('fetch', p, d);
+      return { p: p, s: s, f: f, ten: s != null && f != null ? 5000 * s + 5000 * f : null };
+    }).filter(function (c) { return c.ten != null; });
+    if (!cost.length) cost = [{ p: 'exa', s: .007, f: .001, ten: 40 }];
+    var lo = Math.min.apply(null, cost.map(function (c) { return c.ten; })),
+        hi = Math.max.apply(null, cost.map(function (c) { return c.ten; })),
+        avg = cost.reduce(function (a, c) { return a + c.ten; }, 0) / cost.length / 10000;
+    var range = lo === hi ? usd(lo) : usd(lo) + '–' + usd(hi);
+    document.getElementById('duelCap').innerHTML = '10,000 calls = 5,000 searches + 5,000 page reads · ' +
+      cost.map(function (c) { return esc(NAMES[c.p]) + ' ' + usd(c.ten); }).join(' · ') + ' · WebAccess $0 — current prices on treg';
+    filmDuel(cost, range, avg);
+  });
+
+  function filmDuel(cost, range, avg) {
+    var duel = document.getElementById('duel'), fr = document.getElementById('freeRows'), pr = document.getElementById('paidRows'),
+        fn = document.getElementById('freeN'), pn = document.getElementById('paidN'), ps = document.getElementById('paidSum');
+    var ROWS = 18, TOTAL = 10000, STEP = 520;
+    function row(i, paid) {
+      var verb = i % 2 ? 'fetch' : 'search', what = i % 2 ? US[(i >> 1) % US.length] : QS[(i >> 1) % QS.length];
+      var c = cost[i % cost.length], p = paid ? per(verb === 'fetch' ? c.f : c.s) : '$0';
+      var logo = paid ? 'logos/' + c.p + '.svg' : 'logos/tinyfish.svg';
+      var el = document.createElement('div'); el.className = 'dr';
+      el.innerHTML = '<span class="v">' + verb + '</span><span class="q">' + esc(what) + '</span><img src="' + logo + '" alt=""><span class="p">' + p + '</span>';
+      return el;
+    }
+    function fill(n) {
+      fr.innerHTML = ''; pr.innerHTML = '';
+      for (var i = Math.max(0, n - 5); i < n; i++) { fr.insertBefore(row(i, false), fr.firstChild); pr.insertBefore(row(i, true), pr.firstChild); }
+    }
+    function still() { fill(5); fn.textContent = '10,000 calls'; pn.textContent = '10,000 calls'; ps.textContent = range; duel.classList.add('done'); }
+    if (reduced) { still(); return; }
+    var timers = [];
+    function at(ms, f) { timers.push(setTimeout(f, ms)); }
+    function play() {
+      timers.forEach(clearTimeout); timers = [];
+      duel.classList.remove('done'); duel.classList.add('run');
+      fr.innerHTML = ''; pr.innerHTML = ''; fn.textContent = '0 calls'; pn.textContent = '0 calls'; ps.textContent = '$0';
+      for (var i = 0; i < ROWS; i++) (function (i) {
+        at(300 + i * STEP, function () {
+          fr.insertBefore(row(i, false), fr.firstChild); pr.insertBefore(row(i, true), pr.firstChild);
+          while (fr.children.length > 6) fr.removeChild(fr.lastChild);
+          while (pr.children.length > 6) pr.removeChild(pr.lastChild);
+          var n = Math.round(TOTAL * Math.pow((i + 1) / ROWS, 1.6));
+          fn.textContent = n.toLocaleString('en-US') + ' calls'; pn.textContent = fn.textContent;
+          ps.textContent = usd(n * avg);
+        });
+        if (i % 6 === 2) at(300 + i * STEP, swimFish);
+      })(i);
+      at(300 + ROWS * STEP + 200, function () { duel.classList.remove('run'); duel.classList.add('done'); ps.textContent = range; });
+      at(300 + ROWS * STEP + 5200, play);
+    }
+    function swimFish() {
+      var f = document.createElement('img'); f.src = 'media/web-access/tinyfish-fish.svg'; f.alt = ''; f.className = 'fish';
+      f.style.left = '0px'; f.style.top = (70 + Math.random() * 120) + 'px';
+      f.style.animationDuration = (3 + Math.random() * 1.4) + 's';
+      duel.querySelector('.free').appendChild(f);
+      setTimeout(function () { f.remove(); }, 4800);
+    }
+    var started = false;
+    onSeen(duel, function () { if (!started) { started = true; play(); } }, 0.2);
+  }
+
+  /* ---------- the route board: each row walks its vendors in order ---------- */
+  var board = document.getElementById('board');
+  function walkBoard() {
+    var t = 0;
+    board.querySelectorAll('.brow').forEach(function (row) {
+      row.querySelectorAll('.try').forEach(function (c) {
+        setTimeout(function () { c.classList.add('on'); }, t);
+        t += c.classList.contains('miss') ? 520 : c.classList.contains('hit') ? 360 : 140;
+      });
+      var got = row.querySelector('.got');
+      setTimeout(function () { got.classList.add('on'); }, t);
+      t += 380;
+    });
+  }
+  if (reduced) board.querySelectorAll('.try, .got').forEach(function (c) { c.classList.add('on'); });
+  else onSeen(board, walkBoard, 0.35);
+
+  /* ---------- jobs stage: tabs auto-advance, a click pins one ---------- */
+  var stage = document.getElementById('jobStage'), tabs = stage.querySelectorAll('.tabs button'), panes = stage.querySelectorAll('.jpane');
+  var cur = 0, auto = null, DUR = 7000;
+  stage.style.setProperty('--dur', DUR + 'ms');
+  function show(k) {
+    cur = k;
+    tabs.forEach(function (b, i) { b.setAttribute('aria-selected', i === k ? 'true' : 'false'); var pg = b.querySelector('.pg'); pg.style.animation = 'none'; void pg.offsetWidth; pg.style.animation = ''; });
+    panes.forEach(function (p, i) { p.hidden = i !== k; p.classList.remove('play'); });
+    var p = panes[k]; void p.offsetWidth; p.classList.add('play');
+    var tree = p.querySelector('.tree');
+    if (tree) tree.querySelectorAll('div').forEach(function (d, i) { d.classList.remove('on'); setTimeout(function () { d.classList.add('on'); }, reduced ? 0 : 120 + i * 110); });
+  }
+  function next() { show((cur + 1) % tabs.length); }
+  tabs.forEach(function (b, i) {
+    b.addEventListener('click', function () { clearInterval(auto); auto = null; stage.classList.add('paused'); show(i); });
+  });
+  if (reduced) { stage.classList.add('paused'); show(0); }
+  else onSeen(stage, function () { show(0); auto = setInterval(next, DUR); }, 0.3);
+
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
+</body>
+</html>

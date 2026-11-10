@@ -1,4 +1,5 @@
 """Private, content-addressed object storage. SDK imports stay inside the server factory."""
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
@@ -13,12 +14,46 @@ class ObjectInfo:
 
 
 R2_ENDPOINT_RE = re.compile(r"https://[0-9a-f]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com")
+_BUCKET_RE = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
+
+
+def configured(settings) -> bool:
+    """Whether the `archive_object_store_*` settings name a usable R2 bucket and credentials."""
+    return bool(R2_ENDPOINT_RE.fullmatch(settings.archive_object_store_endpoint)
+                and _BUCKET_RE.fullmatch(settings.archive_object_store_bucket)
+                and settings.archive_object_store_access_key_id
+                and settings.archive_object_store_secret_access_key)
 
 
 class ObjectStore(Protocol):
     async def put(self, body: bytes, *, content_hash: str | None = None) -> ObjectInfo: ...
     async def get(self, content_hash: str) -> bytes | None: ...
     async def head(self, content_hash: str) -> ObjectInfo | None: ...
+    async def delete(self, content_hash: str) -> None: ...
+
+
+class NamedObjectStore(Protocol):
+    """Objects a caller finds by a name it derives, not by their content (find's card vectors)."""
+    async def put_named(self, name: str, body: bytes) -> None: ...
+    async def get_named(self, name: str) -> bytes | None: ...
+
+
+class StreamedObjectStore(Protocol):
+    """Named objects too large to buffer whole (`treg host` media): read as a stream, deleted by name."""
+    async def put_named(self, name: str, body: bytes) -> None: ...
+    async def open_named(self, name: str) -> tuple[int, AsyncIterator[bytes]] | None: ...
+    async def delete_named(self, name: str) -> None: ...
+
+
+# A named object: `<namespace>/<slug>/<sha256 hex>`, built by treg from a slug and a digest, never
+# from a request (find's card vectors: `find-vectors/<model>/<card hash>`).
+NAMED_RE = re.compile(r"[a-z][a-z0-9-]{0,63}/[a-z0-9][a-z0-9._-]{0,127}/[0-9a-f]{64}")
+
+
+def _named_key(name: str) -> str:
+    if not NAMED_RE.fullmatch(name):
+        raise ValueError("invalid object name")
+    return name
 
 
 def _key(content_hash: str) -> str:
@@ -69,28 +104,20 @@ class R2ObjectStore:
         self._status_errors = status_errors
 
     async def put(self, body: bytes, *, content_hash: str | None = None) -> ObjectInfo:
-        if len(body) > self._max_bytes:
-            raise ValueError("archive body too large")
         key = _key(content_hash) if content_hash is not None else hashlib.sha256(body).hexdigest()
+        await self._put(key, body)
+        return ObjectInfo(key, len(body))
+
+    async def _put(self, key: str, body: bytes) -> None:
+        if len(body) > self._max_bytes:
+            raise ValueError("object body too large")
         try:
             await self._client.put_async(
                 key, body, attributes={"Content-Type": "application/octet-stream"}, use_multipart=False)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
             raise self._failure(exc) from None
-        return ObjectInfo(key, len(body))
 
-    async def head(self, content_hash: str) -> ObjectInfo | None:
-        key = _key(content_hash)
-        try:
-            meta = await self._client.head_async(key)
-        except FileNotFoundError:
-            return None
-        except Exception as exc:
-            raise self._failure(exc) from None
-        return ObjectInfo(key, int(meta["size"]))
-
-    async def get(self, content_hash: str) -> bytes | None:
-        key = _key(content_hash)
+    async def _get(self, key: str) -> bytes | None:
         try:
             result = await self._client.get_async(key)
             if result.meta["size"] > self._max_bytes:
@@ -98,14 +125,82 @@ class R2ObjectStore:
             body = bytes(await result.bytes_async())
             if len(body) > self._max_bytes:
                 raise ObjectStoreError("too_large")
-            if hashlib.sha256(body).hexdigest() != key:
-                raise ObjectStoreError("hash_mismatch")
             return body
         except FileNotFoundError:
             return None
         except ObjectStoreError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
+            raise self._failure(exc) from None
+
+    async def head(self, content_hash: str) -> ObjectInfo | None:
+        key = _key(content_hash)
+        try:
+            meta = await self._client.head_async(key)
+        except FileNotFoundError:
+            return None
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
+            raise self._failure(exc) from None
+        return ObjectInfo(key, int(meta["size"]))
+
+    async def get(self, content_hash: str) -> bytes | None:
+        key = _key(content_hash)
+        body = await self._get(key)
+        if body is not None and hashlib.sha256(body).hexdigest() != key:
+            raise ObjectStoreError("hash_mismatch")
+        return body
+
+    async def delete(self, content_hash: str) -> None:
+        """Remove one archive body. The only delete the store offers, used by the erasure sweep
+        alone (application/archive_erasure.py): a content-addressed object may carry bytes for
+        several snapshots, so the caller proves no row still points at it before calling.
+        A missing object is already deleted, not an error."""
+        key = _key(content_hash)
+        try:
+            await self._client.delete_async(key)
+        except FileNotFoundError:
+            return
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
+            raise self._failure(exc) from None
+
+    async def put_named(self, name: str, body: bytes) -> None:
+        """A named object has no content address to verify on read: its body must carry its own
+        integrity check (find_index's header)."""
+        await self._put(_named_key(name), body)
+
+    async def get_named(self, name: str) -> bytes | None:
+        return await self._get(_named_key(name))
+
+    async def open_named(self, name: str, *, chunk_size: int = 1024 * 1024) -> tuple[int, AsyncIterator[bytes]] | None:
+        """The object's size and a stream of its bytes, or None when it is missing. A failure
+        mid-stream raises ObjectStoreError, so the caller's response is cut rather than padded."""
+        key = _named_key(name)
+        try:
+            result = await self._client.get_async(key)
+        except FileNotFoundError:
+            return None
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
+            raise self._failure(exc) from None
+        size = int(result.meta["size"])
+        if size > self._max_bytes:
+            raise ObjectStoreError("too_large")
+
+        async def chunks() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in result.stream(min_chunk_size=chunk_size):
+                    yield bytes(chunk)
+            except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
+                raise self._failure(exc) from None
+        return size, chunks()
+
+    async def delete_named(self, name: str) -> None:
+        """A missing object is already deleted, not an error."""
+        key = _named_key(name)
+        try:
+            await self._client.delete_async(key)
+        except FileNotFoundError:
+            return
+        except Exception as exc:  # noqa: BLE001 - wrap every storage failure; from None keeps keys out
             raise self._failure(exc) from None
 
     def _failure(self, exc):
@@ -123,12 +218,12 @@ class R2ObjectStore:
         return ObjectStoreError(reason, exception_type=type(exc).__name__)
 
 
-@asynccontextmanager
-async def open_r2(settings):
+def build_r2(settings, *, max_body_bytes: int, timeout_s: float) -> R2ObjectStore:
+    """A store on the archive's bucket and credentials. `timeout_s` bounds a whole request,
+    body transfer included."""
     from obstore.exceptions import GenericError, PermissionDeniedError, UnauthenticatedError
     from obstore.store import S3Store
 
-    transport_timeout = max(settings.archive_r2_timeout_s, settings.archive_r2_read_timeout_s)
     client = S3Store(
         settings.archive_object_store_bucket,
         config={
@@ -137,10 +232,15 @@ async def open_r2(settings):
             "secret_access_key": settings.archive_object_store_secret_access_key,
             "checksum_algorithm": "SHA256",
         },
-        client_options={"timeout": f"{transport_timeout}s",
-                        "connect_timeout": f"{transport_timeout}s"},
+        client_options={"timeout": f"{timeout_s}s", "connect_timeout": f"{timeout_s}s"},
         retry_config={"max_retries": 0})
+    return R2ObjectStore(client, max_body_bytes,
+                         auth_errors=(PermissionDeniedError, UnauthenticatedError), status_errors=(GenericError,))
+
+
+@asynccontextmanager
+async def open_r2(settings):
     # One shared Rust HTTP pool for the lifespan. S3Store has no explicit close operation;
     # dropping the store after archive drains releases its client and pool.
-    yield R2ObjectStore(client, settings.archive_max_body_bytes,
-                        auth_errors=(PermissionDeniedError, UnauthenticatedError), status_errors=(GenericError,))
+    yield build_r2(settings, max_body_bytes=settings.archive_max_body_bytes,
+                   timeout_s=max(settings.archive_r2_timeout_s, settings.archive_r2_read_timeout_s))

@@ -43,12 +43,16 @@ docs/hn-launch-post.md
 .agents/skills/talking-head-recut/
 .agents/skills/video-craft/
 .agents/skills/figma/
-# Machine-local symlinks into .agents/skills — they resolve only on the machine that made them.
-/.claude/
+!/.claude/
+/.claude/*
+!/.claude/skills
 skills-lock.json
 
 # Local planning / handoffs — private, never committed.
 .context/
+# Agent-skill specs and plans default to docs/superpowers/; they are working notes, not the design
+# record, and belong in .context/ like any other plan.
+docs/superpowers/
 
 # Working docs that are plans/audits, not the shipped design record — they go stale the day
 # after they are written and read as commitments they are not.
@@ -102,3 +106,6 @@ node_modules
 # Global Vue runtime copied from the npm lockfile during the frontend build.
 /src/treg/web/vendor/*.js
 /src/treg/web/vendor/LICENSE
+
+# Go CLI build output
+/cli/dist/

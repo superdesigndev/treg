@@ -894,6 +894,18 @@
   .w3-ans .ig-bars { gap: 4px; margin-bottom: 8px; } .w3-ans .ig-bar { grid-template-columns: 96px minmax(0,1fr) 32px; font-size: 10.5px; gap: 6px; } .w3-ans .ig-bar .tr { height: 8px; }
   .w3-ans .dim { opacity: .45; } .w3-ans .lp2-ol b { color: var(--green); text-transform: none; letter-spacing: 0; }
   .w3-next { margin-top: auto; font-family: var(--mono); font-size: 10.5px; line-height: 1.7; color: var(--ink); border-top: 1px solid var(--line); padding-top: 8px; } .w3-next mark { background: #F5C542; padding: 1px 4px; border-radius: 3px; } .w3-next q { quotes: none; color: var(--blue); }
+  /* recipes: the walkthrough video; the player loads only on click, the poster image lazily */
+  .ytv { max-width: 880px; margin: 0 auto 30px; }
+  .ytv .yt { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #000; padding: 0; cursor: pointer; }
+  .ytv .yt img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .92; }
+  .ytv .yt .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 68px; height: 48px; border-radius: 12px; background: #101010; display: grid; place-items: center; }
+  .ytv .yt .play svg { width: 26px; height: 26px; fill: #fff; }
+  .ytv .yt:hover .play { background: #FF0033; }
+  .ytv iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .ytv .ytcap { margin-top: 10px; text-align: center; font-size: 14px; color: var(--muted); }
+  .ytv .ytcap a { color: inherit; }
+  .lead-run { justify-self: end; font-size: 13.5px; color: #43413E; text-decoration: underline; text-underline-offset: 3px; }
+  @media (max-width: 860px) { .lead-run { justify-self: center; } }
   /* automation: the video */
   .vd { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #000; line-height: 0; } .vd video { display: block; width: 100%; aspect-ratio: 16 / 9; }
   .uc-strip a { color: inherit; }
@@ -976,6 +988,7 @@
   .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 </style>
+<script src="/captcha.js" defer></script>
 </head>
 <body>
 
@@ -1262,6 +1275,10 @@ action = { jailbreak: block, harmful: block,
   <div class="wrap">
     <div class="section learn-sec rv" style="padding:70px 0 26px"><h2 style="margin-bottom:12px"><img class="lg" src="logos/jev.png" alt=""> Jev GTM automation recipes</h2>
       <div class="powered" style="margin:0;display:flex;justify-content:center">Powered by <a href="/" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> Treg</a></div></div>
+    <div class="ytv" id="walkthrough">
+      <button class="yt" type="button" data-yt="o4Vi5uBZYH0" aria-label="Play: Jev + Treg is a crazy combo for automation (14 min)"><img src="https://i.ytimg.com/vi/o4Vi5uBZYH0/hqdefault.jpg" alt="Jev + Treg is a crazy combo for automation, video walkthrough" loading="lazy" decoding="async"><span class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg></span></button>
+      <div class="ytcap">Watch the walkthrough (14 min): what Jev is, how to call it, and the three recipes below. <a href="https://www.youtube.com/watch?v=o4Vi5uBZYH0" target="_blank" rel="noopener">Open on YouTube</a></div>
+    </div>
     <div class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="signals" aria-selected="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="1.6" fill="currentColor" stroke="none"/><path d="M7.2 12.8a4 4 0 0 1 0-5.6M12.8 7.2a4 4 0 0 1 0 5.6M4.7 15.3a7.5 7.5 0 0 1 0-10.6M15.3 4.7a7.5 7.5 0 0 1 0 10.6"/></svg>Buyer signal</button>
       <button role="tab" data-tab="triage" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 10.5a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5z"/><path d="M2.5 17.5a6 6 0 0 1 12 0"/><path d="M15.4 8.2l.85 1.75 1.9.28-1.38 1.35.33 1.9-1.7-.9-1.7.9.33-1.9-1.38-1.35 1.9-.28z" fill="currentColor" stroke="none"/></svg>Signup lead score</button>
@@ -1310,7 +1327,7 @@ here.
    heads, directors, VPs, founders are decision makers);
    role: choice gtm_ops / engineer / founder_exec / agency_freelancer / vendor / other.
 7. For everyone with fit ≥ 1.5: `treg call treg.people.email.find --data '{"full_name": "...",
-   "company_name": "..."}'`. Routed; misses are free; cap with X-Treg-Max-Cost-Usd.
+   "company_name": "..."}'`. Routed; misses are free; cap with X-Treg-Route-Max-Cost.
 
 <b>Page</b>
 8. Funnel (posts → on topic → people → decision makers → emails), the posts as LinkedIn-style
@@ -1322,7 +1339,7 @@ here.
         <div class="panel"><div class="lbl ptitle-row"><span class="ptitle">Fetch LinkedIn posts around 'Enrichment'</span><span class="n" id="sg-postsmeta"></span></div><div class="posts" id="sg-posts"></div></div>
         <div class="panel"><div class="lbl ptitle-row"><span class="ptitle">Qualify &amp; enrich commenters</span><span class="n" id="sg-listmeta"></span></div><div class="chips" id="sg-filters"></div><div class="leadlist" id="sg-list"></div></div>
       </div></div></div>
-      <div class="setup-strip has-aux"><button class="pill sm expand-all" type="button" data-wrap="sg-wrap" data-label="posts">Show all posts</button><span class="mid"><span class="t">Set up this workflow</span><button class="pill dark pbtn big copy-for" type="button" data-src="p-signals">Copy prompt for <span class="agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes" class="onwhite"></span></button></span></div>
+      <div class="setup-strip has-aux"><button class="pill sm expand-all" type="button" data-wrap="sg-wrap" data-label="posts">Show all posts</button><span class="mid"><span class="t">Set up this workflow</span><button class="pill dark pbtn big copy-for" type="button" data-src="p-signals">Copy prompt for <span class="agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes" class="onwhite"></span></button></span><a class="lead-run" href="/workflows/find-and-verify-a-lead-list">See a full lead-list run: 20 verified contacts, $0.12 each &rarr;</a></div>
 </div>
 </div>
 
@@ -1356,7 +1373,7 @@ my go-ahead, and build for MY answers rather than the examples written here.
 <b>Per signup (email + usage: calls, refused calls, spend, onboarded, referrer, similar signups)</b>
 3. `treg call millionverifier.people.email.verify --query email=&lt;email&gt;` → result (ok / catch_all /
    invalid / disposable / unknown), free (webmail), role (info@, support@). Disposable or invalid: stop.
-4. `treg call treg.people.enrich --data '{"email": "&lt;email&gt;"}' --header 'X-Treg-Max-Cost-Usd: 0.03'`
+4. `treg call treg.people.enrich --data '{"email": "&lt;email&gt;"}' --header 'X-Treg-Route-Max-Cost: 0.03'`
    → name, title, company, linkedin. Routed across providers cheapest-first, billed only on a hit.
    Discard a company whose domain does not match a corporate email; note it for jev.
 5. For a corporate domain (or the company found in 4): `treg call thecompaniesapi.companies.enrich
@@ -1512,7 +1529,7 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
 3. treg fetches; jev decides. Put the raw facts jev needs into one JSON state per item and ask all
    the questions in one call. Keep states under ~30k tokens.
 4. Prefer routed endpoints (`treg.people.enrich`, `treg.people.email.find`, `treg.x.search.posts`):
-   they try providers cheapest-first and bill only on a hit. Cap spend with X-Treg-Max-Cost-Usd.
+   they try providers cheapest-first and bill only on a hit. Cap spend with X-Treg-Route-Max-Cost.
 5. Log every item with its jev probabilities and the treg charge, and build a small page to browse
    the run with the bill at the top.
 
@@ -1666,6 +1683,8 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
     <details><summary>Where does treg fit?</summary><p>jev cannot fetch anything. treg is one token for a catalog of live data endpoints: X and LinkedIn posts, email verification, person and company enrichment, and more. treg builds the state, jev decides on it, your code acts on the numbers. Your own provider keys always take precedence over treg's and are never metered.</p></details>
     <details><summary>How do I call jev?</summary><p>Through the Vercel AI Gateway: POST to its evaluation-model endpoint with your gateway key, the model id <code>typesafe-ai/jev</code> and a body of <code>state</code> and <code>questions</code>. The prompts on this page contain the exact headers. jev is also available on OpenRouter as <code>typesafe/jev-1.13</code>.</p></details>
     <details><summary>Are the demos on this page real?</summary><p>The viral-posts board is a real daily run over public X posts, and the post you paste is analysed live. The buyer-signal demo replays a real LinkedIn run with every email address replaced. The signup demo is a synthetic sample built to show the four segments; the pipeline and prices are the real ones.</p></details>
+    <details><summary>How do I use jev in Claude Code, Codex, Hermes or OpenClaw?</summary><p>Each recipe above has a <b>Copy prompt</b> button. Paste it into your agent and it sets up treg for the data and writes the pipeline, calling jev through the Vercel AI Gateway with your key. Without a key it asks whether to start with its own judgement behind the same interface and switch to jev later.</p></details>
+    <details><summary>Can I use jev for lead generation?</summary><p>Yes, as the gate before the paid person and email lookups. In <a href="/workflows/find-and-verify-a-lead-list">a lead-list run</a> jev judged 48 companies on the fields the list already returned, 21 were dropped before any paid lookup, and the 27 that passed became 20 verified contacts for $2.33 metered, $0.12 each. The buyer-signal recipe above does the same for the people commenting on LinkedIn posts in your space.</p></details>
     <details><summary>How long a state can jev read?</summary><p>About 30k tokens. Above that the request fails, so split long inputs or summarise them first with a chat model and let jev verify the summary field by field.</p></details>
   </div>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
@@ -1675,7 +1694,18 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
     {"@type":"Question","name":"Where does treg fit?","acceptedAnswer":{"@type":"Answer","text":"jev cannot fetch anything. treg is one token for a catalog of live data endpoints. treg builds the state, jev decides on it, your code acts on the numbers. Your own provider keys always take precedence over treg's and are never metered."}},
     {"@type":"Question","name":"How do I call jev?","acceptedAnswer":{"@type":"Answer","text":"Through the Vercel AI Gateway: POST to its evaluation-model endpoint with your gateway key, the model id typesafe-ai/jev and a body of state and questions. jev is also available on OpenRouter as typesafe/jev-1.13."}},
     {"@type":"Question","name":"Are the demos on this page real?","acceptedAnswer":{"@type":"Answer","text":"The viral-posts board is a real daily run over public X posts, and the post you paste is analysed live. The buyer-signal demo replays a real LinkedIn run with every email address replaced. The signup demo is a synthetic sample built to show the four segments."}},
+    {"@type":"Question","name":"How do I use jev in Claude Code, Codex, Hermes or OpenClaw?","acceptedAnswer":{"@type":"Answer","text":"Each recipe on this page has a Copy prompt button. Paste it into your agent and it sets up treg for the data and writes the pipeline, calling jev through the Vercel AI Gateway with your key. Without a key it asks whether to start with its own judgement behind the same interface and switch to jev later."}},
+    {"@type":"Question","name":"Can I use jev for lead generation?","acceptedAnswer":{"@type":"Answer","text":"Yes, as the gate before the paid person and email lookups. In a lead-list run jev judged 48 companies on the fields the list already returned, 21 were dropped before any paid lookup, and the 27 that passed became 20 verified contacts for $2.33 metered, $0.12 each."}},
     {"@type":"Question","name":"How long a state can jev read?","acceptedAnswer":{"@type":"Answer","text":"About 30k tokens. Above that the request fails, so split long inputs or summarise them first with a chat model and let jev verify the summary field by field."}}
+  ]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoObject","name":"Jev + Treg is a crazy combo for automation","description":"What Jev, TypeSafe's decision model, is, how to call it with a state and typed questions, and three automations built with Jev and treg: signup fraud and upsell scoring, qualifying LinkedIn post commenters as leads, and screening viral X posts.","thumbnailUrl":"https://i.ytimg.com/vi/o4Vi5uBZYH0/hqdefault.jpg","uploadDate":"2026-09-21T04:15:05-07:00","duration":"PT14M29S","embedUrl":"https://www.youtube.com/embed/o4Vi5uBZYH0","contentUrl":"https://www.youtube.com/watch?v=o4Vi5uBZYH0","hasPart":[
+    {"@type":"Clip","name":"What Jev is","startOffset":0,"endOffset":188,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=0"},
+    {"@type":"Clip","name":"Browser and computer use","startOffset":188,"endOffset":264,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=188"},
+    {"@type":"Clip","name":"Internal link mapping","startOffset":264,"endOffset":296,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=264"},
+    {"@type":"Clip","name":"How to use Jev","startOffset":296,"endOffset":479,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=296"},
+    {"@type":"Clip","name":"Signup fraud and upsell scoring","startOffset":479,"endOffset":633,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=479"},
+    {"@type":"Clip","name":"Qualifying LinkedIn commenters as leads","startOffset":633,"endOffset":728,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=633"},
+    {"@type":"Clip","name":"Screening viral X posts","startOffset":728,"endOffset":869,"url":"https://www.youtube.com/watch?v=o4Vi5uBZYH0&t=728"}
   ]}</script>
 </section>
 
@@ -1692,7 +1722,7 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
       <div class="note">100% open source</div>
     </div>
     <nav class="bf-cols" aria-label="Site">
-      <div class="bf-col"><div class="lab">Explore</div><a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Blog</a><a href="/agents/claude-code">Agents</a></div>
+      <div class="bf-col"><div class="lab">Explore</div><a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><a href="/blog">Blog</a><a href="/agents/claude-code">Agents</a></div>
       <div class="bf-col"><div class="lab">Build</div><a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div><a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
     </nav>
@@ -1711,7 +1741,7 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
     <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
-      <input id="em-input" type="email" placeholder="you@work.com"/>
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
       <button class="pill" id="em-btn1">Email me a sign-in code</button>
     </div>
     <div id="em-step2" style="display:none">
@@ -1800,11 +1830,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSignin(
 function emailStart() {
   const em = $('em-input').value.trim(), err = $('em-err');
   if (!em) { err.textContent = 'Enter your email address.'; return; }
-  $('em-btn1').textContent = 'Sending…'; err.textContent = '';
-  fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em }) })
+  if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+  (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
     .then(r => r.json().catch(() => ({})).then(d => { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }))
     .then(d => { $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block'; if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; } else { err.style.color = ''; } $('em-code').focus(); })
-    .catch(e2 => { err.textContent = e2.message; $('em-btn1').textContent = 'Email me a sign-in code'; });
+    .catch(e2 => { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
 }
 function emailVerify() {
   const em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
@@ -2078,7 +2108,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !drawer.hi
     $('xb-irr').onclick = () => { irrOpen = !irrOpen; $('xb-board').classList.toggle('irr-open', irrOpen); counts(subset); };
     $('xb-board').classList.toggle('irr-open', irrOpen);
     const c = RUN.calls || {}, judged = subset ? seen.length : (RUN.posts || []).length;
-    $('xb-steps').innerHTML = [[`search × ${c.search||0}`, 'treg', '', `${RUN.posts_found ?? judged} posts under 24h`, '~$0.001 each'], [`profiles × ${c.profile||0}`, 'treg', '', 'followers, bio, verified', 'free on a routed hit'], [`reply samples × ${c.replies||0}`, 'treg', '', 'first 20 replies per post', '~$0.0006 each'], [`judge × ${judged}`, 'jev', 'jev', '5 questions per post', '~$0.0001 each']]
+    $('xb-steps').innerHTML = [[`search × ${c.search||0}`, 'treg', '', `${RUN.posts_found ?? judged} posts under 24h`, '~$0.001 each'], [`profiles × ${c.profile||0}`, 'treg', '', 'followers, bio, verified', '~$0.0002 each'], [`reply samples × ${c.replies||0}`, 'treg', '', 'first 20 replies per post', '~$0.0006 each'], [`judge × ${judged}`, 'jev', 'jev', '5 questions per post', '~$0.0001 each']]
       .map(([a, w, cls, d, pr]) => stepRow(a, w, cls, d, pr)).join('');
     const cost = RUN.costs || {};
     $('xb-spend').innerHTML = `<div class="jev"><small>jev · list price</small>${fmt$(subset ? seen.reduce((a,p)=>a+(p.jev_cost||0),0) : (cost.jev||0))}</div><div><small>treg spend</small>${fmt$(cost.treg||0)}</div>`;
@@ -2409,8 +2439,25 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !drawer.hi
 })();
 })();
 </script>
+<script>
+document.querySelectorAll('.ytv .yt').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var f = document.createElement('iframe');
+    f.src = 'https://www.youtube-nocookie.com/embed/' + b.dataset.yt + '?autoplay=1&rel=0';
+    f.title = b.getAttribute('aria-label');
+    f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+    f.allowFullscreen = true;
+    // The site sends no referrer; YouTube's player refuses to start without one (error 153), so this
+    // one frame sends the origin only.
+    f.referrerPolicy = 'strict-origin-when-cross-origin';
+    b.replaceWith(Object.assign(document.createElement('div'), {className: 'yt'}));
+    b = document.querySelector('.ytv div.yt'); b.appendChild(f);
+  }, {once: true});
+});
+</script>
 <script src="/sitetrack.js"></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
 </body>
 </html>

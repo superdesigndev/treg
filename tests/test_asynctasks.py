@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlmodel import select
 
 from treg.application import asynctasks as task_app
+
 from treg.application.call import service as call_service
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import UpstreamResponse
@@ -30,6 +31,8 @@ from treg.models import (
     Tool,
 )
 from treg.timeutil import utcnow_naive
+
+_real_poll = task_app._poll
 
 
 EP = "replicate.image-gen.flux-schnell"
@@ -147,6 +150,65 @@ async def test_worker_errors_grow_backoff_and_progress_resets_it(
         assert await db.get(Hold, call_id) is not None
 
 
+async def test_a_task_on_a_retired_account_releases_its_hold_at_once(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """The account that accepted it is gone: no poll can ever observe it, so the hold goes back
+    now instead of after every tick until the deadline."""
+    call_id = await _due_submission(clients, monkeypatch, {})
+    monkeypatch.setattr(task_app, "_poll", _real_poll)
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.key_slot = "retired"
+        await db.commit()
+    # This process holds no further replicate accounts at all: more likely a worker that lost its
+    # environment than a retirement, so the row backs off and keeps its hold.
+    await task_app.settle_due()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == asynctasks.PENDING and await db.get(Hold, call_id) is not None
+        row.next_check_at = utcnow_naive() - timedelta(seconds=1)
+        row.error = ""
+        await db.commit()
+    # Its accounts are configured, and "retired" is not among them: final.
+    monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps(
+        {"replicate": {"b": {"platform_key_replicate": "test-platform-token-b"}}}))
+    get_settings.cache_clear()
+    await task_app.settle_due()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == asynctasks.RELEASED and row.settled_micro == 0
+        assert "no longer configured" in row.error
+        assert await db.get(Hold, call_id) is None
+
+
+async def test_a_failed_release_on_a_retired_account_leaves_the_tick_running(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """The release is outside the poll's error handler: when it fails, the row backs off with its
+    hold and `_process` answers like any other row, without raising."""
+    call_id = await _due_submission(clients, monkeypatch, {})
+    monkeypatch.setattr(task_app, "_poll", _real_poll)
+    monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps(
+        {"replicate": {"b": {"platform_key_replicate": "test-platform-token-b"}}}))
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.key_slot = "retired"
+        await db.commit()
+
+    async def failing_release(*args, **kwargs):
+        raise RuntimeError("ledger unavailable")
+
+    monkeypatch.setattr(task_app, "_finish_balance", failing_release)
+    async with session_maker() as db:
+        attempt = (await db.get(AsyncTaskRecord, call_id)).attempts
+    assert await task_app._process(call_id, None, attempt) == "backed_off"
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == asynctasks.PENDING and await db.get(Hold, call_id) is not None
+
+
 async def test_queued_worker_rows_are_not_claimed_before_a_poll_slot(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -208,6 +270,42 @@ async def test_claim_wait_is_inside_processing_deadline(
         assert await db.get(Hold, call_id) is not None
 
 
+async def test_worker_admission_keeps_what_the_claim_and_poll_left_for_the_session(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    from contextlib import asynccontextmanager
+
+    from treg.infra import money_admission
+
+    await _due_submission(clients, monkeypatch, {"status": "succeeded", "output": ["u"]})
+    monkeypatch.setattr(task_app, "PROCESS_TIMEOUT_S", 2.0)
+    monkeypatch.setattr(task_app, "SETTLEMENT_SESSION_S", 0.5)
+    claim, poll = task_app._claim_due, task_app._poll
+
+    async def slow_claim(*args):
+        await asyncio.sleep(0.4)
+        return await claim(*args)
+
+    async def slow_poll(*args):
+        await asyncio.sleep(0.3)
+        return await poll(*args)
+
+    admit, waits = money_admission.admit, []
+
+    @asynccontextmanager
+    async def recording_admit(org_ids, *, operation, max_wait_s=None):
+        waits.append(max_wait_s)
+        async with admit(org_ids, operation=operation, max_wait_s=max_wait_s):
+            yield
+
+    monkeypatch.setattr(task_app, "_claim_due", slow_claim)
+    monkeypatch.setattr(task_app, "_poll", slow_poll)
+    monkeypatch.setattr(money_admission, "admit", recording_admit)
+    assert (await task_app.settle_due()).settled == 1
+    [wait] = waits
+    assert 0 < wait <= 2.0 - 0.4 - 0.3 - 0.5
+
+
 async def test_expired_worker_cannot_replace_new_claim_backoff(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -267,6 +365,32 @@ async def test_inline_success_waits_for_usage_and_then_closes_original_hold(
     async with session_maker() as db:
         row = await db.get(AsyncTaskRecord, call_id)
         assert row.status == "settled" and row.settled_micro == 2000
+        assert await db.get(Hold, call_id) is None
+
+
+@pytest.mark.parametrize("emails,charged_micro", [([], 0), ([{"email": "a@example.com"}], 80_000)])
+@pytest.mark.parametrize("root_field", [False, True])
+async def test_terminal_presence_closes_async_hold_at_the_result(
+    clients: AsyncClient, monkeypatch, replicate_platform, emails, charged_micro, root_field,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "presence-result"})
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.settlement_basis = settlement.derive_basis(
+            {"type": "per_success", "settle": "terminal_presence",
+             "presence": {"field": "email"} if root_field else {"row": "data.0", "field": "email"}},
+            request={}, input_schema={}, unit_micro=1_000_000,
+            terminal=True, response_estimate_micro=80_000)
+        await db.commit()
+    async def live(*args, **kwargs):
+        return _response(200, {"status": "succeeded", "output": ["https://example.invalid/result.png"],
+                               "data": [{"email": emails}], **({"email": emails} if root_field else {})})
+    monkeypatch.setattr(call_service, "relay", live)
+    assert (await clients.get("/call/replicate.predictions.get?id=presence-result")).status_code == 200
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "settled" and row.settled_micro == charged_micro
         assert await db.get(Hold, call_id) is None
 
 
@@ -633,6 +757,7 @@ async def test_platform_openrouter_model_is_bound_to_the_selected_catalog_row(
         row = (await db.execute(select(AsyncTaskRecord).where(
             AsyncTaskRecord.task_id == "video-owned"))).scalar_one()
     assert row.endpoint_id == "openrouter.x.google-veo-3-1-lite"
+    assert row.key_slot == "primary", "the task names the account that accepted it"
 
 
 async def test_platform_model_selector_rejects_duplicate_json_keys(
@@ -696,7 +821,7 @@ async def test_platform_task_status_requires_same_org_submission(
         params=[("id", "prediction-owned"), ("id", "prediction-unknown")])
     assert ambiguous.status_code == 400 and relayed == [True]
 
-    other = await clients.post("/users", json={"email": "task-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "task-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     denied = await clients.get(
         "/call/replicate.predictions.get?id=prediction-owned", headers=stranger)
@@ -726,12 +851,20 @@ async def test_byok_task_status_keeps_direct_provider_object_access(
 
 @pytest.mark.parametrize(("start", "payload", "created", "owned_calls"), [
     (
-        "/call/brightdata.web.scrape.job.start?dataset_id=gd_test", [{"url": "https://example.com"}],
+        "/call/brightdata.linkedin.user.profile?dataset_id=gd_l1viktl72bvl7bjuj0",
+        {"input": [{"url": "https://www.linkedin.com/in/example"}]},
         {"snapshot_id": "snapshot-owned"},
         [
             "/call/brightdata.web.scrape.job.status?snapshot_id=snapshot-owned",
             "/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-owned&format=json",
         ],
+    ),
+    (
+        # an extended dataset row on the sync runner: past a minute it answers 202 + snapshot_id
+        "/call/brightdata.x.amazon-products?dataset_id=gd_l7q7dkf244hwjntr0",
+        {"input": [{"url": "https://www.amazon.com/dp/B000000000"}]},
+        {"snapshot_id": "snapshot-extended"},
+        ["/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-extended&format=json"],
     ),
     (
         "/call/companyenrich.companies.enrich.bulk.start", {"domains": ["example.com"]},
@@ -776,13 +909,13 @@ async def test_legacy_platform_async_resources_are_recorded_and_authorized(
     for url in owned_calls:
         assert (await clients.get(url)).status_code == 200
 
-    other = await clients.post("/users", json={"email": "legacy-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "legacy-stranger@example.com"})
     denied = await clients.get(owned_calls[0], headers={"X-Treg-Token": other.json()["token"]})
     assert denied.status_code == 403
 
     async with session_maker() as db:
         records = (await db.execute(select(AsyncResourceRecord))).scalars().all()
-    assert records
+    assert records and {r.key_slot for r in records} == {"primary"}
 
 
 @pytest.mark.parametrize("url", [
@@ -830,7 +963,7 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
                            ("icypeas.search.results.read", {"id": "someone-elses"})]:
         response = await clients.post(f"/call/{endpoint}", json=body)
         assert response.status_code in (400, 403), (endpoint, body, response.status_code)
-    other = await clients.post("/users", json={"email": "icypeas-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "search-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     for endpoint, body in owned:
         assert (await clients.post(f"/call/{endpoint}", json=body, headers=stranger)).status_code == 403
@@ -899,7 +1032,7 @@ async def test_owned_terminal_poll_teaches_result_id_before_fetch(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned")
     assert fetched.status_code == 200 and len(relay_calls) == 2
 
-    other = await clients.post("/users", json={"email": "file-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "file-stranger@example.com"})
     denied = await clients.get(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned",
         headers={"X-Treg-Token": other.json()["token"]})
@@ -1086,6 +1219,34 @@ def test_basis_derivation_and_settlement_table_vs_usage():
         terminal=True)
     assert table["amount"]["kind"] == "table"
     assert settlement.settle(table, {"terminal": {}}) == 10_000
+
+    presence = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"row": "data.0", "field": "email"}},
+        request={}, input_schema={}, unit_micro=1_000_000,
+        terminal=True, response_estimate_micro=80_000)
+    assert presence["when"] == "terminal"
+    assert presence["reserve_micro"] == 80_000
+    assert settlement.settle(presence, {"terminal": {"data": [{"email": [{"email": "a@example.com"}]}]}}) == 80_000
+    assert settlement.settle(presence, {"terminal": {"data": [{"email": []}]}}) == 0
+    assert settlement.settle(presence, {"terminal": {"data": [{"company": "Example"}]}}) == 0
+    assert settlement.settle(presence, {"terminal": {"data": []}}) == 80_000
+
+    root_presence = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"field": "number"}},
+        request={}, input_schema={}, unit_micro=1_000_000,
+        terminal=True, response_estimate_micro=680_000)
+    assert settlement.settle(root_presence, {"terminal": {"qualification": "found",
+                                                        "number": "+15555550123"}}) == 680_000
+    assert settlement.settle(root_presence, {"terminal": {"qualification": "not_found"}}) == 0
+
+    supplied = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"row": "data.0", "field": "email", "request_field": "data.0.email"}},
+        request={"body": {"data": [{"email": "invalid@example.com"}]}}, input_schema={},
+        unit_micro=1_000_000, terminal=True, response_estimate_micro=80_000)
+    assert settlement.settle(supplied, {"terminal": {"data": [{"email": []}]}}) == 80_000
 
     usage_cost = {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd"},
                   "fallback": {"value": 1.0}}
@@ -1404,14 +1565,14 @@ async def test_cancellation_at_the_pending_row_commit_boundary_leaves_a_coherent
     hold it still owns, and the worker must then record the row as released, not settle it at zero."""
     real_defer = task_app.defer_submission
 
-    async def defer_then_cancel(mk, body, org_id, *, tags=None):
-        await real_defer(mk, body, org_id, tags=tags)
+    async def defer_then_cancel(mk, body, org_id, **kwargs):
+        await real_defer(mk, body, org_id, **kwargs)
         mk.call_id = mk.call_id or None
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(task_app, "defer_submission", defer_then_cancel)
     # The request path re-raises CancelledError after compensating; the ASGI client surfaces it.
-    with pytest.raises(BaseException):
+    with pytest.raises(asyncio.CancelledError):
         await _submit(clients, monkeypatch, {
             "id": "prediction-cancel", "urls": {"get": "https://api.replicate.com/v1/predictions/c"}})
     async with session_maker() as db:
@@ -1449,7 +1610,7 @@ async def test_another_org_cannot_read_a_task_by_its_call_ref(
     assert (await task_app.settle_due()).settled == 1
     assert call_id in await task_app.views_for(1, [call_id])
     assert await task_app.views_for(2, [call_id]) == {}
-    other = await clients.post("/users", json={"email": "someone-else@example.com"})
+    other = await verified_signup(clients, json={"email": "someone-else@example.com"})
     assert other.status_code == 200
     stranger = {"X-Treg-Token": other.json()["token"]}
     assert (await clients.get(f"/calls/{call_id}", headers=stranger)).status_code == 404
@@ -1504,3 +1665,175 @@ async def test_own_key_relays_idempotency_label_verbatim(clients: AsyncClient, m
                                   headers={"Idempotency-Key": "retry-1"})
     assert response.status_code == 201
     assert _upstream_idempotency_keys(relayed) == ["retry-1"]
+
+
+def _upstream_user_agents(relayed: list) -> list[str]:
+    return [v.decode() for req in relayed for k, v in req.raw_headers if k.lower() == b"user-agent"]
+
+
+async def test_shared_key_calls_carry_treg_user_agent_own_key_the_callers(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """On treg's key the provider sees treg's account, so it sees treg's User-Agent, never a library
+    default its bot rules block (LimaData and Wiza answered Cloudflare 1010 to Python's default)."""
+    from treg.config import TREG_USER_AGENT
+    relayed = []
+
+    async def fake_relay(request, *args, **kwargs):
+        relayed.append(request)
+        return _response(201, {"id": f"prediction-{len(relayed)}", "status": "starting"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    python = {"User-Agent": "Python-urllib/3.13"}
+    assert (await clients.post(f"/call/{EP}", json={"input": {"prompt": "a"}}, headers=python)).status_code == 201
+    assert _upstream_user_agents(relayed) == [TREG_USER_AGENT]
+    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    assert (await clients.post(f"/call/{EP}", json={"input": {"prompt": "b"}}, headers=python)).status_code == 201
+    assert _upstream_user_agents(relayed)[1:] == ["Python-urllib/3.13"], "a team's own key relays the caller's header"
+
+
+@pytest.mark.parametrize("warm", [True, False])
+async def test_a_slow_first_catalog_load_does_not_time_out_a_poll(
+    clients: AsyncClient, monkeypatch, replicate_platform, warm,
+):
+    """A fresh worker process parses the whole catalog on its first read. That read used to happen
+    inside the timed poll and blocked the event loop past POLL_TIMEOUT_S, so polls timed out with a
+    fast provider. The tick now loads the catalog first, off the loop; the poll reads the cache."""
+    import time as _time
+    from treg.domain.catalog import store as catalog_store
+
+    call_id = await _due_submission(clients, monkeypatch, {"status": "succeeded", "output": ["url"]})
+    real_load, first = catalog_store.load, {"cold": True}
+
+    def slow_first_load():
+        if first["cold"]:
+            first["cold"] = False
+            _time.sleep(0.3)  # a blocking parse, as the real first load is
+        return real_load()
+
+    monkeypatch.setattr(catalog_store, "load", slow_first_load)
+    monkeypatch.setattr(task_app, "POLL_TIMEOUT_S", 0.1)
+
+    async def poll_reads_catalog(row, client):
+        catalog_store.load()  # as `_poll_target` does
+        await asyncio.sleep(0.01)  # then the provider request, where a passed deadline fires
+        return 200, json.dumps({"status": "succeeded", "output": ["url"]}).encode()
+
+    monkeypatch.setattr(task_app, "_poll", poll_reads_catalog)
+    if not warm:  # the old shape: nothing loads the catalog before the polls start
+        async def no_warm(fn, *a, **kw):
+            return None
+        monkeypatch.setattr(task_app.asyncio, "to_thread", no_warm)
+    result = await task_app.settle_due()
+    if warm:
+        assert result.settled == 1 and result.backed_off == 0
+    else:
+        assert result.settled == 0 and result.backed_off == 1
+    async with session_maker() as db:
+        assert (await db.get(AsyncTaskRecord, call_id)).status == ("settled" if warm else "pending")
+
+
+def test_a_produces_path_names_every_task_of_a_batch():
+    """`tasks.*.id` owns each task one submission created; a numeric part indexes one."""
+    document = {"tasks": [{"id": "a"}, {"id": "b"}, {"id": None}, {"other": 1}]}
+    assert task_app._dotted(document, "tasks.*.id") == ["a", "b", None]
+    assert task_app._dotted(document, "tasks.1.id") == ["b"]
+    assert task_app._dotted(document, "tasks.9.id") == []
+    assert task_app._dotted({"jobID": "j"}, "jobID") == ["j"]
+
+
+@pytest.mark.parametrize("body, expected", [
+    (b'{"id": "t-1"}', "t-1"),
+    (b'[{"id": "t-1", "limit": 10}]', "t-1"),
+    (b'[{"id": "t-1"}, {"id": "t-1"}]', "t-1"),
+    (b'[{"id": "t-1"}, {"id": "t-2"}]', None),  # a second task naming another resource
+    (b'[{"id": "t-1"}, {"limit": 10}]', None),  # a second task naming none
+    (b'[]', None),
+])
+def test_a_body_resource_id_may_sit_in_a_task_array(body, expected):
+    from types import SimpleNamespace
+
+    from treg.application.call.resolve import _one_resource_value
+    from treg.application.call.types import ResolutionFailed
+
+    ep, refs, query = {"id": "x.reader"}, [("resource", {"name": "id", "in": "body"})], \
+        SimpleNamespace(items=[])
+    if expected is None:
+        with pytest.raises(ResolutionFailed):
+            _one_resource_value(ep, query, refs, body)
+    else:
+        assert _one_resource_value(ep, query, refs, body) == expected
+
+
+def test_an_observed_async_basis_settles_at_the_charge_reported_on_submission():
+    """DataForSEO bills when the task is posted and its task_get reports no cost: the frozen
+    submission charge settles the task, a charge reported on the answer itself still wins."""
+    basis = {"when": "terminal", "amount": {"kind": "observed"}, "fallback_micro": 1_200,
+             "reserve_micro": 1_200, "submission_charge_micro": 7_500}
+    assert settlement.settle(basis, {"terminal": {"cost": 0}}) == 7_500
+    assert settlement.settle(basis, {"terminal": {}, "observed_micro": 40}) == 40
+    assert settlement.settle({**basis, "submission_charge_micro": None}, {"terminal": {}}) == 1_200
+
+
+def test_a_terminal_on_submission_row_archives_only_finished_answers():
+    """Such a row usually answers at once; a "still working" answer is a task id, not an answer to
+    replay. A row that always submits is covered end to end in test_dataforseo_async.py."""
+    from types import SimpleNamespace
+
+    instant = SimpleNamespace(async_descriptor={"id_from": "id", "terminal_on_submission": True,
+                                                "status": {"path": "status", "success": ["done"]}},
+                              resource_ownership=None)
+    assert not call_service._only_submits(instant)
+    assert call_service._unfinished_submission(instant, b'{"status": "queued"}')
+    assert not call_service._unfinished_submission(instant, b'{"status": "done"}')
+
+
+def _upstream_header(relayed: list, name: bytes) -> list[str]:
+    return [v.decode() for req in relayed for k, v in req.raw_headers if k.lower() == name]
+
+
+async def test_shared_key_calls_carry_an_opaque_per_team_client_code(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """A provider that names a `client_header` gets treg's code for the team on treg's key: stable per
+    team, different per team and per provider, never the team's id, and replacing any caller value.
+    A team's own key, and an unset secret, add nothing."""
+    from dataclasses import replace
+
+    from treg.domain.catalog import store as catalog_store
+    from treg.infra.upstream.relay import shared_client_code
+
+    cat = catalog_store.load()
+    monkeypatch.setattr(catalog_store, "load",
+                        lambda: replace(cat, client_headers={**cat.client_headers, "replicate": "x-client-id"}))
+    relayed = []
+
+    async def fake_relay(request, *args, **kwargs):
+        relayed.append(request)
+        return _response(201, {"id": f"prediction-{len(relayed)}", "status": "starting"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    body = {"input": {"prompt": "a"}}
+    forged = {"X-Client-Id": "someone-else"}
+
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert _upstream_header(relayed, b"x-client-id") == ["someone-else"], "no secret set: header untouched"
+
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "test-secret")
+    get_settings.cache_clear()
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    other = await verified_signup(clients, json={"email": "client-code-stranger@example.com"})
+    assert (await clients.post(f"/call/{EP}", json=body,
+                               headers={"X-Treg-Token": other.json()["token"]})).status_code == 201
+    first, again, stranger = _upstream_header(relayed, b"x-client-id")[1:]
+    assert first == again, "one team keeps one code"
+    assert first != stranger, "two teams share a code"
+    assert first.startswith("t_") and len(first) == 26 and first[2:].isalnum()
+    assert first == shared_client_code("test-secret", "replicate", 1)
+    assert first != shared_client_code("test-secret", "crawl4ai", 1), "the code differs per provider"
+    assert "1" != first and "someone-else" not in _upstream_header(relayed, b"x-client-id")[1:]
+
+    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    assert _upstream_header(relayed[-1:], b"x-client-id") == [], "a team's own key carries no code"

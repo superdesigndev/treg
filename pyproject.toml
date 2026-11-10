@@ -1,6 +1,6 @@
 [project]
 name = "tools-registry"
-version = "0.22.0"
+version = "0.30.0"
 description = "A remote registry that turns team skills into shareable, callable tools via a credential-injecting proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -25,9 +25,10 @@ classifiers = [
 # Base install = just the CLI. Light + pure-Python, so `pip install tools-registry` (and Homebrew) are
 # fast. Everything needed to RUN a registry server lives in the `[server]` extra below.
 dependencies = [
-    "httpx>=0.27",
+    "httpx>=0.27,<1",
     "posthog>=7.47.3",
     "questionary>=2.0",
+    "toon-format==1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -47,9 +48,11 @@ server = [
     "stripe>=12",  # balance top-ups (src/treg/infra/stripe.py) — the payment rail, server-side only
     "mcp>=2",      # the MCP front door (src/treg/mcp.py) — server-side only; pulls httpx2 ALONGSIDE
     "quickjs>=1.19.4",  # the hub's script sandbox engine (src/treg/hub_sandbox.py) — server-side only
-                   # httpx (they coexist), so the light CLI's dependency set is untouched
+    # httpx (they coexist), so the light CLI's dependency set is untouched
     "redis>=5",    # the shared key-value store (src/treg/infra/kv.py) — server-side only
     "obstore>=0.11,<0.12",
+    "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
+    "pillow>=11",  # re-draws uploaded pictures before they are stored (src/treg/infra/imaging.py)
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
 # certificate authority on the machine, and `cryptography` is a compiled package — putting it in the
@@ -75,6 +78,7 @@ dev = [
     "import-linter>=2.13",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "ruff>=0.17.1",
     "tools-registry[server]",   # the test suite imports the server (api, models, …), so dev pulls it in
 ]
 test = [
@@ -86,6 +90,31 @@ test = [
 # that changes no versions). Refuse to run on an old uv rather than teach everyone to avoid `uv lock`.
 required-version = ">=0.12"
 
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["src/treg/web/dashboard"]
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9", "F",  # ruff's defaults: syntax, imports, undefined and unused names
+    "B",                    # bugbear: likely bugs
+    "BLE",                  # a blind `except Exception` must say why it may swallow everything
+    "ERA",                  # no commented-out code
+    "PGH",                  # a `type: ignore` names its error code
+    "RUF100",               # a `noqa` that suppresses nothing is deleted
+]
+ignore = [
+    "E701", "E702",  # one-line compound statements are house style
+    "E741",          # `l` and `I` names are fine in a monospace editor
+    "B905",          # `zip(strict=)` changes behavior at each call site; adopt it site by site
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F811"]  # pytest fixtures are imported and then named as parameters
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
+
 [tool.importlinter]
 root_package = "treg"
 include_external_packages = true
@@ -96,6 +125,16 @@ name = "Lightweight CLI modules do not import server dependencies"
 type = "forbidden"
 source_modules = [
     "treg.cli",
+    # The views the registry renders and the Python CLI prints: `treg.routers` here is only the
+    # package's own __init__, which the CLI imports on the way to them.
+    "treg.routers",
+    "treg.routers.views",
+    "treg.routers.views.account",
+    "treg.routers.views.catalog",
+    "treg.routers.views.toon",
+    "treg.cli_session",
+    "treg.cli_analytics",
+    "treg.client_notice",
     "treg.convert",
     "treg.skills",
     "treg.providers",
@@ -107,6 +146,7 @@ source_modules = [
 ]
 forbidden_modules = [
     "obstore",
+    "PIL",
     "aiosqlite",
     "alembic",
     "asyncpg",
@@ -198,6 +238,7 @@ name = "Catalog domain is a leaf: no outer layers, no sibling domains"
 type = "forbidden"
 source_modules = ["treg.domain.catalog"]
 forbidden_modules = [
+    "treg.oauth_providers",  # imports domain.connections; display names arrive through a bootstrap seam
     "treg.api",
     "treg.bootstrap",
     "treg.routers",
@@ -207,6 +248,18 @@ forbidden_modules = [
     "treg.domain.identity",
     "treg.domain.money",
     "fastapi",
+    "starlette",
+]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Plugins are pure functions: no I/O and no outer layers"
+type = "forbidden"
+source_modules = ["treg.domain.plugins"]
+forbidden_modules = [
+    "treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models",
+    "treg.infra", "treg.config", "httpx", "sqlmodel", "sqlalchemy", "redis", "obstore", "fastapi",
     "starlette",
 ]
 allow_indirect_imports = true
@@ -301,6 +354,30 @@ name = "Async task domain is a stdlib leaf shared with the light CLI"
 type = "forbidden"
 source_modules = ["treg.domain.asynctasks"]
 forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Showcase domain is a pure stdlib leaf: an application and weekly rows in, public standings out"
+type = "forbidden"
+source_modules = ["treg.domain.showcase"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "treg.domain.identity", "treg.domain.governance", "treg.domain.connections", "treg.domain.tools", "treg.domain.catalog", "treg.domain.capacity", "treg.domain.money", "treg.domain.asynctasks", "treg.domain.hub", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx", "PIL", "obstore"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Images domain is a pure stdlib leaf: picture rules, names and limits; decoding lives in infra"
+type = "forbidden"
+source_modules = ["treg.domain.images"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "treg.domain.identity", "treg.domain.governance", "treg.domain.connections", "treg.domain.tools", "treg.domain.catalog", "treg.domain.capacity", "treg.domain.money", "treg.domain.asynctasks", "treg.domain.hub", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx", "PIL", "obstore"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Table domain is a pure stdlib leaf: an answer in, rows and columns out"
+type = "forbidden"
+source_modules = ["treg.domain.table"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "treg.domain.identity", "treg.domain.governance", "treg.domain.connections", "treg.domain.tools", "treg.domain.catalog", "treg.domain.capacity", "treg.domain.money", "treg.domain.asynctasks", "treg.domain.hub", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx"]
 allow_indirect_imports = true
 as_packages = true
 

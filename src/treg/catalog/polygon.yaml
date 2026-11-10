@@ -4,13 +4,16 @@ source:
   openapi: null # paths transcribed and live-verified 2026-08-15 (Stocks Starter plan)
   curated: 2026-08-15
 # OWN-KEY-ONLY, deliberately: treg's Stocks Starter subscription is licensed "Individual Use", which
-# does not cover serving other teams (docs/MARKET-DATA-CATEGORY-RESEARCH.md, licensing table). The
-# commercial tier is Stocks Business at $2,499/mo — a purchase the usage data has to earn first.
-# Mechanically that means: cost blocks are 1 credit with NO fx rate for polygon, so usd stays null
-# and platform_eligible is FALSE by construction. A team pasting its own Polygon key gets everything.
+# does not cover serving other teams. The commercial tier is Stocks Business at $2,499/mo — a
+# purchase the usage data has to earn first.
+# Mechanically that means: rows are priced 1 credit with a null fx credit rate for polygon, so usd
+# stays null and platform_eligible is FALSE by construction. A team pasting its own Polygon key gets everything.
 # Verified live 2026-08-15 on treg's Starter key (unlimited calls, 15-min delayed, 5y history).
 # 2026 note: Polygon is rebranding to Massive; api.polygon.io remains the served host.
 pricing_url: https://massive.com/pricing
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance: {source: docs, source_url: 'https://massive.com/pricing', checked: '2026-08-15', confidence: inferred}
 endpoints:
   - id: polygon.prev-close
     domain: stocks
@@ -26,8 +29,14 @@ endpoints:
         ticker: {type: string, required: true, note: "path parameter", example: "AAPL"}
         adjusted: {type: boolean, required: false, note: "true (default) adjusts for splits"}
     test_request: {queryParams: {ticker: "AAPL"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.prev-close.json
     docs_url: https://polygon.io/docs/rest/stocks/aggregates/previous-day-bar
   - id: polygon.aggs.range
@@ -50,8 +59,14 @@ endpoints:
         sort: {type: string, required: false, note: "asc | desc"}
         limit: {type: integer, required: false, note: "max 50000"}
     test_request: {queryParams: {ticker: "AAPL", multiplier: "1", timespan: "day", from: "2026-08-01", to: "2026-08-14", limit: "5"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.aggs.range.json
     docs_url: https://polygon.io/docs/rest/stocks/aggregates/custom-bars
   - id: polygon.daily.open-close
@@ -69,8 +84,14 @@ endpoints:
         date: {type: string, required: true, note: "path parameter — YYYY-MM-DD", example: "2026-08-14"}
         adjusted: {type: boolean, required: false}
     test_request: {queryParams: {ticker: "AAPL", date: "2026-08-14"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.daily.open-close.json
     docs_url: https://polygon.io/docs/rest/stocks/aggregates/daily-ticker-summary
   - id: polygon.tickers.search
@@ -90,8 +111,14 @@ endpoints:
         active: {type: boolean, required: false}
         limit: {type: integer, required: false, note: "max 1000"}
     test_request: {queryParams: {search: "apple", market: "stocks", limit: "3"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.tickers.search.json
     docs_url: https://polygon.io/docs/rest/stocks/tickers/all-tickers
   - id: polygon.ticker.details
@@ -107,8 +134,14 @@ endpoints:
       queryParams:
         ticker: {type: string, required: true, note: "path parameter", example: "AAPL"}
     test_request: {queryParams: {ticker: "AAPL"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.ticker.details.json
     docs_url: https://polygon.io/docs/rest/stocks/tickers/ticker-overview
   - id: polygon.market.status
@@ -123,7 +156,13 @@ endpoints:
     input:
       note: "no parameters"
     test_request: {queryParams: {}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, checked: "2026-08-15", note: "included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: included in the subscriber's own plan (flat subscription, no per-call price); treg publishes no rate, so this serves own-key only
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/polygon.market.status.json
     docs_url: https://polygon.io/docs/rest/stocks/market-operations/market-status

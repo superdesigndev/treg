@@ -38,11 +38,9 @@ from ..models import Bundle, Secret, Tool
 from .orgs import _resolve_project
 
 
-# The app alias preserves the moved handlers' original decorator text byte-for-byte.
 app = APIRouter()
 crud_router = app
 
-# Moved helpers retain their api.py-relative provider import while Stage 3 preserves source bytes.
 sys.modules.setdefault("treg.routers.providers", _providers)
 sys.modules.setdefault("treg.routers.convert", _convert)
 sys.modules.setdefault("treg.routers.skills", _skills)
@@ -146,7 +144,8 @@ async def update_secret(
             try:
                 json.loads(raw)
             except (ValueError, TypeError):
-                raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value")
+                # from None: a JSONDecodeError keeps the whole document, here the decrypted secret
+                raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value") from None
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
     if "value" in fields:
         fields["value"] = crypto.encrypt(fields["value"])  # re-encrypt on rotate
@@ -215,7 +214,7 @@ class ToolIn(BaseModel):
     secret_field: str = "access_token"
     health_check: dict | None = None  # {method, path, expect_status}
     examples: list[dict] | None = None  # [{method, path, note}]
-    cli: dict | None = None  # local-run profile for `treg run` (docs/CLI-RUN-PLAN.md)
+    cli: dict | None = None  # local-run profile for `treg run`
     project: str | int | None = None  # project slug or id; None = org-wide (the default)
 
 
@@ -232,8 +231,8 @@ class ToolUpdate(BaseModel):
 def _host_of(url: str) -> str:
     try:
         return urlsplit(url).netloc.lower()
-    except ValueError:  # e.g. unbalanced IPv6 brackets "http://[::1" → don't 500, reject the input
-        raise HTTPException(status_code=422, detail="base_url is not a valid URL")
+    except ValueError as exc:  # e.g. unbalanced IPv6 brackets "http://[::1" → don't 500, reject the input
+        raise HTTPException(status_code=422, detail="base_url is not a valid URL") from exc
 
 
 def _normalize_scheme(rest: str) -> str:
@@ -323,7 +322,7 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
 
 def _allowed_server_bins() -> set[str]:
     """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user (docs/CLI-RUN-PLAN.md Option A)."""
+    member naming `bash`/`python` to run arbitrary code as the server user."""
     from . import providers as prov
     bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
     bins.discard(None)
@@ -365,8 +364,8 @@ async def create_tool(
     db.add(tool)
     try:
         await db.commit()
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail=f"tool name {body.name!r} already exists in this org")
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=f"tool name {body.name!r} already exists in this org") from exc
     return _tool_view(tool)
 
 
@@ -376,7 +375,7 @@ async def list_tools(
 ) -> list[dict]:
     rows = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     # The per-member tool ACL hides what it gates: a restricted member's listing shows only their tools.
-    return [_tool_view(t) for t in rows if access_policy._tool_usable(caller, t)]
+    return [_tool_view(t) for t in access_policy.usable_tools(caller, rows)]
 
 
 @app.get("/tools/by-name/{name}")
@@ -470,12 +469,7 @@ def _tool_view(t: Tool) -> dict:
         "health_check": t.health_check,
         "examples": t.examples or [],
         "cli": t.cli,
-        # Server-computed so the dashboard never guesses: a run needs a cli profile, an allow-listed bin
-        # (server config the client can't see), AND a server-injectable auth mechanism — a config_file /
-        # device CLI authenticates from the member's own machine, so it's local-only (default "env" keeps
-        # every pre-auth_mechanism tool server-runnable as before).
-        "server_runnable": (bool(t.cli) and (t.cli.get("bin") or t.name) in _allowed_server_bins()
-                            and (t.cli.get("auth_mechanism") or "env") in ("env", "argv")),
+        "server_runnable": False,
         "project_id": t.project_id,  # None = org-wide
         "bundle_id": t.bundle_id,
     }
@@ -483,7 +477,6 @@ def _tool_view(t: Tool) -> dict:
 
 class BundleUpdate(BaseModel):
     recipe: str | None = None  # edit the SKILL.md text of a recipe/skill bundle
-    # (Run metadata moved to Tool.cli — a tool with a cli profile is runnable.)
 
 
 class SkillSecretIn(BaseModel):
@@ -525,7 +518,6 @@ class SkillImportIn(BaseModel):
     env_values: dict[str, str] = {}  # user-filled values for env secrets missing from the upload
 
 
-# A second router keeps local grant/report between CRUD and skills in the legacy route order.
 app = APIRouter()
 skill_router = app
 
@@ -599,8 +591,8 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
 
     try:
         await db.commit()
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail="a tool name in this skill already exists in this org")
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="a tool name in this skill already exists in this org") from exc
     return await _bundle_view(bundle.id, db)
 
 

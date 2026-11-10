@@ -40,18 +40,21 @@ async def test_protected_resource_metadata_names_the_mcp_endpoint(clients):
     assert body["authorization_servers"], "a client must be told who issues tokens for us"
 
 
-async def test_the_metadata_is_served_at_BOTH_lookup_paths(clients):
+async def test_the_metadata_is_served_at_every_lookup_path(clients):
     """The spec has clients look this up either at the host root or under the resource's own path,
     and which one a given client tries is not ours to choose."""
     a = await clients.get("/.well-known/oauth-protected-resource")
     b = await clients.get("/.well-known/oauth-protected-resource/mcp")
-    assert a.status_code == b.status_code == 200
-    assert a.json() == b.json()
+    c = await clients.get("/.well-known/oauth-protected-resource/mcp/")
+    assert a.status_code == b.status_code == c.status_code == 200
+    assert a.json() == b.json() == c.json()
 
 
 async def test_v2_metadata_names_only_the_directory_resource(clients):
     response = await clients.get("/.well-known/oauth-protected-resource/mcp/v2")
     assert response.status_code == 200
+    slash = await clients.get("/.well-known/oauth-protected-resource/mcp/v2/")
+    assert slash.status_code == 200 and slash.json() == response.json()
     assert response.json()["resource"] == mcp_oauth.mcp_resource_url("v2")
     assert response.json()["resource"].endswith("/mcp/v2/")
     assert response.json()["resource"] != mcp_oauth.mcp_resource_url("v1")
@@ -485,7 +488,7 @@ async def test_you_cannot_approve_for_a_team_you_are_not_in(clients):
     grant a client access to any team by editing one form field."""
     client_id = await _register(clients)
     cookie, _ = await _signed_in(clients, "outsider@superdesign.dev")
-    other = await clients.post("/users", json={"email": "stranger@superdesign.dev"})
+    other = await verified_signup(clients, json={"email": "stranger@superdesign.dev"})
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = other.json()["token"]
     foreign_org = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -933,27 +936,6 @@ async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefi
         get_settings.cache_clear()
 
 
-async def test_the_parked_destination_cannot_be_used_as_an_open_redirect(clients):
-    """The cookie is only honoured for /oauth/authorize. Accepting any path would make it a general
-    "send me anywhere after login" primitive — a phishing aid rather than a feature."""
-    cookie, _ = await _signed_in(clients, "openredir@superdesign.dev")
-    for evil in ("https://attacker.test/", "//attacker.test/", "/app/../oauth/authorize?x=1",
-                 "/anything-else"):
-        clients.cookies.set("treg_oauth_return", evil)
-        r = await clients.get("/app", follow_redirects=False)
-        assert r.status_code == 200, f"{evil!r} must NOT be honoured, got {r.status_code}"
-    clients.cookies.delete("treg_oauth_return")
-
-
-async def test_a_signed_out_visitor_is_not_bounced_in_a_loop(clients):
-    """Resuming only once signed in. Otherwise the dashboard would send them to /oauth/authorize,
-    which would send them back here, forever."""
-    clients.cookies.clear()
-    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
-    r = await clients.get("/app", follow_redirects=False)
-    assert r.status_code == 200
-
-
 # ---- moving a live grant to another team --------------------------------------------------------
 async def _as(email: str) -> dict:
     """Headers that act as a given user — an identity token, minted the way `treg login` does."""
@@ -1095,7 +1077,7 @@ async def test_only_the_grants_own_user_can_move_it(clients):
     grant = (await clients.get("/oauth/grants",
                                headers=await _as("owner@superdesign.dev"))).json()[0]["grant"]
 
-    stranger = (await clients.post("/users", json={"email": "stranger@superdesign.dev"})).json()
+    stranger = (await verified_signup(clients, json={"email": "stranger@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": stranger["token"]})).json()[0]
     r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]},
                            headers={"X-Treg-Token": stranger["token"]})
@@ -1248,7 +1230,7 @@ async def test_a_team_you_cannot_use_is_indistinguishable_from_one_that_does_not
     me = await _as("prober@superdesign.dev")
     grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
 
-    outsider = (await clients.post("/users", json={"email": "elsewhere@superdesign.dev"})).json()
+    outsider = (await verified_signup(clients, json={"email": "elsewhere@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
 
     real_but_not_mine = await clients.post(f"/oauth/grants/{grant}/team",

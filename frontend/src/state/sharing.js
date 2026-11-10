@@ -3,13 +3,11 @@ import * as TregAgentSetup from '../agent-setup/data'
 
 export default {
 copyMd(url){ fetch(url).then(r=>r.text()).then(t=>navigator.clipboard.writeText(t)).catch(()=>{}); },
-// copy raw markdown
     openMd(url){ window.open(url,'_blank'); },
 // open the .md in a new tab (method, not a template global)
     copyLlms(){ navigator.clipboard.writeText(this.proxy+'/llms.txt').then(()=>{ this.llmsCopied=true; setTimeout(()=>{ this.llmsCopied=false; },1500); }).catch(()=>{}); },
 async copyToken(){ if(!this.myToken) return; if(!(await this.toClipboard(this.myToken))) return; this.tokenCopied=true; setTimeout(()=>{ this.tokenCopied=false; },1500); },
-// ONE instruction, not two. The old pair (admin "Setup" / consumer "Connect") each re-explained
-    // the catalog, the credential ladder, prices and the balance — knowledge that now lives in the
+// ONE instruction, not two. The catalog, the credential ladder, prices and the balance live in the
     // skill install.sh installs, and in llms.txt. A prompt can only carry what a FILE cannot: the
     // token, the team, permission to run things, and "do it now". `kind` is ignored (call sites keep
     // their argument) so there is a single text to keep true.

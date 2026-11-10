@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>treg for Google Sheets</title>
+<meta name="description" content="Fill a spreadsheet with live data from treg's catalog: fill empty cells row by row, make new rows from one query, or use =TREG() formulas. Every run shows its cost first."/>
+<link rel="canonical" href="{BASE}/sheets"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal.css"/>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <span class="sp"></span>
+  <a class="nav on" href="/sheets">Sheets add-on</a>
+  <a class="nav" href="/pricing">pricing</a>
+  <a class="nav" href="/support">support</a>
+</div></div>
+
+<div class="page"><div class="doc">
+  <div class="eyebrow">Google Sheets add-on</div>
+  <h1>treg for Sheets</h1>
+  <div class="stamp"><span>Published by Superdesign</span><span>Google Workspace add-on</span></div>
+
+  <div class="summary">
+    <h2>Live data in your spreadsheet, without API keys</h2>
+    <p>treg for Sheets runs tools from treg's catalog on the rows of your spreadsheet: company and
+    people data, search results, web pages and more. You pick the tool and the input columns; the
+    add-on writes the answers back into the sheet. You never paste a provider API key into Sheets.</p>
+  </div>
+
+  <h2 class="sec" id="what"><span class="n">01</span>What it does</h2>
+  <ul>
+    <li><b>Fill empty cells row by row.</b> Choose a tool, map your columns to its inputs, and the
+    add-on fills the empty answer cells of each row you select.</li>
+    <li><b>Make new rows from one query.</b> Run a search-style tool once and write each result it
+    returns as a new row.</li>
+    <li><b><code>=TREG()</code> formulas.</b> Call a tool from a cell, like any other spreadsheet
+    formula, with the cell values as its inputs.</li>
+  </ul>
+
+  <h2 class="sec" id="signin"><span class="n">02</span>Sign in and who pays</h2>
+  <p>Open the add-on's panel in Google Sheets and sign in with your treg account. Choose the treg
+  team that should pay; every run is charged to that team's prepaid balance, under the team's own
+  access rules and spending limits. Tools that use a provider credential your team connected follow
+  that provider's own billing as well. See <a href="/pricing">pricing</a>.</p>
+
+  <h2 class="sec" id="cost"><span class="n">03</span>Every run shows its cost first</h2>
+  <p>Before a run starts, the panel shows what it will cost for the rows you selected, and nothing
+  is charged until you confirm.</p>
+
+  <h2 class="sec" id="data"><span class="n">04</span>Your data</h2>
+  <p>The add-on reads only the spreadsheet you have open: the cells you pick as inputs, the header
+  row and your selection. It sends treg the tool id and the input values of each row you run, and
+  writes the answers back into that spreadsheet. Your treg sign-in token is kept in your own Google
+  add-on storage, never in the sheet. The full details, including Google's Limited Use requirements,
+  are in the <a href="/privacy#sheets">privacy policy</a>.</p>
+
+  <h2 class="sec" id="stop"><span class="n">05</span>Stop using it</h2>
+  <p>Sign out in the add-on's panel to revoke its treg sign-in, and uninstall the add-on from
+  Google Sheets (<b>Extensions → Add-ons → Manage add-ons</b>). Removing the add-on does not delete
+  your treg team, balance or call history.</p>
+
+  <h2 class="sec" id="support"><span class="n">06</span>Support</h2>
+  <p>For setup, billing or privacy questions, email
+  <a href="mailto:unclecode@superdesign.dev">unclecode@superdesign.dev</a> or visit
+  <a href="/support">treg support</a>. Never send passwords, sign-in codes, tokens or API keys.</p>
+</div>
+
+<nav class="toc">
+  <a href="#what">What it does</a><a href="#signin">Sign in</a><a href="#cost">Cost first</a>
+  <a href="#data">Your data</a><a href="#stop">Stop using it</a><a href="#support">Support</a>
+</nav></div>
+
+<footer><div class="foot-in">
+  <span class="brand"><span class="glyph">▚</span> treg</span><span class="muted">— by Superdesign</span>
+  <span class="sp"></span><a href="/support">support</a><a href="/privacy">privacy</a>
+  <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github ↗</a>
+</div></footer>
+</body>
+</html>

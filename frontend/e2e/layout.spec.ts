@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { fitsWidth, sidewaysCulprits, signIn, stubPostHog, textCollisions } from './helpers'
+import { fitsWidth, sidewaysCulprits, signIn, textCollisions } from './helpers'
 
 // Every main page, at desktop and phone width: the page never scrolls sideways, and no text in a
 // row, card or cell paints over other text or past its edge. This is the class of bug every table
@@ -46,20 +46,6 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
       await expectClean(page, 'the tool drawer')
     })
 
-    // The control arm is production's page as it is, bugs included: at phone width an opened row's
-    // chips and parameter table overlap exactly as they do in production, and fixing them would
-    // change the arm being measured. It goes when the experiment does.
-    test('the catalog-v2 control arm (the ledger) lays out cleanly, a row open', async ({ page }) => {
-      test.skip(width < 760, "the ledger's phone layout is production's, left as it is")
-      await stubPostHog(page, 'control')
-      await page.goto('/catalog/companies')
-      await expect(page.locator('table.ledger')).toBeVisible()
-      await page.locator('tr.lrow.merged').first().click()
-      await page.locator('button.lsub').first().click()
-      await expect(page.locator('.lep').first()).toBeVisible()
-      await expectClean(page, 'the ledger')
-    })
-
     test('a search answer keeps a long price in its column', async ({ page }) => {
       // The browser-test server has no judge key; answer /catalog/find with real catalog rows, one of
       // them priced "per started 10 emails", the rate that once painted over the fit bar.
@@ -81,7 +67,7 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
 
     test('the signed-in pages with tables lay out cleanly', async ({ page }) => {
       await signIn(page, `layout-${width}`)
-      for (const hash of ['activity', 'orgs', 'tools', 'connections']) {
+      for (const hash of ['activity', 'orgs', 'tools', 'catalog', 'connections']) {
         await page.goto('/app#' + hash)
         await page.waitForLoadState('networkidle')
         await expectClean(page, '/app#' + hash)
@@ -89,3 +75,31 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
     })
   })
 }
+
+// The top bar is one row down to 1121px. Every width in that range holds the brand, the team, every
+// nav destination (the hub's too) and the account strip, none painted over another or scrolled away.
+test('the top bar never paints one item over another', async ({ page }) => {
+  await signIn(page, 'top-bar')
+  await page.getByRole('navigation', { name: 'Primary navigation' }).evaluate(nav => {
+    // The browser-test server runs with the hub off: add its button, the widest the bar gets.
+    const hub = nav.lastElementChild!.cloneNode(true) as HTMLElement
+    hub.lastChild!.textContent = 'Hub'
+    nav.insertBefore(hub, nav.lastElementChild)
+  })
+  for (const width of [1121, 1200, 1300, 1301, 1366, 1440, 1600, 1920]) {
+    await page.setViewportSize({ width, height: 800 })
+    const found = await page.evaluate(() => {
+      const nav = document.querySelector('.rd-navs')!
+      const items = [...document.querySelectorAll('.rd-brand, .rd-top .orgblock, .rd-nav, .rd-referral, .rd-social a, .rd-balance, .rd-account-menu')]
+        .filter(e => e.getClientRects().length).map(e => ({ e, r: e.getBoundingClientRect() }))
+      const out: string[] = nav.scrollWidth > nav.clientWidth + 1 ? ['the nav scrolls'] : []
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const a = items[i].r, b = items[j].r
+        if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1)
+          out.push(`${items[i].e.textContent!.trim() || items[i].e.className} over ${items[j].e.textContent!.trim() || items[j].e.className}`)
+      }
+      return out
+    })
+    expect(found, `${width}px`).toEqual([])
+  }
+})

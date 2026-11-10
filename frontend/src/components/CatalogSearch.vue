@@ -2,9 +2,10 @@
 import { useDashboard } from '../state/context'
 
 // The catalog's one search box, on the Catalog page and on every platform shelf. Typing filters what
-// the page shows at once; when typing pauses, or on Enter, the finder answers what was typed as a
-// job (GET /catalog/find, the relevance judge; state/find.js). On a shelf `scope` is its slug and
-// the finder reads that shelf only. Clearing the box is how you leave an answer.
+// the page shows at once; when typing pauses, the finder answers what was typed above the still-
+// filtered page, and Enter asks for the full answer (GET /catalog/find, the
+// relevance judge; state/find.js). On a shelf `scope` is its slug and the finder reads that shelf
+// only. Clearing the box is how you leave an answer.
 export default {
   props: {
     modelValue: { type: String, default: '' },
@@ -31,7 +32,7 @@ export default {
   </div>
   <!-- A sentence is a job, not a name: say so where the eye already is, as one clickable row. For a
        short query the row is quieter, because the page is already filtering by it as you type. -->
-  <button v-if="modelValue.trim() && !(findActive && find.scope===scope)" class="cat-find-suggest" :class="{quiet:!findIsJob(modelValue)}"
+  <button v-if="modelValue.trim() && !(findFull && find.scope===scope)" class="cat-find-suggest" :class="{quiet:!findIsJob(modelValue)}"
           type="button" @click="findRun(modelValue, {scope})">
     <span class="cat-find-suggest-i" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
     <span class="cat-find-suggest-t">{{findIsJob(modelValue) ? 'Find tools for' : 'Search '+(scope ? scopeLabel : 'all tools')+' for'}} <b>“{{modelValue.trim()}}”</b><template

@@ -25,7 +25,13 @@
      entry Vite adds below: ad-click capture before boot can redirect a signed-out visit, and
      analytics before the app looks for it. Help loads its tutorial scripts itself (views.ts). -->
 <script src="/adtrack.js" defer></script>
+<script src="/captcha.js" defer></script>
 <script src="/sitetrack.js" defer></script>
+<!-- Google's tag in advanced Consent Mode (every signal denied): no page_view event from here (only
+     Google's own cookieless consent ping), plus the secondary `treg Signup (web)` conversion once
+     the first team exists (gtag.js). A classic
+     script, never a module: it reads its own data-conversion-only through document.currentScript. -->
+<script src="/gtag.js" data-conversion-only defer></script>
 </head>
 <body>
 <!-- The same markup App.vue shows while it boots, so mounting swaps it for itself. Nothing is

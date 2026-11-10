@@ -71,6 +71,15 @@ def classify_terminal(descriptor: dict, response: object) -> str:
     return "progress"
 
 
+def finished_on_submission(descriptor: dict | None, document: object) -> bool:
+    """The submission already carries the finished answer: the descriptor allows it
+    (`terminal_on_submission`) and the submission's own status is a success word. Such a call is
+    ordinary: settled on the response, no wait, no poll, no pending task."""
+    descriptor = descriptor or {}
+    return (descriptor.get("terminal_on_submission") is True
+            and classify_terminal(descriptor, document) == "success")
+
+
 def artifact(descriptor: dict, terminal: object) -> dict:
     """What a successful terminal response lets the caller retrieve, read per the descriptor.
 
@@ -120,8 +129,17 @@ def next_check(now: datetime, attempts: int) -> datetime:
     return now + timedelta(seconds=min(60, 30 + max(0, attempts) * 10))
 
 
-def expired(created_at: datetime, now: datetime) -> bool:
-    return now - created_at >= MAX_AGE
+def max_age(descriptor: dict | None) -> timedelta:
+    """How long a task is polled: the descriptor's `max_age` seconds when the provider asks to stop
+    sooner (BounceBan: stop after five minutes and submit again), never more than MAX_AGE."""
+    seconds = (descriptor or {}).get("max_age")
+    if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > 0:
+        return min(MAX_AGE, timedelta(seconds=seconds))
+    return MAX_AGE
+
+
+def expired(created_at: datetime, now: datetime, descriptor: dict | None = None) -> bool:
+    return now - created_at >= max_age(descriptor)
 
 
 def next_failure_check(now: datetime, failures: int) -> datetime:

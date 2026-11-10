@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: trustpilot-reviews: Notion · TrustScore 2.2 from 438 reviews",
+      "module: trustpilot-reviews: 20 reviews kept (page 1, 1+ stars)"
+    ]
+  },
+  "recipe": "trustpilot-reviews",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 171,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "author_country": "[redacted]",
+      "author_review_count": 5,
+      "date": "2026-10-08T10:27:18.000Z",
+      "experience_date": "2026-10-08T00:00:00.000Z",
+      "lang": "en",
+      "likes": 0,
+      "rating": 1,
+      "review_id": "6ac753e65543c6bb1a25b60f",
+      "text": "everything is free, then once all your work is uploaded and you start using it they will charge you cause you know 'you ran out of free blocks'. i rather restart my whole work in excell. shame cause the product is not bad. is the absurd monetisation tactic that made me leave the review.",
+      "title": "very misleading. subscription required, and extra credits need to be paid.",
+      "url": "https://www.trustpilot.com/reviews/6ac753e65543c6bb1a25b60f",
+      "verified": false
+    },
+    {
+      "author": "[redacted]",
+      "author_country": "[redacted]",
+      "author_review_count": 1,
+      "date": "2026-10-03T17:08:57.000Z",
+      "experience_date": "2026-10-03T00:00:00.000Z",
+      "lang": "en",
+      "likes": 0,
+      "rating": 1,
+      "review_id": "6ac11a8920916f362fc28d64",
+      "text": "Absolute trash. You pay 200 euros per month to have access to everything and then you find out that you need to buy extra credits after one smarter AI prompt. Scam.",
+      "title": "Absolute trash",
+      "url": "https://www.trustpilot.com/reviews/6ac11a8920916f362fc28d64",
+      "verified": false
+    }
+  ]
+}

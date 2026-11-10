@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable, Collection
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,10 +23,10 @@ from ..domain.catalog import stats
 
 FRESH_TTL_S = 5 * 60
 STALE_TTL_S = 30 * 60
-REFRESH_RETRY_S = 5
+REFRESH_RETRY_S = 60
 # The folded read model is trusted only while its worker keeps running. Generous against a cron
-# scheduled every few minutes, so a slow backfill or one failed run never flips the catalog back
-# to the live aggregate; short enough that a dead cron is noticed within a working day.
+# scheduled every few minutes, so a slow backfill or one failed run does not discard the read
+# model; an unavailable worker must never send optional observations back to the audit table.
 STALE_AFTER_S = 2 * 3600
 
 log = logging.getLogger("treg.catalog")
@@ -48,16 +49,25 @@ class _Entry:
     stored_at: float
 
 
-class PostgresEndpointObservationReader:
-    """Authoritative reader whose session exists only for one small read.
+class EndpointObservationUnavailable(Exception):
+    """Some requested observations have no trustworthy fold; completed ones may still be cached.
 
-    Once `treg-worker catalog stats` has caught up with the audit table (the cursor row says so),
-    an observation is thirty `EndpointDayStat` rows per endpoint, summed and published through the
-    same floors as the live aggregate. Until then, on any deployment that never schedules the
-    worker, and whenever the worker has not run for `STALE_AFTER_S` (it stopped, or every run is
-    failing), it is the live thirty-day aggregate over `callrecord` it always was, so the numbers
-    the catalog publishes never depend on an operator remembering a cron or noticing a dead one.
-    The fallback is logged: it is the expensive path this table exists to retire.
+    Missing evidence is different from an endpoint with zero calls. In particular, an unavailable
+    endpoint must not renew an old cache entry's lifetime while its worker is behind.
+    """
+
+    def __init__(self, completed: stats.ObservationSnapshot | None = None) -> None:
+        super().__init__("catalog observation fold unavailable")
+        self.completed = completed if completed is not None else {}
+
+
+class PostgresEndpointObservationReader:
+    """Read only the worker's bounded day buckets, including reconciled async terminal evidence.
+
+    The cursor must have caught up recently. Async endpoints with result adapters additionally
+    require reconciled buckets and no terminal correction overdue for more than `STALE_AFTER_S`.
+    Unavailable observations are omitted through a partial-result exception; no request-triggered
+    refresh ever falls back to scanning `CallRecord`.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -68,27 +78,55 @@ class PostgresEndpointObservationReader:
         if not ids:
             return {}
         from ..domain.catalog import store as catalog_store  # the per-success set is a catalog fact, read at query time
-        from ..models import EndpointDayStat, EndpointStatCursor
+        from ..models import EndpointDayStat, EndpointStatCursor, EndpointStatDirty
         from ..timeutil import utcnow_naive
         cat = catalog_store.load()
-        per_success = {i for i in ids if ((cat.by_id.get(i) or {}).get("cost") or {}).get("type") == "per_success"}
+        async_ids = {i for i in ids if (cat.by_id.get(i) or {}).get("async")}
+        # Adapter presence matters even after verification is lost: already-recorded terminal
+        # evidence must still be reconciled before these buckets can be published.
+        mutable_async_ids = {i for i in ids if i in async_ids and i in cat.adapters}
+        # Async per-success endpoints use the terminal verdict exclusively. A completed
+        # hit can report zero credits, so charge-based miss inference would skew routing.
+        per_success = {i for i in ids if i not in async_ids
+                       and ((cat.by_id.get(i) or {}).get("cost") or {}).get("type") == "per_success"}
+        since = {i: str((cat.by_id.get(i) or {}).get("observed_from") or "") for i in ids}
+        window = stats.window_days()
+        cutoff = utcnow_naive() - timedelta(seconds=STALE_AFTER_S)
         async with self._session_factory() as db:
+            if db.get_bind().dialect.name == "postgresql":
+                # Keep cursor, buckets and correction age in one short read-only snapshot. A
+                # repair committing between these reads must not make an older bucket look clean.
+                await db.connection(execution_options={
+                    "isolation_level": "REPEATABLE READ", "postgresql_readonly": True,
+                })
             cursor = await db.get(EndpointStatCursor, "callrecord")
-            if cursor is None or cursor.caught_up_at is None:
-                return await stats.observed(db, ids, per_success=per_success)
-            if (utcnow_naive() - cursor.updated_at).total_seconds() > STALE_AFTER_S:
-                log.warning("catalog stats worker last ran at %s; computing observations live",
-                            cursor.updated_at.isoformat())
-                return await stats.observed(db, ids, per_success=per_success)
+            if (cursor is None or cursor.caught_up_at is None
+                    or cursor.updated_at < cutoff or cursor.caught_up_at < cutoff):
+                raise EndpointObservationUnavailable()
             rows = (await db.execute(
                 select(EndpointDayStat).where(EndpointDayStat.endpoint_id.in_(ids),
-                                              EndpointDayStat.day >= stats.window_days()))).scalars().all()
+                                              EndpointDayStat.day >= window))).scalars().all()
+            overdue = (await db.execute(
+                select(EndpointStatDirty.endpoint_id, EndpointStatDirty.day).where(
+                    EndpointStatDirty.endpoint_id.in_(mutable_async_ids),
+                    EndpointStatDirty.day >= window, EndpointStatDirty.queued_at < cutoff)
+            )).all() if mutable_async_ids else []
+        # `observed_from` on an entry drops the days before it: the provider replaced the service,
+        # and those calls measured the old one.
+        rows = [row for row in rows if row.day >= since.get(row.endpoint_id, "")]
+        unavailable = {row.endpoint_id for row in rows
+                       if row.endpoint_id in mutable_async_ids and not row.terminal_reconciled}
+        unavailable.update(endpoint_id for endpoint_id, day in overdue if day >= since[endpoint_id])
+        rows = [row for row in rows if row.endpoint_id not in unavailable]
         tallies = stats.merged((row.endpoint_id, stats.Tally(
             n=row.n, ok=row.ok, bad=row.bad, last_ok=row.last_ok_at, hits=row.hits,
             hit_decided=row.hit_decided, paid_hits=row.paid_hits, free_misses=row.free_misses,
             latency_seen=row.latency_seen, latencies=list(row.latency_sample or []),
         )) for row in rows)
-        return stats.publish(ids, tallies, per_success=per_success)
+        completed = stats.publish([i for i in ids if i not in unavailable], tallies, per_success=per_success)
+        if unavailable:
+            raise EndpointObservationUnavailable(completed)
+        return completed
 
     def pending(self, endpoint_ids: Collection[str]) -> bool:
         return False   # every read waits on the database, so nothing is ever still on its way
@@ -118,7 +156,7 @@ class CachedEndpointObservationReader:
         self._clock = clock
         self._fresh_ttl_s = fresh_ttl_s
         self._stale_ttl_s = stale_ttl_s
-        self._retry_s = retry_s
+        self._retry_s = max(REFRESH_RETRY_S, retry_s)
         self._entries: dict[str, _Entry] = {}
         self._pending: set[str] = set()
         self._inflight: set[str] = set()
@@ -194,24 +232,32 @@ class CachedEndpointObservationReader:
                     self._refresh += 1
 
                 try:
-                    refreshed = await self._source.get_many(endpoint_ids)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:  # noqa: BLE001 - optional telemetry always degrades to stale/empty
-                    async with self._lock:
-                        self._refresh_failure += 1
-                        self._retry_not_before = self._clock() + self._retry_s
-                    log.warning("endpoint stats refresh unavailable", exc_info=True)
-                else:
+                    failed = False
+                    try:
+                        refreshed = await self._source.get_many(endpoint_ids)
+                    except asyncio.CancelledError:
+                        raise
+                    except EndpointObservationUnavailable as exc:
+                        refreshed = exc.completed
+                        failed = True
+                        log.warning("endpoint stats fold unavailable")
+                    except Exception:
+                        refreshed = {}
+                        failed = True
+                        log.warning("endpoint stats refresh unavailable", exc_info=True)
                     stored_at = self._clock()
                     async with self._lock:
-                        # An id the source had nothing for is remembered as such, so an endpoint
-                        # nobody calls is not a miss, and a database read, on every request.
+                        # A successful empty result may be cached, but an unavailable fold must
+                        # leave any old entry and its original expiry untouched.
                         for endpoint_id in endpoint_ids:
-                            if endpoint_id in self._inflight:
+                            if endpoint_id in self._inflight and (not failed or endpoint_id in refreshed):
                                 self._entries[endpoint_id] = _Entry(value=refreshed.get(endpoint_id),
                                                                     stored_at=stored_at)
-                        self._retry_not_before = 0.0
+                        if failed:
+                            self._refresh_failure += 1
+                            self._retry_not_before = stored_at + self._retry_s
+                        else:
+                            self._retry_not_before = 0.0
                 finally:
                     async with self._lock:
                         self._inflight.difference_update(endpoint_ids)

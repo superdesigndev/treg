@@ -26,6 +26,7 @@ source:
 pricing_url: https://www.thecompaniesapi.com/pricing
 endpoints:
   - id: thecompaniesapi.companies.enrich
+    added: '2026-07-28'
     cache:
       ignore_paths: ["meta.credits"]
     test_request: {"pathParams": {"domain": "stripe.com"}}
@@ -61,6 +62,7 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/enrich-company-from-domain
 
   - id: thecompaniesapi.companies.search
+    added: '2026-07-28'
     test_request: {"queryParams": {"query": "[{\"attribute\": \"about.industries\", \"operator\": \"or\", \"sign\": \"equals\", \"values\": [\"fintech\"]}]", "size": 2}}
     domain: companies
     capability: companies.search
@@ -99,6 +101,7 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/search-companies
 
   - id: thecompaniesapi.companies.enrich_by_email
+    added: '2026-07-28'
     test_request: {"queryParams": {"email": "patrick@stripe.com"}}
     domain: companies
     capability: companies.enrich
@@ -127,6 +130,7 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/enrich-company-from-email
 
   - id: thecompaniesapi.companies.email_pattern
+    added: '2026-07-28'
     test_request: {"pathParams": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.email_pattern
@@ -157,6 +161,7 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/fetch-company-email-patterns
 
   - id: thecompaniesapi.account.usage
+    added: '2026-07-28'
     kind: utility
     capability: account.usage
     platform: account

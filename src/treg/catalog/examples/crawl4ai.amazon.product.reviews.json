@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: amazon-reviews: the page shows 0 reviews, 10 asked; the rest come from the second source"
+    ]
+  },
+  "recipe": "amazon-reviews",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 196,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "asin": "B0F5HSNDXF",
+      "author": "[redacted]",
+      "country": "United States",
+      "date": "2025-07-22",
+      "helpful_votes": 8,
+      "rating": 5.0,
+      "review_id": "RFMRBYLC6OJPA",
+      "text": "This is an update to my original review. The first one had a few issues of which are in the original review at the bottom of this one. I was sent a replacement that works! It does exactly what I needed, data transfer with USB C support, nothing else. No there is no video capability, but there are so…",
+      "title": "Updated - Absolutely awesome, if it would have only worked longer than one day and this one did!",
+      "variant": "Size: 0.5FT",
+      "verified": true,
+      "vine": false
+    },
+    {
+      "asin": "B0F5HSNDXF",
+      "author": "[redacted]",
+      "country": "United States",
+      "date": "2026-02-22",
+      "helpful_votes": 7,
+      "rating": 5.0,
+      "review_id": "R2XZXAGPVDSCYM",
+      "text": "Switching from a laptop to an iPad Pro was a big move for my DJ setup, and this Acer 10 Gbps USB‑C Hub made the transition absolutely seamless. The speed is impressive — true 10 Gbps performance that keeps everything running smooth, whether I’m connecting my controller, loading tracks, or powering a…",
+      "title": "Acer 10 Gbps USB‑C Hub — Perfect for Mobile DJs Using an iPad Pro",
+      "variant": "Size: 0.5FT",
+      "verified": true,
+      "vine": false
+    }
+  ]
+}

@@ -4,12 +4,18 @@ import { DataTable } from './ui/table'
 
 // The answer to a described job (state/find.js): one row per job, best fit first, weaker fits in a
 // lighter tone. A table (components/ui/table), so every row's columns line up whatever a price says.
+// An auto answer (a typing pause) sits above the page it did not replace, so while it reads, and when
+// it has nothing, it is one line: an empty answer never takes over the page. A shelf's answer read
+// that shelf only, so an empty one says so and offers the whole catalog instead of calling it a gap.
 // Clearing the search box is how you leave.
 export default {
   components: { DataTable },
   setup: useDashboard,
   computed: {
     nothing(){ return this.find.verdict==='none' || (this.find.verdict==='keyword' && !this.findGroups.length); },
+    empty(){ return this.nothing || !this.findGroups.length; },
+    // An auto answer that found nothing worth a table: one line, not a panel.
+    quietNothing(){ return this.find.auto && this.empty; },
     columns(){ return [
       {key:'what', header:'Tool', mobile:'primary', wrap:true},
       {key:'provs', header:'Providers', mobile:'hide'},
@@ -22,17 +28,29 @@ export default {
 </script>
 
 <template>
-<section class="fa" aria-live="polite" :aria-busy="findBusy">
-  <div v-if="findBusy" aria-label="Finding tools">
+<section class="fa" :class="{auto:find.auto}" aria-live="polite" :aria-busy="findBusy">
+  <p v-if="findBusy && find.auto" class="fa-line"><i class="fa-dot" aria-hidden="true"></i>Looking for tools that do <b>{{find.q}}</b>…</p>
+
+  <div v-else-if="findBusy" aria-label="Finding tools">
     <div v-for="i in 3" :key="i" class="fa-skel"><span></span><span></span><span></span></div>
   </div>
 
-  <p v-else-if="find.phase==='error'" class="fa-note">{{find.error}}
+  <p v-else-if="find.phase==='error'" :class="find.auto ? 'fa-line' : 'fa-note'">{{find.error}}
     <button class="fa-link" type="button" @click="findRun(find.q)">Try again</button></p>
 
+  <p v-else-if="find.phase==='done' && find.scope && empty" class="fa-line">
+    Nothing in {{platLabel}} for <b>“{{find.q}}”</b>.
+    <button class="fa-link" type="button" @click="findEverywhere()">Search all tools</button></p>
+
+  <p v-else-if="find.phase==='done' && quietNothing" class="fa-line">
+    <template v-if="find.verdict==='none' && find.reason">{{findNoneText()}}</template>
+    <template v-else>No tool in the catalog does <b>{{find.q}}</b> yet.</template></p>
+
   <p v-else-if="find.phase==='done' && nothing" class="fa-note">
-    Nothing in the catalog does this yet.
-    <button class="fa-link" type="button" @click="findRequestTool()">Request it</button> and it steers what we add next.</p>
+    <template v-if="find.verdict==='none' && find.reason">{{findNoneText()}}
+      <template v-if="find.reason==='gap'"> <button class="fa-link" type="button" @click="findRequestTool()">Request it</button> to move it up.</template></template>
+    <template v-else>Nothing in the catalog does this yet.
+      <button class="fa-link" type="button" @click="findRequestTool()">Request it</button> and it steers what we add next.</template></p>
 
   <template v-else-if="find.phase==='done'">
     <div class="fa-head">
@@ -41,7 +59,8 @@ export default {
         {{findCopied==='all' ? 'Copied' : 'Copy for your agent'}}</button>
     </div>
     <p v-if="find.verdict==='closest'" class="fa-sub">Nothing fits closely. These come nearest.
-      <button class="fa-link" type="button" @click="findRequestTool()">Request a better tool</button></p>
+      <button v-if="!find.scope" class="fa-link" type="button" @click="findRequestTool()">Request a better tool</button>
+      <button v-else class="fa-link" type="button" @click="findEverywhere()">Search all tools</button></p>
 
     <DataTable :columns="columns" :rows="findGroups" :row-key="g => g.key" interactive
                :row-class="g => ({ weak: findWeak(g) })" @row-click="g => findOpen(g, findGroups.indexOf(g)+1)">
@@ -56,9 +75,9 @@ export default {
       <template #cell-provs="{ row: g }"><span class="fa-provs" :title="g.rows.map(r=>r.provider_display||r.provider).join(', ')">
         <span class="fa-stack"><img v-for="p in findProviders(g).slice(0,3)" :key="p" :src="'/logos/'+p+'.svg'" alt=""
              @error="$event.target.style.visibility='hidden'"></span>
-        {{findProviders(g).length}} provider{{findProviders(g).length===1?'':'s'}}</span></template>
+        {{findProvidersText(g)}}</span></template>
       <template #cell-price="{ value }"><span class="fa-price">{{value}}</span></template>
-      <template #cell-fit="{ row: g }"><span v-if="g.p!=null" class="fa-fit" :title="'Fit for this job: '+Math.round(g.p*100)+'%'">
+      <template #cell-fit="{ row: g }"><span v-if="g.p!=null" class="fa-fit" :title="findFitTitle(g)">
         <i :style="{width:Math.round(g.p*100)+'%'}"></i></span></template>
       <template #cell-copy="{ row: g }"><button class="fa-copy" type="button" @click.stop="findCopy([g], g.key)" @keydown.enter.stop>
         {{findCopied===g.key ? 'Copied' : 'Copy for agent'}}</button></template>
@@ -73,6 +92,13 @@ export default {
 .fa-head b{color:var(--ink);font-weight:500}
 .fa-sub,.fa-note{margin:0 0 8px;font-size:13.5px;color:var(--muted)}
 .fa-note{padding:14px 0}
+/* An auto answer's one line: while it reads, and when it found nothing. */
+.fa.auto{margin-bottom:22px}
+.fa-line{margin:0;padding:4px 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+.fa-line b{color:var(--ink);font-weight:500}
+.fa-dot{display:inline-block;vertical-align:middle;margin:0 9px 2px 0;width:6px;height:6px;border-radius:50%;
+  background:var(--muted);animation:fa-pulse 1s ease-in-out infinite alternate}
+@keyframes fa-pulse{from{opacity:.25}}
 .fa-link{border:0;background:none;padding:0;font:inherit;font-size:13px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;
   text-decoration-color:var(--line2,var(--line));cursor:pointer}
 .fa-link:hover{text-decoration-color:currentColor}
@@ -103,5 +129,5 @@ export default {
 .fa-skel span:first-child{height:36px;border-radius:10px}
 @keyframes fa-sh{to{background-position:-200% 0}}
 @media (hover:none){.fa-copy{opacity:1}}
-@media (prefers-reduced-motion:reduce){:deep(.ui-tbody .ui-tr),.fa-skel span{animation:none}}
+@media (prefers-reduced-motion:reduce){:deep(.ui-tbody .ui-tr),.fa-skel span,.fa-dot{animation:none}}
 </style>

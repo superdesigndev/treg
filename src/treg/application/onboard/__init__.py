@@ -1,9 +1,7 @@
 """First-run onboarding journeys and their transaction boundaries."""
 
-import json
 import logging
 import sys
-from collections.abc import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -22,7 +20,7 @@ from ...sandbox_identity import visitor_name
 sys.modules.setdefault(__name__ + ".crypto", _crypto)
 sys.modules.setdefault(__name__ + ".models", _models)
 
-from . import demo as demo_seed
+from . import demo as demo_seed  # noqa: E402 - needs the sys.modules aliases above
 
 
 SANDBOX_HIT_NS = "sandbox_hit"
@@ -54,8 +52,15 @@ async def _user(user_id: int, db: AsyncSession) -> User:
 
 
 async def provision_demo(*, user_id: int, team_name: str) -> dict:
+    from ... import sandbox as sandbox_runtime
+
     async with session_maker() as db:
-        response = await demo_seed.provision(db, await _user(user_id, db), team_name)
+        user = await _user(user_id, db)
+        # A landing sandbox visitor is a member, not an owner, of its sbx-* team, so provision would
+        # mint it a second team that is_sandbox never recognises. Same rule as POST /orgs.
+        if sandbox_runtime.is_sandbox_user(user):
+            raise OnboardError("sandbox_user")
+        response = await demo_seed.provision(db, user, team_name)
         await db.commit()
         return response
 
@@ -108,11 +113,10 @@ async def mint_sandbox(*, client_ip: str) -> dict:
             raise SandboxError("rate_limited")
         await db.commit()
         # Reap opportunistically, but never let the reaper close the front door: a gc failure is
-        # logged and rolled back, and the visitor still gets their sandbox. Before this guard, one
-        # undeletable expired sandbox turned every mint into a 500 for six hours.
+        # logged and rolled back, and the visitor still gets their sandbox.
         try:
             await landing_sandbox.gc(db)
-        except Exception:  # noqa: BLE001 - anything the reaper raises is a bug to log, not to serve
+        except Exception:
             await db.rollback()
             logging.getLogger("treg").exception("sandbox gc failed; minting anyway")
         out = await landing_sandbox.mint(db)
@@ -129,32 +133,6 @@ def sandbox_live_facts(org: Org) -> dict:
             "visitor": visitor_name(org.slug)}
 
 
-async def accept_stripe_event(
-    *, payload_factory: Callable[[], Awaitable[bytes]], signature: str,
-) -> dict:
-    from . import pubfeed
-
-    secret = get_settings().demo_stripe_webhook_secret
-    if not secret:
-        raise SandboxError("webhook_unconfigured")
-    payload = await payload_factory()
-    if not pubfeed.verify_signature(payload, signature, secret):
-        raise SandboxError("bad_signature")
-    try:
-        event = json.loads(payload)
-    except ValueError:
-        raise SandboxError("bad_payload")
-    if event.get("type") == "charge.succeeded":
-        pubfeed.push_charge(event.get("data", {}).get("object", {}) or {})
-    return {"received": True}
-
-
-def stripe_feed():
-    from . import pubfeed
-
-    return pubfeed.stream()
-
-
 async def export_sandbox_skill(*, org_id: int, sandbox: bool) -> dict:
     from . import sandbox as landing_sandbox
 
@@ -165,17 +143,3 @@ async def export_sandbox_skill(*, org_id: int, sandbox: bool) -> dict:
         if org is None:
             raise RuntimeError("sandbox organization disappeared")
         return await landing_sandbox.export_skill(db, org)
-
-
-def sample_skills(*, base: str) -> list[dict]:
-    from . import sandbox as landing_sandbox
-
-    return [{"name": n, "label": s["label"], "key": s["key"], "prompt": s["prompt"],
-             "files": landing_sandbox.skill_files(n, base, None)}
-            for n, s in landing_sandbox.SAMPLE_SKILLS.items()]
-
-
-def sandbox_install_script(*, name: str, base: str, token: str | None) -> str:
-    from . import sandbox as landing_sandbox
-
-    return landing_sandbox.install_script(name, base, token)

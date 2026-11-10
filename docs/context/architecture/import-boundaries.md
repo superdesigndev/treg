@@ -3,6 +3,7 @@ title: Enforced import boundaries
 status: shipped
 sources:
   - pyproject.toml
+  - src/treg/domain/plugins/__init__.py
   - .github/workflows/ci.yml
   - src/treg/application/__init__.py
   - src/treg/application/call/__init__.py
@@ -51,111 +52,54 @@ related:
 
 # Enforced import boundaries
 
-Import Linter reads the contracts under `tool.importlinter` in `pyproject.toml`. The main CI `test`
-job installs the lock with `uv sync --locked` (failing on a stale lock), then runs
-`uv run --locked lint-imports` before the test suite. Keeping the check in that job reuses the
-development environment and avoids a second install for a fast static architecture check.
-The R2 SDK (`obstore`) is installed only through `[server]` and forbidden from
-lightweight CLI imports. `infra.object_store.open_r2` loads it lazily; bootstrap assembles the
-concrete client or an injected in-memory implementation. Call write allowlists include the
-archive body PUT chain because it persists the paid response outside any DB transaction, and the
-post-relay provider-resource register/rename/tombstone calls because shared-key resource ownership
-must be established or advanced by the call that receives the provider's successful response.
+The contracts are `[tool.importlinter]` in `pyproject.toml`, which is the complete list; CI runs
+`uv run --locked lint-imports` in the `test` job. AGENTS.md states the layering and the sanctioned
+domain edges. This fragment records only what the contracts and tests cannot say.
 
-The separate `test-postgres` job runs its database-sensitive subset against Postgres 16, one
-database per xdist worker; it uses unbuffered Python output and a 15-minute job budget so a slow
-test remains diagnosable. The
-subset includes agent attribution, managed API-key lifecycle and concurrency, credential health,
-local-run reporting and ads-conversion coverage so naive-UTC assumptions are exercised by asyncpg
-rather than hidden by SQLite's permissive adapter.
+## Lightweight CLI
 
-The required `gitleaks` job scans the complete history reachable from checked-out `HEAD` with
-`--log-opts="HEAD"`. On pull requests, checkout supplies the merge commit, so both the base and
-proposed branch histories are included. Deleted secrets remain detectable; unrelated fetched
-branch tips do not block this PR. Detection rules and allowlists are unchanged.
+- The lightweight CLI contract forbids *direct* server-extra imports from the named modules.
+  Indirect imports are allowed because optional proxy dependencies load lazily inside internal
+  modules; `TYPE_CHECKING` imports are excluded because they never load at runtime.
+- The two lazy, function-local server imports (`treg.cli -> cryptography` for the optional proxy,
+  `treg.localrun -> sqlmodel` for the server-side grant path) are in `ignore_imports`, with unmatched
+  ignores raised as errors so a renamed edge cannot leave a stale exception.
+- An ignore covers a whole module edge, so it cannot catch either import moving to module scope.
+  `tests/test_import_lightness.py` closes that gap by importing every lightweight module in a fresh
+  subprocess and asserting no server dependency root is loaded.
+- `treg.domain.asynctasks` is a stdlib-only leaf shared with the light CLI (`cli.await_async_task`
+  uses its terminal classification) so the CLI awaiter and the settlement worker cannot disagree
+  about what "done" means. It is on the lightness list as well as under its contract.
+- `treg.routers.views` is response shape the server renders and the light CLI prints: stdlib and
+  `toon_format` only, so it is on the lightweight contract, and so is `treg.routers` itself, whose
+  `__init__` the CLI imports on the way. The server glue that runs those views is
+  `treg.routers.view`, outside the contract.
+- The R2 SDK (`obstore`) ships only in `[server]`; `infra.object_store.open_r2` loads it lazily.
 
-Stage 1 activated the first two contracts:
+## Why some contracts look stricter than needed
 
-- The explicit lightweight CLI module list cannot directly import any server-extra package, including
-  FastAPI, SQLModel, SQLAlchemy, Alembic, database drivers, MCP, Stripe, or cryptography. Imports guarded
-  by `TYPE_CHECKING` are excluded globally because they cannot load at runtime. Indirect imports are
-  allowed by this contract because optional proxy dependencies may appear in lazily executed internal
-  modules; the named CLI modules themselves must remain free of direct server imports.
-- `treg.domain.money` cannot import `treg.audit`. Money correctness never flows through the best-effort audit
-  path, whose writes may be shed under load.
+- `treg.domain.money` cannot import `treg.audit`: money correctness must never flow through the
+  best-effort audit path, which drops rows under load.
+- The catalog contract forbids `treg.oauth_providers` because that module imports
+  `domain.connections`, and the indirect-import allowance would otherwise let the catalog reach a
+  sibling domain unseen. Provider display names arrive through
+  `bootstrap.configure_provider_labels` instead.
+- `treg.domain.plugins` holds a provider's pure functions that catalog rows name
+  ([catalog-schema](catalog-schema.md)). Replay runs them, so its contract forbids every I/O path:
+  models, infra, config and the network, database and storage clients. The catalog domain calls
+  them when a row's outcome rule names one (`domain.catalog.outcome`), the one sanctioned edge into
+  this domain.
+- Domain contracts exist only for packages that exist; do not add placeholder domains to make a
+  future boundary look active.
 
-Stage 2 adds a third contract: the complete `treg.routers` package cannot import `treg.api`, directly or
-indirectly. `as_packages = true` makes the source cover every current and future router submodule.
-`api.py` remains the compatibility exporter and ordered route-table host, so the allowed direction is
-API to routers.
+## Guards in tests
 
-The async-task domain has the same inward-only boundary as capacity: it may not import API, routers,
-application orchestration or best-effort audit. `tests/test_call_architecture.py` pins the rule and a
-mutation proving the guard rejects a forbidden edge.
+`tests/test_call_architecture.py` pins what import-linter cannot: the call runtime's write
+allowlist, and that the money primitives used inside a call transaction never `db.commit` or
+`db.rollback` (the lazy stale-hold reap keeps its own committing boundary). Both carry mutation
+self-checks. The allowlist includes the archive body PUT and the post-relay provider-resource
+ownership writes because each must be made by the call that received the provider's successful
+response, outside any DB transaction.
 
-Stage 3 adds domain contracts as packages appear. The complete `treg.domain.identity` package cannot import
-`treg.api`, `treg.routers`, or `treg.application`. Identity now owns session signing and validation,
-MCP token and grant-family primitives, and caller/access resolution as a leaf. Sibling-domain
-edges are added when the sibling appears; identity therefore also forbids governance. Governance may
-import identity but cannot import the API, routers, or application layer. Future sibling contracts remain
-absent until their packages exist, so no placeholder domain makes a future boundary look active.
-Governance owns shared tool/project ACLs, tag-budget rules, and public-demo rate policy. The package also
-forbids direct FastAPI and Starlette imports; semantic policy errors are translated by each HTTP interface.
-The call application package owns the framework-neutral staged use case: request intake, idempotency
-state, target resolution, catalog pricing and access decisions, authorization, reservation, relay
-orchestration, and finalization. The HTTP adapter captures a `CallInput`, translates typed failures, and
-wraps the returned `UpstreamResponse`. Client-name normalization lives in a neutral leaf so the application path does not
-load the Request-aware caller metadata adapter.
-
-The complete `treg.domain.connections` package is also an inward-facing domain package. It owns
-provider-neutral authorization-method selection, consent URL construction, and refresh state changes.
-It cannot import the API, bootstrap, routers, application layer, FastAPI, or Starlette. Provider registry
-data can call these rules through the legacy compatibility modules, while HTTP exchange adapters stay in
-`treg.infra` and workflow coordination stays in `treg.application`.
-
-Two runtime contracts keep that boundary executable. `treg.application.call` cannot import the legacy
-API, bootstrap, routers, FastAPI, or Starlette. `treg.infra.upstream` cannot import those HTTP adapters
-or frameworks. Direct imports of the application-owned request and response DTOs remain the port shared
-by the use case and relay. Mutation tests inject representative forbidden edges and assert detection.
-The same test module also pins the money transaction boundary: all five `domain/money` primitives
-(the reserve/settle/release staged bodies plus `grant` and `topup`) are scanned for `db.commit` /
-`db.rollback` and must stage only, with a mutation self-check that an injected commit is detected;
-the lazy stale-hold reap keeps its documented independent committing boundary.
-
-Two direct edges are precise exceptions. `cli.ensure_proxy_dependency` imports `cryptography` only after
-the user invokes the optional proxy feature and offers to install the proxy extra first.
-`localrun.render_grant` imports SQLModel only when the server executes the grant path. Import Linter treats
-function-local imports as ordinary direct edges, so both appear in `ignore_imports`; unmatched ignores are
-errors, ensuring a removed or renamed edge cannot leave a stale exception behind.
-
-An ignore covers an entire module edge and therefore cannot detect someone moving either lazy import to
-module scope. `tests.test_import_lightness` closes that gap by starting an isolated Python subprocess,
-importing every lightweight module, and asserting that no server dependency root appears in `sys.modules`.
-Base dependencies such as httpx and questionary remain allowed.
-
-The async task domain (`treg.domain.asynctasks`) is a **stdlib-only leaf shared with the light
-CLI**: `cli.await_async_task` imports its `json_path`, `classify_terminal` and `artifact` so the
-awaiter and the settlement worker can never disagree about what "done" means. Two guards keep it
-light: the module is on `test_import_lightness`'s list, and an import-linter contract forbids it
-every server root (`treg.models`, `treg.infra`, `treg.config`, SQLModel, pydantic, yaml, httpx).
-
-The capacity domain (`treg.domain.capacity`, plan step B) is a leaf like identity: it cannot import
-`treg.api`, `treg.routers`, `treg.application`, `treg.bootstrap`, `treg.audit`, FastAPI or Starlette.
-It reads config and writes only its own tables and ratestore keys, from worker-profile commands
-(`treg-worker`, a separate console script so the light `treg` CLI never gains a DB import). The call
-application imports the capacity domain inward (`resolve` → `view`, `settle` → `signatures`/`marks`);
-the domain never imports back; `application.call.overflow` composes the capacity domain, the
-aggregator envelopes and the money primitives, and the aggregator adapters stay pure envelope code;
-`routers.catalog` reads the capacity domain's `routes_view` for the overflow price disclosure (a read
-of the worker-owned table through the same in-process copy the call path uses, never a write);
-`application.call.route` reads both capacity views before planning so an exhausted provider with an
-enabled overflow route reaches the ordinary child ladder, and composes the pure
-`domain.catalog.routing` package (contracts, adapters, ranking) with the call use case itself. The
-aggregator envelopes live under `treg.infra.upstream.aggregators` and inherit the upstream contract
-(no HTTP adapters, no routers); the capacity domain's `verify` module may import them because they are
-pure envelope code, not a web framework.
-
-The feedback domain (`treg.domain.feedback`) owns durable report inserts and queries. Its contract
-forbids direct imports of API, bootstrap, routers, application orchestration, sibling domains,
-best-effort audit, FastAPI, and Starlette. Shared models and SQLAlchemy remain available; transaction
-commits and call-reference verification belong to `treg.application.feedback`.
+The `test-postgres` CI job runs a database-sensitive subset on Postgres because SQLite's permissive
+adapter hides naive-UTC datetime mistakes that asyncpg rejects.

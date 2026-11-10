@@ -14,12 +14,15 @@ import { groupBest, jobGroups } from '../state/find.js'
 //
 // The examples are the jobs the landing and use-case pages sell (/people-search, /ugc, /use-cases/*),
 // one each, shortened from those pages' own prompts. Keep each one a strong fit on /catalog/find.
+// Visitors paste these straight into an agent, so each is a small first pass: a count instead of
+// "every", and one job an agent finishes in a few calls. Jobs about the visitor's own brand keep
+// "my" and "our"; the agent answers them from the visitor's context, and that is the pitch.
 const EXAMPLES = [
-  'Find heads of growth at US SaaS companies and their work emails',
-  'Show me every ad Notion is running on Meta right now',
-  'Keywords stripe.com ranks for on Google',
-  'Make a talking UGC video ad for my product',
-  'What is Reddit saying about our pricing?',
+  'Find 10 heads of growth at US SaaS companies with their work emails',
+  'The 10 latest ads Notion runs on Meta',
+  'Top 20 Google keywords for stripe.com',
+  'A 5-second UGC video for my product',
+  'Top 10 Reddit posts about our pricing',
   'Does ChatGPT mention my brand?',
 ]
 const LAND = 'transform .8s cubic-bezier(.3,1.2,.4,1)'
@@ -46,7 +49,8 @@ export default {
     litVendors(){ return this.byVendor ? new Set() : new Set(this.find.rows.map(r=>'v:'+r.provider)); },
     // A described job is answered by vendor: one card per vendor, best fit first, under the
     // vendor's own logo, listing the jobs that vendor sells here. A platform's name ("google") asks
-    // what is on those platforms, so it is answered by platform; a vendor's name ("hunter") by vendor.
+    // what is on those platforms, so it is answered by platform; a vendor's name ("hunter") by vendor;
+    // a model's name ("seedance") by the platforms that carry it.
     byVendor(){ return this.find.verdict!=='name' || this.find.named==='provider'; },
     // Where tiles land (pile keys): `logo`, the card's logo place, takes the vendor's tile on a
     // vendor card and the platform's on a platform card; `mark`, beside the platform name, takes
@@ -63,6 +67,8 @@ export default {
         return {...c, jobs:jobGroups(c.rows), logo:byVendor ? 'v:'+c.slug : 'p:'+c.platform, mark};
       });
     },
+    // Jobs whose vendors the server folded away (a job under the strong cut shows its first five).
+    folded(){ return this.byVendor ? jobGroups(this.find.rows).filter(g=>g.hidden) : []; },
     reading(){
       return this.findBusy ? new Set([...this.findCandidatePlatforms.map(s=>'p:'+s), ...this.findCandidateVendors.map(s=>'v:'+s)]) : new Set();
     },
@@ -129,7 +135,6 @@ export default {
       this.findRun(q);
     },
     pick(ex){ this.text=ex; this.ask(); },
-    // Back to the empty page: the answer goes, its tiles fall back into the pile.
     exit(){
       this.text='';
       history.replaceState(history.state, '', '/search');
@@ -289,8 +294,7 @@ export default {
     },
     // A job line's corner: its price, and on a platform card how many vendors sell it.
     jobMeta(g){
-      const n=this.findProviders(g).length;
-      return [!this.byVendor && n+' provider'+(n===1?'':'s'), this.findPrice(g)].filter(Boolean).join(' · ');
+      return [!this.byVendor && this.findProvidersText(g), this.findPrice(g)].filter(Boolean).join(' · ');
     },
   },
 }
@@ -308,10 +312,12 @@ export default {
       <button class="btn sm" type="button" @click="ask()">Try again</button></div>
 
     <div v-else-if="!cards.length" class="sp-panel sp-msg">
-      <p><b>Nothing in the catalog does this yet.</b>
+      <p v-if="find.verdict==='none' && find.reason"><b>{{findNoneText()}}</b>
+        <template v-if="find.reason==='gap'"> Tell us what you need and it steers what gets added next.</template></p>
+      <p v-else><b>Nothing in the catalog does this yet.</b>
         <template v-if="find.verdict==='none'"> We read {{find.read}} candidate{{find.read===1?'':'s'}} and none fit.</template>
         Tell us what you need and it steers what gets added next.</p>
-      <button class="btn sm primary" type="button" @click="findRequestTool()">Request this tool</button>
+      <button v-if="find.reason!=='not_task'" class="btn sm primary" type="button" @click="findRequestTool()">Request this tool</button>
     </div>
 
     <div v-else class="sp-panel" ref="panel" @scroll.passive="onPanelScroll">
@@ -356,6 +362,10 @@ export default {
           <span v-if="c.jobs.length>3" class="sp-more">+{{c.jobs.length-3}} more</span>
         </article>
       </div>
+      <!-- A job that only came close shows its first vendors; the rest are one step away, on its shelf. -->
+      <p v-for="(g, gi) in folded" :key="g.key" class="sp-folded">
+        {{g.hidden}} more provider{{g.hidden===1?'':'s'}} for <b>{{g.label}}</b>.
+        <button type="button" @click="openJob(g, gi, g)">See them all</button></p>
     </div>
   </section>
 
@@ -451,6 +461,11 @@ html.sp-lock,html.sp-lock body{overflow:hidden;overscroll-behavior:none}
 .sp-plat small{font-size:12px;color:var(--l-muted);display:flex;align-items:center;gap:6px}
 .sp-plat:hover .sp-vendor{text-decoration:underline;text-underline-offset:3px}
 .sp-more{font-size:12px;color:var(--l-muted)}
+.sp-folded{margin:12px 2px 0;font-size:13px;color:var(--l-muted)}
+.sp-folded b{color:var(--l-ink);font-weight:500}
+.sp-folded button{border:0;background:none;padding:0;font:inherit;color:var(--l-ink);cursor:pointer;
+  text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--l-line2)}
+.sp-folded button:hover{text-decoration-color:currentColor}
 .sp-fit{font-family:var(--mono);font-size:11.5px;padding:2px 9px;border-radius:999px;background:var(--l-inverse);color:var(--l-inverse-ink);font-variant-numeric:tabular-nums}
 .sp-card.weak .sp-fit{background:none;color:var(--l-muted);border:1px solid var(--l-line2)}
 .sp-card ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}

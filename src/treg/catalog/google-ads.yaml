@@ -47,6 +47,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'included with the connected account; the Google Ads API charges nothing but enforces per-developer-token daily operation limits (a Basic-access token is capped at 15,000 operations/day)'}
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-ads.accounts.json
     docs_url: https://developers.google.com/google-ads/api/rest/reference/rest/v25/customers/listAccessibleCustomers
 
@@ -71,6 +72,7 @@ endpoints:
       pathParams: {customer_id: "2277522568"}
       body: {query: "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-ads.query.json
     docs_url: https://developers.google.com/google-ads/api/docs/query/overview
 
@@ -107,6 +109,7 @@ endpoints:
         keywordPlanNetwork: "GOOGLE_SEARCH"
         pageSize: 3
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-ads.google.keywords.ideas.json
     docs_url: https://developers.google.com/google-ads/api/rest/reference/rest/v25/customers/generateKeywordIdeas
 
@@ -138,6 +141,7 @@ endpoints:
         language: "languageConstants/1000"
         keywordPlanNetwork: "GOOGLE_SEARCH"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-ads.google.keywords.volume.json
     docs_url: https://developers.google.com/google-ads/api/rest/reference/rest/v25/customers/generateKeywordHistoricalMetrics
 
@@ -167,6 +171,7 @@ endpoints:
         operations: [{update: {resourceName: "customers/2277522568/campaignBudgets/15467408112", amountMicros: "30000000"}, updateMask: "amountMicros"}]
         validateOnly: true
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-ads.budget.update.json
     docs_url: https://developers.google.com/google-ads/api/rest/reference/rest/v25/customers/campaignBudgets/mutate
 

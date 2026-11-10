@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 313,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": [
+      "module: step module: 2 null fields across 12 items",
+      "module: etsy-search: 'ceramic mug' page 1 · 12 listings"
+    ]
+  },
+  "recipe": "etsy-search",
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://www.etsy.com/search?q=ceramic+mug"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 188,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 2,
+  "rows": [
+    {
+      "bestseller": false,
+      "currency": "USD",
+      "free_shipping": false,
+      "image": "https://i.etsystatic.com/62076013/r/il/f6213d/7604164005/il_255x319.7604164005_tuph.jpg",
+      "listing_id": "4433701306",
+      "price": "$28.60",
+      "rating": 4.9,
+      "reviews": 153,
+      "shop": "ClayHueMugs",
+      "title": "Custom Name Blue Striped Ceramic Travel Mug with Lid, Handmade Ceramic Mug, Ceramic To Go Mug, Travel Mug, Ceramic Tumbler, Birthday Gift",
+      "url": "https://www.etsy.com/listing/4433701306/custom-name-blue-striped-ceramic-travel"
+    },
+    {
+      "bestseller": false,
+      "currency": "USD",
+      "free_shipping": true,
+      "image": "https://i.etsystatic.com/5855415/r/il/27d5bf/4535708269/il_255x319.4535708269_49vd.jpg",
+      "listing_id": "1371848548",
+      "price": "$35.00",
+      "rating": 5.0,
+      "reviews": 3900,
+      "shop": "Neherpottery",
+      "title": "Handmade Ceramic Mug - Large Size",
+      "url": "https://www.etsy.com/listing/1371848548/handmade-ceramic-mug-large-size"
+    }
+  ]
+}

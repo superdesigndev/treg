@@ -2,10 +2,10 @@
 page_id: p5
 slug: /use-cases/company-research-for-ai-agents/
 seo_title: "Company Research: Funding, Headcount and Leadership | treg.to"           # 57
-meta_description: "Let your agent search companies and pull funding, headcount and leadership through one key. Eleven providers, from free to $0.38 a record."  # 145
+meta_description: "Let your agent search companies and pull funding, headcount and leadership through one key. Eleven providers, from free to $0.10 a record."  # 145
 h1: "Company Research: Funding, Headcount and Leadership"
 hub_title: "Company data & funding"
-hub_blurb: "Search companies, then pull funding, headcount and leadership. Eleven providers, free to $0.38 a record."
+hub_blurb: "Search companies, then pull funding, headcount and leadership. Eleven providers, free to $0.10 a record."
 price_old: "$398/mo"
 price_old_label: "Crunchbase + Diffbot, at list"
 price_new: "$0.102"
@@ -17,17 +17,8 @@ seo_terms:
     - "funding data api without subscription"
     - "company funding data api"
     - "firmographic api per call"
-ad_keywords:
-  - "crunchbase api alternative"
-  - "company data api"
-  - "funding data api"
-  - "firmographic data api"
-  - "buying intent data api"
 capabilities: [companies.search, companies.enrich, people.enrich]
 facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-42, F-50, F-51, F-80, F-92]
-hypothesis: "Sits on the catalog's strongest data: 11 providers, 200x spread. Predict the highest week-2 repeat-call rate of the five."
-verify_after: 2026-08-31
-status: proof populated from real runs 2026-08-17 ($0.10188) · funding proven, activity signals blocked by a platform bug · revised against 30-day telemetry 2026-08-17
 ---
 
 # Page 5: Company and buying-signal intelligence
@@ -43,7 +34,7 @@ Using treg, find 50 AI infrastructure companies that raised a Series A in the la
 12 months. Pull their funding history, headcount and leadership team.
 ```
 
-**Company search from free to $0.38/record** (11 providers), **funding history from $0.10/company**. Pay per lookup.
+**Company search from free to $0.10/record** (11 providers), **funding history from $0.10/company**. Pay per lookup.
 
 **[ Start Free ]**   **[ Paste llms.txt ]**
 
@@ -55,7 +46,7 @@ Using treg, find 50 AI infrastructure companies that raised a Series A in the la
 
 | | The old way | With treg |
 |---|---|---|
-| **What you pay for** | Crunchbase $99/mo + Diffbot $299/mo, whether you run a search this month or not | One prepaid balance. Company search starts at free and tops out at $0.38 a record |
+| **What you pay for** | Crunchbase $99/mo + Diffbot $299/mo, whether you run a search this month or not | One prepaid balance. Company search starts at free and tops out at $0.10 a record |
 | **Keys** | An account and a contract per data vendor, most of them annual | One treg token. Every tool in the catalog answers to it |
 | **Picking a provider** | You buy one and find out afterwards whether it covers your market | `catalog get` puts all eleven side by side with price, measured success rate and median speed |
 | **Commitment** | Annual data contracts to answer a question that changes every quarter | No subscription. Test coverage for cents before committing to anything |
@@ -86,21 +77,21 @@ in the catalog:
 | **Coresignal** | free: returns ids; cost lands on the read | not yet measured |: |
 | **Hunter Discover** | free | 100% (24 calls) | 1.7 s |
 | **The Companies API** | $0.0019, or free with `simplified=true` | 100% (339 calls) | 0.3 s |
-| **Lusha** | $0.004992 per 25 results | not yet measured |: |
+| **Lusha** | $0.1248 per 25 results | not yet measured |: |
 | **LeadMagic** | $0.025 | 70% (10 calls) | 3.2 s |
 | **Apollo** | $0.026 per page | not yet measured |: |
 | **Diffbot** | $0.0299 | 100% (5 calls) | 0.7 s |
-| **PDL** | $0.38 | not yet measured |: |
+| **PDL** | $0.10 | not yet measured |: |
 | **Crunchbase** | own key only, no per-call price | not yet measured |: |
 
-**A 200× spread for the same job, and three of the eleven are free.** That table does not exist anywhere
+**A 50× spread for the same job, and three of the eleven are free.** That table does not exist anywhere
 else, because building it means holding accounts with all eleven.
 
 **It pulls the detail.** Funding history at $0.10 a company with LeadMagic; company enrichment at
 $0.026 with Apollo or $0.392 with Coresignal; the LinkedIn company page: headcount, leadership, location,
 at $0.00188.
 
-**It finds the people attached to the signal.** Person enrichment from $0.025, so the output is a
+**It finds the people attached to the signal.** Person enrichment from $0.0005, so the output is a
 company, a reason to talk to them, and who to talk to.
 
 > **Read this before you build on it.** Coverage differs sharply by provider and by company size: see the
@@ -217,7 +208,7 @@ new leadership. A quiet month costs almost nothing.
 
 **Why not just call the providers directly?**
 Because the answer to "which company data provider should I buy" is genuinely unknown until you test it
-against your own market: coverage differs far more than price does, and the price differs by 200×. Buying
+against your own market: coverage differs far more than price does, and the price differs by 50×. Buying
 one to find out is the expensive way. Testing all eleven for a few cents is not. If you already pay for
 one, connect it and those calls route through your key, unmetered. treg.to is closer to OpenRouter for
 agent tools than to a data vendor: one base URL, one token, many providers behind it.
@@ -235,8 +226,8 @@ treg.to.)*
 **What happens if a provider fails?**: `S-OBJ-FAILURE`
 
 **How much does a call cost?**
-Company search is free with three of the eleven providers and $0.38 a record at the top end. Funding
-history is $0.10 a company; person enrichment from $0.025. The exact price is
+Company search is free with three of the eleven providers and $0.10 a record at the top end. Funding
+history is $0.10 a company; person enrichment from $0.0005. The exact price is
 shown before the call, and treg.to adds no markup. New teams start with $1.00 of free credit.
 
 **Is there a Crunchbase MCP?**
@@ -275,49 +266,4 @@ models, no.
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `Company Data, Per Record` | 24 |
-| `11 Providers, One Key` | 21 |
-| `Funding + Hiring Signals` | 24 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Funding, hiring, headcount and leadership through one key. From free to $0.38 a record.` | 87 |
-| `Compare 11 company data providers before you buy one. $1.00 free, no subscription.` | 82 |
-
-### Creator video hooks
-1. "Eleven providers sell company data. Three of them are free. Here's the price table nobody publishes."
-2. "Before you pay $99 a month for company data, test whether it covers your market for eight cents."
-3. "I asked my agent which AI companies raised or hired this quarter, and who to talk to."
-
-### X post hook
-`"Search companies by size and funding" is one job with 11 providers behind it: free, $0.0019, $0.026, $0.38 a record. Same job, 200x spread. Most people buy the first one they hear of.`
-
-### High-intent keyword phrases
-`company data api pay per record` · `funding data api` · `firmographic api for developers` ·
-`crunchbase api alternative pricing`
-
-### Negative keywords
-`free company lookup` · `companies house` · `register a company` · `jobs` · `stock` · `ticker` ·
-`annual report` · `credit score` · `whois` · `business plan`
-
-### Demonstration a creator can reproduce
-Run `treg catalog get apollo.companies.search` on camera and let the sibling table render: eleven
-providers, prices, success rates, sample sizes. That single screen is the most persuasive thing treg.to
-has, and no competitor can film it.
-
-### Measurable hypothesis
-This vertical sits on the catalog's strongest and best-measured data, and company research is recurring
-work rather than a one-off. Predict the **highest week-2 repeat-call rate** of the five. Repeat calls
-matter more than first calls here: a page that produces one call and silence is worse than a page with
-half the signups and a second call in week two.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-21` `F-42` `F-50`
-`F-51` `F-80`: defined in `_facts.md`, verified 2026-08-17.
+Campaign material is maintained in treg-internal.

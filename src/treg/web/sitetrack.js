@@ -2,10 +2,9 @@
 // with `{POSTHOG_KEY}` / `{POSTHOG_HOST}` substituted server-side (empty key = analytics off) and
 // loaded by EVERY public page (landing, use-case pages, resources, the SPA).
 //
-// Why this exists: the landing page had no analytics at all, so a visitor's first hop (the one
-// carrying `utm_*` and the referrer) was invisible — PostHog first saw them on /app after the OAuth
-// round-trip, as "$direct". And the signup doors persisted only Google click ids. The result was
-// zero source attribution for a campaign we paid for. Two fixes, one script:
+// Why this exists: without it a visitor's first hop (the one carrying `utm_*` and the referrer) is
+// invisible - PostHog first sees them on /app after the OAuth round-trip, as "$direct". Two parts,
+// one script:
 //
 //   1. A first-party `treg_utm` cookie: first touch wins (never overwritten), 90 days, carrying
 //      utm_source|medium|campaign|term|content|referring-host. The signup POST carries it to the

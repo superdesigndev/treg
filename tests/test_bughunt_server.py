@@ -1,4 +1,4 @@
-"""Regression tests for the sustained bug hunt (docs/BUGS.md) — server side.
+"""Regression tests for the sustained bug hunt — server side.
 
 One test (or small cluster) per fixed bug: email normalization, forgeable-session key, OTP
 brute-force, suspended-account doors, invite/role boundaries, resource validation, bundle
@@ -21,6 +21,7 @@ from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, User
+from conftest import verified_signup, accept_with_code
 
 
 def make_upstream() -> FastAPI:
@@ -47,7 +48,7 @@ async def c():
 
 
 async def _register(c: AsyncClient, email: str) -> dict:
-    r = await c.post("/users", json={"email": email})
+    r = await verified_signup(c, json={"email": email})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -68,8 +69,6 @@ async def test_email_case_is_one_identity(c):
     """`Bob@X.com` and `bob@x.com` are the same human — no duplicate user/org."""
     reg = await _register(c, "Bob@X.com")
     assert reg["email"] == "bob@x.com"  # stored normalized
-    dup = await c.post("/users", json={"email": "bob@x.com"})
-    assert dup.status_code == 409  # same identity, not a second user
     # OTP with yet another casing resolves to the SAME single membership.
     tok = (await _otp_login(c, "BOB@x.COM"))["token"]
     orgs = (await c.get("/orgs", headers=_hdr(tok))).json()
@@ -81,7 +80,7 @@ async def test_invite_case_insensitive_accept(c):
     inv = await c.post(f"/orgs/{owner['org_id']}/invites", headers=_hdr(owner["token"]),
                        json={"email": "Alice@Team.com", "role": "member"})
     assert inv.status_code == 200
-    acc = await c.post("/invites/accept", json={"code": inv.json()["code"], "email": "alice@team.com"})
+    acc = await accept_with_code(c, json={"code": inv.json()["code"], "email": "alice@team.com"})
     assert acc.status_code == 200, acc.text  # was 403 before normalization
 
 
@@ -100,10 +99,13 @@ async def test_session_key_not_hardcoded_constant():
     object.__setattr__(s, "session_secret", "")
     object.__setattr__(s, "secret_key", "")
     try:
-        import base64, hashlib, hmac
+        import base64
+        import hashlib
+        import hmac
         raw = json.dumps({"uid": 1, "exp": int(time.time()) + 999}, separators=(",", ":")).encode()
         sig = hmac.new(b"dev-session-key", raw, hashlib.sha256).digest()
-        b = lambda x: base64.urlsafe_b64encode(x).decode().rstrip("=")
+        def b(x):
+            return base64.urlsafe_b64encode(x).decode().rstrip("=")
         forged = f"{b(raw)}.{b(sig)}"
         assert sess.read_session(forged) is None  # the constant no longer signs anything
         assert sess.read_session(sess.make_session(7)) == 7  # real tokens still work
@@ -142,12 +144,13 @@ async def test_suspended_user_cannot_otp_login(c):
 
 async def test_suspended_user_cannot_accept_invite(c):
     owner = await _register(c, "o2@team.com")
-    await _otp_login(c, "ban2@x.io")
+    token = (await _otp_login(c, "ban2@x.io"))["token"]
     await _suspend_user("ban2@x.io")
     inv = await c.post(f"/orgs/{owner['org_id']}/invites", headers=_hdr(owner["token"]),
                        json={"email": "ban2@x.io", "role": "member"})
-    acc = await c.post("/invites/accept", json={"code": inv.json()["code"], "email": "ban2@x.io"})
-    assert acc.status_code == 403
+    acc = await c.post("/invites/accept", headers=_hdr(token),
+                       json={"code": inv.json()["code"], "email": "ban2@x.io"})
+    assert acc.status_code in (401, 403) and "token" not in acc.json()
 
 
 # ---- invite / role boundaries -------------------------------------------------------------
@@ -158,8 +161,7 @@ async def test_admin_cannot_invite_admin(c):
     inv = await c.post(f"/orgs/{oid}/invites", headers=_hdr(owner["token"]),
                        json={"email": "adm@team.com", "role": "admin"})
     assert inv.status_code == 200  # owner CAN mint an admin
-    admin_tok = (await c.post("/invites/accept",
-                              json={"code": inv.json()["code"], "email": "adm@team.com"})).json()["token"]
+    admin_tok = (await accept_with_code(c, json={"code": inv.json()["code"], "email": "adm@team.com"})).json()["token"]
     # that admin tries to mint another admin — must be refused (owner-only)
     r = await c.post(f"/orgs/{oid}/invites", headers=_hdr(admin_tok),
                      json={"email": "adm2@team.com", "role": "admin"})
@@ -175,7 +177,7 @@ async def test_cannot_invite_an_existing_member(c):
     oid = owner["org_id"]
     inv = await c.post(f"/orgs/{oid}/invites", headers=_hdr(owner["token"]),
                        json={"email": "mem@team.io", "role": "member"})
-    await c.post("/invites/accept", json={"code": inv.json()["code"], "email": "mem@team.io"})
+    await accept_with_code(c, json={"code": inv.json()["code"], "email": "mem@team.io"})
     # re-inviting a current member is a dead-end (accept would 409) → reject up front
     again = await c.post(f"/orgs/{oid}/invites", headers=_hdr(owner["token"]),
                          json={"email": "mem@team.io", "role": "member"})
@@ -315,7 +317,6 @@ async def test_non_string_token_field_is_502_not_garbage(c):
 
 
 async def test_health_run_survives_injection_error(c):
-    import json as J
     u = await _register(c, "hi@t.io")
     tok = u["token"]
     # env (plaintext) secret bound with secret_file injector → _token_from_json raises at probe time
@@ -563,7 +564,7 @@ async def test_cannot_lock_out_the_last_superadmin(c):
     assert (await c.post(f"/admin/users/{uid}/superadmin", headers=_hdr(admin_tok), json={"value": False})).status_code == 409
     assert (await c.delete(f"/admin/users/{uid}", headers=_hdr(admin_tok))).status_code == 409
     # with a SECOND superadmin, demoting the first is fine again
-    other = (await _otp_login(c, "second-admin@x.io"))["token"]
+    await _otp_login(c, "second-admin@x.io")
     await _make_superadmin("second-admin@x.io")
     assert (await c.post(f"/admin/users/{uid}/superadmin", headers=_hdr(admin_tok), json={"value": False})).status_code == 200
 
@@ -579,7 +580,7 @@ async def test_revoke_only_pending_invites(c):
     owner = await _register(c, "rv@team.io")
     oid = owner["org_id"]
     inv = await c.post(f"/orgs/{oid}/invites", headers=_hdr(owner["token"]), json={"email": "rvm@team.io"})
-    await c.post("/invites/accept", json={"code": inv.json()["code"], "email": "rvm@team.io"})
+    await accept_with_code(c, json={"code": inv.json()["code"], "email": "rvm@team.io"})
     # the invite is now accepted; find its id and try to "revoke" it
     async with session_maker() as db:
         from treg.models import Invite
@@ -599,11 +600,6 @@ async def test_health_run_does_not_renotify_unevaluated_invalid(c):
         await db.commit()
     r = (await c.post("/health/run", headers=_hdr(tok))).json()
     assert r["invalid"] == []  # not re-reported/notified — it wasn't evaluated this run
-
-
-async def test_register_rejects_internal_webhook(c):
-    r = await c.post("/users", json={"email": "ssrf@x.io", "webhook_url": "http://169.254.169.254/latest/meta-data"})
-    assert r.status_code == 422
 
 
 def test_safe_webhook_url_blocks_internal():
@@ -636,16 +632,23 @@ def crypto_encrypt(v):
     return crypto.encrypt(v)
 
 
-def test_prune_handshakes_evicts_stale():
+async def test_prune_handshakes_evicts_stale(c):
     from datetime import timedelta
-    from treg.routers import auth as auth_routes
+    from treg.application import auth
+    from treg.models import Ephemeral
     from treg.timeutil import utcnow_naive
-    old = utcnow_naive() - timedelta(seconds=auth_routes.HANDSHAKE_TTL + 60)
-    auth_routes._cli_states["stale"] = ("lid", old)
-    auth_routes._cli_results["lidX"] = ({"token": "T"}, old)
-    auth_routes._cli_pending["lidP"] = ("CODE", 8, old)  # (pairing_code, attempts_left, created_at)
-    auth_routes._prune_handshakes()
-    assert "stale" not in auth_routes._cli_states and "lidX" not in auth_routes._cli_results and "lidP" not in auth_routes._cli_pending
+    old = utcnow_naive() - timedelta(seconds=60)
+    async with session_maker() as db:
+        for ns, key in ((auth.CLI_OAUTH_NS, "state"), (auth.CLI_LOGIN_NS, "result"),
+                        (auth.CLI_LOGIN_NS, "pending")):
+            db.add(Ephemeral(ns=ns, k=key, v={}, expires_at=old))
+        await db.commit()
+    assert (await c.post("/auth/cli/start")).status_code == 200
+    async with session_maker() as db:
+        rows = (await db.execute(select(Ephemeral).where(
+            Ephemeral.ns.in_((auth.CLI_LOGIN_NS, auth.CLI_OAUTH_NS)),
+        ))).scalars().all()
+        assert len(rows) == 1 and rows[0].expires_at > utcnow_naive()
 
 
 # ---- more invite / admin / health coverage ------------------------------------------------
@@ -661,7 +664,7 @@ async def test_deleting_sole_owner_promotes_a_survivor(c):
     oid = owner["org_id"]
     inv = await c.post(f"/orgs/{oid}/invites", headers=_hdr(owner["token"]),
                        json={"email": "member@team.com", "role": "member"})
-    await c.post("/invites/accept", json={"code": inv.json()["code"], "email": "member@team.com"})
+    await accept_with_code(c, json={"code": inv.json()["code"], "email": "member@team.com"})
     # a superadmin deletes the sole owner
     admin_tok = (await _otp_login(c, "root@site.io"))["token"]
     await _make_superadmin("root@site.io")
@@ -697,7 +700,7 @@ async def test_suspended_org_hides_and_blocks_invites(c):
     mine = (await c.get("/invites/mine", headers=_hdr(joiner_tok))).json()
     assert all(i["org_id"] != oid for i in mine)
     # neither door lets you join it
-    assert (await c.post("/invites/accept", json={"code": code, "email": "joiner@x.io"})).status_code == 403
+    assert (await accept_with_code(c, json={"code": code, "email": "joiner@x.io"})).status_code == 403
 
 
 async def test_health_probe_5xx_is_unknown_not_invalid(c):

@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.connections import authorization as connection_authorization
 from ..domain.connections import refresh as connection_refresh
-from ..domain.connections.oauth_flow import consent_url
+from ..domain.connections.oauth_flow import consent_url, is_loopback, pkce_challenge_hex
 from ..infra.db import session_maker
 from ..infra.oauth_exchange import HTTPXOAuthExchangePort
 from ..infra.oauth_refresh import HTTPXOAuthRefreshPort
@@ -79,7 +79,7 @@ def _provider_bindings(provider, secret: Secret) -> list[dict]:
         bindings = [{
             "secret_id": secret.id, "injector": "oauth", "location": "header",
             "name": "Authorization", "format": "Bearer {secret}",
-            "secret_field": provider.call_token_field,
+            "secret_field": _call_token_field(provider, secret),
         }]
     # A provider-required protocol header is a constant-format binding over the same encrypted
     # secret reference. `format` deliberately contains no {secret}: the existing injector stamps
@@ -96,6 +96,14 @@ def _provider_bindings(provider, secret: Secret) -> list[dict]:
             "name": provider.extra_credential_name, "format": "{secret}",
         })
     return bindings
+
+
+def _call_token_field(provider, secret: Secret) -> str:
+    """The blob field a call injects. A derived resource token exists only once a resource is
+    selected; until then the root token keeps the probe and the picker working."""
+    if provider.resource_token_path and not secret.resource_ref:
+        return "access_token"
+    return provider.call_token_field
 
 
 async def _autoprovision_provider_tool(
@@ -288,10 +296,17 @@ def _dig(obj, dotted: str):
     return obj
 
 
+def _refuse_paused(service: str | None) -> None:
+    """A paused provider (TREG_PAUSED_PROVIDERS) takes no new connect and no upstream work on an
+    existing connection; the connection itself is left exactly as it is."""
+    if oauth_providers.is_paused(service):
+        raise ConnectError("provider_paused", oauth_providers.paused_detail(service))
+
+
 class ConnectError(Exception):
     """A framework-neutral connection refusal translated by the HTTP router."""
 
-    def __init__(self, kind: str, detail: str):
+    def __init__(self, kind: str, detail: str | dict):
         self.kind = kind
         self.detail = detail
         super().__init__(kind)
@@ -321,6 +336,18 @@ async def start_oauth_connection(
                 raise ConnectError(
                     "unknown_provider",
                     f"unknown provider {provider_name!r} (known: {known})",
+                )
+            _refuse_paused(provider_name)
+            # A pasted-key provider has no consent screen and no scopes, so the capability lookup
+            # below would fail with "has no capability ''". Name the path that does connect it.
+            if provider.uses_pasted_secret:
+                raise ConnectError(
+                    "pasted_secret_provider",
+                    f"{provider.display_name} is connected with a pasted "
+                    f"{provider.token_label or 'API key'}, not browser consent. Paste it on the "
+                    "dashboard's Connections page, with "
+                    f"`treg connections connect --provider {provider.service}` on an up-to-date "
+                    "CLI (`treg update`), or via POST /connections/token",
                 )
             chosen_capability = capability or provider.connect_default_capability
             try:
@@ -354,6 +381,11 @@ async def start_oauth_connection(
                 auth_params = json.dumps(profile.auth_params)
             if profile.pkce:
                 code_verifier = crypto.new_token()
+            elif profile.pkce_loopback_hex and is_loopback(get_settings().public_url):
+                code_verifier = crypto.new_token()
+                auth_params = json.dumps({**(profile.auth_params or {}),
+                                          "code_challenge": pkce_challenge_hex(code_verifier),
+                                          "code_challenge_method": "S256"})
         elif not (client_id and client_secret):
             raise ConnectError(
                 "invalid_provider",
@@ -372,6 +404,7 @@ async def start_oauth_connection(
             ))).scalars().first()
             if target is None:
                 raise ConnectError("unknown_connection", "unknown connection")
+            _refuse_paused(target.provider)
             if provider_name and target.provider != provider_name:
                 raise ConnectError(
                     "invalid_provider",
@@ -467,6 +500,7 @@ async def complete_oauth_connection(
                 await db.commit()
         return OAuthCallbackOutcome("exchange_failed")
 
+    reselect: tuple[int, str, str] | None = None
     # Phase 2 stores the result and provisions local rows. Re-read the pending row so two callback
     # deliveries cannot create two credentials after both complete their provider requests.
     async with session_maker() as db:
@@ -479,9 +513,7 @@ async def complete_oauth_connection(
             return OAuthCallbackOutcome("done" if pending.status == "done" else "already_failed")
         try:
             # A consent either REPLACES one named connection or ADDS another. `replaces_secret_id` says
-            # which, decided back at /oauth/start where the user's intent was known. This used to
-            # blanket-replace by provider, which fixed the real bug — widening read→write silently made
-            # a second google-search-console row — at the cost of banning a second account entirely.
+            # which, decided back at /oauth/start where the user's intent was known.
             secret = None
             if pending.replaces_secret_id is not None:
                 secret = (await db.execute(select(Secret).where(
@@ -499,6 +531,11 @@ async def complete_oauth_connection(
             else:
                 secret.value = crypto.encrypt(json.dumps(blob))
                 secret.last_error = ""
+                # The new blob has no derived resource token. Unselect the resource so the tool
+                # binds the root token again, then derive the token anew once this commits.
+                if profile and profile.resource_token_path and secret.resource_ref:
+                    reselect = (secret.id, secret.resource_ref, secret.resource_name)
+                    secret.resource_ref, secret.resource_name = "", ""
             secret.provider = pending.provider or ""
             secret.authorization_method = pending.authorization_method or ""
             # granted_scopes stays canonically SPACE-joined whatever dialect went over the wire, so the
@@ -533,7 +570,36 @@ async def complete_oauth_connection(
             pending.status, pending.detail = "error", "connection storage failed"
             await db.commit()
             return OAuthCallbackOutcome("exchange_failed")
+    if reselect is not None:
+        await _reselect_after_reconnect(*reselect, org_id=pending.org_id,
+                                        client_factory=client_factory, provider=profile)
     return OAuthCallbackOutcome("connected")
+
+
+async def _reselect_after_reconnect(
+    secret_id: int, resource_ref: str, resource_name: str, *, org_id: int, client_factory,
+    provider,
+) -> None:
+    """Derive the selected resource's call token from a reconnected grant.
+
+    When the new grant no longer reaches the resource, the connection stays on its root token
+    and asks for a new selection instead of keeping a binding with nothing behind it."""
+    try:
+        await select_connection_resource(
+            secret_id=secret_id, resource_ref=resource_ref, resource_name=resource_name,
+            org_id=org_id, client_factory=client_factory,
+        )
+    except Exception as exc:  # noqa: BLE001 - the reconnect already committed; report, don't 500
+        print(f"[oauth] reselecting the resource after reconnect failed: {exc}")
+        async with session_maker() as db:
+            secret = await _owned_connection(secret_id, org_id, db)
+            secret.health_status = "setup_required"
+            secret.health_detail = (
+                f"Reconnected, but the selected {provider.resource_label} is no longer "
+                f"reachable. Select a {provider.resource_label} again."
+            )
+            secret.health_checked_at = _utcnow_naive()
+            await db.commit()
 
 
 async def connect_with_pasted_secret(
@@ -542,18 +608,18 @@ async def connect_with_pasted_secret(
     provider = oauth_providers.get(provider_name)
     if provider is None or not provider.uses_pasted_secret:
         raise ConnectError("invalid_token_provider", "this provider is connected by consent, not a token")
+    _refuse_paused(provider_name)
     token = raw_token.strip()
     if not token:
         raise ConnectError("invalid_token", f"{provider.token_label or 'Token'} is required")
     # HTTP Basic providers (DataForSEO, Moz) take a pasted `login:password`; store the Base64 blob so
     # `Basic {secret}` renders the same at connect and on every proxy call. Both dashboards ALSO hand
-    # out a ready-made Base64 credential, and users paste that at least as often as the raw pair —
-    # encoding it again produced a double-encoded blob the provider 401'd. So: if the paste already IS
-    # Base64 of a printable `login:password`, keep it. A raw pair can never be mistaken for one (":"
-    # is not in the Base64 alphabet, so strict decoding refuses it), and a Base64 blob can never be
-    # a working raw pair (it has no ":"), so the branch is unambiguous either way.
-    # The injector applies the same rule at call time (`treg secret add` stores the raw pair), so
-    # both add paths share one detector.
+    # out a ready-made Base64 credential, and encoding that again would make a double-encoded blob the
+    # provider rejects. So: if the paste already IS Base64 of a printable `login:password`, keep it. A
+    # raw pair can never be mistaken for one (":" is not in the Base64 alphabet, so strict decoding
+    # refuses it), and a Base64 blob can never be a working raw pair (it has no ":"), so the branch is
+    # unambiguous either way. The injector applies the same rule at call time (`treg secret add`
+    # stores the raw pair), so both add paths share one detector.
     if provider.token_encode == "base64":
         token = ensure_base64(token)
 
@@ -573,9 +639,9 @@ async def connect_with_pasted_secret(
     headers.update(dict(provider.required_headers))
     probe_url = provider.probe_url or f"{provider.base_url.rstrip('/')}{provider.probe_path}"
     # httpx REPLACES a URL's own query string when `params=` is passed, so a probe_path like
-    # `/autocomplete?field=title&text=data` (PDL, Akta, JustOneAPI, SpyFu) silently lost its required
-    # params and the probe 400'd — rejecting a perfectly good key. Merge the path's query into params
-    # ourselves (params, i.e. the credential for a query provider, wins on a key collision).
+    # `/autocomplete?field=title&text=data` (PDL, Akta, JustOneAPI, SpyFu) would lose its required
+    # params. Merge the path's query into params ourselves (params, i.e. the credential for a query
+    # provider, wins on a key collision).
     split = urlsplit(probe_url)
     if split.query:
         params = {**dict(parse_qsl(split.query, keep_blank_values=True)), **params}
@@ -591,10 +657,9 @@ async def connect_with_pasted_secret(
             "provider_unreachable", f"could not reach {provider.display_name}: {exc}"
         ) from None
     # Try to parse the body as JSON regardless of the content-type header: ScrapeCreators returns a
-    # real JSON body labelled `text/plain`, and gating on `application/json` left its payload empty so
-    # `token_verify_field` (creditCount) read as false and a valid key was rejected. The parse is
-    # defensive — a genuinely non-JSON key check (Semrush's CSV/number balance) simply throws and
-    # leaves payload empty, falling through to the `text_error` branch exactly as before.
+    # real JSON body labelled `text/plain`, and its `token_verify_field` (creditCount) lives there. A
+    # genuinely non-JSON key check (Semrush's CSV/number balance) simply throws and leaves payload
+    # empty, falling through to the `text_error` branch.
     ctype = resp.headers.get("content-type", "")
     payload: dict = {}
     if resp.status_code < 500:
@@ -740,8 +805,7 @@ async def list_connections(*, org_id: int) -> list[dict]:
                 select(Secret).where(
                     Secret.org_id == org_id,
                     # A connection is "something a registry connect produced", NOT "an oauth blob".
-                    # Bring-your-own-token providers (Slack) store a plain string with kind "env", so a
-                    # kind=="oauth" filter created them successfully and then hid them from the list.
+                    # Bring-your-own-token providers (Slack) store a plain string with kind "env".
                     or_(Secret.kind == "oauth", Secret.provider != ""),
                 )
             )
@@ -749,6 +813,13 @@ async def list_connections(*, org_id: int) -> list[dict]:
         out = []
         for s in rows:
             view = connection_refresh.connection_view(s)
+            if oauth_providers.is_paused(s.provider):
+                # Kept and untouched while paused: the dashboard shows this instead of a health error.
+                # Its provider is out of /oauth/providers then, so the name rides on the row itself.
+                view["paused"] = True
+                view["paused_message"] = oauth_providers.paused_message(s.provider)
+                view["provider_display_name"] = getattr(
+                    oauth_providers.get(s.provider), "display_name", s.provider)
             provider = oauth_providers.get(s.provider) if s.provider else None
             if provider is not None:
                 method_name = provider.authorization_method_name(s.authorization_method)
@@ -789,10 +860,17 @@ async def _connection_for_upstream(
     """Load one connection and delegate freshness to the single domain implementation."""
     async with session_maker() as db:
         secret = await _owned_connection(secret_id, org_id, db)
+        _refuse_paused(secret.provider)
         await connection_refresh.ensure_fresh(
-            secret, db, HTTPXOAuthRefreshPort(client),
+            secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob,
         )
         return secret, crypto.decrypt(secret.value)
+
+
+def _with_appsecret_proof(provider, client_id: str, token: str, url: str) -> str:
+    """`url` with Meta's `appsecret_proof` appended when treg's app requires one for `token`."""
+    proof = oauth_providers.appsecret_proof(provider, client_id, token, url)
+    return f"{url}{'&' if '?' in url else '?'}appsecret_proof={proof}" if proof else url
 
 
 async def list_connection_resources(
@@ -812,6 +890,7 @@ async def list_connection_resources(
             "no_resource_discovery",
             f"{secret.provider or 'this provider'} has nothing to choose between — it acts on your whole account",
         )
+    client_id = ""
     if provider.uses_pasted_secret:
         token = raw
         disc_headers = {provider.token_header: provider.token_format.format(secret=raw)}
@@ -819,12 +898,14 @@ async def list_connection_resources(
         blob = json.loads(raw)
         token = blob.get("access_token") or blob.get("token")
         disc_headers = {"Authorization": f"Bearer {token}"}
+        client_id = str(blob.get("client_id") or "")
     if provider.needs_extra_credential:
         disc_headers[provider.extra_credential_header] = provider.platform_extra_credential
 
     # All provider I/O is outside a database session, including optional enrichment.
+    disc_url = f"{provider.discovery_base.rstrip('/')}{provider.discover_path}"
     resp = await client.get(
-        f"{provider.discovery_base.rstrip('/')}{provider.discover_path}", headers=disc_headers,
+        _with_appsecret_proof(provider, client_id, token, disc_url), headers=disc_headers,
     )
     try:
         body = resp.json()
@@ -832,6 +913,14 @@ async def list_connection_resources(
         body = {}
     if resp.status_code >= 400 or body.get("ok") is False:
         err = body.get("error")
+        if provider.service == "youtube" and isinstance(err, dict) and any(
+            item.get("reason") == "quotaExceeded"
+            for item in err.get("errors", []) if isinstance(item, dict)
+        ):
+            raise ConnectError(
+                "resource_discovery_failed",
+                {"code": "youtube_quota_exceeded"},
+            )
         upstream = err.get("message", "") if isinstance(err, dict) else (err or "")
         if not upstream:
             upstream = (resp.text or "")[:200]
@@ -847,9 +936,9 @@ async def list_connection_resources(
         ]
     if provider.discover_extra_path:
         try:
+            extra_url = f"{provider.discovery_base.rstrip('/')}{provider.discover_extra_path}"
             extra = await client.get(
-                f"{provider.discovery_base.rstrip('/')}{provider.discover_extra_path}",
-                headers=disc_headers,
+                _with_appsecret_proof(provider, client_id, token, extra_url), headers=disc_headers,
             )
             if extra.status_code < 400:
                 for holder in (extra.json().get(provider.discover_key) or []):
@@ -903,6 +992,8 @@ async def list_connection_resources(
         "provider": provider.service,
         "resource_label": provider.resource_label,
         "resource_plural": provider.resource_plural,
+        # A derived resource token reaches only the selected resource, so no other works per call.
+        "resource_scoped": bool(provider.resource_token_path),
         "selected": selected,
         "resources": resources,
         "setup_required": setup_required,
@@ -950,10 +1041,10 @@ async def select_connection_resource(
             await _upgrade_resource_call_bindings(provider, secret, db)
         secret.resource_ref = resource_ref
         secret.resource_name = resource_name
-        # Picking a property/site/account is the moment we finally KNOW the id every real call needs —
-        # so render it straight into the provisioned tool's examples as a ready-made call. Before this,
-        # agents went hunting for the id through the vendor's admin API mid-task (GA4: 13 calls/7 orgs
-        # dead-ended there). Re-picking replaces the stamped example rather than piling them up.
+        # Picking a property/site/account is the moment we finally KNOW the id every real call needs -
+        # so render it straight into the provisioned tool's examples as a ready-made call, instead of
+        # leaving agents to hunt for it through the vendor's admin API. Re-picking replaces the stamped
+        # example rather than piling them up.
         tmpl = getattr(provider, "resource_example", None) if provider else None
         if tmpl and resource_ref:
             rendered = {
@@ -991,10 +1082,12 @@ async def _resolve_resource_call_token(
 
     async def fetch(path: str, *, required: bool) -> list[dict]:
         try:
+            url = f"{provider.discovery_base.rstrip('/')}{path}"
             resp = await client.get(
-                f"{provider.discovery_base.rstrip('/')}{path}", headers=headers)
+                _with_appsecret_proof(provider, str(blob.get("client_id") or ""), root_token, url),
+                headers=headers)
             body = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if not required:
                 return []
             raise ConnectError(
@@ -1033,6 +1126,7 @@ async def _resolve_resource_call_token(
             fields[name] = str(value)
     await _run_resource_setup(
         provider, granted_scopes, resource_ref, fields, str(call_token), client,
+        client_id=str(blob.get("client_id") or ""),
     )
     return fields
 
@@ -1070,7 +1164,7 @@ async def _upgrade_resource_call_bindings(provider, secret: Secret, db: AsyncSes
 
 async def _run_resource_setup(
     provider, granted_scopes: str, resource_ref: str, context: dict[str, str],
-    call_token: str, client,
+    call_token: str, client, *, client_id: str = "",
 ) -> None:
     """Run a provider-declared setup request when the selected grant permits it.
 
@@ -1104,12 +1198,15 @@ async def _run_resource_setup(
         kwargs["data"] = payload
     else:
         kwargs["params"] = payload
+    url = f"{provider.base_url.rstrip('/')}{path}"
+    if proof := oauth_providers.appsecret_proof(provider, client_id, call_token, url):
+        if "params" in kwargs:  # httpx's params= would replace a query placed on the URL
+            kwargs["params"]["appsecret_proof"] = proof
+        else:
+            url = f"{url}{'&' if '?' in url else '?'}appsecret_proof={proof}"
     try:
-        response = await client.request(
-            provider.resource_setup_method,
-            f"{provider.base_url.rstrip('/')}{path}", **kwargs,
-        )
-    except Exception as exc:  # noqa: BLE001
+        response = await client.request(provider.resource_setup_method, url, **kwargs)
+    except Exception as exc:
         raise ConnectError(
             "resource_setup_failed",
             f"could not set up the selected {provider.resource_label}",
@@ -1137,6 +1234,7 @@ async def supply_extra_credential(
 ) -> dict:
     async with session_maker() as db:
         secret = await _owned_connection(secret_id, org_id, db)
+        _refuse_paused(secret.provider)
         provider = oauth_providers.get(secret.provider)
         if provider is None or not provider.needs_extra_credential:
             raise ConnectError("no_extra_credential", "this provider needs no extra credential")
@@ -1156,10 +1254,9 @@ async def supply_extra_credential(
         else:  # re-supplying replaces it — the usual reason is a rotated token
             extra.value = crypto.encrypt(value)
 
-        # The primary binding must match how THIS provider authenticates — OAuth bearer for Google Ads,
-        # but a pasted-key provider (Tomba's X-Tomba-Key + X-Tomba-Secret pair) injects a plain header.
-        # Hardcoding the OAuth shape here gave a key provider a binding that JSON-parses a bare key and
-        # fails on every call, so build the primary half with the same helper the connect flow uses.
+        # The primary binding must match how THIS provider authenticates - OAuth bearer for Google Ads,
+        # but a pasted-key provider (Tomba's X-Tomba-Key + X-Tomba-Secret pair) injects a plain header,
+        # so build the primary half with the same helper the connect flow uses.
         bindings = _provider_bindings(provider, secret) + [
             {"secret_id": extra.id, "injector": "env",
              "location": provider.extra_credential_location,
@@ -1306,10 +1403,9 @@ async def run_connection_health(
     *, all_orgs: bool, is_superadmin: bool, org_id: int, client_factory,
 ) -> dict:
     async with session_maker() as db:
-        # On-demand + Render-Cron trigger. Refreshes oauth tokens, probes tools, alerts owners.
-        # Scoped to the caller's org so a member only ever probes/sees their own org's credentials —
-        # EXCEPT a super-admin may pass ?all_orgs=1 to sweep EVERY org (so a single Render Cron token can
-        # validate the whole platform, not just its own org).
+        # On-demand or cron trigger. Refreshes oauth tokens, probes tools, alerts owners. Scoped to the
+        # caller's org so a member only ever probes/sees their own org's credentials - EXCEPT a
+        # super-admin may pass ?all_orgs=1 to sweep EVERY org.
         if all_orgs:
             if not is_superadmin:
                 raise ConnectError("all_orgs_forbidden", "all_orgs requires super-admin")

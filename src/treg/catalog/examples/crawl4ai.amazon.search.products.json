@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 1927,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": [
+      "module: step module: 28 null fields across 22 items",
+      "module: amazon-search: 'usb c hub' on www.amazon.com page 1 · 20 products"
+    ]
+  },
+  "recipe": "amazon-search",
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "miss",
+        "call": "scrape",
+        "engine": "http-mint",
+        "units": 1,
+        "url": "https://www.amazon.com/s?k=usb+c+hub"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 195,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 1,
+  "rows": [
+    {
+      "asin": "B0GTLTGGJ8",
+      "image": "https://m.media-amazon.com/images/I/61lu-kTA4WL._AC_UY218_.jpg",
+      "price": "$9.99",
+      "rating": 4.1,
+      "reviews": 530,
+      "sponsored": true,
+      "title": "Type C to 4 Port Wozoyo USB 3.2 Hub, 4XUSB 5 Gbps, Data Transfer Upto 5Gbps, Plug & Play, Multiport Type C Hub with 30cm Cable, Compatible with MacBook, Tablet, Smartphones and Type C Enabled Devices",
+      "url": ""
+    },
+    {
+      "asin": "B0GWL8NWSY",
+      "image": "https://m.media-amazon.com/images/I/718CvNfz3PL._AC_UY218_.jpg",
+      "price": "$22.42",
+      "rating": 4.5,
+      "reviews": 42,
+      "sponsored": true,
+      "title": "USBC Docking Station 8 in 1 USB C to hdmi gigabit ethernet Adapter 1Gbps Ethernet Hub 100W Power Delivery 3*USB 3.0 Ports SD/TF Card Reader Ethernet USB C Adapter for MacBook Pro/Air Dell XPS HP",
+      "url": ""
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+[
+ {
+  "id": "2108476835155882333",
+  "name": "Aravind Chintalapali",
+  "handle": "_aravindc",
+  "photo": "x/_aravindc.jpg",
+  "date": "2026-10-09",
+  "text": "treg.to is awesome !"
+ },
+ {
+  "id": "2108153148993060882",
+  "name": "Manish Kumar",
+  "handle": "Manixh02",
+  "photo": "x/manixh02.jpg",
+  "date": "2026-10-08",
+  "text": "The best leads already told you they are ready.\n\n> Someone just changed jobs, complained about the tool they use, or posted a role that implies your product.\n> That is the list. This watches 23+ of those signals and only hands back who is new.\n\nlink; treg.to/leads-signals"
+ },
+ {
+  "id": "2107431729510437258",
+  "name": "Gamingtronium",
+  "handle": "Gamingtronium",
+  "photo": "x/gamingtronium.jpg",
+  "date": "2026-10-06",
+  "text": "seeing @treg_ai work straight from claude code and codex is cool to see"
+ },
+ {
+  "id": "2107425672478027932",
+  "name": "Abdul",
+  "handle": "justabdulraouf",
+  "photo": "x/justabdulraouf.jpg",
+  "date": "2026-10-06",
+  "text": "why pay clay prices to find leads when you can build the exact gtm loop with @treg_ai for cents per call\n\nopen source, zero bloated subscription tiers, and pulling live intent directly into your workflow: treg.to"
+ },
+ {
+  "id": "2107605236487798841",
+  "name": "Nick",
+  "handle": "NickPlaysCrypto",
+  "photo": "x/nickplayscrypto.jpg",
+  "date": "2026-10-06",
+  "text": "Isnt treg.to an open-source version of this?"
+ },
+ {
+  "id": "2105979550249394261",
+  "name": "Athrix ☄️",
+  "handle": "athrix_codes",
+  "photo": "x/athrix_codes.jpg",
+  "date": "2026-10-02",
+  "text": "This is actually insane.\n\nJev handles the decisions.\n@treg_ai gives agents one API key to access \n3,000+ data + tool endpoints.\n\nNo Huge Subscriptions. Just pay per Call.\n\ncan't belive the integration is OpenSource:\ngithub.com/superdesigndev…"
+ },
+ {
+  "id": "2105979376877642076",
+  "name": "Sahil Panhotra | Indie Builder",
+  "handle": "SahilPanhotra",
+  "photo": "x/sahilpanhotra.jpg",
+  "date": "2026-10-02",
+  "text": "we are using GPT 6.1 Sol, Opus 5.5 and Fable 5.5 for way too much shit 😭\n\nsometimes your software literally just needs a number to decide what to do next\n\nthat's what i like about Jev + @treg_ai\n\nTreg gives it cheap APIs + data → Jev gives your code a decision it can actually use\n\nno need to burn a frontier model call every single time\n\nkinda makes me wonder how many agent workflows are just wasting frontier model calls rn lol"
+ },
+ {
+  "id": "2105978056804556856",
+  "name": "Prajwal",
+  "handle": "0xPrajwal_",
+  "photo": "x/0xprajwal_.jpg",
+  "date": "2026-10-02",
+  "text": "This combo makes agents dangerous. \n\nJev thinks fast. \n@treg_ai fetches fast.\n\nPut them together, and your agent goes from thinking to doing in just secs\n\nMust-have combo for developers"
+ },
+ {
+  "id": "2104921280143069350",
+  "name": "Chia Y",
+  "handle": "withchiay",
+  "photo": "x/withchiay.jpg",
+  "date": "2026-09-29",
+  "text": "Jev + Treg :  just became my new portfolio manager.\n\nhere is the guide how I build the flow\n@treg_ai \n\nJev - decision model\nTreg - financial data\nClaude  - the pm"
+ },
+ {
+  "id": "2104527250238669028",
+  "name": "Ted | unfair.so",
+  "handle": "notmiramurati",
+  "photo": "x/notmiramurati.jpg",
+  "date": "2026-09-28",
+  "text": "got a ton of apps for our founding manager role through X\n\nwanna search outside my usual bubble too\n\ni asked @treg_ai to find relevant LI profiles based on open-to-work status + signals from their posts\n\nsolid shortlist just for $0.04"
+ },
+ {
+  "id": "2102977990921789714",
+  "name": "Chris Brownridge",
+  "handle": "chrisbrownridge",
+  "photo": "x/chrisbrownridge.jpg",
+  "date": "2026-09-24",
+  "text": "another @treg_ai /Jev demo to analyze data SUPER fast\n\nused treg to pull meta ads and then Jev to teardown the landing pages so you can understand where brands are sending traffic to\n\ncategorizes the type of page, offers they're using and language used to sell\n\nalso shows ad creative launch velocity, creative mix\n\ntakes a few seconds to do it all end to end."
+ },
+ {
+  "id": "2102859958039777717",
+  "name": "Rohan Paul",
+  "handle": "rohanpaul_ai",
+  "photo": "x/rohanpaul_ai.jpg",
+  "date": "2026-09-23",
+  "text": "Jev is barely a week old, and this is already a pretty clean example of where a decision model fits inside an agent.\n\nClay for AI agents: you describe the kind of person you want, and @treg_ai searches across 60+ people-data providers to find matching leads and their details.\n\nJev then scores those people against your criteria, so the agent can automatically decide which leads are actually worth keeping. \ni.e. Treg handles the retrieval side > Jev sits after retrieval.\n\n- 85% cheaper than Clay\n- #1 on people search bench accuracy\n- Plugin to any agent\n\nIt takes the candidate state and evaluates questions such as whether someone matches a role, company profile, or other criteria, returning structured probabilities rather than another paragraph of generated text."
+ },
+ {
+  "id": "2100169059899703480",
+  "name": "Rahul Bageria",
+  "handle": "bageriarah",
+  "photo": "x/bageriarah.jpg",
+  "date": "2026-09-16",
+  "text": "Just started using @treg_ai .\n\nA bit blown away by how easy it was to build my entire enrichment architecture in one sitting, with my agent doing most of the work.\n\nI was doing all of this in @clay . Still a good tool, but the upfront cost and the guardrails going up around who gets to use it are quietly pushing small teams out.\n\nKudos to @treg_ai @jasonzhou1993"
+ },
+ {
+  "id": "2098084993297768701",
+  "name": "AMEERAH",
+  "handle": "MEERAHTHAGREAT",
+  "photo": "x/meerahthagreat.jpg",
+  "date": "2026-09-10",
+  "text": "1,000 leads sounds nice until you realize you only need a handful of people who might actually become customers.\n\nthat’s what makes @treg_ai interesting to me.\n\n60+ enrichment vendors competing to find the best valid results, while the agent handles the digging.\n\nway more practical than just collecting a huge list of random leads.\n\nThis is pretty good!!!!\n\nYou can try it yourself here: treg.to/enrich-arena"
+ },
+ {
+  "id": "2098117113739100190",
+  "name": "ᴜʏɪ",
+  "handle": "uyi0zaofx",
+  "photo": "x/uyi0zaofx.jpg",
+  "date": "2026-09-10",
+  "text": "EVERY BUSINESS OWNER NEEDS THIS.\n\n@treg_ai turns the noise into signal by letting 60+ vendors do the heavy lifting of lead acquisition. You may never need to hire a sales team again.\n\nOh, and it's completely free to access and mess around with (it's open-sourced).\n\nAnd get this too: you only pay about $0.008 for \"every successful lead generated.\"\n\nNo subscription cost is incurred before-hand.\n\nCheck it out!"
+ },
+ {
+  "id": "2097277709349183616",
+  "name": "Peter Dedene",
+  "handle": "dedene",
+  "photo": "x/dedene.jpg",
+  "date": "2026-09-08",
+  "text": "Stop paying a SaaS ransom to look up emails.\n\nCodex has a GTM layer now, using @treg_ai.\n\nGPT-6 Astra already builds your product. This plugin gives it the data to reach customers. Data that used to cost you a pricey monthly seat.\n\n$0.0089 per verified contact. You pay only for what you use.\n\nZero markup. Your bloated monthly subscription is done."
+ },
+ {
+  "id": "2095645264337948855",
+  "name": "Storm",
+  "handle": "stormOCS",
+  "photo": "x/stormocs.jpg",
+  "date": "2026-09-03",
+  "text": "Treg changed the game for GTM engineering (you'll want to save this if you're doing any kind of list building)\n\n@treg_ai + claude reserached, enriched & verified a list across 5 verifiers + created a campaign in instantly from 30 seconds of my time\n\nDefined my ICP in plain English to Fable 5.1 with a link to my VSL page & it used Treg to source the companies, found the contacts, verified emails across 5 services, loaded into Instantly with dynamic variables, copywriting done, and an A/B test \n\nI'm no cold email expert but this literally a million times easier than messing around with multiple CSVs and uploading/downloading/renaming/organizing between multiple tabs and softwares\n\nTreg adds ZERO markup, and it's all under 1 API key. literally no reason NOT to use it\n\nwatch my entire process raw below"
+ },
+ {
+  "id": "2095104579138433313",
+  "name": "Virgile RIETSCH",
+  "handle": "virgilerietsch",
+  "photo": "x/virgilerietsch.jpg",
+  "date": "2026-09-02",
+  "text": "there is literally no reason not to do marketing now…\n\nFable 5.1 handles the long-running work and @treg_ai gives it 2,800+ tools for leads, SEO and social..\n\nI can run everything from the terminal and only pay per call\n\nbrb asking it to market BlitzReels :)"
+ },
+ {
+  "id": "2094740953554932149",
+  "name": "Paul Mit",
+  "handle": "pmitu",
+  "photo": "x/pmitu.jpg",
+  "date": "2026-09-01",
+  "text": "Interesting GTM tool for direct sales!\n\nPricing model is quite competitive: no subscriptions, $0.0089 per lead\n\nProducts can build an automated workflow to reach 1B+ contacts across all networks through @treg_ai\n\nFully open source 👌\n\nFounders, reach your potential users every day!"
+ }
+]

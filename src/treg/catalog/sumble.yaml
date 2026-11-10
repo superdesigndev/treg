@@ -324,8 +324,10 @@ endpoints:
         - employee_count
         - industry
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.organizations.json
 - id: sumble.organizations.intelligence_brief
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: GET
@@ -358,6 +360,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organizations.signals
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: GET
@@ -437,8 +440,10 @@ endpoints:
     pathParams:
       organization_id: 1726684
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.organizations.techs.json
 - id: sumble.people
+  added: '2026-09-10'
   platform: people
   scope: any_account
   method: POST
@@ -907,6 +912,7 @@ endpoints:
         - posted_date
       limit: 2
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.jobs.json
 - id: sumble.teams
   platform: companies
@@ -1152,4 +1158,5 @@ endpoints:
       limit: 2
       order_by_column: jobs_count
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.teams.json

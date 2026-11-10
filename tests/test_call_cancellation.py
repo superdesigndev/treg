@@ -12,14 +12,14 @@ import asyncio
 import httpx
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from treg.domain import money as ledger
 from treg.application.call import service as call_service
 from treg.application.call.types import GatewayFailed
-from treg.routers import call as call_routes
 from treg.api import app
+from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import Hold, IdempotentCall, LedgerEntry
 
@@ -227,22 +227,23 @@ async def test_repeated_cancellation_cannot_interrupt_compensation(
     )
     original_http = app.state.http
     original_commit = AsyncSession.commit
-    original_delete = AsyncSession.delete
-    original_release = ledger.release_in_transaction
+    original_execute = AsyncSession.execute
     cleanup_commit_reached = asyncio.Event()
     allow_cleanup_commit = asyncio.Event()
     claim_commit_reached = asyncio.Event()
     allow_claim_commit = asyncio.Event()
 
-    async def _tag_cancelled_release(db: AsyncSession, call_id: str, **kwargs):
-        if kwargs.get("reason") == "call_cancelled":
+    async def _tag_claim_delete(db: AsyncSession, statement, *args, **kwargs):
+        # Observe the real hold claim without depending on which money entry composes cleanup.
+        if (getattr(statement, "is_delete", False)
+                and statement.table.name == Hold.__tablename__):
             db.sync_session.info["cancelled_release"] = True
-        return await original_release(db, call_id, **kwargs)
-
-    async def _tag_claim_delete(db: AsyncSession, row) -> None:
-        if isinstance(row, IdempotentCall) and row.key == key:
+        # The release is one DELETE fenced on the claim's owner, not a load-then-delete.
+        if (getattr(statement, "is_delete", False)
+                and statement.table.name == IdempotentCall.__tablename__
+                and "call_ref" in str(statement)):  # not the intake's expired-label sweep
             db.sync_session.info["claim_delete"] = True
-        await original_delete(db, row)
+        return await original_execute(db, statement, *args, **kwargs)
 
     async def _gate_cleanup_commit(db: AsyncSession) -> None:
         if db.sync_session.info.get("cancelled_release"):
@@ -253,8 +254,7 @@ async def test_repeated_cancellation_cannot_interrupt_compensation(
             await allow_claim_commit.wait()
         await original_commit(db)
 
-    monkeypatch.setattr(ledger, "release_in_transaction", _tag_cancelled_release)
-    monkeypatch.setattr(AsyncSession, "delete", _tag_claim_delete)
+    monkeypatch.setattr(AsyncSession, "execute", _tag_claim_delete)
     monkeypatch.setattr(AsyncSession, "commit", _gate_cleanup_commit)
     app.state.http = tracked
     headers = {"Idempotency-Key": key}
@@ -402,3 +402,97 @@ async def test_cancellation_while_failure_release_is_in_flight_finishes_compensa
     releases = await _release_entries(org_id, call_id)
     assert len(releases) == 1 and releases[0].meta["reason"] == "call_cancelled"
     assert await _idempotency_claim(f"cancel-{first_reason}") is None
+
+
+async def test_cancellation_releases_parent_and_overflow_without_a_hold_org_deadlock(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    """The real HTTP cancellation cleanup must claim both holds before refunding either one."""
+    from test_money_lock_order import _wait_for_blocker
+
+    engine = session_maker.kw["bind"]
+    if engine.dialect.name != "postgresql":
+        pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
+    monkeypatch.setattr(get_settings(), "platform_margin", 0)
+    org_id, balance_before = await _funded_org(clients)
+    key = "cancel-parent-and-overflow"
+    stream = _BlockingProviderStream()
+    tracked = AsyncClient(transport=_BlockingProviderTransport(stream),
+                          base_url="https://blocking-provider.test")
+    original_http = app.state.http
+    app.state.http = tracked
+    request = asyncio.create_task(clients.get(
+        f"/call/{EP}?aweme_id=cancel-parent-and-overflow", headers={"Idempotency-Key": key}))
+    ordinary = None
+    ordinary_paused = asyncio.Event()
+    resume_ordinary = asyncio.Event()
+    ordinary_pid = 0
+    cleanup_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+    call_id = ""
+
+    async def pause(driver_connection):
+        nonlocal ordinary_pid
+        ordinary_pid = driver_connection.get_server_pid()
+        ordinary_paused.set()
+        await resume_ordinary.wait()
+
+    def after_statement(conn, cursor, statement, parameters, context, executemany):
+        if (asyncio.current_task() is ordinary and not ordinary_paused.is_set()
+                and statement.lstrip().upper().startswith("DELETE FROM HOLD ")):
+            conn.connection.dbapi_connection.run_async(pause)
+
+    def before_statement(conn, cursor, statement, parameters, context, executemany):
+        if (not cleanup_pid.done() and call_id in parameters
+                and statement.lstrip().upper().startswith("DELETE FROM HOLD ")):
+            cleanup_pid.set_result(conn.connection.driver_connection.get_server_pid())
+
+    event.listen(engine.sync_engine, "after_cursor_execute", after_statement)
+    event.listen(engine.sync_engine, "before_cursor_execute", before_statement)
+    try:
+        async with asyncio.timeout(20):
+            await _wait_for_gate(stream.body_started, request, "provider body start")
+            holds = await _open_holds(org_id)
+            assert len(holds) == 1
+            call_id = holds[0].id
+            overflow_id = f"{call_id}:overflow"
+            # A parent request can have a separately reserved overflow child. Stage that valid
+            # funded state through money, then race its completion with the HTTP cancellation.
+            async with session_maker() as db:
+                await ledger.reserve(db, org_id, "test.overflow", 100, call_id=overflow_id)
+
+            async def finish_overflow():
+                async with session_maker() as db:
+                    return await ledger.settle(db, overflow_id, 60)
+
+            ordinary = asyncio.create_task(finish_overflow())
+            await ordinary_paused.wait()
+            request.cancel()
+            await _wait_for_blocker(await cleanup_pid, ordinary_pid)
+            resume_ordinary.set()
+            assert await ordinary == 60
+            with pytest.raises(asyncio.CancelledError):
+                await request
+
+        assert stream.close_calls == 1
+        assert await _open_holds(org_id) == []
+        assert await _idempotency_claim(key) is None
+        async with session_maker() as db:
+            assert await ledger.balance_of(db, org_id) == balance_before - 60
+            assert sum(b.remaining_micro for b in await ledger.blocks_of(db, org_id)) == balance_before - 60
+            assert await ledger.spent_today(db, org_id) == await ledger.spent_today_from_ledger(db, org_id)
+            closed = [e for e in await ledger.entries_of(db, org_id)
+                      if e.call_id in {call_id, overflow_id} and e.kind in {"settle", "release"}]
+            assert sorted((e.call_id, e.kind, e.amount_micro) for e in closed) == sorted([
+                (call_id, "release", holds[0].amount_micro), (overflow_id, "settle", -60),
+            ])
+    finally:
+        resume_ordinary.set()
+        for task in (ordinary, request):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(*(task for task in (ordinary, request) if task is not None),
+                             return_exceptions=True)
+        event.remove(engine.sync_engine, "after_cursor_execute", after_statement)
+        event.remove(engine.sync_engine, "before_cursor_execute", before_statement)
+        app.state.http = original_http
+        await tracked.aclose()

@@ -34,6 +34,8 @@ async def _funded_call(clients: AsyncClient, call_id: str) -> tuple[int, int, Ma
         cost_type="per_call",
         estimate_micro=1_000,
         call_id=call_id,
+        payer_org_id=org_id,
+        reserved_micro=1_000,
     )
     return org_id, before, mk
 

@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import crypto
 from ...domain.governance.teams import cascade_delete_org
+from ...domain.identity.access import SANDBOX_DOMAIN
 from ...models import Membership, Org, Secret, Tool, User
 from ...sandbox_identity import visitor_name
 
-SANDBOX_DOMAIN = "sandbox.treg.local"     # throwaway visitor identities live here (can never log in)
 SANDBOX_TTL_MIN = 60
 MAX_TOOLS = 3                              # a sandbox visitor may register at most this many endpoints
 MAX_SECRETS = 3
@@ -128,95 +128,15 @@ async def export_skill(db: AsyncSession, org: Org) -> dict:
     }
 
 
-# ---- hosted sample skills (the "Run in Claude Code" flow) ---------------------------------
-# Each sample matches a tool the sandbox already seeds, so the installed skill's proxied calls
-# resolve against the visitor's sandbox and return the synthetic response. A skill is just a
-# recipe (SKILL.md) + wiring (treg.json) - the credential stays in the vault; the caller sends
-# only their treg token and treg injects the key.
-SAMPLE_SKILLS = {
-    "posthog-insights": {
-        "label": "PostHog Insights - product analytics",
-        "key": "POSTHOG_KEY", "base_url": "https://app.posthog.com",
-        "prompt": "use posthog-insights to list recent events",
-        "endpoints": [
-            {"method": "GET", "path": "api/projects/@current/events", "note": "recent events"},
-            {"method": "POST", "path": "api/projects/@current/insights", "note": "run a query"},
-        ],
-    },
-    "stripe-billing": {
-        "label": "Stripe Billing - charges & invoices",
-        "key": "STRIPE_KEY", "base_url": "https://api.stripe.com",
-        "prompt": "use stripe-billing to list recent charges",
-        "endpoints": [
-            {"method": "GET", "path": "v1/charges", "note": "list charges"},
-            {"method": "POST", "path": "v1/invoices", "note": "draft an invoice"},
-        ],
-    },
-}
-
-
-def _skill_md(name: str, sk: dict, base: str, token: str | None) -> str:
-    tok = token or "$TREG_TOKEN"
-    out = [
-        "---", f"name: {name}",
-        f"description: {sk['label']}. Calls the API through treg - the key is injected server-side, never held here.",
-        "---", "", f"# {name}", "", sk["label"] + ".", "",
-        "Call the API **through treg**: you send only a token; treg injects the real credential.",
-        "Never put an API key in a command.", "", "## Actions",
-    ]
-    for e in sk["endpoints"]:
-        out += [f"- **{e['note']}**", "  ```",
-                f'  curl -s -X {e["method"]} {base}/call/{sk["base_url"]}/{e["path"]} -H "X-Treg-Token: {tok}"', "  ```"]
-    if not token:
-        out += ["", "> Set `TREG_TOKEN` to your treg token (from `treg login`, in `~/.treg/config.json`)."]
-    return "\n".join(out)
-
-
-def _skill_treg_json(name: str, sk: dict) -> str:
-    return json.dumps({
-        "name": name, "base_url": sk["base_url"],
-        "secrets": [{"name": sk["key"], "kind": "env"}],
-        "bindings": [{"secret": sk["key"], "name": "Authorization", "format": "Bearer {secret}"}],
-        "examples": [{"method": e["method"], "path": e["path"]} for e in sk["endpoints"]],
-    }, indent=2)
-
-
-def _skill_secret(sk: dict) -> str:
-    return (f"# Referenced by NAME - the value never ships in the skill folder.\n"
-            f"{sk['key']}=      # empty on disk. treg holds the value and injects it server-side.")
-
-
-def skill_files(name: str, base: str, token: str | None = None) -> dict:
-    """The three files that make up the skill folder Claude Code loads."""
-    sk = SAMPLE_SKILLS[name]
-    return {"SKILL.md": _skill_md(name, sk, base, token),
-            "treg.json": _skill_treg_json(name, sk),
-            ".secret": _skill_secret(sk)}
-
-
-def install_script(name: str, base: str, token: str | None = None) -> str:
-    """A POSIX `sh` script: creates ./.claude/skills/<name>/ (if absent) and writes the skill
-    files there, so `curl … | sh` from a project dir installs the skill for Claude Code."""
-    sk = SAMPLE_SKILLS[name]
-    files = skill_files(name, base, token)
-
-    def heredoc(fname: str, content: str) -> str:  # quoted heredoc → no shell expansion of content
-        return f'cat > "$DIR/{fname}" <<\'TREG_SKILL_EOF\'\n{content}\nTREG_SKILL_EOF'
-
-    lines = [
-        "#!/bin/sh", "set -e", f'NAME="{name}"', 'DIR=".claude/skills/$NAME"', 'mkdir -p "$DIR"',
-        heredoc("SKILL.md", files["SKILL.md"]),
-        heredoc("treg.json", files["treg.json"]),
-        heredoc(".secret", files[".secret"]),
-        f'echo "✓ installed {name} into ./$DIR"',
-        f'echo "Open Claude Code here, then ask:  {sk["prompt"]}"',
-    ]
-    return "\n".join(lines) + "\n"
-
-
 async def gc(db: AsyncSession) -> int:
     """Reap sandboxes older than the TTL - the throwaway user, its org, and every org-scoped row.
-    Runs opportunistically each time a new sandbox is minted. Commits itself."""
+    Runs opportunistically each time a new sandbox is minted. Commits itself.
+
+    Only landing sandbox orgs (`is_sandbox`) are reaped. A visitor that also belongs to any other
+    org is left whole, user and every org, for a person to look at: that should not exist, and
+    deleting it would erase the only record of how it came to."""
+    from ... import sandbox as sandbox_runtime
+
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=SANDBOX_TTL_MIN)
     visitors = (await db.execute(
         select(User).where(User.email.like(f"visitor-%@{SANDBOX_DOMAIN}")))).scalars().all()
@@ -226,23 +146,24 @@ async def gc(db: AsyncSession) -> int:
         ca = ca.replace(tzinfo=None) if (ca is not None and ca.tzinfo) else ca
         if ca is not None and ca >= cutoff:
             continue
-        # One savepoint per visitor. Reaping used to be all-or-nothing: one sandbox that would not
-        # delete aborted the whole loop, and since gc runs only from mint_sandbox, nothing was ever
-        # reaped again until the row was fixed by hand. Now that sandbox is logged and skipped, and
-        # every other expired one still goes.
+        # One savepoint per visitor: a sandbox that will not delete is logged and skipped, and every
+        # other expired one still goes. gc runs only from mint_sandbox, so one bad row must not stop
+        # all reaping.
         nested = await db.begin_nested()
         try:
             mems = (await db.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all()
-            for m in mems:
-                org = await db.get(Org, m.org_id)
-                if org is None:
-                    continue
-                # The shared cascade, never a private table list: the reaper's own copy is what
-                # missed `IdempotentCall` and broke every sandbox mint on 2026-09-02.
+            orgs = [org for m in mems if (org := await db.get(Org, m.org_id)) is not None]
+            if not all(sandbox_runtime.is_sandbox(org) for org in orgs):
+                await nested.rollback()
+                logging.getLogger("treg").warning(
+                    "sandbox user %s belongs to a non-sandbox org; kept for review", u.id)
+                continue
+            for org in orgs:
+                # The shared cascade, never a private table list.
                 await cascade_delete_org(org, db)
             await db.delete(u)
             await db.flush()
-        except Exception:  # noqa: BLE001 - a reaper bug is logged per sandbox, never propagated
+        except Exception:
             await nested.rollback()
             logging.getLogger("treg").exception("could not reap sandbox user %s; skipping", u.id)
             continue

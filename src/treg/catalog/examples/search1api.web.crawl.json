@@ -1,0 +1,18 @@
+{
+  "crawlParameters": {
+    "url": "https://example.com"
+  },
+  "results": {
+    "title": "Example Domain",
+    "link": "https://example.com",
+    "content": "This domain is for use in documentation examples without needing permission. This is not a service, avoid relying on it for testing and monitoring purposes.\n\n[Learn more](https://iana.org/help/example-domains)",
+    "metadata": {
+      "sourceUrl": "https://example.com/",
+      "availability": "partial",
+      "unavailableFields": [
+        "author",
+        "publishedTime"
+      ]
+    }
+  }
+}

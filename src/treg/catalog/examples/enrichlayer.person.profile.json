@@ -1,0 +1,120 @@
+{
+  "public_identifier": "example-id",
+  "profile_pic_url": "https://example.com/profile/example",
+  "background_cover_image_url": "https://example.com/profile/example",
+  "first_name": "Example",
+  "last_name": "Person",
+  "full_name": "Example Person",
+  "follower_count": 1,
+  "occupation": "example",
+  "headline": "example",
+  "summary": "Example description.",
+  "location_str": "example",
+  "country": "US",
+  "country_full_name": "Example Person",
+  "city": "example",
+  "state": "example",
+  "experiences": [
+    {
+      "starts_at": {
+        "day": 1,
+        "month": 1,
+        "year": 1
+      },
+      "ends_at": null,
+      "company": "example",
+      "company_linkedin_profile_url": "https://example.com/profile/example",
+      "company_facebook_profile_url": null,
+      "title": "example",
+      "description": null,
+      "location": "example",
+      "logo_url": "https://example.com/profile/example"
+    }
+  ],
+  "education": [
+    {
+      "starts_at": {
+        "day": 1,
+        "month": 1,
+        "year": 1
+      },
+      "ends_at": {
+        "day": 1,
+        "month": 1,
+        "year": 1
+      },
+      "field_of_study": null,
+      "degree_name": null,
+      "school": "example",
+      "school_linkedin_profile_url": "https://example.com/profile/example",
+      "school_facebook_profile_url": null,
+      "description": null,
+      "logo_url": "https://example.com/profile/example",
+      "grade": null,
+      "activities_and_societies": null
+    }
+  ],
+  "languages": [],
+  "languages_and_proficiencies": [],
+  "accomplishment_organisations": [],
+  "accomplishment_publications": [],
+  "accomplishment_honors_awards": [],
+  "accomplishment_patents": [],
+  "accomplishment_courses": [],
+  "accomplishment_projects": [],
+  "accomplishment_test_scores": [],
+  "volunteer_work": [],
+  "certifications": [],
+  "connections": 1,
+  "people_also_viewed": [
+    {
+      "link": "https://example.com/profile/example",
+      "name": "Example Person",
+      "summary": "Example description.",
+      "location": "example"
+    }
+  ],
+  "recommendations": [],
+  "activities": [
+    {
+      "title": "example",
+      "link": "https://example.com/profile/example",
+      "activity_status": null
+    }
+  ],
+  "similarly_named_profiles": [
+    {
+      "name": "Example Person",
+      "link": "https://example.com/profile/example",
+      "summary": null,
+      "location": "example"
+    }
+  ],
+  "articles": [
+    {
+      "title": "example",
+      "link": "https://example.com/profile/example",
+      "published_date": {
+        "day": 1,
+        "month": 1,
+        "year": 1
+      },
+      "author": null,
+      "image_url": "https://example.com/profile/example"
+    }
+  ],
+  "groups": [],
+  "skills": [],
+  "inferred_salary": null,
+  "gender": null,
+  "birth_date": null,
+  "industry": null,
+  "extra": null,
+  "interests": [],
+  "personal_emails": [],
+  "personal_numbers": [],
+  "meta": {
+    "thin_profile": false,
+    "last_updated": "2026-01-01T00:00:00Z"
+  }
+}

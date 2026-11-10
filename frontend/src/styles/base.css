@@ -35,11 +35,6 @@
   /* Marketplace. minmax(0,1fr) on the tracks, not just auto-fill: a long base_url or summary in
      one card must not widen every column and push the grid past the viewport. */
   .mk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:12px}
-  .mk-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;
-    display:flex;flex-direction:column;gap:10px;cursor:pointer;min-width:0;
-    transition:border-color .12s ease,transform .12s ease}
-  .mk-card:hover{border-color:var(--muted);transform:translateY(-1px)}
-  .mk-card:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
   .mk-top{display:flex;align-items:center;gap:11px;min-width:0}
   .mk-top b{display:block;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mk-cat{display:block;font-size:11px;color:var(--muted)}
@@ -66,7 +61,7 @@
   .mk-perm-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
   .mk-perm-l li{font-size:12.5px;line-height:1.45;color:var(--muted);display:flex;gap:7px;align-items:flex-start}
   .mk-tick{color:var(--ok,#7bbf7b);flex:0 0 auto}
-  /* Endpoint catalog (marketplace → Browse by platform). Deliberately reuses .mk-card and .ttable:
+  /* Endpoint catalog (marketplace → Browse by platform). Deliberately reuses .ttable:
      the only genuinely new furniture is the METHOD+path line and the expandable example row. */
   /* own_account vs any_account is the load-bearing distinction in a capability list, so the
      OAuth-only rows are the ones that get colour. */
@@ -103,26 +98,6 @@
   .mk-tabs button:hover{color:var(--ink)}
   .mk-tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
   .mk-tabs button span{color:var(--muted);font-size:11px;margin-left:5px}
-  /* A section heading is a real heading, not a caption: the page is browsed by category, so the
-     category has to be the loudest thing on it after the page title. */
-  .tgroup.shelf{margin-bottom:34px}
-  .sec-head{margin:0 0 13px}
-  .sec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0}
-  .sec-h b{font-size:19px;font-weight:600;letter-spacing:-.35px;line-height:1.25;color:var(--ink)}
-  .sec-n{background:var(--panel2);border:1px solid var(--line);border-radius:999px;
-    padding:1px 9px;font-size:11.5px;color:var(--muted);font-family:var(--mono)}
-  .sec-hint{display:block;margin-top:4px;font-size:12.5px;color:var(--muted);line-height:1.5}
-  /* Platform cards. The card IS the platform: its mark and name, who serves it, what it covers,
-     how much of it there is and what the cheapest call costs — enough to choose without opening it.
-     Providers appear only as a logo stack; the capability x provider matrix lives inside. */
-  .pt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px}
-  .pt-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 17px;
-    display:flex;flex-direction:column;gap:11px;cursor:pointer;min-width:0;
-    color:var(--ink);font-family:inherit;text-align:left;
-    transition:border-color .12s ease,transform .12s ease}
-  .pt-card:hover{border-color:var(--muted);transform:translateY(-1px)}
-  .pt-card:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
-  .pt-top{display:flex;align-items:flex-start;gap:11px;min-width:0}
   /* Same near-white surface rule as .plogo-tile: brand marks are drawn for white and half of them
      vanish on one of our two themes if left bare. The generated fallback keeps its own colour. */
   .pt-logo{width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:#fbfaf7;
@@ -130,22 +105,6 @@
   .pt-logo img{width:25px;height:25px;object-fit:contain;display:block}
   .pt-logo.gen{border-color:transparent}
   .pt-logo .pt-i{font-size:17px;font-weight:700;color:#fff;font-family:var(--sans);line-height:1}
-  /* With the description gone there is room for the whole name: "Google Search Console" wraps to
-     a second line rather than ellipsizing to "Google Search Con…", which is a card that can't say
-     what it is. Two lines is the cap — past that the shelf stops being a grid of equals. */
-  .pt-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-    font-size:14.5px;font-weight:600;line-height:1.3;letter-spacing:-.2px}
-  .pt-cat{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:1px}
-  /* Can I call this today? The card corner answers that and nothing else. */
-  .pt-conn{margin-left:auto;flex:0 0 auto;padding-left:8px}
-  .pt-quiet{font-size:11px;color:var(--muted);opacity:.72;white-space:nowrap}
-  .pt-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    margin-top:auto;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px}
-  .pt-eps{color:var(--muted);display:inline-flex;align-items:center;gap:6px;font-family:var(--mono)}
-  .pt-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);opacity:.65;flex:0 0 5px}
-  .pt-price{color:var(--muted);font-family:var(--mono);white-space:nowrap}
-  .pt-price b{color:var(--ink);font-weight:600}
-  .pt-price.free b{color:var(--teal)}
   /* The provider's own figure, alongside the converted one. Muted and small: it is provenance,
      not the number you compare on — but leaving it out invites "where did that price come from?" */
   .cost-nat{margin-left:5px;color:var(--muted);opacity:.8;font-weight:400;font-size:.92em}
@@ -204,7 +163,13 @@
     padding:8px 10px;border-radius:7px;font:inherit;font-size:12px;cursor:pointer}
   .key-actions-menu button:hover,.key-actions-menu button:focus-visible{background:var(--panel2);outline:0}
   .key-actions-menu button.danger{color:var(--red)}
+  .key-actions-menu button:disabled{opacity:.5;cursor:not-allowed;background:none}
   .key-table .key-identity{min-width:220px}
+  .key-table .key-spend{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* Spend chart series: the validated categorical order, stepped per theme (dark is the default
+     theme here). Slot 8 is never a hue: everything past seven series folds into a neutral Other. */
+  :root{--sb-1:#3987e5;--sb-2:#d95926;--sb-3:#199e70;--sb-4:#c98500;--sb-5:#d55181;--sb-6:#008300;--sb-7:#9085e9;--sb-other:#7d776b}
+  [data-theme="light"]{--sb-1:#2a78d6;--sb-2:#eb6834;--sb-3:#1baf7a;--sb-4:#eda100;--sb-5:#e87ba4;--sb-6:#008300;--sb-7:#4a3aa7;--sb-other:#a39b8b}
   .key-table td{padding-top:12px;padding-bottom:12px;vertical-align:middle}
   .key-primary{display:flex;align-items:center;gap:7px;white-space:nowrap}
   .key-primary b{font-size:13px}
@@ -364,7 +329,6 @@
   .soon-note:hover::after{opacity:1}
   .chip.demo{border-color:var(--accent);color:var(--accent)}
   .modal .hd{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
-  .tabs .act-toggle{margin-left:auto;align-self:center;margin-bottom:6px;padding:4px 11px;font-family:inherit;font-size:12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px} .tabs .act-toggle:hover{border-color:var(--accent);color:var(--accent)}
   tr.act-row{cursor:pointer} tr.act-row:hover td{background:var(--panel2)} .act-view{font-size:11px;color:var(--accent);margin-left:6px;white-space:nowrap}
   .drawer .hd{display:flex;justify-content:space-between;align-items:center;gap:12px} .drawer .hd b{min-width:0;overflow-wrap:anywhere}
   .drawer{position:fixed;top:0;right:0;height:100vh;width:min(520px,96vw);background:var(--panel);border-left:1px solid var(--line);z-index:50;box-shadow:-12px 0 44px rgba(20,16,10,.34);display:flex;flex-direction:column}
@@ -377,6 +341,7 @@
   .phase2{opacity:.5} .hint{font-family:var(--mono);font-size:11px;color:var(--amber);border:1px dashed var(--amber);border-radius:6px;padding:2px 7px}
   a{color:var(--accent);text-decoration:none;cursor:pointer}
   .banner{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red);border:1px solid var(--red);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:12.5px}
+  .banner.auth-warning{background:color-mix(in srgb,var(--amber) 12%,transparent);color:var(--amber);border-color:color-mix(in srgb,var(--amber) 65%,var(--line))}
   .explain{font-family:var(--sans);font-size:12px;color:var(--muted);margin:2px 0 12px}
   .skill-drop{display:flex;gap:14px;align-items:center;padding:18px;border:1.5px dashed var(--line);border-radius:10px;cursor:pointer;background:var(--panel2)}
   .skill-drop:hover{border-color:var(--accent)} .skill-drop .sd-ic{font-size:24px;line-height:1}
@@ -629,26 +594,6 @@ body{transition:background .24s var(--ease),color .24s var(--ease)}
 @media (prefers-reduced-motion: reduce){body{transition:none}}
 
 /* ---- platform cards (marketplace shelves) ---- */
-/* The shelf heading: a title, and the count as the source's quiet mono pill. */
-.sec-h b{font-family:var(--sans);font-size:17px;font-weight:500;letter-spacing:-.3px}
-.sec-n{background:none;border-color:var(--line2);font-size:11px;font-weight:450;
-  color:var(--muted);padding:2px 10px;letter-spacing:.1px}
-.sec-hint{font-family:var(--sans);font-size:12px;color:var(--muted);max-width:64ch}
-/* A card is a surface, not a box: no border, an ambient shadow at rest, and a deeper one
-   on hover. The lift is the shadow itself — no translate, so a 40-card grid stays still. */
-.pt-card{background:var(--surface);border:0;border-radius:var(--r);padding:16px 18px;gap:10px;
-  box-shadow:var(--shadow-sm);
-  transition:box-shadow .24s var(--ease),background-color .2s var(--ease)}
-.pt-card:hover{border-color:transparent;transform:none;box-shadow:var(--shadow-md)}
-.pt-card:focus-visible{outline:0;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
-.pt-name{font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:-.2px}
-.pt-cat{font-family:var(--sans);font-size:11px;color:var(--muted);letter-spacing:.1px}
-.pt-quiet{font-size:11px;color:var(--muted2);opacity:1}
-.pt-foot{border-top:1px solid var(--line);padding-top:10px;font-size:11px}
-/* Denser without the description: a name, its category, and the two facts. */
-.pt-card{padding:14px 16px;gap:12px}
-.pt-eps,.pt-price{color:var(--muted2);font-variant-numeric:tabular-nums}
-.pt-price b{font-weight:500;color:var(--muted)}
 /* The loud green "Connected" chip is a deliberate exception to rows.gg's quiet pills —
    "you can call this right now" has to survive being skimmed across 40 cards. It keeps
    its fill and its haloed dot; every OTHER chip goes quiet (see the pill rule below). */
@@ -762,38 +707,10 @@ a:hover{text-decoration-color:var(--muted)}
 .badge.unknown{color:var(--muted);border-color:var(--line2);background:none}
 .role{font-weight:500;font-size:10px;letter-spacing:.09px}
 .role.admin{color:var(--muted)}
-.sec-n,.tgh-n{border-radius:999px}
+.tgh-n{border-radius:999px}
 
-/* ---- 3.6 surfaces: the marketplace's other cards, matched to .pt-card ---- */
-.mk-card,.mk-perm{background:var(--surface);border:0;border-radius:var(--r);
-  box-shadow:var(--shadow-sm);
-  transition:box-shadow .24s var(--ease),background-color .2s var(--ease)}
-.mk-card:hover{border-color:transparent;transform:none;box-shadow:var(--shadow-md)}
-/* ---- the Platform tab as a LIST ----
-   One integration per row: name and summary on a shared left edge, auth kind and connect state as
-   quiet columns, the action inline. Cards made every name start somewhere else; a shelf you scan
-   for the one provider you hold an account with wants a column. */
-.prov-list{width:100%}
-/* Outrank the base table rules: .ttable .tn is a nowrap 22% column with a MONO name — right for
-   tool names, wrong for "Google Business Profile" next to a summary. */
-.prov-list .tn{width:34%;white-space:nowrap}
-.prov-list .tn b{font-family:var(--sans)}
-.prov-row{cursor:pointer}
-.prov-row td{transition:background-color .2s var(--ease)}
-.prov-row:hover td{background:var(--hover)}
-.prov-row:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--ink)}
-.prov-n-i{display:flex;align-items:center;gap:11px;min-width:0}
-.prov-name{min-width:0}
-.prov-name b{font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:-.1px;display:block;white-space:nowrap}
-.prov-sum{display:block;font-family:var(--sans);font-size:11.5px;color:var(--muted);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62ch}
-.prov-auth{font-family:var(--sans);font-size:11.5px;color:var(--muted2);white-space:nowrap}
-.prov-st{white-space:nowrap}
-/* The landing flash after a "Bring your own key" jump: the row you were sent to, then it fades. */
-.prov-row.focus td{background:color-mix(in srgb,var(--teal) 14%,transparent)}
-@media (max-width:760px){.prov-sum{display:none}.prov-auth{display:none}}
-.mk-card:focus-visible{outline:0;
-  box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+/* ---- 3.6 surfaces: a provider's permission panels, matched to .pl-card ---- */
+.mk-perm{background:var(--surface);border:0;border-radius:var(--r);box-shadow:var(--shadow-sm)}
 .mk-chip{border-radius:999px;padding:4px 12px;font-size:11px;font-weight:450;
   background:none;border:1px solid var(--line2);color:var(--muted);
   transition:background-color .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease)}
@@ -865,9 +782,10 @@ a:hover{text-decoration-color:var(--muted)}
 /* The catalog's one search box (CatalogSearch.vue), on the Catalog page and every shelf: a surface
    lifted by shadow, like the landing's cards, never a drawn box. */
 .cat-find{position:relative;display:flex;align-items:center;gap:10px;max-width:760px;margin:6px 0 26px;padding:0 8px 0 16px;
-  min-height:52px;border:0;border-radius:14px;background:var(--surface,var(--panel));box-shadow:var(--shadow-md);
   transition:box-shadow .15s}
-.cat-find:focus-within{box-shadow:var(--shadow-md),0 0 0 1.5px var(--ink)}
+/* A search box's surface, shared by the kind switch that sits beside the Connections filter. */
+.cat-find,.seg.cn-kinds,.seg.pl-seg,.pl-select{min-height:52px;border:0;border-radius:14px;background:var(--surface,var(--panel));box-shadow:var(--shadow-sm)}
+.cat-find:focus-within{box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .cat-find-i{flex:none;color:var(--muted)}
 .cat-find input{flex:1;min-width:0;border:0;outline:none;background:none;color:var(--ink);font-family:var(--sans);font-size:15.5px;padding:14px 0}
 /* The box shows focus (:focus-within above); the global focus ring on the bare input would draw a box in a box. */
@@ -888,12 +806,9 @@ a:hover{text-decoration-color:var(--muted)}
 .cat-find-suggest.quiet .cat-find-suggest-i{background:var(--hover,rgba(0,0,0,.05));color:var(--ink);width:26px;height:26px}
 @media (prefers-reduced-motion:reduce){.cat-find-suggest{animation:none}}
 .find-miss{margin:18px 0;font-family:var(--sans);font-size:13.5px;color:var(--muted)}
-.pt-card{position:relative;transition:opacity .3s,box-shadow .3s}
-.pt-card.find-dim{opacity:.38}
-.pt-card.find-hit{box-shadow:0 0 0 1.5px var(--ink),0 8px 24px -14px var(--ink)}
 .pt-find{position:absolute;top:-9px;right:12px;font-family:var(--mono);font-size:10.5px;line-height:1;padding:4px 8px;border-radius:999px;
   background:var(--inverse,var(--ink));color:var(--inverse-ink,var(--bg))}
-@media (prefers-reduced-motion:reduce){.cat-find,.pt-card{transition:none}}
+@media (prefers-reduced-motion:reduce){.cat-find{transition:none}}
 /* /search is one viewport tall and owns its own edges (pages/SearchPage.vue). */
 main.flush,.redesign main.flush{padding:0;max-width:none}
 
@@ -939,8 +854,15 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
    The landing page's rules (usecase.css): no accent colour, emphasis is ink; sans everywhere, mono
    only for identifiers, commands and counts; Geist Pixel on the h1 only; cards are surfaces lifted
    by shadow, never boxes drawn by border; no rules between rows. */
-.pl{max-width:1180px;margin:0 auto;padding-bottom:40px;transition:padding-right .25s var(--ease)}
-@media(min-width:1700px){ .pl.dopen{padding-right:600px;max-width:1780px} }
+.pl{max-width:1180px;margin:0 auto;padding-bottom:40px;position:relative;right:0;transition:max-width .25s var(--ease),right .25s var(--ease)}
+/* With the tool drawer (.td, 600px) open on a wide screen, the page stays clear of it: it keeps its
+   width and slides left only as far as the drawer would cover it, plus a 32px gap, and narrows to
+   the space beside the drawer when that is not enough. The page is centred in the viewport (no
+   sidebar beside it), and the right offset's 100% is main's width, so this holds on the public
+   catalog and in the dashboard alike. An offset, not a transform: a transform would make .pl the
+   containing block of the fixed drawer inside it. */
+@media(min-width:1700px){ .pl.dopen{max-width:min(1180px,100vw - 664px);
+  right:max(0px,min(100%,1180px,100vw - 664px) / 2 - 50vw + 632px)} }
 .pl-empty{margin:48px 0;text-align:center;color:var(--muted);font-size:14px}
 .pl-link{background:none;border:0;padding:0;font:inherit;color:var(--ink);cursor:pointer;text-decoration:underline;
   text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);text-underline-offset:3px}
@@ -949,18 +871,22 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 
 /* Hero: centred, as on the landing and the provider pages. */
 .pl-hero{padding:28px 0 44px}
-.pl-crumbs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px;font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.pl-crumbs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;font-family:var(--mono);font-size:12px;color:var(--muted2)}
 .pl-crumbs a{color:var(--muted);text-decoration:none}
 .pl-crumbs a:hover{color:var(--ink)}
-.pl .pl-hero h1{margin:14px 0 0;font-family:var(--display);font-weight:400;font-size:clamp(34px,4.6vw,52px);line-height:1.08;letter-spacing:0}
-.pl .pl-hero h1.pl-h1-cmp{font-size:clamp(26px,3vw,36px);line-height:1.2}
-.pl-lede{margin:14px 0 0;max-width:68ch;font-size:16px;line-height:1.6;color:var(--muted)}
+/* Geist Pixel is drawn for the title size the designer set (Getting started's 22px): past ~30px its
+   pixel steps show, so a page title stays near that and the page leans on space, not size. */
+.pl .pl-hero h1{margin:0;font-family:var(--display);font-weight:400;font-size:26px;line-height:1.25;letter-spacing:0}
+.pl .pl-hero h1.pl-h1-cmp{font-size:22px;line-height:1.35}
+.pl-lede{margin:8px 0 0;max-width:68ch;font-size:15px;line-height:1.6;color:var(--muted)}
 
 /* Section heading: title, a hairline to the edge, the count. */
 .pl-sec{margin:0 0 52px}
 .pl-h{display:flex;align-items:center;gap:14px;margin:0 0 18px;font-size:19px;font-weight:600;letter-spacing:-.01em}
 .pl-h a{color:var(--ink);text-decoration:none}
 .pl-h a:hover{text-decoration:underline;text-underline-offset:4px}
+/* A rule parts a page's main sections. Groups inside one list (a catalog category, a provider
+   category, a quiet heading) get none, the count beside the title: a rule each striped the page. */
 .pl-h i{flex:1;height:1px;background:var(--line)}
 .pl-h em{font-style:normal;font-family:var(--mono);font-size:12px;font-weight:400;color:var(--muted2)}
 .pl-h-quiet{font-size:15px;color:var(--muted)}
@@ -968,28 +894,25 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 /* Cards. */
 .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
 .pl-grid-t{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+/* A card rests on the faintest shadow; hover lifts it one step. A grid of forty with a
+   full shadow each read as a pile of floating tiles. */
 .pl-card{display:flex;flex-direction:column;gap:12px;padding:18px 20px;border:0;border-radius:16px;background:var(--surface);
-  box-shadow:var(--shadow-md);color:var(--ink);text-decoration:none;text-align:left;font:inherit;cursor:pointer;
+  box-shadow:var(--shadow-sm);color:var(--ink);text-decoration:none;text-align:left;font:inherit;
   transition:box-shadow .2s var(--ease),transform .2s var(--ease)}
-.pl-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px);text-decoration:none}
-.pl-card:focus-visible{outline:none;box-shadow:var(--shadow-md),0 0 0 1.5px var(--ink)}
-.pl-card.on{box-shadow:var(--shadow-md),0 0 0 1.5px var(--ink)}
+/* Only a card that opens something lifts and shows a pointer; a panel, a form or a figure stays put. */
+:is(a,button,[role=link],[role=button]).pl-card{cursor:pointer}
+:is(a,button,[role=link],[role=button]).pl-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);text-decoration:none}
+.pl-card:focus-visible{outline:none;box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
+.pl-card.on{box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .pl-cmp b{font-size:15.5px;font-weight:500;line-height:1.4}
 /* A comparison's foot is two fixed lines, logos (and Auto-route) over the provider count and price,
    so no card wraps them differently from its neighbour. */
-.pl-cmp-f{display:flex;flex-direction:column;gap:8px;margin-top:auto}
-.pl-cmp-r{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .pl-cmp.sm{gap:6px;padding:15px 18px}
 .pl-cmp.sm b{font-size:14px}
 .pl-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
-/* Auto-route's look, the tag and the comparison page's card alike: a green light and a dot field. */
-.pl-auto,.pl-autocard{--pl-glow:#5b8a5a38;--pl-dot:#ffffff1c}
-[data-theme="light"] .pl-auto,[data-theme="light"] .pl-autocard{--pl-glow:#dce8d5;--pl-dot:#1a1a1a1a}
-.pl-auto{--pl-auto-ink:#b9d6b4;flex:0 0 auto;padding:3px 9px;
-  border-radius:999px;background:radial-gradient(var(--pl-dot) .6px,transparent .9px) 0 0/4px 4px,var(--pl-glow);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pl-auto-ink) 22%,transparent);color:var(--pl-auto-ink);
-  font-size:11px;font-weight:500;letter-spacing:.01em}
-[data-theme="light"] .pl-auto{--pl-auto-ink:#2f5a2e}
+/* Auto-route's look on the comparison page's card: a green light and a dot field. */
+.pl-autocard{--pl-glow:#5b8a5a38;--pl-dot:#ffffff1c}
+[data-theme="light"] .pl-autocard{--pl-glow:#dce8d5;--pl-dot:#1a1a1a1a}
 .pl-logo{display:inline-grid;place-items:center;width:24px;height:24px;flex:0 0 24px;border-radius:7px;background:#fbfaf7;
   box-shadow:0 0 0 1px rgba(0,0,0,.06);overflow:hidden}
 .pl-logo img{width:15px;height:15px;object-fit:contain}
@@ -1001,7 +924,7 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .pl-tool{flex-direction:row;align-items:center;gap:14px;padding:15px 18px}
 .pl-tool-b{display:flex;flex-direction:column;gap:4px;min-width:0}
 .pl-tool-b b{font-size:14px;font-weight:500;line-height:1.4}
-.pl-tool.quiet{box-shadow:var(--shadow-sm)}
+.pl-tool.quiet{box-shadow:none}
 .pl-tool.quiet b{font-weight:400;color:var(--muted)}
 .pv-cmp{color:var(--ink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);text-underline-offset:3px}
 .pv-shelf{margin:0 0 30px}
@@ -1036,11 +959,153 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
   background:color-mix(in srgb,var(--bg) 70%,transparent);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
 .pl-code code{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;background:none;padding:0;font-family:var(--mono);font-size:12.5px;line-height:1.55;color:inherit}
 .pl-btn{display:inline-flex;align-items:center;height:38px;padding:0 18px;border:0;border-radius:999px;background:var(--inverse);
-  color:var(--inverse-ink);font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;transition:transform .15s var(--ease)}
+  color:var(--inverse-ink);font:inherit;font-size:13.5px;font-weight:500;text-decoration:none;cursor:pointer;transition:transform .15s var(--ease)}
 .pl-btn:hover{transform:translateY(-1px)}
 .pl-btn.ghost{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
 .pl-btn.ghost:hover{background:var(--hover)}
 .pl-copy{min-width:172px;justify-content:center}   /* "Copied" must not shift the buttons beside it */
+.pl-btn.sm{height:30px;padding:0 13px;font-size:12.5px}
+.pl-btn:disabled{opacity:.45;cursor:default;transform:none}
+
+/* Catalog index (pages/CatalogPage.vue): the platform shelf's look, one card per platform. */
+.cat .mk-tabs-wrap{margin:0 0 34px}
+.cat-hint{margin:-8px 0 16px;font-size:13px;color:var(--muted)}
+.cat-card{position:relative;transition:opacity .3s,box-shadow .3s,transform .2s var(--ease)}
+/* A find answer lights the platforms it landed on and dims the rest. */
+.cat-card.find-dim{opacity:.38}
+.cat-card.find-hit{box-shadow:0 0 0 1.5px var(--ink),0 8px 24px -14px var(--ink)}
+@media (prefers-reduced-motion:reduce){.cat-card{transition:none}}
+.cat-card .pl-tool-b{flex:1}
+.cat-card .pl-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The catalog's mark for "calls here use your own account or key": a person, not a word, since every
+   platform works and a word ("Connected") read as "only these do". The meaning is on hover. Sized to
+   the name's line, so it never makes a card taller than its neighbours. */
+.cat-own{display:inline-grid;place-items:center;flex:0 0 auto;width:1.4em;height:1.4em;align-self:center;border-radius:50%;
+  background:var(--hover);color:var(--ink)}
+.cat-foot{margin-top:56px;font-size:13px;line-height:1.6;color:var(--muted)}
+.cat-foot p{margin:0}
+.pl-logo.gen{box-shadow:none}
+.pl-logo .pt-i{font-size:14px;font-weight:700;color:#fff;font-family:var(--sans);line-height:1}
+.cat-name{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+
+/* Connections (pages/ConnectionsPage.vue, components/ConnectionCard.vue) and a provider's page. */
+.cn-banner{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 28px}
+.cn-card{gap:10px;padding:16px 18px}
+.cn-top{display:flex;align-items:center;gap:12px;min-width:0}
+.cn-id{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.cn-id b{font-size:14.5px;font-weight:500;line-height:1.35}
+.cn-id .pl-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A status is a soft pill, the one place colour is spent: green works, amber needs a person soon,
+   red is broken now. The card around it stays plain; its primary button is the call to act. */
+.cn-st{--cn-tone:var(--green);display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;align-self:flex-start;
+  padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--cn-tone) 11%,transparent);
+  font-size:11.5px;font-weight:500;line-height:1.2;color:var(--cn-tone);white-space:nowrap}
+.cn-warn .cn-st{--cn-tone:var(--amber)}
+.cn-bad .cn-st{--cn-tone:var(--red)}
+.cn-quiet .cn-st{--cn-tone:var(--muted)}
+.cn-what{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.cn-fix p{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--ink)}
+.cn-fix-r{display:flex;gap:8px}
+.cn-fix-r input{flex:1;min-width:0;height:30px;border-radius:9px;padding:0 10px;font-size:12.5px}
+.cn-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;padding-top:4px}
+.cn-links{display:flex;flex-wrap:wrap;gap:4px 14px;margin-left:auto}
+.cn-links a,.cn-links button{padding:0;border:0;background:none;font:inherit;font-size:12.5px;color:var(--muted);cursor:pointer;text-decoration:none}
+.cn-links a:hover,.cn-links button:hover{color:var(--ink)}
+.cn-links button:disabled{opacity:.45;cursor:default}
+.cn-links .cn-del.armed{color:var(--red);font-weight:600}
+.cn-prov{cursor:pointer;padding:12px 14px 12px 16px}
+.cn-prov .pl-tool-b{flex:1}
+.cn-prov-a{flex:0 0 auto}
+.cn-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:0 0 28px}
+.cn-find{flex:1 1 320px;max-width:560px;margin:0}
+/* The switch sits beside the filter box as its twin: same height, surface and corners. */
+.seg.cn-kinds,.seg.pl-seg{height:52px;margin:0;padding:5px;gap:2px}
+.seg.cn-kinds button,.seg.pl-seg button{height:100%;padding:0 14px;border-radius:10px;font-family:var(--sans);font-size:13.5px}
+.seg.cn-kinds button span,.seg.pl-seg button span{font-family:var(--mono);font-size:11.5px}
+/* A picker beside them is their twin too: a select on the same surface, its own chevron. */
+.pl-select{height:52px;margin:0;padding:0 40px 0 16px;border:0;color:var(--ink);font:14px var(--sans);cursor:pointer;
+  appearance:none;-webkit-appearance:none;background-repeat:no-repeat;background-position:right 16px center;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+.pl-select:focus-visible{outline:none;box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
+.cn-group{margin:0 0 30px}
+
+/* ---- the shelf's look beyond the catalog: Your own tools, Secrets, Team resources, Activity ---- */
+.pl-hero-row{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px}
+.pl-hero-a{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.pl-hero-a:empty{display:none}
+/* A hero with a tab row under it hands the row its own spacing; a note under the tabs sits closer. */
+.pl-hero:has(+ .pl-tabs){padding-bottom:26px}
+.pl .pl-tabs{margin:0 0 30px}
+.pl .pl-tabs:has(+ .own-note){margin-bottom:16px}
+.own-note{margin:0 0 28px;max-width:80ch}
+.pl-push{margin-left:auto}
+.pl-meta.pl-push{font-family:var(--sans);font-size:13px}
+.pl-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--muted2)}
+.pl-by{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;max-width:100%;color:var(--muted)}
+.pl-more-rows{margin-top:14px;font-size:13px}
+.ui-td .cn-links{flex-wrap:nowrap;justify-content:flex-end;font-family:var(--sans);white-space:nowrap}
+.own-card .cn-id a{color:inherit;text-decoration:none}
+.own-card .cn-id a:hover{text-decoration:underline;text-underline-offset:3px}
+.own-add{position:relative}
+.own-add-scrim{position:fixed;inset:0;z-index:29}
+.own-add-menu{left:auto;right:0;top:calc(100% + 8px);width:300px;padding:6px;border:0;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-md)}
+.own-add-menu .row{padding:10px 12px;border-radius:10px}
+.own-add-menu .row b{display:block;font-size:13.5px;font-weight:500}
+.own-add-menu .row .sub{display:block;margin-top:2px;font-size:12px}
+.own-form{gap:0;max-width:760px;padding:20px 22px}
+.own-form .field input,.own-form .field select{height:40px;border-radius:10px}
+.own-form-tip{margin:0 0 12px;font-size:13px;color:var(--muted)}
+.own-form-a{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.own-empty{gap:0;max-width:760px;padding:22px 24px}
+.own-empty h2{margin:0 0 8px;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.own-empty>p{margin:0 0 16px;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.own-step{margin-top:12px}
+.own-step-note{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.own-prompt{max-height:220px;overflow:auto}
+.seg.pl-seg.own-empty-seg{align-self:flex-start;height:40px;min-height:40px;margin:0 0 12px;padding:3px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.seg.pl-seg.own-empty-seg button{font-size:12.5px;border-radius:8px}
+.own-pager{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:14px}
+
+/* Activity: the feed's cells, and the usage figures. */
+.act-key{flex:0 1 340px;min-width:0}
+.act-feed .ui-td{vertical-align:top}
+.act-feed .act-static{cursor:default}
+.act-feed .act-static:hover .ui-td{background:none}
+.act-who{display:block;white-space:nowrap}
+.act-dim{color:var(--muted2)}
+.act-tool{font-weight:500}
+.act-kind{margin-left:8px;font-size:11.5px;color:var(--muted2)}
+.act-extra{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+.act-link{font-size:12.5px}
+.act-st{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--ink)}
+.act-st::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
+.act-st.bad{color:var(--red)}
+.act-st.bad::before{background:var(--red)}
+.act-st.pending{margin-left:12px;font-family:var(--sans);color:var(--muted)}
+.act-st.pending::before{background:var(--amber)}
+.act-view{margin-left:12px;font-size:12px;color:var(--muted)}
+.ui-tr:hover .act-view{color:var(--ink)}
+.act-cost{font-family:var(--mono);font-size:12.5px}
+.act-cached{margin-right:8px;padding:2px 8px;border-radius:999px;background:var(--hover);font-family:var(--sans);font-size:11px;color:var(--muted)}
+.act-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:0 0 52px}
+.act-stat{gap:6px;padding:18px 20px}
+.act-stat b{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.act-stat span{font-size:12.5px;color:var(--muted)}
+.act-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:0 24px}
+
+/* A platform shelf: its most used as cards of one height (a long title never stretches a row), the
+   rest as a list. */
+.pl-job{gap:10px;padding:18px 20px}
+.pl-job b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.8em;
+  font-size:15px;font-weight:500;line-height:1.4}
+.pl-job-f{display:flex;align-items:center;gap:10px;margin-top:4px;min-width:0}
+.pl-job-auto{color:var(--green)}
+.pl-job-p{margin-left:auto;flex:none;font-family:var(--mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.pl-list-quiet .ui-td b{font-weight:400;color:var(--muted)}
+.pv-hero{padding-bottom:36px}
+.pv-id{display:flex;align-items:center;gap:12px}
+.pv-acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.pv .mk-notice{max-width:68ch}
 
 .c-prov-i{display:flex;align-items:center;gap:12px}
 .c-name{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -1083,6 +1148,7 @@ a.td-prov:hover{color:var(--ink);text-decoration:underline;text-underline-offset
 .td-nav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .td-b{flex:1;overflow:auto;padding:0 26px calc(32px + env(safe-area-inset-bottom,0px))}
 .td-sum{margin:0 0 20px;font-size:14px;line-height:1.6;color:var(--muted)}
+.td-caveat{margin:0 0 20px;padding:11px 14px;border-radius:12px;background:var(--panel2);font-size:13px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 .td-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
 .td-stats div{padding:12px 14px;border-radius:12px;background:var(--panel2)}
 .td-stats span{display:block;font-size:11.5px;color:var(--muted)}
@@ -1188,4 +1254,88 @@ a.td-prov:hover{color:var(--ink);text-decoration:underline;text-underline-offset
   .ui-data-table .ui-td[data-mobile="field"]::before,.ui-data-table .ui-td[data-mobile="wide"]::before{content:attr(data-label);display:block;margin-bottom:2px;font-family:var(--mono);
     font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
   .ui-data-table .ui-trunc{max-width:none!important}
+}
+
+/* Activity → Usage: the spend card, its filters, and its ranked list. */
+.us-card{border-radius:var(--r);background:var(--surface,var(--panel));box-shadow:var(--shadow-sm);margin:0 0 40px}
+.us-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:20px 24px 4px}
+.us-card-head h2{margin:0;font-size:17px}
+.us-card-head p{margin:4px 0 0;font-size:12.5px}
+.us-totals{display:flex;gap:28px}
+.us-totals div{display:grid;gap:2px;text-align:right}
+.us-totals b{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.us-totals span{font-size:12px;color:var(--muted)}
+.us-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 14px;padding:14px 24px 18px;border-bottom:1px solid var(--line);position:relative;z-index:5}
+.us-filter{display:grid;gap:6px}
+.us-filter>span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.us-filters .us-filter .drp-button{height:40px;border:1px solid var(--line);border-radius:10px;box-shadow:none;font-size:13.5px}
+.us-clear{align-self:flex-end;display:flex;align-items:center;height:40px;padding:0 4px}
+.us-card-body{padding:24px 24px 18px;transition:opacity .12s}
+.us-card-body.busy{opacity:.5}
+.us-card-body .pl-empty{margin:0}
+/* Closed by default behind a quiet text toggle; opens with the transitions.dev accordion motion
+   (grid rows 0fr → 1fr, chevron flipped with scaleY so it works in every browser). */
+.us-rank-toggle{display:inline-flex;align-items:center;gap:4px;margin-top:14px;padding:4px 0;border:0;background:none;color:var(--muted);font:12.5px var(--sans);cursor:pointer}
+.us-rank-toggle:hover,.us-rank-toggle:focus-visible{color:var(--ink)}
+.us-rank-toggle svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;
+  transition:transform var(--dropdown-open-dur,250ms) var(--dropdown-ease,ease)}
+.us-rank-toggle[aria-expanded="true"] svg{transform:scaleY(-1)}
+.us-ranking{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--dropdown-open-dur,250ms) var(--dropdown-ease,ease)}
+.us-ranking.open{grid-template-rows:1fr}
+.us-ranking-inner{overflow:hidden;min-height:0}
+.us-ranking.open .us-ranking-inner{padding-top:10px}
+@media (prefers-reduced-motion: reduce){.us-ranking,.us-rank-toggle svg{transition:none}}
+.us-rank-name{display:inline-flex;align-items:center;gap:8px;max-width:340px;min-width:0}
+.us-rank-name>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.us-rank-name s{flex:none;width:9px;height:9px;border-radius:2px;text-decoration:none}
+.us-share{display:inline-block;width:90px;height:6px;margin-right:8px;border-radius:3px;background:var(--panel2);vertical-align:middle;overflow:hidden}
+.us-share i{display:block;height:100%;background:var(--ink);opacity:.55;border-radius:3px}
+.us-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px;font-size:12.5px}
+
+/* ===== Motion: transitions.dev menu dropdown + tooltip timing (the shared tuned values) ===== */
+:root {
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tt-in-dur: 150ms;
+  --tt-out-dur: 50ms;
+  --tt-scale: 0.98;
+  --tt-delay: 80ms;
+  --tt-in-ease: ease-out;
+  --tt-out-ease: ease-out;
+}
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
 }

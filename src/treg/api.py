@@ -1,4 +1,4 @@
-"""The API — the only brain. CLI + skill are thin clients over this (charter).
+"""The API — the only brain. CLI + skill are thin clients over this.
 
 Surface: open user registration (creates a personal org) + per-membership token auth; full CRUD
 on secrets and tools; the /skills composer (register a whole skill = bundle + its secrets + its
@@ -17,17 +17,19 @@ import re
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import QueryableAttribute, defer
 from sqlmodel import select
 
-from . import archive, audit, crypto, localrun, ratestore, runner, sandbox as demo_sandbox
+from . import archive, crypto, localrun, oauth_providers, ratestore
 from .application import asynctasks as async_task_app
+from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
 from .domain.catalog import store as catalog_store
@@ -48,15 +50,23 @@ from .domain.identity import api_keys as managed_keys
 from .domain.identity import session as identity_session
 from .models import (CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
                      Tool, ToolRequest, User)
+from .routers import activity as activity_routes
 from .routers import admin as admin_routes
 from .routers import api_keys as api_key_routes
 
 from .routers import arena as arena_routes
+from .routers import web_arena as web_arena_routes
+from .routers import rankings as rankings_routes
+from .routers import compare as compare_routes
+from .routers import showcase as showcase_routes
+from .routers import images as images_routes
 from .routers import auth as auth_routes
 from .routers import billing as billing_routes
 from .routers import call as call_routes
 from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
+from .routers import enterprise_sso as enterprise_sso_routes
+from .routers import cli_client as cli_client_routes
 from .routers import feedback as feedback_routes
 from .routers import hub as hub_routes
 from .routers import media as media_routes
@@ -65,18 +75,18 @@ from .routers import orgs as org_routes
 from .routers import provider_resources as provider_resource_routes
 from .routers import referrals as referral_routes
 from .routers import resources as resources_routes
+from .routers import table as table_routes
+from .routers import tasks as task_routes
+from .routers import view as view_routes
 from .routers import web as web_routes
 from .routers.auth import _client_ip
 from .routers.auth_helpers import _same_origin
 from .routers.call import _enforce_daily_cap, _require_tool_use_http
 from .routers.orgs import _day_start_utc, _enforce_deny, _require_admin_of
-from .routers.resources import _allowed_server_bins
 from .routers.web import LOCAL_USER_EMAIL, _WEB_DIR
 from .timeutil import utcnow_naive as _utcnow_naive
 
-# ---- compatibility re-exports --------------------------------------------------------------
-# _mount_static reads these directories off `api_module`. Everything else once re-exported here
-# now lives in, and is imported from, its real home.
+# _mount_static reads these directories off `api_module`.
 from .routers.web import _LOGO_DIR, _MEDIA_DIR, _TOUR_DIR, _VENDOR_DIR  # noqa: F401
 
 
@@ -115,7 +125,7 @@ async def _bootstrap_single_user() -> None:
             org = Org(name=LOCAL_ORG_NAME.title(), slug=await _unique_slug(LOCAL_ORG_NAME, db))
             db.add(org)
             await db.flush()
-            token = crypto.new_token()  # first boot
+            token = crypto.new_token()
             membership = Membership(user_id=user.id, org_id=org.id, role="owner",
                                     token_hash=crypto.hash_token(token))
             db.add(membership)
@@ -124,7 +134,7 @@ async def _bootstrap_single_user() -> None:
         else:
             org = await db.get(Org, membership.org_id)
             if not path.exists():
-                token = crypto.new_token()  # the token file was removed — mint a replacement
+                token = crypto.new_token()
                 await managed_keys.replace_membership_token(
                     db, membership, user, token, actor_email=user.email,
                     name="Local installation key",
@@ -134,7 +144,7 @@ async def _bootstrap_single_user() -> None:
     if token:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(token)
-        path.chmod(0o600)  # the installer reads it; nobody else should
+        path.chmod(0o600)
     shown = token or "(unchanged — see " + str(path) + ")"
     print(f"\n  treg is ready — no account needed."
           f"\n  Dashboard  {s.public_url}/app"
@@ -142,9 +152,6 @@ async def _bootstrap_single_user() -> None:
           f"\n  Token      {shown}\n", flush=True)
 
 
-# The few routes still defined below await their post-stage-4 destinations; everything else is
-# spliced in from routers/. `bootstrap.create_app` consumes this router after import and owns
-# every concrete assembly decision around it.
 router = APIRouter()
 app = router  # temporary decorator target; replaced by the compatibility FastAPI app at EOF
 
@@ -213,6 +220,8 @@ async def meta() -> dict:
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks
             # them nothing when they would only answer 404. Per-team access is still probed.
             "hub": bool(s.hub_enabled),
+            # Providers this deployment paused (TREG_PAUSED_PROVIDERS), with the message to show.
+            "paused_providers": oauth_providers.paused_listing(),
             # Config only, no database: lets the top-bar referral entry name the reward on every page
             # without calling GET /referrals, which mints a code and runs the payout sweep.
             "referral": {"referrer_micro": int(s.referral_referrer_micro),
@@ -228,12 +237,9 @@ async def providers_catalog() -> dict:
     return {"version": prov.CATALOG_VERSION, "providers": prov.CATALOG}
 
 
-# Moved routers are spliced in at their pre-refactor positions: FastAPI resolves overlapping
-# paths by registration order, and the route snapshot holds this file to the original order.
 router.routes.extend(catalog_routes.public_router.routes)
 router.routes.extend(web_routes.catalog_pages_router.routes)
 
-# ---- "the catalog doesn't have X" — tool requests -------------------------------------------
 TOOLREQ_HIT_NS = "toolreq"
 TOOLREQ_RATE_MAX = 10          # filings per IP per window
 TOOLREQ_RATE_WINDOW_S = 3600   # 1 hour
@@ -311,7 +317,10 @@ async def create_tool_request(
             "note": "logged — requests steer which provider gets keyed next"}
 
 
+view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)
+
 router.routes.extend(feedback_routes.app.routes)
+router.routes.extend(cli_client_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
@@ -348,17 +357,16 @@ router.routes.extend(org_routes.tag_controls_router.routes)
 router.routes.extend(billing_routes.billing_router.routes)
 router.routes.extend(referral_routes.router.routes)
 router.routes.extend(billing_routes.webhook_router.routes)
+router.routes.extend(enterprise_sso_routes.router.routes)
 router.routes.extend(org_routes.member_management_router.routes)
 router.routes.extend(org_routes.machine_identity_router.routes)
 router.routes.extend(api_key_routes.router.routes)
 router.routes.extend(provider_resource_routes.router.routes)
 
 
-# ---- projects: an optional sub-scope inside an org ------------------------------------------
 router.routes.extend(org_routes.projects_router.routes)
 
 
-# ---- capability pins: the team's provider choice, per capability ---------------------------
 class CapabilityPinIn(BaseModel):
     capability: str
     provider: str
@@ -400,7 +408,7 @@ async def set_capability_pin(
             f"these do: {', '.join(providers)}"))
     # Read the caller's email NOW, as a plain string. A rollback below expires every ORM instance
     # behind `caller`, and touching one afterwards lazy-loads outside the async context —
-    # MissingGreenlet, which is how this first failed under concurrency.
+    # MissingGreenlet.
     who = caller.email
     row = (await db.execute(select(CapabilityPin).where(
         CapabilityPin.org_id == org_id,
@@ -457,7 +465,6 @@ router.routes.extend(org_routes.policy_router.routes)
 router.routes.extend(resources_routes.crud_router.routes)
 
 
-# ---- local runs (`treg run`): grant + outcome report (docs/CLI-RUN-PLAN.md) -----------------
 # Redact obvious credentials a user might type INLINE (`treg run x -- --token sk_live_…`) before the
 # argv is persisted to the audit log — known key prefixes, any high-entropy token, JWTs, AND the value
 # that follows a credential-looking flag (so a SHORT password like `--password hunter2` is masked too).
@@ -537,10 +544,10 @@ async def grant_local_run(
     tool = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id, Tool.name == name))).scalar_one_or_none()
     if tool is None:
         raise HTTPException(status_code=404, detail="tool not found")
-    _require_tool_use_http(caller, tool)  # per-member tool + project ACL (call + both run tiers)
-    _require_local_run(caller)               # local tier may be disabled for this member (server-only)
-    await _enforce_deny(caller, tool.base_url, "", db, tool.project_id)  # host-level policy (see run_tool_server)
-    await _enforce_daily_cap(caller, db)  # a local run counts toward the per-user daily cap
+    _require_tool_use_http(caller, tool)
+    _require_local_run(caller)
+    await _enforce_deny(caller, tool.base_url, "", db, tool.project_id)
+    await _enforce_daily_cap(caller, db)
     catalog_cli = (prov.match_skill(tool.name) or {}).get("cli")
     profile = localrun.effective_profile(tool, catalog_cli)
     if profile is None:
@@ -561,8 +568,8 @@ async def grant_local_run(
         raise HTTPException(status_code=403, detail=(
             f"denied by {source}: pattern {pattern!r}. The skill's creator controls this list "
             "(cli.deny in treg.json)."))
-    # Runner-proof gate (Bug 1). Handing a member a secret they do NOT own — a shared-key tool they may
-    # RUN but not SEE — is allowed only for the isolated treg-run runner, which proves itself with a
+    # Runner-proof gate. Handing a member a secret they do NOT own - a shared-key tool they may
+    # RUN but not SEE - is allowed only for the isolated treg-run runner, which proves itself with a
     # value the member can't read (`X-Treg-Run-Proof`). A direct member call has no proof, so the raw
     # value never reaches the member's eyes. Owned secrets (or an admin) skip this — you can read a key
     # you already hold.
@@ -586,11 +593,11 @@ async def grant_local_run(
     try:
         rendered = await localrun.render_grant(tool, profile, db, request.app.state.http)
     except LookupError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except Exception as exc:  # noqa: BLE001 — a failed oauth refresh must read clearly, like /call
-        raise HTTPException(status_code=502, detail=f"oauth refresh failed: {exc}")
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # a failed oauth refresh must read clearly, like /call
+        raise HTTPException(status_code=502, detail=f"oauth refresh failed: {exc}") from exc
     audit_id = await _grant_audit(db, caller, tool.name, "GRANT", _redact_argv(body.argv), 200, _client_of(request))
     warnings = list(profile.get("warnings") or [])
     ttl = rendered["ttl_seconds"]
@@ -657,11 +664,9 @@ async def report_local_run(
     return {"ok": True, "marked_invalid": marked}
 
 
-# ---- skills: register a whole skill atomically; analyze / import an uploaded folder --------
 router.routes.extend(resources_routes.skill_router.routes)
 
 
-# ---- audit read ---------------------------------------------------------------------------
 @app.get("/calls")
 async def list_calls(
     limit: int = 50, days: int | None = None, before_id: int | None = None,
@@ -697,78 +702,31 @@ async def list_calls(
     tasks = await async_task_app.views_for(
         caller.org_id, [c.call_ref for c in rows if c.call_ref and c.credential_tier == "platform"],
         pinned_tags=caller.membership.pinned_tags)
-    return [
-        {
-            "id": c.id,
-            "user_email": c.user_email,
-            "tool_name": c.tool_name,
-            "method": c.method,
-            "path": c.path,
-            "status_code": c.status_code,
-            "kind": c.kind,
-            "client": c.client,
-            "api_key_id": c.api_key_id,
-            "api_key_name": c.api_key_name,
-            "api_key_prefix": c.api_key_prefix,
-            # Marketplace telemetry — all null for a plain tool call (see models.CallRecord). Kept in
-            # the same row a caller already reads, so "what did this cost me" needs no second endpoint.
-            "endpoint_id": c.endpoint_id,
-            "provider": c.provider,
-            "credential_tier": c.credential_tier,
-            # The archive answered instead of the vendor; the money columns are still identical to
-            # a live call on purpose (docs/context/architecture/archive.md).
-            "cached": c.cached,
-            # The archive holds this call's answer: `GET /calls/{id}/result` can show it. False
-            # for own-key/own-tool calls (never stored), failures, and calls made while recording
-            # was off.
-            "has_result": c.archive_key_hash is not None,
-            "cost_estimated_micro": c.cost_estimated_micro,
-            "cost_observed_micro": c.cost_observed_micro,
-            "cost_charged_micro": _async_charged(c, tasks.get(c.call_ref)),
-            "duration_ms": c.duration_ms,
-            "response_bytes": c.response_bytes,
-            "params_hash": c.params_hash,
-            # non-null = treg said no before anything went upstream (see models.CallRecord) — the
-            # one field that tells "the provider failed" apart from "we refused" in `treg audit`.
-            "refused_by": c.refused_by,
-            # The caller's own tags (X-Treg-Meta), for a builder reconciling this row against their
-            # records. Money is NOT invoiced from here — see the ledger-backed usage endpoint.
-            "call_ref": c.call_ref,
-            "budget_dim": c.budget_dim,
-            "budget_val": c.budget_val,
-            "tags": c.tags,
-            "created_at": c.created_at.isoformat(),
-            # Present only on a metered async submission: settlement state, and the artifact once the
-            # task succeeded (a time-limited URL, or the CLI command that retrieves it).
-            "async_task": tasks.get(c.call_ref),
-        }
-        for c in rows
-    ]
+    return [activity_routes.call_row(c, tasks.get(c.call_ref)) for c in rows]
 
 
-def _async_charged(c: CallRecord, task: dict | None) -> int | None:
-    """What hit the balance, once the task record is known: nothing yet while pending, the settled
-    figure at a terminal state. Without a task record the audit row's own column stands."""
-    if task is None:
-        return c.cost_charged_micro
-    return None if task["status"] == "pending" else task["settled_micro"]
+_ROUTED_CHILD_WINDOW = timedelta(hours=1)
 
 
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
-    call_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+    call_id: str, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What one of this team's calls asked and what came back — the archive's copy.
 
     `call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a
     32-hex call ref; a short all-digit value is the row id).
 
-    Only a METERED PLATFORM 2xx call has one: those answers are recorded by the archive (see
-    docs/context/architecture/archive.md), and the audit row keeps the identities of the exact
-    bytes the caller received. Own-key and own-tool calls are relayed without being stored, a
-    failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
-    with a `note` saying which. The request shape is the vendor-facing one BEFORE credential
-    injection, so no secret can appear in it.
+    A 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered
+    platform call, or an own-key call whose answer fit the size cap while recording was on. The
+    audit row keeps the identities of the provider's bytes; a metered answer is returned as its
+    caller received it: where treg removes the provider's reported charge, without it unless this
+    request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
+    relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
+    with a `note` saying which. A routed call's answer is its children's: its row lists them in
+    `children`, each readable here by its call ref. The request shape is the vendor-facing one
+    BEFORE credential injection, so no secret can appear in it.
     """
     row = (await db.execute(
         select(CallRecord)
@@ -785,7 +743,24 @@ async def get_call_result(
            "cached": row.cached, "created_at": row.created_at.isoformat() if row.created_at else None,
            "stored": False, "note": None, "request": None, "response": None}
     if not row.archive_key_hash or not row.archive_content_hash:
-        if row.credential_tier != "platform":
+        if row.credential_tier == "routed" and row.call_ref:
+            children = (await db.execute(
+                select(CallRecord.id, CallRecord.call_ref, CallRecord.endpoint_id, CallRecord.provider,
+                       CallRecord.status_code, CallRecord.archive_key_hash)
+                .where(CallRecord.org_id == caller.org_id,
+                       CallRecord.created_at >= row.created_at - _ROUTED_CHILD_WINDOW,
+                       CallRecord.created_at <= row.created_at,
+                       CallRecord.call_ref.startswith(f"{row.call_ref}:", autoescape=True),
+                       *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
+                .order_by(CallRecord.id))).all()
+            out["children"] = [{"id": c.id, "call_ref": c.call_ref, "endpoint_id": c.endpoint_id,
+                                "provider": c.provider, "status_code": c.status_code,
+                                "has_result": c.archive_key_hash is not None} for c in children]
+            out["note"] = ("not stored here: a routed call's answer is its child calls'; read one "
+                           "with GET /calls/<child call_ref>/result" if children else
+                           "not stored here: a routed call's answer is its child calls', and none "
+                           "is on file")
+        elif row.credential_tier != "platform":
             out["note"] = ("not stored: calls on your own tools are relayed without being kept, "
                            "and an own-key answer is kept only when it fit the archive's size "
                            "cap while recording was on")
@@ -804,6 +779,11 @@ async def get_call_result(
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
+    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
+          and (text := (found.get("response") or {}).get("body_text")) is not None):
+        # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
+        out["response"]["body_text"] = call_service.answer_for_caller(
+            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
     return out
 
 
@@ -818,9 +798,13 @@ async def get_call(
     A 404 here therefore means "no audit row", not "this call never happened" — check `ledger` in the
     body before concluding anything about money.
     """
-    row = (await db.execute(select(CallRecord).where(
-        CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
-        *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
+    # This view does not use failure evidence; forbid an accidental lazy load of those wide fields.
+    row = (await db.execute(
+        select(CallRecord)
+        .options(defer(cast(QueryableAttribute, CallRecord.error_request), raiseload=True),
+                 defer(cast(QueryableAttribute, CallRecord.error_response), raiseload=True))
+        .where(CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
+               *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
     if row is None and caller.membership.pinned_tags:
         owned = (await db.execute(select(LedgerEntry.id).where(
             LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref,
@@ -848,7 +832,7 @@ async def get_call(
                 "credential_tier": row.credential_tier,
                 "cost_estimated_micro": row.cost_estimated_micro,
                 "cost_observed_micro": row.cost_observed_micro,
-                "cost_charged_micro": _async_charged(row, task),
+                "cost_charged_micro": activity_routes.async_charged(row, task),
                 "duration_ms": row.duration_ms, "response_bytes": row.response_bytes,
                 "refused_by": row.refused_by, "budget_dim": row.budget_dim,
                 "budget_val": row.budget_val, "tags": row.tags,
@@ -885,33 +869,19 @@ async def list_runs(
         local_q = local_q.where(CallRecord.api_key_id == api_key_id)
     server = (await db.execute(
         server_q
-        .order_by(RunRecord.id.desc()).limit(limit)
+        .order_by(RunRecord.created_at.desc(), RunRecord.id.desc()).limit(limit)
     )).scalars().all()
     # A local run is audited as its GRANT (kind="local_run"); the redacted argv lives in `path`.
     local = (await db.execute(
         local_q
-        .order_by(CallRecord.id.desc()).limit(limit)
+        .order_by(CallRecord.created_at.desc(), CallRecord.id.desc()).limit(limit)
     )).scalars().all()
-    rows = [
-        {"id": f"s{r.id}", "user_email": r.user_email, "tool": r.bundle_name,  # bundle_name = tool (historical)
-         "argv": r.argv, "exit_code": r.exit_code, "duration_ms": r.duration_ms,
-         "where": "server", "client": r.client, "api_key_id": r.api_key_id,
-         "api_key_name": r.api_key_name, "api_key_prefix": r.api_key_prefix,
-         "created_at": r.created_at.isoformat()}
-        for r in server
-    ] + [
-        {"id": f"l{c.id}", "user_email": c.user_email, "tool": c.tool_name,
-         "argv": (c.path or "").split(), "exit_code": None, "duration_ms": None,
-         "where": "local", "client": c.client, "api_key_id": c.api_key_id,
-         "api_key_name": c.api_key_name, "api_key_prefix": c.api_key_prefix,
-         "created_at": c.created_at.isoformat()}
-        for c in local
-    ]
+    rows = ([activity_routes.server_run_row(r) for r in server]
+            + [activity_routes.local_run_row(c) for c in local])
     rows.sort(key=lambda x: x["created_at"], reverse=True)
     return rows[:limit]
 
 
-# ---- OAuth connect flow (Phase C): mint the first token via browser consent --------------
 router.routes.extend(connection_routes.oauth_router.routes)
 router.routes.extend(connection_routes.resources_router.routes)
 router.routes.extend(connection_routes.token_router.routes)
@@ -919,93 +889,35 @@ router.routes.extend(connection_routes.management_router.routes)
 router.routes.extend(connection_routes.status_router.routes)
 
 
-# ---- credential health (Phase B): validate all creds + alert owners ----------------------
 router.routes.extend(connection_routes.health_router.routes)
 
 
-# ---- super-admin: cross-tenant read + control (env token OR is_superadmin user) -----------
 router.routes.extend(admin_routes.reads_router.routes)
 router.routes.extend(admin_routes.mutations_router.routes)
 router.routes.extend(admin_routes.reports_router.routes)
 
 
-# ---- the proxy: call a tool without holding its credential; tier-4 metering ----------------
 router.routes.extend(call_routes.router.routes)
+router.routes.extend(table_routes.router.routes)
+router.routes.extend(task_routes.router.routes)
+router.routes.extend(activity_routes.app.routes)
 router.routes.extend(arena_routes.router.routes)
+router.routes.extend(web_arena_routes.router.routes)
+router.routes.extend(showcase_routes.router.routes)
+router.routes.extend(rankings_routes.router.routes)
+router.routes.extend(compare_routes.router.routes)
+router.routes.extend(images_routes.router.routes)
 
 
-# ---- server-side CLI execution (Tier 0 `treg run`) ---------------------------------------
-class RunIn(BaseModel):
-    tool: str             # the tool name in the caller's org (its `cli` profile drives execution)
-    args: list[str] = []  # argv passed to the CLI (secrets are injected via env, never here)
-    timeout_s: int | None = None
+@app.post("/run", status_code=503)
+async def run_tool_server() -> dict:
+    """Server-side CLI execution is disabled for every caller."""
+    raise HTTPException(status_code=503, detail="Server-side CLI execution is disabled")
 
 
-@app.post("/run")
-async def run_tool_server(
-    body: RunIn, request: Request,
-    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
-) -> dict:
-    """Run a tool's CLI **on the treg server**, with its `cli.inject` secrets injected into the
-    child process — the caller never holds the key. Both run tiers read the same `Tool.cli`
-    profile; any tool WITH a profile is server-runnable (no per-tool opt-in — unlike the local
-    tier, the key never reaches the member, and the bin allow-list still gates what executes).
-    See docs/CLI-RUN-PLAN.md.
-
-    member+ (executing argv server-side is a register-tier capability, not a read); the sandbox is
-    excluded (it never touches the real world). A non-zero CLI exit is a normal 200 result with
-    `exit_code` set; only a failure to *start* (not enabled / CLI absent) is a 4xx."""
-    _require_can_register(caller)
-    if demo_sandbox.is_sandbox(caller.org):
-        raise HTTPException(status_code=403, detail="CLI run is disabled in the sandbox")
-    tool = (
-        await db.execute(select(Tool).where(Tool.name == body.tool, Tool.org_id == caller.org_id))
-    ).scalar_one_or_none()
-    if tool is None:
-        raise HTTPException(status_code=404, detail=f"no tool {body.tool!r} in this org")
-    _require_tool_use_http(caller, tool)  # per-member tool + project ACL
-    # A run executes a CLI, so there is no request path to match — evaluate the tool's own upstream
-    # host, which is what a host-level rule ("nobody may reach api.stripe.com") is really saying.
-    await _enforce_deny(caller, tool.base_url, "", db, tool.project_id)
-    await _enforce_daily_cap(caller, db)  # a server run counts toward the per-user daily cap
-    try:
-        exec_bin = runner.resolve_exec_bin(tool)  # the SAME resolution run_tool execs — never diverges
-    except runner.RunError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    if exec_bin not in _allowed_server_bins():
-        raise HTTPException(status_code=422, detail=(
-            f"{exec_bin!r} is not approved for server runs — only catalog-known CLIs may run on the "
-            "server (an admin can allow more via TREG_RUN_ALLOWED_BINS). Use `treg run --local` instead."))
-    timeout = max(1, min(body.timeout_s or runner.DEFAULT_TIMEOUT_S, 600))
-    try:
-        async with runner.run_slot(caller.email):  # cap concurrent server runs (global + per-user)
-            result = await runner.run_tool(tool, list(body.args), db, timeout_s=timeout)
-    except runner.RunBusy as exc:
-        raise HTTPException(status_code=429, detail=str(exc))
-    except runner.RunError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    audit.record_run(
-        org_id=caller.org_id, user_email=caller.email, bundle_name=tool.name,
-        argv=_redact_argv_list(list(body.args)),  # redact any credential typed inline before it's stored
-        exit_code=result.exit_code, duration_ms=result.duration_ms, client=_client_of(request),
-        tags=dict(caller.membership.pinned_tags or {}) or None,
-        api_key_id=caller.api_key.id if caller.api_key else None,
-        api_key_name=caller.api_key.name if caller.api_key else None,
-        api_key_prefix=caller.api_key.safe_prefix if caller.api_key else None,
-    )
-    return {
-        "tool": tool.name,
-        "exit_code": result.exit_code,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "duration_ms": result.duration_ms,
-        "timed_out": result.timed_out,
-    }
-
-
-# Deployment and imports keep using `treg.api:app`; the concrete assembly now lives in bootstrap.
+# Deployment and imports keep using `treg.api:app`; the concrete assembly lives in bootstrap.
 from .bootstrap import create_app  # noqa: E402
 
 app = create_app()
-# Moved handlers retain api.py's original final global binding for calls such as app.openapi().
+# web.py handlers read this module-level `app` (app.openapi(), for one).
 web_routes.app = app

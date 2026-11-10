@@ -40,18 +40,20 @@ those durable checkpoints is the whole safety argument for paying at most once.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from . import money as ledger
 from ..config import get_settings
-from ..models import CreditBlock, Membership, Org, Referral, User
+from ..models import CreditBlock, Membership, Org, Referral, ReferralAffiliateEvent, User
 
 log = logging.getLogger("treg")
 
@@ -80,7 +82,6 @@ def hold_cutoff() -> datetime:
     return _now() - timedelta(days=int(get_settings().referral_hold_days))
 
 
-# ---- the code ----------------------------------------------------------------------------------
 async def ensure_code(db: AsyncSession, user: User) -> str:
     """This user's referral code, minting one on first ask. Commits when it mints.
 
@@ -117,7 +118,6 @@ async def user_by_code(db: AsyncSession, code: str) -> User | None:
     return (await db.execute(select(User).where(User.referral_code == code))).scalars().first()
 
 
-# ---- attribution (at signup) -------------------------------------------------------------------
 async def attribute(db: AsyncSession, *, user: User, org: Org, code: str) -> Referral | None:
     """Record that `org` arrived through `code`. Owes nothing yet. Commits.
 
@@ -146,7 +146,80 @@ async def attribute(db: AsyncSession, *, user: User, org: Org, code: str) -> Ref
     return row
 
 
-# ---- qualification (at the friend's first paid top-up) -----------------------------------------
+class AffiliateConflict(ValueError):
+    pass
+
+
+class AffiliateUserNotFound(ValueError):
+    pass
+
+
+async def lock_referrer(db: AsyncSession, user_id: int) -> None:
+    await db.execute(update(User).where(User.id == user_id).values(id=User.id)
+                     .execution_options(synchronize_session=False))
+
+
+def affiliate_event(event: ReferralAffiliateEvent) -> dict:
+    return {"operation_id": event.operation_id, "version": event.version,
+            "previous_affiliate": event.previous_affiliate, "affiliate": event.affiliate,
+            "reason": event.reason, "principal": event.principal,
+            "created_at": event.created_at.isoformat()}
+
+
+async def affiliate_state(db: AsyncSession, *, user_id: int | None = None,
+                          email: str | None = None) -> dict:
+    query = select(User).where(User.id == user_id) if user_id is not None else select(User).where(User.email == email)
+    user = (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
+    if user is None:
+        raise AffiliateUserNotFound("user not found")
+    paid = (await db.execute(select(func.count()).select_from(Referral).where(
+        Referral.referrer_user_id == user.id, Referral.status.in_(("qualified", "paid")),
+    ))).scalar_one()
+    events = (await db.execute(select(ReferralAffiliateEvent).where(
+        ReferralAffiliateEvent.user_id == user.id,
+        ReferralAffiliateEvent.user_created_at == user.created_at,
+    ).order_by(ReferralAffiliateEvent.version.desc()).limit(20))).scalars().all()
+    limit = int(get_settings().referral_cap)
+    return {"user": {"id": user.id, "email": user.email, "suspended": user.suspended,
+                     "referral_code": user.referral_code},
+            "affiliate": user.referral_affiliate, "version": user.referral_affiliate_version,
+            "cap": {"paid": paid, "limit": None if user.referral_affiliate else limit,
+                    "standard_limit": limit, "affiliate": user.referral_affiliate},
+            "history": [affiliate_event(event) for event in events]}
+
+
+async def set_affiliate(db: AsyncSession, *, user_id: int, affiliate: bool, expected_version: int,
+                        reason: str, operation_id: str, principal: str) -> dict:
+    await lock_referrer(db, user_id)
+    user = (await db.execute(select(User).where(User.id == user_id)
+                            .execution_options(populate_existing=True))).scalar_one_or_none()
+    if user is None:
+        raise AffiliateUserNotFound("user not found")
+    previous = await db.get(ReferralAffiliateEvent, operation_id)
+    if previous is not None:
+        if (previous.user_id != user_id or previous.user_created_at != user.created_at
+                or previous.affiliate != affiliate
+                or previous.version != expected_version + 1 or previous.reason != reason
+                or previous.principal != principal):
+            raise AffiliateConflict("operation_id was already used for a different request")
+        return {**await affiliate_state(db, user_id=user_id), "replayed": True,
+                "changed": False, "event": affiliate_event(previous)}
+    if user.referral_affiliate_version != expected_version:
+        raise AffiliateConflict("affiliate version changed; read the current state before retrying")
+    event = ReferralAffiliateEvent(operation_id=operation_id, user_id=user_id,
+                                   user_created_at=user.created_at,
+                                   version=expected_version + 1,
+                                   previous_affiliate=user.referral_affiliate, affiliate=affiliate,
+                                   reason=reason, principal=principal)
+    user.referral_affiliate = affiliate
+    user.referral_affiliate_version = event.version
+    db.add(user)
+    db.add(event)
+    await db.flush()
+    return {**await affiliate_state(db, user_id=user_id), "replayed": False,
+            "changed": event.previous_affiliate != event.affiliate, "event": affiliate_event(event)}
+
+
 async def qualify(
     db: AsyncSession, *, org_id: int, payment_intent: str, amount_micro: int,
     fingerprint: str | None = None,
@@ -172,6 +245,18 @@ async def qualify(
         select(Referral).where(Referral.referred_org_id == org_id, Referral.status == "pending")
     )).scalars().first()
     if row is None:
+        return None
+    referrer_id = row.referrer_user_id
+    await lock_referrer(db, referrer_id)
+    if fingerprint and db.bind.dialect.name == "postgresql":
+        card_lock = int.from_bytes(hashlib.sha256(("referral-card:" + fingerprint).encode()).digest()[:8],
+                                   "big", signed=True)
+        await db.execute(select(func.pg_advisory_xact_lock(card_lock)))
+    row = (await db.execute(select(Referral).where(
+        Referral.referred_org_id == org_id, Referral.status == "pending",
+    ).execution_options(populate_existing=True))).scalar_one_or_none()
+    if row is None:
+        await db.commit()
         return None
 
     s = get_settings()
@@ -201,21 +286,15 @@ async def qualify(
     if paid_micro < int(s.referral_min_topup_micro):
         log.info("referral %s: %s of %s micro-USD paid — still pending",
                  row.id, paid_micro, s.referral_min_topup_micro)
+        await db.commit()
         return row
 
-    referrer = await db.get(User, row.referrer_user_id)
+    referrer = (await db.execute(select(User).where(User.id == referrer_id)
+                                .execution_options(populate_existing=True))).scalar_one_or_none()
     if referrer is None or referrer.suspended:
         return await _refuse("referrer_unavailable")
 
-    # There is deliberately NO "the referrer must have topped up first" gate. It was built and then
-    # removed, because the attack it appears to stop is unaffected by it: a top-up is not a cost to a
-    # self-dealer, it converts into credit they keep. Requiring one of the REFERRER too just adds a
-    # step that returns its own money — roughly one extra card per twenty referrals, a ~5% tax on a
-    # farm. Against that it hid the link from every free-tier user, who on a product whose pitch is
-    # "$1.00 free, no card" are most users and the likeliest people to tell a friend.
-    #
-    # The gate below is the one with teeth. Keep that asymmetry in mind before adding another
-    # eligibility rule here: the constraint on a farm is CARDS, not accounts.
+    # Deliberately no "referrer must have topped up" gate: the constraint on a farm is CARDS.
 
     # The same card may fund exactly one referral, ever. An email address is free and a card is not,
     # so this is the signal that actually survives a determined farm.
@@ -232,14 +311,14 @@ async def qualify(
 
     # Gate 3 — the lifetime cap. Kept distinct from `rejected` because it is not an accusation:
     # this person referred someone real and simply ran out of self-serve allowance.
-    paid_count = len((await db.execute(
-        select(Referral.id).where(
+    paid_count = 0
+    if not referrer.referral_affiliate:
+        paid_count = (await db.execute(select(func.count()).select_from(Referral).where(
             Referral.referrer_user_id == row.referrer_user_id,
             Referral.status.in_(("qualified", "paid")),  # type: ignore[attr-defined]
             Referral.id != row.id,
-        )
-    )).scalars().all())
-    if paid_count >= int(s.referral_cap):
+        ))).scalar_one()
+    if not referrer.referral_affiliate and paid_count >= int(s.referral_cap):
         row.status = "capped"
         row.reject_reason = "referrer_at_cap"
         row.qualifying_payment_intent = payment_intent
@@ -261,19 +340,7 @@ async def qualify(
         await db.rollback()
         return (await db.execute(select(Referral).where(Referral.id == row.id))).scalars().first()
 
-    # THE REFEREE IS PAID NOW; only the referrer waits out the hold.
-    #
-    # The two sides are not in the same position. The referrer has a Referrals page showing every
-    # invitation and what it is worth, so a pending reward there is legible. The referee has no such
-    # page — for them the only feedback that exists is the balance, and a bonus that is "coming"
-    # is indistinguishable from one that never happened. Reported exactly that way: topped up
-    # expecting the bonus, saw the plain total, assumed it had failed.
-    #
-    # The hold is a chargeback window, and giving up half of it is the price. It is a fair one: the
-    # exposure is one bounty per card (the fingerprint gate still binds), the referee has just handed
-    # us the qualifying payment, and a chargeback already costs us that payment plus the dispute fee,
-    # against which the bonus is marginal. The referrer's half stays held because nothing about their
-    # experience needs it sooner.
+    # THE REFEREE IS PAID NOW; only the referrer waits out the chargeback hold.
     await _grant_referee(db, row)
     return row
 
@@ -294,6 +361,12 @@ async def _grant_referee(db: AsyncSession, row: Referral) -> None:
     # (MissingGreenlet) - the log line itself would break the never-raises contract.
     row_id = row.id
     try:
+        await db.execute(update(Referral).where(Referral.id == row_id).values(id=Referral.id)
+                         .execution_options(synchronize_session=False))
+        await db.refresh(row)
+        if row.status != "qualified" or row.referred_block_id:
+            await db.commit()
+            return
         block = await ledger.grant(
             db, row.referred_org_id, amount_micro=int(get_settings().referral_referred_micro),
             kind="referral", once=False,
@@ -308,7 +381,6 @@ async def _grant_referee(db: AsyncSession, row: Referral) -> None:
         log.warning("referral %s: instant referee grant failed, sweep will retry: %s", row_id, exc)
 
 
-# ---- clawback ----------------------------------------------------------------------------------
 async def reject_for_payment(db: AsyncSession, payment_intent: str, reason: str) -> int:
     """The funding payment was disputed or refunded — cancel anything it earned that has not landed.
     Returns how many rows were cancelled. Commits.
@@ -326,6 +398,9 @@ async def reject_for_payment(db: AsyncSession, payment_intent: str, reason: str)
     )).scalars().all()
     cancelled = 0
     for row in rows:
+        await db.execute(update(Referral).where(Referral.id == row.id).values(id=Referral.id)
+                         .execution_options(synchronize_session=False))
+        await db.refresh(row)
         if row.status == "qualified":
             row.status = "rejected"
             row.reject_reason = reason
@@ -344,12 +419,11 @@ async def reject_for_payment(db: AsyncSession, payment_intent: str, reason: str)
                 "referral %s was already PAID when payment %s was %s — %s micro-USD needs a human",
                 row.id, payment_intent, reason,
                 row.referrer_reward_micro + row.referred_reward_micro)
-    if cancelled:
+    if rows:
         await db.commit()
     return cancelled
 
 
-# ---- payout ------------------------------------------------------------------------------------
 async def credit_org_for(db: AsyncSession, user_id: int) -> Org | None:
     """Where this person's reward lands: the OLDEST org they own.
 
@@ -423,11 +497,18 @@ async def _pay(db: AsyncSession, row: Referral) -> bool:
     once rather than twice. The grants only stage, so they and the block-id stamp land in ONE
     commit after the separate claim commit.
     """
+    await db.execute(update(Referral).where(Referral.id == row.id).values(id=Referral.id)
+                     .execution_options(synchronize_session=False))
+    await db.refresh(row)
+    if row.status != "qualified":
+        await db.commit()
+        return False
     s = get_settings()
     referred_org = await db.get(Org, row.referred_org_id)
     referrer_org = await credit_org_for(db, row.referrer_user_id)
     if referred_org is None or referrer_org is None:
         log.warning("referral %s has nowhere to pay (referrer org missing) — skipping", row.id)
+        await db.commit()
         return False
 
     claimed = (await db.execute(
@@ -441,14 +522,22 @@ async def _pay(db: AsyncSession, row: Referral) -> bool:
 
     meta = {"referral_id": row.id, "code": row.code}
     # Only if the instant grant did not already land it — see the docstring.
-    referred_block = None
+    awards = []
     if not row.referred_block_id:
-        referred_block = await ledger.grant(
-            db, referred_org.id, amount_micro=int(s.referral_referred_micro), kind="referral",
-            once=False, meta={**meta, "side": "referred"})
-    referrer_block = await ledger.grant(
-        db, referrer_org.id, amount_micro=int(s.referral_referrer_micro), kind="referral",
-        once=False, meta={**meta, "side": "referrer"})
+        awards.append((referred_org.id, "referred", int(s.referral_referred_micro)))
+    awards.append((referrer_org.id, "referrer", int(s.referral_referrer_micro)))
+    referred_block = None
+    referrer_block = None
+    # Each grant updates its Org. Match cross-org money writers' row order; stable sorting
+    # retains the original referred-then-referrer order when both rewards land on one Org.
+    for org_id, side, amount in sorted(awards, key=lambda award: award[0]):
+        block = await ledger.grant(
+            db, org_id, amount_micro=amount, kind="referral", once=False,
+            meta={**meta, "side": side})
+        if side == "referred":
+            referred_block = block
+        else:
+            referrer_block = block
 
     fresh = await db.get(Referral, row.id)
     if fresh is not None:
@@ -464,7 +553,6 @@ async def _pay(db: AsyncSession, row: Referral) -> bool:
     return True
 
 
-# ---- the read model ----------------------------------------------------------------------------
 async def summary(db: AsyncSession, user: User) -> dict:
     """Everything the Referrals page renders, for ONE user.
 
@@ -522,7 +610,8 @@ async def summary(db: AsyncSession, user: User) -> dict:
             "min_topup_micro": int(s.referral_min_topup_micro),
             "hold_days": int(s.referral_hold_days),
         },
-        "cap": {"paid": paid_count, "limit": int(s.referral_cap)},
+        "cap": {"paid": paid_count, "limit": None if user.referral_affiliate else int(s.referral_cap),
+                "standard_limit": int(s.referral_cap), "affiliate": user.referral_affiliate},
         "totals": {
             "signed_up": len(rows),
             "topped_up": sum(1 for r in rows if r.status in ("qualified", "paid", "capped")),
@@ -533,7 +622,6 @@ async def summary(db: AsyncSession, user: User) -> dict:
     }
 
 
-# ---- the referee's side ------------------------------------------------------------------------
 async def offer_for_org(db: AsyncSession, org_id: int | None) -> dict | None:
     """"You were invited — here is what a top-up earns you." None when there is nothing to say.
 

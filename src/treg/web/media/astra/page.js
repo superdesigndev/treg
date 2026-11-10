@@ -80,7 +80,8 @@
     $('signin-error').textContent = '';
     const email = $('signin-email').value.trim();
     try {
-      const data = await postSignin('/auth/email/start', { email });
+      const captcha_token = window.tregCaptcha ? await window.tregCaptcha.token('email_start') : '';
+      const data = await postSignin('/auth/email/start', { email, captcha_token });
       signinEmail = email;
       $('signin-recipient').textContent = email;
       $('email-start-form').hidden = true;

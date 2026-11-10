@@ -73,6 +73,7 @@ endpoints:
       confidence: documented
       note: 1 SEARCH credit, charged only when an email is found; a miss is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.email.find.json
     docs_url: https://hunter.io/api-documentation/v2#email-finder
 
@@ -83,7 +84,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /email-verifier
-    name: "Verify an email address is deliverable"
+    name: "Verify email — catch-all, disposable and SMTP checks"
     summary: "Check an email is real, deliverable and not a catch-all or disposable inbox"
     input:
       queryParams:
@@ -103,6 +104,7 @@ endpoints:
       confidence: documented
       note: 0.5 VERIFICATION credits per call — half a credit, a separate pool from search credits. Re-verifying the same address within the plan period is not re-charged.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.email.verify.json
     docs_url: https://hunter.io/api-documentation/v2#email-verifier
 
@@ -149,6 +151,7 @@ endpoints:
       # Reserve still uses the per-email slice; catalog_get / usd_per_call quote one SEARCH credit.
       display: {unit: emails, grouped: true, round_up: true}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.companies.emails.json
     docs_url: https://hunter.io/api-documentation/v2#domain-search
 
@@ -184,6 +187,7 @@ endpoints:
       confidence: documented
       note: 0.2 credits, billed CONDITIONALLY — charged only when email, full name AND position all come back. A 404 or a partial record is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.enrich.json
     docs_url: https://hunter.io/api-documentation/v2#people-enrichment
 
@@ -220,6 +224,7 @@ endpoints:
       confidence: verified
       note: 0.2 credits, billed CONDITIONALLY — charged only when company name, category/description/tags, location or country code AND company size all come back. A 404 or a partial record is free. Still the cheapest companies.enrich in this catalog. OBSERVED 2026-07-31 — a call on a domain never queried on this key moved GET /account's requests.credits.used by exactly 0.200; the same call repeated on an already-queried domain moved it by 0.000 (cached, not free).
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.companies.enrich.json
     docs_url: https://hunter.io/api-documentation/v2#company-enrichment
 
@@ -237,5 +242,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: free — consumes no search or verification credits; this is the registry's health probe}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.account.usage.json
     docs_url: https://hunter.io/api-documentation/v2#account

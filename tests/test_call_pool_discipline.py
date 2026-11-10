@@ -26,15 +26,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from treg import api as A
-from treg.domain.catalog import stats as catalog_stats
+from treg.application import catalog_stats
 from treg.application.call import service as call_service
-from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
+from treg.domain.identity import api_keys as managed_keys
 from treg.config import get_settings
 from treg.infra.db import _background_engine, _engine, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
-from treg.models import CallRecord, Hold
+from treg.models import EndpointDayStat, Hold
 
 from test_marketplace_call import EP, EP_MICRO, platform_on  # noqa: F401 — fixture reuse
 from test_mcp import _call_tool, mcp_session
@@ -67,6 +67,8 @@ async def test_a_metered_call_holds_no_db_connection_while_upstream_is_called(
     clients: AsyncClient, platform_on, monkeypatch,
 ):
     await audit.drain()  # an earlier test's fire-and-forget audit row must not be counted
+    # This call's auth would schedule a last-used write on SQLite's shared pool.
+    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     seen: list[int] = []
     monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
@@ -81,6 +83,8 @@ async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
     second session to deadlock against — it just eats a slot per in-flight call for nothing."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
     await audit.drain()
+    # Creating the secret schedules a last-used write on SQLite's shared pool.
+    await managed_keys.drain_last_used()
     seen: list[int] = []
     monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
@@ -153,22 +157,25 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     old request-owned query filled every slot and the calls timed out with pool 503s. Search now
     returns from an empty/stale process cache while one task owns the only refresh connection.
     """
-    original = catalog_stats.observed
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
+    source = A.app.state.endpoint_observation_reader._source
+    original = source.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_fold_read(endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
         # Force a real checkout before holding the refresh open. One connection is expected; one
         # per search request is the production defect this test reproduces.
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        async with source._session_factory() as db:
+            await db.execute(select(EndpointDayStat.endpoint_id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(source, "get_many", _slow_fold_read)
     searches = [asyncio.create_task(clients.get("/catalog/search?q=tiktok&limit=25"))
                 for _ in range(100)]
     # Each search ranks the catalog on the event loop before it asks for observations: 100 of them
@@ -178,14 +185,14 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
 
     try:
-        calls = await asyncio.gather(*(
+        calls = await asyncio.wait_for(asyncio.gather(*(
             clients.get(f"/call/{EP}?aweme_id=catalog-mix-{i}") for i in range(20)
-        ))
+        )), timeout=15)
     finally:
         release_refresh.set()
 
-    search_responses = await asyncio.gather(*searches)
-    await A.app.state.endpoint_observation_reader.wait_for_idle()
+    search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=10)
+    await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
     assert [r.status_code for r in search_responses] == [200] * 100
     assert [r.status_code for r in calls] == [200] * 20, [
         (r.status_code, r.text) for r in calls
@@ -200,20 +207,23 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
     clients: AsyncClient, monkeypatch, dispose_exhausted_pool_on_its_own_loop,
 ):
     """The agent entry point must share HTTP's cache, task, and single refresh connection."""
-    original = catalog_stats.observed
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
+    source = A.app.state.endpoint_observation_reader._source
+    original = source.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_fold_read(endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        async with source._session_factory() as db:
+            await db.execute(select(EndpointDayStat.endpoint_id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(source, "get_many", _slow_fold_read)
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as mcp_client:
         http_search = asyncio.create_task(clients.get("/catalog/search?q=backlinks&limit=8"))
@@ -241,7 +251,7 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
         finally:
             release_refresh.set()
 
-    await A.app.state.endpoint_observation_reader.wait_for_idle()
+    await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
 
 
 async def test_a_settle_that_loses_the_pool_once_retries_and_still_charges(

@@ -1,0 +1,438 @@
+provider: sixtyfour
+source:
+  docs: https://docs.sixtyfour.ai/introduction
+  openapi: https://api.sixtyfour.ai/openapi.json
+  curated: '2026-10-16'
+pricing_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+limits: "Sixtyfour documents 120 email verifications, 200 searches and 60 balance checks per minute. Other route limits are not published."
+cache: forbidden
+proposed_capabilities:
+  people.qualify: Evaluate a lead against qualification criteria
+
+endpoints:
+  - id: sixtyfour.people.email.find.work
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /find-email
+    name: Find a work email
+    summary: Find a professional email from a person's identifying details.
+    body_allowlist: true
+    platform_request: {body.mode: PROFESSIONAL}
+    input:
+      bodyType: json
+      body:
+        lead: {type: object, required: true, note: "Person identifiers such as name, company, domain or LinkedIn URL."}
+        verify_emails: {type: boolean, required: false, default: true}
+        mode: {type: string, required: true, enum: [PROFESSIONAL], example: PROFESSIONAL}
+    cost: &work_email
+      type: per_success
+      value: 0.5
+      currency: credit
+      unit: call
+      reported_charge: {path: cost_credits, unit: credit}
+      source: observed
+      source_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+      checked: '2026-10-16'
+      confidence: verified
+      note: "0.5 credit for a found work email. The response's cost_credits settles the exact charge, including a free miss."
+    docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/find-email
+    added: '2026-10-16'
+    test_request: {body: {lead: {name: Jane Doe, domain: example.com}, mode: PROFESSIONAL}}
+    example_response: examples/sixtyfour.people.email.find.work.json
+
+  - id: sixtyfour.people.email.find.personal
+    capability: people.email.find.personal
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /find-email
+    name: Find a personal email
+    summary: Find a personal email from a person's identifying details.
+    body_allowlist: true
+    platform_request: {body.mode: PERSONAL}
+    input:
+      bodyType: json
+      body:
+        lead: {type: object, required: true, note: "Person identifiers such as name, company, domain or LinkedIn URL."}
+        verify_emails: {type: boolean, required: false, default: true}
+        mode: {type: string, required: true, enum: [PERSONAL], example: PERSONAL}
+    cost:
+      <<: *work_email
+      value: 2
+      confidence: documented
+      note: "2 credits for a found personal email; the live miss reported cost_credits 0. Exact cost_credits controls settlement."
+    docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/find-email
+    added: '2026-10-16'
+    untestable: "A useful fixture would disclose a real person's personal email; the example is a structural fixture with reserved fake contact data."
+    example_response: examples/sixtyfour.people.email.find.personal.json
+    test_request: {body: {lead: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}, mode: PERSONAL}}
+
+  - id: sixtyfour.people.phone.find
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /find-phone
+    name: Find phone numbers
+    summary: Find phone numbers from a person's identifying details.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        lead: {type: object, required: true, note: "Person identifiers such as name, email, company or LinkedIn URL."}
+    cost:
+      <<: *work_email
+      type: per_success
+      value: 3
+      unit: call
+      note: "3 credits for the single phone field returned by /find-phone; an empty phone is free. Reported cost_credits settles the actual charge."
+    docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/find-phone
+    added: '2026-10-16'
+    test_request: {body: {lead: {name: Jane Doe, domain: example.com}}}
+    example_response: examples/sixtyfour.people.phone.find.json
+
+  - id: sixtyfour.people.email.reverse
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /reverse-email
+    name: Identify a person from an email
+    summary: Find a person's profile from an email address.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        lead: {type: object, required: true, properties: {email: {type: string, required: true}}}
+    cost:
+      <<: *work_email
+      note: "0.5 credit for a resolved email. Exact cost_credits controls settlement."
+    docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/reverse-email
+    added: '2026-10-16'
+    test_request: {body: {lead: {email: jane@example.com}}}
+    example_response: examples/sixtyfour.people.email.reverse.json
+
+  - id: sixtyfour.people.phone.reverse
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /reverse-phone
+    name: Identify a person from a phone number
+    summary: Find a person's profile from a phone number.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        lead: {type: object, required: true, properties: {phone: {type: string, required: true}}}
+    cost:
+      <<: *work_email
+      value: 3
+      confidence: documented
+      note: "3 credits for a resolved phone. A live miss reported cost_credits 0; exact cost_credits controls settlement."
+    docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/reverse-phone
+    added: '2026-10-16'
+    untestable: "A useful fixture would disclose a real person's profile."
+
+  - id: sixtyfour.people.email.verify
+    capability: people.email.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /verify-email
+    name: Verify an email address
+    summary: Check an email address's deliverability.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: nobody@example.invalid}
+      note: "VALID and INVALID verdicts cost 0.1 credit; UNKNOWN is free. The response does not report cost_credits."
+    test_request: {body: {email: nobody@example.invalid}}
+    cost:
+      type: per_success
+      value: 0.1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://docs.sixtyfour.ai/api-reference/enrichment/verify-email
+      checked: '2026-10-16'
+      confidence: verified
+      note: "0.1 credit for a definitive verdict; the verification adapter marks UNKNOWN as a free miss."
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/verify-email
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/sixtyfour.people.email.verify.json
+
+  - id: sixtyfour.people.intelligence.start
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /people-intelligence-async
+    name: Research a person
+    summary: Start micro or low tier research about one person and retrieve the structured result.
+    body_allowlist: true
+    async: &job_async
+      id_from: task_id
+      poll:
+        endpoint: sixtyfour.jobs.get
+        param: {in: pathParams, name: job_id}
+      status:
+        path: status
+        progress: [pending, queued, running, processing, in_progress, continued_as_new]
+        success: [completed]
+        failure: [failed, cancelled, canceled, terminated, timed_out]
+      result: {path: result}
+      interval: 5
+    input:
+      bodyType: json
+      body:
+        lead_info: {type: object, required: true, note: "One person's identifiers."}
+        struct: {type: object, required: true, note: "Requested output fields and natural-language descriptions."}
+        tier: {type: string, required: true, enum: [micro, low], example: micro}
+        research_plan: {type: string, required: false}
+        field_confidence: {type: boolean, required: false}
+      note: "Shared-key access is limited to micro and low. Use a raw own-key tool for higher tiers."
+    cost: &research_cost
+      type: per_success
+      table:
+        - {when: {body.tier: micro}, value: 0.3}
+        - {when: {body.tier: low}, value: 1}
+      fallback: {value: 1, note: "The highest available tier is low."}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: charge_credits, unit: credit}
+      source: observed
+      source_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+      checked: '2026-10-16'
+      confidence: verified
+      note: "The terminal job reports charge_credits; micro is 0.3 and low is 1 credit."
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/people-intelligence-async
+    added: '2026-10-16'
+    untestable: "A useful terminal result could contain personal data; live credit totals were checked without storing it."
+
+  - id: sixtyfour.companies.intelligence.start
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /company-intelligence-async
+    name: Research a company
+    summary: Start micro or low tier company research and retrieve structured results.
+    body_allowlist: true
+    async: *job_async
+    input:
+      bodyType: json
+      body:
+        target_company: {type: object, required: true, note: "Company name, domain or LinkedIn URL."}
+        struct: {type: object, required: true, note: "Requested output fields and natural-language descriptions."}
+        tier: {type: string, required: true, enum: [micro, low], example: micro}
+        research_plan: {type: string, required: false}
+        field_confidence: {type: boolean, required: false}
+      note: "Shared-key access is limited to micro and low. Use a raw own-key tool for higher tiers."
+    cost: *research_cost
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/company-intelligence-async
+    added: '2026-10-16'
+    untestable: "A useful terminal result can contain contact data; live credit totals were checked without storing it."
+
+  - id: sixtyfour.people.qualify.start
+    capability: people.qualify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /qa-agent-async
+    name: Qualify a lead
+    summary: Evaluate one lead against supplied qualification criteria asynchronously.
+    body_allowlist: true
+    async: *job_async
+    input:
+      bodyType: json
+      body:
+        data: {type: object, required: true, note: "Lead or record to evaluate."}
+        qualification_criteria: {type: array, required: true, note: "Criteria objects accepted by Sixtyfour."}
+        references: {type: array, required: false, note: "Optional reference URLs."}
+        struct: {type: object, required: false}
+        max_tool_calls: {type: integer, required: true, enum: [10], example: 10}
+      note: "Shared-key calls are limited to ten agent tool calls."
+    platform_request: {body.max_tool_calls: 10}
+    cost:
+      type: per_success
+      value: 0.5
+      fallback: {value: 0.5, note: "The documented evaluation charge."}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: charge_credits, unit: credit}
+      source: observed
+      source_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+      checked: '2026-10-16'
+      confidence: verified
+      note: "The terminal job reports charge_credits; the live evaluation cost 0.5 credit."
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/qa-agent-async
+    added: '2026-10-16'
+    untestable: "A useful terminal result can contain lead data; live credit totals were checked without storing it."
+
+  - id: sixtyfour.linkedin.enrich
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /enrich-linkedin
+    name: Enrich a LinkedIn profile
+    summary: Enrich a person or company from a LinkedIn URL.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: true, note: "A full person or company LinkedIn URL."}
+        struct: {type: object, required: false, note: "Optional requested output fields."}
+    cost:
+      type: per_success
+      value: 0.3
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+      checked: '2026-10-16'
+      confidence: verified
+      note: "A deliberately nonexistent LinkedIn URL returned HTTP 200 and consumed 0.3 credit; the response has no charge field."
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/enrich-linkedin-profile
+    added: '2026-10-16'
+    untestable: "A useful fixture would contain a person's or company's enrichment result."
+
+  - id: sixtyfour.people.search
+    capability: people.search
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /search/query
+    name: Search people
+    summary: Run one bounded page of Sixtyfour people search.
+    body_allowlist: true
+    platform_request: &search_request
+      body.mode: people
+      body.persist_history: false
+      body.page_size: 10
+      body.max_results: 10
+      body.output_shape: raw
+    input:
+      bodyType: json
+      body: &search_body
+        query: {type: string, required: true, note: "Natural-language query."}
+        mode: {type: string, required: true, enum: [people], example: people}
+        page_size: {type: integer, required: true, enum: [10], example: 10}
+        max_results: {type: integer, required: true, enum: [10], example: 10}
+        persist_history: {type: boolean, required: true, enum: [false], example: false}
+        output_shape: {type: string, required: true, enum: [raw], example: raw}
+      note: "One page of at most ten results. Account search history and cursor replay are disabled on the shared key."
+    cost: &search_cost
+      type: per_result
+      value: 0.1
+      currency: credit
+      unit: result
+      reported_charge: {path: charge_credits, unit: credit}
+      source: observed
+      source_url: https://docs.sixtyfour.ai/guides/credits-and-pricing
+      checked: '2026-10-16'
+      confidence: verified
+      note: "0.1 credit per returned row, up to one credit for this page; charge_credits settles the exact amount."
+    docs_url: https://docs.sixtyfour.ai/api-reference/search/search-query
+    added: '2026-10-16'
+    untestable: "Search can return personal contact data; live count and charge were checked without storing rows."
+
+  - id: sixtyfour.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /search/query
+    name: Search companies
+    summary: Run one bounded page of Sixtyfour company search.
+    body_allowlist: true
+    platform_request:
+      <<: *search_request
+      body.mode: company
+    input:
+      bodyType: json
+      body:
+        <<: *search_body
+        mode: {type: string, required: true, enum: [company], example: company}
+      note: "One page of at most ten results. Account search history and cursor replay are disabled on the shared key."
+    cost: *search_cost
+    docs_url: https://docs.sixtyfour.ai/api-reference/search/search-query
+    added: '2026-10-16'
+    untestable: "Search may return contact data; live count and charge were checked without storing rows."
+
+  - id: sixtyfour.jobs.get
+    capability: account.jobs.get
+    platform: account
+    domain: account
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /job-status/{job_id}
+    name: Get a research job
+    summary: Read status, results and final credit charge for a job started by this team.
+    async: false
+    resource_ownership:
+      requires: {kind: "poll:sixtyfour.jobs.get", param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.sixtyfour.ai/api-reference/enrichment/job-status
+      checked: '2026-10-16'
+      confidence: verified
+      note: "Polling itself is free; the starting job settles from terminal charge_credits."
+    docs_url: https://docs.sixtyfour.ai/api-reference/enrichment/job-status
+    added: '2026-10-16'
+    untestable: "Requires a job id created by the caller and can return personal data."
+
+  - id: sixtyfour.account.balance
+    capability: account.usage
+    platform: account
+    domain: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /check-balance
+    name: Check Sixtyfour credits
+    summary: Check the connected Sixtyfour account's available credits.
+    input:
+      note: "This free route also serves as the platform key probe and internal capacity collector."
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.sixtyfour.ai/api-reference/account/check-balance
+      checked: '2026-10-16'
+      confidence: verified
+      note: "Balance checks do not consume credits; the documented limit is 60 per minute."
+    docs_url: https://docs.sixtyfour.ai/api-reference/account/check-balance
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/sixtyfour.account.balance.json

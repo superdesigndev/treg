@@ -59,3 +59,20 @@ export async function requestJson<T = unknown>(
   }
   return response.json()
 }
+
+/** A dashboard report refused with 429 (its server-side gate is full, or it ran out of time) is
+ * retried after each wait in turn; any other failure, or the last refusal, is thrown. */
+export async function withReportRetry<T>(
+  run: () => Promise<T>,
+  waitsMs: readonly number[] = [1000, 2000, 4000],
+  sleep: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)),
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run()
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 429 || attempt >= waitsMs.length) throw err
+      await sleep(waitsMs[attempt])
+    }
+  }
+}

@@ -15,6 +15,7 @@ from treg.api import app
 from treg.domain.identity import api_keys as managed_keys
 from treg.infra.db import reset_db, session_maker
 from treg.models import ApiKey, ApiKeyEvent, Membership, User
+from conftest import accept_with_code
 
 
 def _h(token: str) -> dict[str, str]:
@@ -66,7 +67,7 @@ async def test_new_human_team_has_only_default_key_with_visible_prefix(sent_otps
             headers=_h(default_token),
             json={"email": "fresh-member@example.dev", "role": "member"},
         )).json()
-        accepted = await client.post("/invites/accept", json={
+        accepted = await accept_with_code(client, json={
             "email": "fresh-member@example.dev", "code": invite["code"],
         })
         member_token = accepted.json()["token"]
@@ -365,12 +366,10 @@ async def test_every_token_bearing_response_is_no_store(clients, sent_otps):
     assert default.json()["token"] and default.headers["cache-control"] == "no-store"
     legacy = await clients.post("/orgs", json={"name": "No store legacy"})
     assert legacy.json()["token"] and legacy.headers["cache-control"] == "no-store"
-    registered = await clients.post("/users", json={"email": "no-store-signup@example.dev"})
-    assert registered.json()["token"] and registered.headers["cache-control"] == "no-store"
     invite = await clients.post(f"/orgs/{org_id}/invites", json={
         "email": "no-store-invite@example.dev", "role": "member",
     })
-    accepted = await clients.post("/invites/accept", json={
+    accepted = await accept_with_code(clients, json={
         "email": "no-store-invite@example.dev", "code": invite.json()["code"],
     })
     assert accepted.json()["token"] and accepted.headers["cache-control"] == "no-store"
@@ -585,7 +584,7 @@ async def test_default_key_rotation_is_team_specific_and_not_revocable(sent_otps
         assert rotated.status_code == 200, rotated.text
         replacement = rotated.json()["secret"]
         assert replacement != first_token
-        assert (await client.get("/tools", headers=_h(first_token))).json() == {"detail": "revoked key"}
+        assert (await client.get("/tools", headers=_h(first_token))).json()["detail"] == "revoked key"
         assert (await client.get("/tools", headers=_h(replacement))).status_code == 200
         assert (await client.get("/tools", headers=_h(second_token))).status_code == 200
         refused = await client.post(

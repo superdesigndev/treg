@@ -1,0 +1,205 @@
+<style>
+.incident{max-width:720px}
+.incident section{padding:0 0 30px;display:grid;gap:14px;min-width:0}
+.incident h2{font-size:22px;margin:0;padding-top:24px;border-top:1px solid var(--line);text-wrap:balance}
+.incident p,.incident ul,.incident ol{margin:0;line-height:1.65}
+.incident ul,.incident ol{padding-left:1.3em;display:grid;gap:8px}
+.incident code{font-family:var(--mono);font-size:.9em;background:var(--panel2);padding:1px 5px;border-radius:4px}
+.incident .status{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;margin-top:16px;
+  padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--rb);font-size:14px}
+.incident .pill{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+  padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.incident .pill.done{color:var(--green)}
+.incident .pill.open{color:var(--red)}
+.incident .table-wrap{overflow-x:auto}
+.incident table{width:100%;border-collapse:collapse;font-size:15px}
+.incident th,.incident td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}
+.incident th{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.incident td.t{font-family:var(--mono);font-size:13px;white-space:nowrap;color:var(--muted);padding-right:20px}
+.incident .action{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--red);
+  border-radius:var(--rb);padding:20px 22px}
+.incident .action ol{gap:12px}
+.incident details{border-bottom:1px solid var(--line);padding:12px 0}
+.incident summary{cursor:pointer;font-weight:600}
+.incident details p{margin-top:8px}
+.incident details.guide{background:var(--surface);border:1px solid var(--line);border-radius:var(--rb);padding:14px 20px}
+.incident .guide-body{display:grid;gap:12px;margin-top:14px}
+.incident .sub{font-size:18px;margin:12px 0 0}
+.incident .guide-body h4{font-size:16px;margin:10px 0 0}
+.incident .contact{font-family:var(--mono);font-size:16px}
+</style>
+<main class="wrap incident">
+  <div class="phead">
+    <div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / <a href="/blog/security-incident-2026-10-23">Security incident</a></div>
+    <h1>23 Oct 2026 Treg security incident report</h1>
+    <p class="lede">First published October 25, 2026 · Last updated October 25, 2026 · Times are UTC</p>
+    <div class="status">
+      <span><span class="pill done">Contained</span>&nbsp; Attacker's access shut down and vulnerability removed on October 23</span>
+      <span><span class="pill open">Ongoing</span>&nbsp; More extensive platform security audits</span>
+    </div>
+  </div>
+
+  <section>
+    <h2>Summary</h2>
+    <p>On October 23, 2026, we confirmed that an attacker had gained unauthorized access to part of treg's production systems. The attacker exploited a vulnerability in a server-side feature. We have disabled that feature entirely.</p>
+    <p>We believe this is part of a series of attacks recently targeting platform companies, with the aim of stealing keys for AI inference providers. We have notified affected upstream providers and asked them to proactively revoke exposed keys, and we are treating this incident with the utmost seriousness.</p>
+  </section>
+
+  <section>
+    <h2>Timeline, October 23, 2026</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time (UTC)</th><th>Event</th></tr></thead>
+        <tbody>
+          <tr><td class="t">~01:30</td><td>Confirmed unauthorized server-side command execution on the production web service, and that the attacker may have obtained server credentials. Began containment.</td></tr>
+          <tr><td class="t">before 02:24</td><td>Disabled the vulnerable server-side feature for all users.</td></tr>
+          <tr><td class="t">02:24–02:35</td><td>Rotated the session-signing secret and admin token. This invalidated every treg access token and login session. Users had to sign in again and copy a new token, and most agent calls returned <code>401</code> during this period.</td></tr>
+          <tr><td class="t">03:20–10:30</td><td>Rotated treg's own credentials provider by provider: database, email, payments, customer support, OAuth application credentials, object storage, and the keys for the AI and data providers treg uses.</td></tr>
+          <tr><td class="t">~08:50</td><td>Banned an account and its team that appeared that day and probed the platform with similar methods. All of its probes were blocked.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What may be affected</h2>
+    <p>The attacker's main goal appears to have been stealing API keys stored on the platform, both treg's own provider keys and keys teams added themselves. We are taking a conservative view. Treat the following as exposed:</p>
+    <ul>
+      <li><strong>API keys you added to treg</strong> for your own tools, such as OpenRouter or other AI provider keys.</li>
+      <li><strong>Accounts you connected through treg.</strong> We revoked these where the provider let us. See below.</li>
+      <li><strong>treg access tokens.</strong> We have reset all of them.</li>
+    </ul>
+    <p>If your team never added its own keys or connected accounts, you only need to sign in again and replace your treg token.</p>
+    <p>We rotated our database credentials. Our database logs show no queries made by the attacker.</p>
+  </section>
+
+  <section>
+    <h2>What we have done</h2>
+    <ul>
+      <li><strong>Closed the entry point.</strong> The vulnerable feature was disabled for all users on October 23 and will not return in its original form.</li>
+      <li><strong>Rotated treg's own credentials</strong>, including the database, every AI and data provider key, payment and email service credentials, and the OAuth credentials of every application treg uses.</li>
+      <li><strong>Reset every treg access token and login session.</strong></li>
+      <li><strong>Revoked exposed connections wherever the provider allowed it.</strong> This covers connected Slack, LinkedIn, Facebook and Meta Ads accounts. They now show as needing to be reconnected. Instagram does not let us fully remove access on your behalf; see <a href="#instagram">If you connected an Instagram account</a>.</li>
+      <li><strong>Contacted every affected team</strong> and reported the incident to upstream provider partners. We are continuing to notify the remaining providers.</li>
+      <li><strong>Banned the accounts</strong> used for the attack and for related probing.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What you need to do</h2>
+    <div class="action">
+      <ol>
+        <li><strong>Rotate every API key you added to treg</strong>, in that provider's own dashboard. Do this even if you have not noticed unusual activity. treg cannot invalidate these keys for you.</li>
+        <li><strong>Review your provider usage for all of October</strong>, not only after October 23. Set spending limits on your new keys where the provider supports it.</li>
+        <li><strong>Reconnect</strong> any connected account that treg shows as needing reconnection.</li>
+        <li><strong>Sign in to treg again and copy a new token</strong> into your agent's configuration. Old tokens no longer work.</li>
+        <li><strong>If you connected an Instagram account</strong>, remove treg's access in Instagram itself, as described below.</li>
+      </ol>
+    </div>
+    <h3 class="sub" id="instagram">If you connected an Instagram account</h3>
+    <p>Our tests show that an exposed Instagram connection can no longer publish posts or send messages. It can still read your account data until you remove treg's access in Instagram. Instagram does not let us do this on your behalf, so please follow the steps below.</p>
+    <details class="guide">
+      <summary>Show how to fully remove treg's access to your Instagram account</summary>
+      <div class="guide-body">
+        <p>We have found no clear signs that your Instagram connection was misused. To be safe, we still ask you to remove treg's access in Instagram yourself.</p>
+        <p>Removing treg from your treg dashboard alone is <strong>not enough</strong>. It deletes our copy of the connection, but the permission you granted stays active at Instagram until you remove it there.</p>
+
+        <h4>1. Remove treg from Instagram</h4>
+        <p><strong>Instagram app (iPhone / Android)</strong></p>
+        <ol>
+          <li>Go to your profile and tap the menu (☰) in the top right.</li>
+          <li>Tap <strong>Website permissions</strong> (under <em>Your app and media</em>).</li>
+          <li>Tap <strong>Apps and websites</strong>, then the <strong>Active</strong> tab.</li>
+          <li>Find <strong>treg</strong>, tap <strong>Remove</strong>, and confirm.</li>
+        </ol>
+        <p><strong>instagram.com on a computer</strong></p>
+        <ol>
+          <li>Click <strong>More</strong> (☰) in the bottom left, then <strong>Settings</strong>.</li>
+          <li>Under <em>Your app and media</em>, click <strong>Website permissions</strong>.</li>
+          <li>Click <strong>Apps and websites</strong>, then <strong>Active</strong>.</li>
+          <li>Click <strong>Remove</strong> next to <strong>treg</strong>.</li>
+        </ol>
+        <p>Older app versions put this under <strong>Settings &gt; Security &gt; Apps and websites</strong>. If you manage several Instagram accounts, repeat for each one: the permission is per account.</p>
+        <p><strong>Check it worked:</strong> treg should now appear under the <strong>Removed</strong> tab and no longer under <strong>Active</strong>. Do not rely on the <strong>Expired</strong> tab. Business tools may keep access past the usual 90-day expiry, so an app that looks inactive can still have access.</p>
+
+        <h4>2. After removing access</h4>
+        <p>Removing access stops new API calls. It does not undo anything already done. Please also:</p>
+        <ul>
+          <li><strong>Look for content you did not post.</strong> Check your posts, Reels, the <strong>Story archive</strong> (profile &gt; ☰ &gt; <em>Archive</em> &gt; <em>Stories archive</em>) and recent DMs, including sent messages.</li>
+          <li><strong>Check where you are logged in.</strong> Accounts Center &gt; <em>Password and security</em> &gt; <em>Where you're logged in</em>. Log out any session you do not recognise.</li>
+          <li><strong>Turn on two-factor authentication</strong> if it is not already on (Accounts Center &gt; <em>Password and security</em> &gt; <em>Two-factor authentication</em>).</li>
+          <li><strong>Review other connected apps</strong> in the same Apps and websites list and remove anything you no longer use.</li>
+        </ul>
+
+        <h4>3. Reconnecting later</h4>
+        <p>If you want to use treg with Instagram again, connect it again from your treg dashboard after removing it. That creates a brand-new permission; nothing from the old one carries over.</p>
+        <p>If something looks wrong, or any step above does not match what you see, email us at jason@treg.to and tell us which device and app version you are on.</p>
+      </div>
+    </details>
+  </section>
+
+  <section>
+    <h2>Indicator of compromise</h2>
+    <ul>
+      <li>Requests from IP addresses you don't use, especially hosting or commercial proxy ranges. The attacker rotated through a proxy pool, so a single address will not identify them.</li>
+      <li>Usage spikes, new models or endpoints you don't call, or calls at hours your team isn't working.</li>
+    </ul>
+    <p>A stolen key used directly against a provider never passes through treg, so it will not appear in your treg Activity.</p>
+  </section>
+
+  <section>
+    <h2>If you have suffered a loss</h2>
+    <p>If a key you stored in treg was used without your authorization and cost you money, contact us. Include the provider's name, the approximate time of the unauthorized use, and what the provider's dashboard shows. This applies to any unauthorized use during October, including before October 23.</p>
+    <p class="contact">jason@treg.to</p>
+    <p>We will investigate each report and compensate verified losses. We are deeply sorry this happened.</p>
+  </section>
+
+  <section>
+    <h2>What comes next</h2>
+    <p>An agent platform holds the keys to many other services, so it should meet a higher standard of security than we did here.</p>
+    <ul>
+      <li>Several penetration testing and security teams will audit treg's open-source code and hosted service on an ongoing basis.</li>
+      <li>We are strengthening how stored credentials are protected, with particular attention to the keys you bring yourself: how they are stored, used and isolated.</li>
+      <li>We are improving detection so this kind of activity is caught as soon as it starts.</li>
+    </ul>
+    <p>When remediation and the audits are complete, we will publish a full postmortem, including the root cause.</p>
+  </section>
+
+  <section>
+    <h2>Frequently asked questions</h2>
+    <div>
+      <details>
+        <summary>Why did my agent suddenly start returning 401 or "invalid token" errors?</summary>
+        <p>We reset every treg access token and login session on October 23. Sign in to treg again, copy a new token, and update your agent's configuration.</p>
+      </details>
+      <details>
+        <summary>I never added my own keys and only use tools treg provides. What do I need to do?</summary>
+        <p>You don't need to rotate anything with any provider. We have rotated the keys treg uses. Sign in again and replace your treg token.</p>
+      </details>
+      <details>
+        <summary>I stored my own key in treg. How can I tell whether it was misused?</summary>
+        <p>Check the usage records in the provider's dashboard, using the signs listed above. Calls made directly with a stolen key don't pass through treg, so a clean treg Activity page does not mean your key was safe.</p>
+      </details>
+      <details>
+        <summary>Do I need to reconnect all my connected accounts?</summary>
+        <p>Slack, LinkedIn, Facebook and Meta Ads connections were revoked and need to be reconnected. Instagram connections need one extra step from you: see <a href="#instagram">If you connected an Instagram account</a>. Other connections keep working. For extra assurance, revoke treg's access in that provider's security settings, reconnect, and remove any authorized apps you don't recognize.</p>
+      </details>
+      <details>
+        <summary>Is my treg balance safe?</summary>
+        <p>We are reconciling balances and billing records. If we find spending or changes you did not authorize, we will contact you and restore the amount.</p>
+      </details>
+      <details>
+        <summary>Is the vulnerability closed?</summary>
+        <p>Yes. The vulnerable feature was disabled on October 23 and the affected credentials have been rotated. The investigation and external audits are still in progress.</p>
+      </details>
+      <details>
+        <summary>Why aren't you publishing the technical details?</summary>
+        <p>Some remediation work and audits are still in progress. We will publish a full postmortem once they are complete.</p>
+      </details>
+      <details>
+        <summary>Will I hear about further developments?</summary>
+        <p>We will update this page and also email affected teams about significant developments.</p>
+      </details>
+    </div>
+  </section>
+</main>

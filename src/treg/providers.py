@@ -21,19 +21,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# --- Provider catalog ----------------------------------------------------------------------------
 # `tokens` are matched against the underscore-delimited components of the (uppercased) var name, so an
 # app prefix like TREG_RESEND_API_KEY still resolves via its "RESEND" component. Keep tokens
 # distinctive (no generic KEY/TOKEN/SECRET — those are handled by the secret/internal heuristics).
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 22  # v22: Spider API key detection
+CATALOG_VERSION = 27  # v27: MobiusEngine.ai Jobs Data renamed
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
 #
-# `cli` (optional) is the provider's local-run behavior profile for `treg run` (docs/CLI-RUN-PLAN.md):
+# `cli` (optional) is the provider's local-run behavior profile for `treg run`:
 # {bin, install, inject[], deny[], errors[], noninteractive, warnings, verified}. `verified` carries the
 # date of a real machine test — docs lie (vercel ships an env var it ignores), so documented ≠ verified.
 # An `unsupported: true` cli block is first-class: it tells the analyzer WHY and what to do instead.
@@ -136,6 +135,8 @@ CATALOG: list[dict] = [
     {"provider": "ScrapeCreators", "tokens": ["SCRAPECREATORS"],   "base_url": "https://api.scrapecreators.com",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}},
     {"provider": "Fetchin", "tokens": ["FETCHINIO"], "base_url": "https://api.fetchin.io",
      "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "api/v1/subscription"},
+    {"provider": "OrbiSearch", "tokens": ["ORBISEARCH"], "base_url": "https://api.orbisearch.com",
+     "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/credits"},
     {"provider": "Sumble", "tokens": ["SUMBLE"], "base_url": "https://api.sumble.com/v9",
      "auth": {"shape": "bearer"}},
     {"provider": "MoltSets", "tokens": ["MOLTSETS"],
@@ -154,8 +155,12 @@ CATALOG: list[dict] = [
     {"provider": "Crustdata", "tokens": ["CRUSTDATA"], "base_url": "https://api.crustdata.com",
      "auth": {"shape": "bearer"}, "probe": "account/credits",
      "required_headers": {"x-api-version": "2025-11-01"}},
+    {"provider": "TheirStack", "tokens": ["THEIRSTACK"], "base_url": "https://api.theirstack.com",
+     "auth": {"shape": "bearer"}, "probe": "v0/billing/credit-balance"},
     {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
      "auth": {"shape": "bearer"}, "probe": "billing/balance"},
+    {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",
+     "auth": {"shape": "bearer"}, "probe": "api/v2/credit-balance"},
     {"provider": "AgentMail",   "tokens": ["AGENTMAIL"],           "base_url": "https://api.agentmail.to/v0",                     "auth": {"shape": "bearer"}, "probe": "inboxes"},
     {"provider": "Cloudflare",  "tokens": ["CLOUDFLARE"],          "base_url": "https://api.cloudflare.com/client/v4",            "auth": {"shape": "bearer"},
      "skills": ["wrangler", "cloudflare", "cloudflare-workers"],
@@ -163,7 +168,7 @@ CATALOG: list[dict] = [
              "inject": [{"via": "env", "name": "CLOUDFLARE_API_TOKEN"}], "errors": _ERR_AUTH}},
     {"provider": "Pinecone",    "tokens": ["PINECONE"],            "base_url": "https://api.pinecone.io",                         "auth": {"shape": "api_key_header", "header": "Api-Key"}},
     {"provider": "Stability",   "tokens": ["STABILITY"],           "base_url": "https://api.stability.ai/v1",                     "auth": {"shape": "bearer"}},
-    # --- more AI / inference (bearer, OpenAI-compatible) ---
+    # More AI / inference (bearer, OpenAI-compatible)
     {"provider": "Together AI", "tokens": ["TOGETHER"],            "base_url": "https://api.together.xyz/v1",                     "auth": {"shape": "bearer"}},
     {"provider": "Fireworks",   "tokens": ["FIREWORKS"],           "base_url": "https://api.fireworks.ai/inference/v1",           "auth": {"shape": "bearer"}},
     {"provider": "DeepSeek",    "tokens": ["DEEPSEEK"],            "base_url": "https://api.deepseek.com",                        "auth": {"shape": "bearer"}},
@@ -172,11 +177,19 @@ CATALOG: list[dict] = [
     {"provider": "Jina AI",     "tokens": ["JINA"],                "base_url": "https://api.jina.ai/v1",                          "auth": {"shape": "bearer"}},
     {"provider": "AssemblyAI",  "tokens": ["ASSEMBLYAI"],          "base_url": "https://api.assemblyai.com/v2",                   "auth": {"shape": "api_key_header", "header": "Authorization", "format": "{secret}"}},
     {"provider": "Cartesia",    "tokens": ["CARTESIA"],            "base_url": "https://api.cartesia.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
-    # --- search / scraping ---
+    # Search / scraping
     {"provider": "Tavily",      "tokens": ["TAVILY"],              "base_url": "https://api.tavily.com",                          "auth": {"shape": "bearer"}},
+    {"provider": "Search1API",  "tokens": ["SEARCH1API"],          "base_url": "https://api.search1api.com",                    "auth": {"shape": "bearer"}, "probe": "usage"},
+    {"provider": "Octen",       "tokens": ["OCTEN"],               "base_url": "https://api.octen.ai",                           "auth": {"shape": "api_key_header", "header": "x-api-key"}},
     {"provider": "Linkup",      "tokens": ["LINKUP"],              "base_url": "https://api.linkup.so/v1",                       "auth": {"shape": "bearer"}, "probe": "credits/balance"},
+    {"provider": "Parallel",    "tokens": ["PARALLEL"],            "base_url": "https://api.parallel.ai",                        "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/monitors/stats"},
     {"provider": "You.com",     "tokens": ["YDC_API_KEY", "YOU_API_KEY"], "base_url": "https://api.you.com", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/billing/account_balance"},
+    {"provider": "Valyu",       "tokens": ["VALYU_API_KEY", "VALYU"], "base_url": "https://api.valyu.ai", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/datasources"},
     {"provider": "Keenable",    "tokens": ["KEENABLE"],            "base_url": "https://api.keenable.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
+    {"provider": "Sixtyfour AI", "tokens": ["SIXTYFOUR"],           "base_url": "https://api.sixtyfour.ai",                       "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "check-balance"},
+    {"provider": "LeadOcean", "tokens": ["LEADOCEAN"], "base_url": "https://api.leadocean.io", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/account"},
+    {"provider": "BlitzAPI",     "tokens": ["BLITZAPI", "BLITZ_API"], "base_url": "https://api.blitz-api.ai",                    "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v2/account/key-info"},
+    {"provider": "MobiusEngine.ai Jobs Data", "tokens": ["MOBIUSENGINE_JOBS"], "base_url": "https://jobs-api.arihaan.ai", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/balance"},
     {"provider": "Olostep",     "tokens": ["OLOSTEP"],             "base_url": "https://api.olostep.com",                         "auth": {"shape": "bearer"}, "probe": "user/credits/info"},
     {"provider": "ScrapeGraphAI", "tokens": ["SCRAPEGRAPHAI", "SGAI"],
      "base_url": "https://v2-api.scrapegraphai.com",
@@ -190,8 +203,7 @@ CATALOG: list[dict] = [
     {"provider": "Brave Search","tokens": ["BRAVE"],               "base_url": "https://api.search.brave.com/res/v1",             "auth": {"shape": "api_key_header", "header": "X-Subscription-Token"}},
     {"provider": "ScrapingBee", "tokens": ["SCRAPINGBEE"],         "base_url": "https://app.scrapingbee.com/api/v1",              "auth": {"shape": "query", "param": "api_key"}},
     {"provider": "NewsAPI",     "tokens": ["NEWSAPI"],             "base_url": "https://newsapi.org/v2",                          "auth": {"shape": "api_key_header", "header": "X-Api-Key"}},
-    # --- market data (auth shapes LIVE-VERIFIED 2026-08-15 against each real API; see
-    #     src/treg/catalog/<service>.yaml and docs/MARKET-DATA-CATEGORY-RESEARCH.md) ---
+    # Market data
     {"provider": "CoinGecko",   "tokens": ["COINGECKO"],           "base_url": "https://pro-api.coingecko.com/api/v3",            "auth": {"shape": "api_key_header", "header": "x-cg-pro-api-key"}},
     {"provider": "Polygon.io",  "tokens": ["POLYGON", "MASSIVE"],  "base_url": "https://api.polygon.io",                          "auth": {"shape": "bearer"}},
     {"provider": "Finnhub",     "tokens": ["FINNHUB"],             "base_url": "https://finnhub.io/api/v1",                       "auth": {"shape": "api_key_header", "header": "X-Finnhub-Token"}},
@@ -201,7 +213,7 @@ CATALOG: list[dict] = [
     {"provider": "Marketstack", "tokens": ["MARKETSTACK"],         "base_url": "https://api.marketstack.com/v1",                  "auth": {"shape": "query", "param": "access_key"}},
     {"provider": "Tiingo",      "tokens": ["TIINGO"],              "base_url": "https://api.tiingo.com",                          "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Token {secret}"}},
     {"provider": "Financial Datasets", "tokens": ["FINANCIALDATASETS"], "base_url": "https://api.financialdatasets.ai",             "auth": {"shape": "api_key_header", "header": "X-API-KEY"}},
-    # --- dev / infra / cloud ---
+    # Dev / infra / cloud
     {"provider": "DigitalOcean","tokens": ["DIGITALOCEAN"],        "base_url": "https://api.digitalocean.com/v2",                 "auth": {"shape": "bearer"},
      "skills": ["doctl", "digitalocean"],
      "cli": {"bin": "doctl", "login_cmd": "doctl auth init", "install": "brew install doctl", "auth_mechanism": "env",
@@ -264,19 +276,19 @@ CATALOG: list[dict] = [
     {"provider": "PagerDuty",   "tokens": ["PAGERDUTY"],           "base_url": "https://api.pagerduty.com",                       "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Token token={secret}"}},
     {"provider": "Honeycomb",   "tokens": ["HONEYCOMB"],           "base_url": "https://api.honeycomb.io/1",                      "auth": {"shape": "api_key_header", "header": "X-Honeycomb-Team"}},
     {"provider": "Bunny",       "tokens": ["BUNNY"],               "base_url": "https://api.bunny.net",                           "auth": {"shape": "api_key_header", "header": "AccessKey"}},
-    # --- payments / commerce ---
+    # Payments / commerce
     {"provider": "Square",      "tokens": ["SQUARE"],              "base_url": "https://connect.squareup.com/v2",                 "auth": {"shape": "bearer"}},
     {"provider": "Paddle",      "tokens": ["PADDLE"],              "base_url": "https://api.paddle.com",                          "auth": {"shape": "bearer"}},
     {"provider": "LemonSqueezy","tokens": ["LEMONSQUEEZY"],        "base_url": "https://api.lemonsqueezy.com/v1",                 "auth": {"shape": "bearer"}},
     {"provider": "Coinbase",    "tokens": ["COINBASE"],            "base_url": "https://api.coinbase.com/v2",                     "auth": {"shape": "bearer"}},
-    # --- comms / messaging ---
+    # Comms / messaging
     {"provider": "Intercom",    "tokens": ["INTERCOM"],            "base_url": "https://api.intercom.io",                         "auth": {"shape": "bearer"}, "probe": "me"},
     {"provider": "Front",       "tokens": ["FRONT"],               "base_url": "https://api2.frontapp.com",                       "auth": {"shape": "bearer"}},
     {"provider": "Telnyx",      "tokens": ["TELNYX"],              "base_url": "https://api.telnyx.com/v2",                       "auth": {"shape": "bearer"}},
     {"provider": "MessageBird", "tokens": ["MESSAGEBIRD"],         "base_url": "https://rest.messagebird.com",                    "auth": {"shape": "api_key_header", "header": "Authorization", "format": "AccessKey {secret}"}},
     {"provider": "Loops",       "tokens": ["LOOPS"],               "base_url": "https://app.loops.so/api/v1",                     "auth": {"shape": "bearer"}},
     {"provider": "Nylas",       "tokens": ["NYLAS"],               "base_url": "https://api.us.nylas.com/v3",                     "auth": {"shape": "bearer"}},
-    # --- productivity / CRM / product ---
+    # Productivity / CRM / product
     {"provider": "HubSpot",     "tokens": ["HUBSPOT"],             "base_url": "https://api.hubapi.com",                          "auth": {"shape": "bearer"}},
     {"provider": "Asana",       "tokens": ["ASANA"],               "base_url": "https://app.asana.com/api/1.0",                   "auth": {"shape": "bearer"}},
     {"provider": "ClickUp",     "tokens": ["CLICKUP"],             "base_url": "https://api.clickup.com/api/v2",                  "auth": {"shape": "api_key_header", "header": "Authorization", "format": "{secret}"}},
@@ -287,7 +299,7 @@ CATALOG: list[dict] = [
     {"provider": "Zoom",        "tokens": ["ZOOM"],                "base_url": "https://api.zoom.us/v2",                          "auth": {"shape": "bearer"}},
     {"provider": "Pipedrive",   "tokens": ["PIPEDRIVE"],           "base_url": "https://api.pipedrive.com/v1",                    "auth": {"shape": "query", "param": "api_token"}},
     {"provider": "PostHog",     "tokens": ["POSTHOG"],             "base_url": "https://app.posthog.com",                         "auth": {"shape": "bearer"}},
-    # --- media / content ---
+    # Media / content
     {"provider": "Unsplash",    "tokens": ["UNSPLASH"],            "base_url": "https://api.unsplash.com",                        "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Client-ID {secret}"}},
     {"provider": "Giphy",       "tokens": ["GIPHY"],               "base_url": "https://api.giphy.com/v1",                        "auth": {"shape": "query", "param": "api_key"}},
     {"provider": "OpenWeather", "tokens": ["OPENWEATHER", "OWM"],  "base_url": "https://api.openweathermap.org/data/2.5",         "auth": {"shape": "query", "param": "appid"}},
@@ -339,7 +351,6 @@ class Detection:
     note: str | None = None
 
 
-# --- name extraction (VALUES are split off and discarded) ----------------------------------------
 def var_names(env_path: str) -> list[str]:
     names: list[str] = []
     with open(env_path) as f:
@@ -401,7 +412,6 @@ def match_skill(name: str, catalog: list[dict] | None = None) -> dict | None:
     return None
 
 
-# --- CLI auto-import (Phase 2): classify an installed CLI into an import decision -----------------
 def cli_env_var(cli: dict) -> str | None:
     """The env var a CLI reads its credential from (for the 'needs a key' hint) — the first `env` inject
     `name`, or an `argv` inject's `env_from`. None if the profile injects nothing (config_file/device)."""
@@ -418,8 +428,7 @@ def classify_cli(entry: dict, *, installed: bool, secret_present: bool, logged_i
     (is the `bin` installed? is its credential env var set? is a login config file present?). PURE — no
     filesystem/network here, so it's fully unit-testable. Returns a decision dict:
       {status, tier?, env?, action?, reason?} where status ∈
-      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local.
-    See docs/CLI-AUTOIMPORT-PLAN.md §5."""
+      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local."""
     cli = entry.get("cli") or {}
     mech = cli.get("auth_mechanism", "env")
     if cli.get("unsupported") or mech == "device":
@@ -540,7 +549,6 @@ def scan_env(env_path: str, catalog: list[dict] | None = None) -> list[Detection
     return detections
 
 
-# --- Phase 2: turn a detection into concrete registration payloads -------------------------------
 def _slug(provider: str) -> str:
     return provider.lower().replace(" ", "-")
 
@@ -645,7 +653,7 @@ def plan_actions(detections: list[Detection]) -> list[Action]:
     return actions
 
 
-# --- Phase 4: LLM fallback for unknown_secret vars (opt-in via `treg upload --llm`) ---------------
+# LLM fallback for unknown_secret vars (opt-in via `treg upload --llm`).
 LLM_SYSTEM = (
     "You identify which third-party API an environment variable authenticates, from its NAME only. "
     "For each name that is clearly a real, public API provider's credential, return the provider, its "
@@ -668,17 +676,25 @@ def llm_prompt(names: list[str]) -> tuple[str, str]:
 
 def llm_parse(text: str) -> list[dict]:
     """Parse the LLM's JSON reply into resolution dicts, tolerating prose around the JSON. Keeps only
-    entries with a var + base_url + a known auth shape."""
+    entries with a var + base_url + a known auth shape.
+
+    Self-hosted reasoning models (vLLM/llama-server without --reasoning-parser) may return thinking
+    inline in `content` as `<think>…</think>JSON` — strip everything before the last `</think>` first
+    so JSON drafts inside the thinking block don't corrupt the brace-slice fallback."""
     import json
+    # Strip inline thinking: take only content after the last </think> if present.
+    think_end = text.rfind("</think>")
+    if think_end >= 0:
+        text = text[think_end + len("</think>"):]
     try:
         data = json.loads(text)
-    except Exception:
+    except ValueError:
         i, j = text.find("{"), text.rfind("}")
         if i < 0 or j <= i:
             return []
         try:
             data = json.loads(text[i:j + 1])
-        except Exception:
+        except ValueError:
             return []
     if not isinstance(data, dict):   # model returned a bare array/scalar — don't crash on .get
         return []
@@ -719,7 +735,7 @@ def _safe_base_url(url: str) -> bool:
     return True
 
 
-# --- dev/test entrypoint (Phase 1): `python -m treg.providers [--env-dir DIR]` --------------------
+# Dev/test entrypoint: `python -m treg.providers [--env-dir DIR]`.
 def _report(env_dir: str) -> None:
     import os
     path = os.path.join(env_dir, ".env")
@@ -772,7 +788,8 @@ def _plan_report(env_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    import argparse, os
+    import argparse
+    import os
     ap = argparse.ArgumentParser(description="treg provider env-scan (Phase 1 detect + Phase 2 plan)")
     ap.add_argument("--env-dir", default=os.getcwd())
     ap.add_argument("--plan", action="store_true", help="show the registration plan (dry-run, no network)")

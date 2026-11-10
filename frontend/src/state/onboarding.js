@@ -1,7 +1,7 @@
 import { storageGet, storageRemove } from './storage.js'
 
 export default {
-maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAME THEIR TEAM upfront
+maybeOnboard(){  // first-run: a brand-new user with no team yet gets one made for them (autoTeam)
       // An invite LINK landed here (?invite_org= from /auth/invite-signin's POST)? Open the accept
       // modal even for an onboarded user already in teams — a second-team invite must surface too.
       if(this.inviteLinkOrg!==null && this.pendingInvites.length){ this.openInviteChoice(); return; }
@@ -10,10 +10,30 @@ maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAM
       if(this.onboarded || !this.sessionMode) return;
       if(this.myOrgs.some(o=>!this.isPersonal(o))) return;
       // Invited here? Show an ACCEPT-INVITE page (join those teams) instead of forcing them to create a
-      // throwaway team of their own (confusing: they'd end up with two). Decline → create-team.
+      // throwaway team of their own (confusing: they'd end up with two). Decline → their own team.
       if(this.pendingInvites.length){ this.openInviteChoice(); return; }
-      this.welcome.name=this._suggestTeamName(); this._welcomeAgentFromRef(); this.welcome.on=true; },
-_welcomeAgentFromRef(){  // /grokbot's "Setup treg" CTA → the welcome already has Grok Bot picked; any other ref is ignored
+      this.autoTeam(); },
+// The first team, named by the server (the work domain's company, else "<name>'s team"): asking for a
+// name before the user has seen what treg does cost a step and bought nothing; Team renames it.
+async autoTeam(){ if(this.firstTeam.busy) return; this.firstTeam.busy=true; this.firstTeam.err=''; this._welcomeAgentFromRef();
+      try{ const o=await this.api('/onboard/team',{method:'POST'});
+        this.onboarded=true; await this.loadAll();
+        if(!o.created) return;  // another tab made it, or the account already had one
+        this.switchOrg({slug:o.org});
+        this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org, auto:true});
+        // Google Ads `treg Signup (web)`: the browser-side twin of the server outbox row, for Google's
+        // cross-device and modeled attribution; secondary in the account, so it never double counts.
+        try{ if(typeof window.tregSignupConversion==='function') window.tregSignupConversion(o.org_id||o.org); }catch(e){}
+        this.firstTeam.name=o.name;
+        this.welcome.step=1; this.welcome.on=true; }  // the team exists: pick your agent → setup line → a first prompt
+      catch(e){ this.firstTeam.err='Could not create your team: '+(e.detail||e.status)+'.'; }
+      finally{ this.firstTeam.busy=false; } },
+welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false;
+      // Someone who signed up on the way to a platform (a /search result) stays on it; otherwise
+      // Getting started, where the setup line lives.
+      if(this.view!=='platform') this.go('start'); },
+welcomeTryProvider(service,group){this.track('tryit_oauth_clicked',{service,group,from:'onboarding'});this.welcome.on=false;this.openProvider(service);},
+_welcomeAgentFromRef(){  // /grokbot's "Setup treg" CTA → Getting started already has Grok Bot picked; any other ref is ignored
       const r=storageGet('treg-ref'); storageRemove('treg-ref');
       if(r && this.welcomeAgents.concat(this.welcomeMoreAgents).some(a=>a.id===r)) this.welcome.agent=r; },
 _restoreAgent(){  // the picked agent survives a reload, so Getting started keeps showing the right setup steps
@@ -23,7 +43,7 @@ openInviteChoice(){  // seed the multi-select: ALL pending invites checked by de
       this.inviteErr=''; this.inviteSel={}; this.pendingInvites.forEach(i=>{ this.inviteSel[i.id]=true; });
       this.inviteChoice=true; },
 declineInvite(){ this.inviteChoice=false; this.inviteLinkOrg=null;
-      if(this.inviteFirstRun){ this.welcome.name=this._suggestTeamName(); this._welcomeAgentFromRef(); this.welcome.on=true; } },
+      if(this.inviteFirstRun){ this.autoTeam(); } },
 // first-run: "create my own team instead"; otherwise just close
     async acceptSelectedInvites(){  // accept every checked invite, then drop into the linked (or first) team
       const picked=this.selectedInvites; if(!picked.length) return;
@@ -37,7 +57,7 @@ declineInvite(){ this.inviteChoice=false; this.inviteLinkOrg=null;
       try{
         if(!joined.length){  // everything failed → keep the modal open with the error (or fall back on first run)
           this.inviteErr='Could not join '+failed.join(', ')+' — the invite may have been revoked.';
-          if(this.inviteFirstRun && !this.pendingInvites.length){ this.inviteChoice=false; this.welcome.name=this._suggestTeamName(); this.welcome.on=true; }
+          if(this.inviteFirstRun && !this.pendingInvites.length){ this.inviteChoice=false; this.autoTeam(); }
           return; }
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}
         await this.loadAll();
@@ -51,31 +71,12 @@ declineInvite(){ this.inviteChoice=false; this.inviteLinkOrg=null;
           +'. Here are the shared tools & skills — call any with no key on your machine.';
       }finally{ this.inviteBusy=false; }
     },
-_suggestTeamName(){  // a friendly default from the email domain: sam@acme.dev → "Acme"
-      const dom=((this.me||'').split('@')[1]||'').split('.')[0]||'';
-      const generic=['gmail','outlook','hotmail','yahoo','icloud','proton','protonmail','me','qq','163'];
-      return (dom && !generic.includes(dom.toLowerCase())) ? dom.charAt(0).toUpperCase()+dom.slice(1) : ''; },
-async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ this.welcome.err='Give your team a name.'; return; }
-      this.welcome.busy=true; this.welcome.err='';
-      try{ const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
-        this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
-        await this.loadAll(); this.switchOrg({slug:o.org});
-        this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});
-        this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
-      catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
-      finally{ this.welcome.busy=false; } },
-welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false;
-      // Someone who signed up on the way to a platform (a /search result) stays on it; otherwise
-      // Getting started, where the setup line lives.
-      if(this.view!=='platform') this.go('start');
-      this.orgMsg='Team created. Send your agent the setup line any time — it lives on Getting started.'; },
 agentIcon(icon){ if(icon.startsWith('/')) return icon;  // bundled under /logos — same mark in both themes
       return 'https://unpkg.com/@lobehub/icons-static-png@latest/'+(this.theme==='dark'?'dark':'light')+'/'+icon+'.png'; },
 // For logos that sit ON a .btn.primary: its background is the theme's INVERSE, so the icon
     // variant has to flip too or a dark glyph lands on a dark button.
     agentIconInv(icon){ if(icon.startsWith('/')) return icon;
       return 'https://unpkg.com/@lobehub/icons-static-png@latest/'+(this.theme==='dark'?'light':'dark')+'/'+icon+'.png'; },
-welcomeTryProvider(service,group){this.track('tryit_oauth_clicked',{service,group,from:'onboarding'});this.welcome.on=false;this.openProvider(service);},
 async copyStart(text, tag){
       this.startCopyError=''; this.startCopied='';
       try {

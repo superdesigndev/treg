@@ -70,6 +70,23 @@ _FAULT_VALUE_MAX = 500
 _FAULT_WINDOW_S = 10.0     # one event per (fault type, site) per window; the rest are counted
 _FAULT_MAX_KEYS = 500      # bound the ledger — it is what caps the cost, so it must be finite
 _FAULT_QUEUE_SHARE = 0.5   # faults may fill at most this much of the shared queue
+_QUOTA_WINDOW_S = 60.0
+_QUOTA_MAX_EXAMPLES = 10
+
+
+class _QuotaWindow:
+    __slots__ = ("opened", "admissions", "target_count", "examples", "truncated")
+
+    def __init__(self, now: float):
+        self.opened = now
+        self.admissions = 0
+        self.target_count = 0
+        self.examples: dict[tuple[int, str], None] = {}
+        self.truncated = False
+
+
+_quota_lock = threading.Lock()
+_quota_window: _QuotaWindow | None = None
 
 
 class _FaultWindow:
@@ -182,6 +199,68 @@ def capture(distinct_id: str, event: str, properties: dict | None = None,
         pass
 
 
+def relay(distinct_id: str, event: str, properties: dict, *, timestamp: str,
+          uuid: str | None = None) -> None:
+    """Queue one event a CLI sent through `/cli/events`. Unlike `capture` it carries no server build
+    or archive configuration: the event describes the client. `uuid` lets PostHog drop a resend."""
+    try:
+        if not enabled() or len(_queue) >= _MAX_PENDING:
+            return
+        item = {"event": event, "distinct_id": distinct_id,
+                "properties": {**properties, "$lib": "treg-cli"}, "timestamp": timestamp}
+        if uuid:
+            item["uuid"] = uuid
+        _queue.append(item)
+        _ensure_flusher()
+    except Exception:  # noqa: BLE001 - analytics must never surface into a caller's path
+        pass
+
+
+def capture_quota_fail_open(targets: tuple[tuple[int, str], ...]) -> None:
+    """Count one logical admission of trusted canonical targets; never block on I/O or raise."""
+    global _quota_window
+    try:
+        if not targets or not enabled():
+            return
+        with _quota_lock:
+            if _quota_window is None:
+                _quota_window = _QuotaWindow(time.monotonic())
+            _quota_window.admissions += 1
+            _quota_window.target_count += len(targets)
+            for target in targets:
+                if target in _quota_window.examples:
+                    continue
+                if len(_quota_window.examples) < _QUOTA_MAX_EXAMPLES:
+                    _quota_window.examples[target] = None
+                else:
+                    _quota_window.truncated = True
+        _ensure_flusher()
+    except Exception:  # noqa: BLE001 — observation cannot change a permitted call
+        pass
+
+
+def _quota_summary_pending() -> bool:
+    with _quota_lock:
+        return _quota_window is not None
+
+
+def _emit_quota_summary(*, force: bool = False) -> None:
+    global _quota_window
+    with _quota_lock:
+        window = _quota_window
+        if window is None or (not force and time.monotonic() - window.opened < _QUOTA_WINDOW_S):
+            return
+        _quota_window = None
+    capture(SERVER_DISTINCT_ID, "org_endpoint_quota_fail_open", {
+        "admissions": window.admissions,
+        "target_count": window.target_count,
+        "target_examples": [
+            {"org_id": org_id, "endpoint_id": endpoint_id} for org_id, endpoint_id in window.examples
+        ],
+        "targets_truncated": window.truncated,
+    })
+
+
 def capture_service_started(role: str) -> None:
     """One event per process start, from the lifespan: the moment a build or a cache configuration
     began serving. Queried next to `tool_called.build` / `archive_config`, it dates every change
@@ -231,7 +310,7 @@ def _note_fault(key: tuple[str, str], fault: tuple[str, str, str, str | None],
             _fault_windows.move_to_end(key)
             while len(_fault_windows) > _FAULT_MAX_KEYS:
                 # Evict the oldest window that is NOT holding a count. Evicting one that is would
-                # discard occurrences nobody has reported — the exact loss this rewrite removes.
+                # discard occurrences nobody has reported.
                 # If every key holds one, the ledger runs over until the next sweep clears them.
                 # `k != key` because the window just opened is the only clean one in that case, and
                 # evicting it means this key is never in the ledger, so every occurrence opens and
@@ -369,9 +448,10 @@ def _ensure_flusher() -> None:
 
 
 async def _flush_loop() -> None:
-    while _queue or _fault_summaries_pending():
+    while _queue or _fault_summaries_pending() or _quota_summary_pending():
         await asyncio.sleep(_FLUSH_INTERVAL_S)
         _emit_fault_summaries()
+        _emit_quota_summary()
         while _queue:
             batch, _queue[:_BATCH_MAX] = _queue[:_BATCH_MAX], []
             try:
@@ -398,6 +478,7 @@ async def drain() -> None:
     """
     global _flusher
     _emit_fault_summaries(force=True)
+    _emit_quota_summary(force=True)
     if _flusher is not None and not _flusher.done():
         _flusher.cancel()
         try:

@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "crunchbase-company",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 191,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "acquisitions": [
+        "Mendral",
+        "Stainless"
+      ],
+      "categories": [
+        "Agentic AI",
+        "Artificial Intelligence (AI)"
+      ],
+      "company_id": "anthropic",
+      "company_type": "for_profit",
+      "description": "Anthropic develops artificial intelligence tools and research initiatives focused on creating AI systems and models for business and research use. The company produces the Claude family of AI products, including conversational and coding assistants, integrations with productivity applications, and d…",
+      "email": "[email]",
+      "employees": "1001-5000",
+      "founders": [
+        "Benjamin Mann",
+        "Daniela Amodei"
+      ],
+      "funding_rounds": [
+        {
+          "investors_count": 1,
+          "lead_investors": [
+            "Broadcom"
+          ],
+          "name": "Debt Financing - Anthropic",
+          "type": "debt_financing"
+        },
+        {
+          "investors_count": 35,
+          "lead_investors": [
+            "Altimeter Capital",
+            "Capital Group"
+          ],
+          "name": "Series H - Anthropic",
+          "type": "series_h"
+        }
+      ],
+      "funding_rounds_count": 20,
+      "headquarters": {
+        "city": "San Francisco",
+        "country": "United States",
+        "region": "California"
+      },
+      "investors_count": 144,
+      "ipo_status": "private",
+      "last_funding_type": "debt_financing",
+      "lead_investors": [
+        "Broadcom",
+        "Altimeter Capital"
+      ],
+      "legal_name": "Anthropic PBC",
+      "name": "Anthropic",
+      "operating_status": "active",
+      "rank": 116,
+      "short_description": "Anthropic is an artificial intelligence company that develops large language models and AI systems for business and research use.",
+      "similar_companies": [
+        "OpenAI",
+        "Google"
+      ],
+      "social": {
+        "facebook": "https://www.facebook.com/AnthropicAI",
+        "linkedin": "https://www.linkedin.com/company/anthropicresearch",
+        "twitter": "https://x.com/AnthropicAI"
+      },
+      "url": "https://www.crunchbase.com/organization/anthropic",
+      "website": "https://www.anthropic.com"
+    }
+  ]
+}

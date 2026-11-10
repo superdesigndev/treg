@@ -7,6 +7,34 @@ pricing_url: https://docs.tavily.com/documentation/api-credits
 limits: "Development keys allow 100 requests/minute and production keys 1,000 requests/minute; Crawl is limited to 100 requests/minute on both. A 429 may include Retry-After. Platform Search requires include_usage: true for per-request settlement. Platform Map and Crawl require an explicit limit of 1-20 so the hold is bounded; BYOK retains Tavily's upstream range."
 
 endpoints:
+  - id: tavily.web.search.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    name: Search recent news
+    summary: Search news articles with Tavily's news topic.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true}
+        topic: {type: string, required: true, enum: [news]}
+        max_results: {type: integer, required: false, min: 1, max: 20}
+        search_depth: {type: string, required: false, enum: [basic]}
+        include_usage: {type: boolean, required: false, enum: [true]}
+    platform_request: {body.include_usage: true}
+    test_request: {body: {query: "AI policy", topic: news, max_results: 10, search_depth: basic, include_usage: true}}
+    verified: '2026-10-05'
+    added: '2026-10-05'
+    cost: {type: per_call, value: 1, currency: credit, unit: call,
+           tavily_rates: {basic: 1, fast: 1, ultra_fast: 1, advanced: 2},
+           source: docs, source_url: "https://docs.tavily.com/documentation/api-credits",
+           checked: '2026-10-05', confidence: verified,
+           note: "News with explicit basic depth costs one credit; include_usage reports settlement usage."}
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
+    example_response: examples/tavily.web.search.news.json
   - id: tavily.web.search
     capability: web.search
     platform: web
@@ -49,6 +77,7 @@ endpoints:
     test_request:
       body: {query: "recent changes to the EU AI Act guidance", search_depth: basic, max_results: 3, include_usage: true}
     verified: '2026-09-21'
+    added: '2026-09-21'
     cost:
       type: per_call
       table:
@@ -93,6 +122,7 @@ endpoints:
     test_request:
       body: {urls: ["https://example.com"], extract_depth: basic}
     verified: '2026-09-21'
+    added: '2026-09-21'
     cost:
       type: per_success
       value: 0.4
@@ -136,6 +166,7 @@ endpoints:
     test_request:
       body: {url: "https://example.com", limit: 10}
     verified: '2026-09-21'
+    added: '2026-09-21'
     cost:
       type: per_success
       value: 0.2
@@ -184,6 +215,7 @@ endpoints:
     test_request:
       body: {url: "https://example.com", limit: 10, extract_depth: basic}
     verified: '2026-09-21'
+    added: '2026-09-21'
     cost:
       type: per_success
       value: 0.6

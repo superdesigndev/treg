@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 import json
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from sqlmodel import select
 
 from treg import api as A
@@ -21,6 +21,7 @@ from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import HubTool, Membership, Secret, Tool
+from conftest import verified_signup
 
 # The test upstream serves /token, standing in for Google's token endpoint.
 BYO = {
@@ -110,6 +111,22 @@ async def test_discovery_refused_for_a_provider_that_cannot_discover(clients: As
     assert r.status_code == 422
 
 
+async def test_youtube_quota_discovery_returns_a_safe_error(clients: AsyncClient, treg_google_app, monkeypatch):
+    st = await _connect_byo(clients, provider="youtube", name="youtube")
+    async def quota_response(*args, **kwargs):
+        return Response(403, json={"error": {
+            "code": 403,
+            "message": "The request cannot be completed because you have exceeded your quota.",
+            "errors": [{"reason": "quotaExceeded", "domain": "youtube.quota"}],
+        }})
+
+    monkeypatch.setattr(A.app.state.http, "get", quota_response)
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 502
+    assert r.json() == {"detail": {"code": "youtube_quota_exceeded"}}
+    assert "exceeded your quota" not in r.text
+
+
 async def test_revoke_removes_the_connection(clients: AsyncClient):
     st = await _connect_byo(clients)
     sid = st["secret_id"]
@@ -120,7 +137,7 @@ async def test_revoke_removes_the_connection(clients: AsyncClient):
 async def test_another_orgs_connection_is_not_reachable(clients: AsyncClient):
     """Connections are org-scoped; a bare id must not cross the tenant boundary."""
     st = await _connect_byo(clients)
-    other = await clients.post("/users", json={"email": "outsider@example.com"})
+    other = await verified_signup(clients, json={"email": "outsider@example.com"})
     hdr = {"X-Treg-Token": other.json()["token"]}
     r = await clients.get(f"/connections/{st['secret_id']}/resources", headers=hdr)
     assert r.status_code == 404
@@ -218,6 +235,26 @@ def _meta_test_provider(monkeypatch, service: str, **over):
         provider = dataclasses.replace(provider, authorization_methods=methods)
     monkeypatch.setitem(P.REGISTRY, service, dataclasses.replace(
         provider, discover_base_url="http://upstream", **over))
+
+
+def test_appsecret_proof_only_pairs_treg_meta_tokens_with_meta_hosts(treg_meta_app):
+    """treg's Meta app requires App Secret Proof. The proof is HMAC(app secret, token) and is owed
+    only for a token treg's own app issued, sent to Meta's own host; a team's own app or any other
+    destination never gets anything computed with treg's secret."""
+    import hashlib
+    import hmac
+
+    from treg import oauth_providers as P
+
+    fb, graph = P.REGISTRY["facebook"], "https://graph.facebook.com/v25.0/me/accounts"
+    want = hmac.new(b"treg-meta-csec", b"TOKEN", hashlib.sha256).hexdigest()
+    assert P.appsecret_proof(fb, "treg-meta-cid", "TOKEN", graph) == want
+    assert P.appsecret_proof(P.REGISTRY["meta-ads"], "treg-meta-cid", "TOKEN", graph) == want
+    page_tools = P.REGISTRY["instagram"].profile_for_authorization("facebook-page")
+    assert P.appsecret_proof(page_tools, "treg-meta-cid", "TOKEN", graph) == want
+    assert P.appsecret_proof(fb, "team-own-cid", "TOKEN", graph) is None
+    assert P.appsecret_proof(fb, "treg-meta-cid", "TOKEN", "https://collector.example/x") is None
+    assert P.appsecret_proof(P.REGISTRY["linkedin"], "treg-meta-cid", "TOKEN", graph) is None
 
 
 async def test_business_owned_pages_join_the_facebook_picker(clients: AsyncClient, treg_meta_app, monkeypatch):
@@ -429,6 +466,132 @@ async def test_instagram_calls_inject_the_selected_page_token(
     assert r.status_code == 200, r.text
     assert r.json()["data"][0]["id"] == "IG-CONVERSATION-1"
     assert r.json()["data"][0]["page_id"] == "PAGE-DIRECT"
+
+
+@pytest.mark.parametrize(("page_id", "expected_token"), [
+    ("PAGE-DIRECT", "PAGE-TOKEN-DIRECT"),
+    ("PAGE-CLIENT", "PAGE-TOKEN-CLIENT"),
+])
+async def test_facebook_page_calls_inject_the_selected_page_token(
+    clients: AsyncClient, treg_meta_app, monkeypatch, page_id, expected_token,
+):
+    """Meta rejects the user token on every Page edge. Picking the Page must make its calls
+    carry that Page's token, while the user token stays for discovery and the picker."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = st["secret_id"]
+
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": page_id, "resource_name": "chosen page",
+    })
+    assert picked.status_code == 200, picked.text
+    assert expected_token not in picked.text
+
+    async with session_maker() as db:
+        blob = json.loads(crypto.decrypt((await db.get(Secret, sid)).value))
+        assert blob["access_token"] == "META-TOKEN"
+        assert blob["page_access_token"] == expected_token
+
+    r = await clients.get(f"/call/facebook/{page_id}/posts")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"][0]["id"] == f"{page_id}_POST-1"
+
+    listed = await clients.get(f"/connections/{sid}/resources")
+    assert listed.status_code == 200, listed.text
+    assert "PAGE-TOKEN" not in listed.text
+
+
+async def test_the_picker_says_when_a_connection_acts_on_one_resource_only(
+    clients: AsyncClient, treg_meta_app, treg_google_app, monkeypatch,
+):
+    """A Page token reaches only its own Page, so the picker must not promise that another
+    Page works per call. A Google site picker keeps that promise: one token reaches every site."""
+    _meta_test_provider(monkeypatch, "facebook")
+    fb = await _connect_byo(clients, provider="facebook", name="facebook")
+    r = await clients.get(f"/connections/{fb['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    assert r.json()["resource_scoped"] is True
+
+    import dataclasses
+
+    from treg import oauth_providers as P
+
+    monkeypatch.setitem(P.REGISTRY, "google-search-console", dataclasses.replace(
+        P.REGISTRY["google-search-console"], discover_base_url="http://upstream"))
+    gsc = await _connect_byo(
+        clients, provider="google-search-console", name="google-search-console")
+    r = await clients.get(f"/connections/{gsc['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    assert r.json()["resource_scoped"] is False
+
+
+async def test_a_facebook_connection_works_before_a_page_is_picked(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """Until a Page is picked there is no Page token to inject. The tool must keep the user
+    token, so the probe and the picker work instead of failing with a missing field."""
+    _meta_test_provider(monkeypatch, "facebook")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    async with session_maker() as db:
+        tool = (await db.execute(select(Tool).where(Tool.name == "facebook"))).scalars().one()
+        assert tool.bindings[0]["secret_field"] == "access_token"
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+
+
+async def test_facebook_reconnect_derives_the_page_token_again(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """A reconnect replaces the encrypted blob. The picked Page must keep working afterwards:
+    the Page token is derived again from the new user token, not lost with the old blob."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    first = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = first["secret_id"]
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "PAGE-CLIENT", "resource_name": "Agency Client Page",
+    })
+    assert picked.status_code == 200, picked.text
+
+    again = await _connect_byo(
+        clients, provider="facebook", name="facebook", connection_id=sid)
+    assert again["secret_id"] == sid
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == "PAGE-CLIENT"
+        blob = json.loads(crypto.decrypt(secret.value))
+        assert blob["page_access_token"] == "PAGE-TOKEN-CLIENT"
+    r = await clients.get("/call/facebook/PAGE-CLIENT/posts")
+    assert r.status_code == 200, r.text
+
+
+async def test_a_reconnect_that_loses_the_page_asks_for_a_new_pick(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """If the new grant no longer reaches the picked Page, the connection must say so and fall
+    back to the user token. It must not keep a Page binding with no Page token behind it."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    first = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = first["secret_id"]
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "PAGE-CLIENT", "resource_name": "Agency Client Page",
+    })
+    assert picked.status_code == 200, picked.text
+
+    # The agency lost access to its client's Page between the two consents.
+    _meta_test_provider(
+        monkeypatch, "facebook", base_url="http://upstream/v25.0",
+        resource_token_extra_path="/no-such-listing",
+    )
+    await _connect_byo(clients, provider="facebook", name="facebook", connection_id=sid)
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == ""
+        assert secret.health_status == "setup_required"
+        assert "page_access_token" not in json.loads(crypto.decrypt(secret.value))
+        tool = (await db.execute(select(Tool).where(Tool.name == "facebook"))).scalars().one()
+        assert tool.bindings[0]["secret_field"] == "access_token"
 
 
 async def test_a_failing_business_walk_leaves_the_primary_listing_intact(clients: AsyncClient, treg_meta_app, monkeypatch):

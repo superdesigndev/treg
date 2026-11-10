@@ -1,22 +1,26 @@
 """Identity provisioning and first-team creation use cases."""
 
 import logging
-from urllib.parse import unquote
+import re
+import secrets
+import time
+from datetime import timedelta
+from urllib.parse import quote, unquote
 
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import delete, inspect as sa_inspect, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, analytics, health, sandbox as demo_sandbox
+from .. import adsconv, analytics, crypto, policy, ratestore, sandbox as demo_sandbox
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify, reserved_reason
 from ..domain.identity.access import _email_domain, _is_blocked_email, _is_machine_email, _norm_email
-from ..domain.identity.promotions import claim_signup_promo
+from ..domain.identity.promotions import claim_signup_promo, promo_inbox, signup_promo_email
 from ..infra.db import session_maker
-from ..models import Org, User
+from ..models import AdClickStash, Membership, Org, User
 from ..timeutil import utcnow_naive as _utcnow_naive
 
 
@@ -45,6 +49,10 @@ class BlockedEmailError(Exception):
     """An address on a blocked email domain reached an identity door."""
 
 
+class UnverifiedExistingUserError(Exception):
+    """SSO cannot attach a verified assertion to an unverified existing account."""
+
+
 def blocked_email(email: str, door: str) -> bool:
     """The blocklist DECISION for the identity doors, over the pure classifier `_is_blocked_email`:
     True means refuse. One structured line per block, so a burst of refusals is countable from the
@@ -64,14 +72,19 @@ def blocked_email(email: str, door: str) -> bool:
 
 async def find_or_create_user(
     db: AsyncSession, email: str, *, door: str = "login",
-    created: set[int] | None = None, verified: bool = False,
+    created: set[int] | None = None, verified: bool = False, promo_eligible: bool = True,
+    proven: set[int] | None = None, reject_unverified_existing: bool = False,
 ) -> User:
     """Find a user by email, else register them — the user ONLY, **no auto personal org**. The shared
     core of every identity door (GitHub / Google / email OTP). A brand-new user therefore lands with
     zero teams and is asked to NAME + CREATE their first team (the dashboard's mandatory welcome, or
     `treg org create`) — we never spawn a throwaway personal org they didn't ask for. Their identity
     token is user-scoped, so it works before they have any org (org chosen per-request via X-Treg-Org).
-    Only trusted email-proof callers pass verified=True. Caller commits."""
+    Only trusted email-proof callers pass verified=True; `proven` collects a user this call verified
+    for the first time (see `grant_signup_promo_on_proof`). promo_eligible=False creates the user
+    without a signup-credit claim and withdraws the claim of an unverified user this call proves
+    for the first time, the moment that claim would pay out; a verified user is never touched. SSO
+    can refuse to link an existing account that has not proved its email. Caller commits."""
     email = _norm_email(email)
     # Machine identities (agents, the published demo token) are minted by an admin and act ONLY by
     # their token. This is the single choke point every identity door shares, so blocking here means
@@ -85,31 +98,71 @@ async def find_or_create_user(
         raise BlockedEmailError
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
-        user = User(email=email)
+        user = User(email=email, signup_promo_available=promo_eligible)
         db.add(user)
         try:
             await db.flush()  # surfaces the unique-email violation on a concurrent first-login race
         except IntegrityError:
             await db.rollback()  # another worker just created this same new user — reuse theirs
             user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+            if reject_unverified_existing and user.email_verified_at is None:
+                raise UnverifiedExistingUserError from None
         else:
             if created is not None:
                 created.add(user.id)
+    elif reject_unverified_existing and user.email_verified_at is None:
+        raise UnverifiedExistingUserError
     if verified and user.email_verified_at is None:
-        user.email_verified_at = _utcnow_naive()
-        db.add(user)
+        # Conditional, so of two proofs racing for one unverified user only the one that flips the
+        # column is the first proof; the other sees no row and is an ordinary sign-in.
+        first_proof = {"email_verified_at": _utcnow_naive()}
+        if not promo_eligible:
+            first_proof["signup_promo_available"] = False
+        flipped = await db.execute(
+            update(User).where(User.id == user.id, User.email_verified_at.is_(None)).values(**first_proof)
+        )
+        if flipped.rowcount == 1 and proven is not None:
+            proven.add(user.id)
     return user
 
 
-def track_signup(user: User, created: set[int], method: str, entry_surface: str) -> None:
-    """Call only after commit. Existing users (including a concurrent signup's loser) emit nothing."""
+def track_signup(
+    user: User, created: set[int], method: str, entry_surface: str, *, captcha: str = "",
+    client: str = "browser",
+) -> None:
+    """Call only after commit. Existing users (including a concurrent signup's loser) emit nothing.
+    `captcha` is the Turnstile outcome of the code request, when the deployment checks one.
+    `client` is `cli` (the terminal's email door), `cli_browser` (a browser sign-in that completes a
+    `treg login`) or `browser`."""
     if user.id in created:
-        analytics.capture(user.email, "signup_completed", {
-            "signup_method": method, "entry_surface": analytics.funnel_surface(entry_surface),
-        })
+        properties = {"signup_method": method, "entry_surface": analytics.funnel_surface(entry_surface),
+                      "client": client}
+        if captcha:
+            properties["captcha"] = captcha
+        analytics.capture(user.email, "signup_completed", properties)
 
 
-async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int) -> None:
+async def grant_signup_promo_on_proof(user_id: int) -> None:
+    """Fund the team a user made before proving their inbox. Call after the proving commit.
+
+    An unverified user (an invitation-code member, or a legacy registration) can own a team, and
+    team creation is the only other claim point, so without this the first proof would leave that
+    team at zero until the user made a second one. Runs only on the sign-in that first verifies the user, so a deferred
+    claim is not re-asked on every sign-in. With no team yet, the claim waits for their first team.
+    """
+    async with session_maker() as db:
+        org = (await db.execute(
+            select(Org).join(Membership, Membership.org_id == Org.id)
+            .where(Membership.user_id == user_id, Membership.role == "owner",
+                   Org.demo.is_(False), Org.public_demo.is_(False), Org.suspended.is_(False))
+            .order_by(Org.created_at, Org.id).limit(1)
+        )).scalar_one_or_none()
+        if org is not None:
+            # The team's signup conversion was queued when it was made.
+            await _grant_signup_promo(db, org, user_id=user_id, conversion=False)
+
+
+async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conversion: bool = True) -> None:
     """Queue team attribution and grant at most once to its verified creator.
 
     The user claim, money block, balance and ledger entry share one transaction. A
@@ -122,9 +175,10 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int) -> No
     org_id = org.id
     amount = get_settings().promo_grant_micro
     try:
-        claimed = amount > 0 and await claim_signup_promo(db, user_id)
+        claimed = amount > 0 and await _policy_grants(db, org_id, user_id) and await claim_signup_promo(db, user_id)
         try:
-            await adsconv.queue(db, org, adsconv.ACTION_SIGNUP)
+            if conversion:
+                await adsconv.queue(db, org, adsconv.ACTION_SIGNUP)
         except Exception as exc:  # noqa: BLE001 - marketing cannot take away the signup benefit
             logging.getLogger("treg").warning("ad conversion queue failed for org %s: %s", org_id, exc)
         if claimed:
@@ -136,13 +190,37 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int) -> No
         logging.getLogger("treg").warning("promo grant failed for org %s: %s", org_id, exc)
 
 
+async def _policy_grants(db: AsyncSession, org_id: int, user_id: int) -> bool:
+    """Ask the `signup_credit` decision point, only for a user who could claim right now.
+
+    The read's transaction ends before the decision so no connection waits on the extension. A
+    deferral writes nothing: the user keeps eligibility and is asked again on their next team.
+    """
+    email = await signup_promo_email(db, user_id)
+    await db.commit()
+    if email is None:
+        return False
+    decision = await policy.registry.signup_credit(policy.SignupCreditContext(
+        user_id=user_id, org_id=org_id, email=email, canonical_inbox=promo_inbox(email),
+    ))
+    if decision is policy.CreditDecision.DEFER:
+        logging.getLogger("treg").info("event=signup_credit_deferred org=%s user=%s", org_id, user_id)
+        return False
+    return True
+
+
 def _ad_attribution_from(raw_cookie: str) -> tuple[str, str, str]:
     """Return (click-id field, click-id, landing), with legacy GCLID-cookie compatibility."""
     if not adsconv.enabled():
         return "", "", ""
     if not raw_cookie:
         return "", "", ""
-    first, separator, rest = unquote(raw_cookie).partition("|")
+    decoded = unquote(raw_cookie)
+    parts = decoded.split("|")
+    # The typed format keeps any "|" inside its landing; only the legacy format is exactly two parts.
+    if len(parts) < 2 or (len(parts) > 2 and parts[0] not in ("gclid", "gbraid", "wbraid")):
+        return "", "", ""
+    first, separator, rest = decoded.partition("|")
     if separator and first in ("gclid", "gbraid", "wbraid"):
         click_id, _, landing = rest.partition("|")
         click_field = first
@@ -150,6 +228,105 @@ def _ad_attribution_from(raw_cookie: str) -> tuple[str, str, str]:
         # Old cookies were `CLICK_ID|landing` and always held a GCLID.
         click_field, click_id, landing = "gclid", first, rest
     return click_field, click_id.strip()[:255], landing.strip()[:64]
+
+
+# The short install link (`architecture/ads-conversions.md`, "Capture"): a code the copied command
+# carries in place of the cookie an agent's own browser never held.
+AD_LINK_NS = "ad_link"
+AD_LINK_TTL = timedelta(days=30)
+AD_LINK_RE = re.compile(r"[a-z0-9]{6}")
+AD_LINK_PER_ADDRESS = (30, 600.0)  # codes per client address per window (seconds)
+_AD_LINK_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no 0/o/1/l/i: a human may retype it
+
+
+async def mint_ad_link(raw_cookie: str, *, address: str) -> str | None:
+    """A fresh code bound to the click in `raw_cookie`, or None when there is no usable click.
+    Raises `SignupError("too_many_links")` past the per-address limit."""
+    kind, click_id, landing = _ad_attribution_from(raw_cookie)
+    if not click_id:
+        return None
+    code = "".join(secrets.choice(_AD_LINK_ALPHABET) for _ in range(6))
+    per_address, window_s = AD_LINK_PER_ADDRESS
+    async with session_maker() as db:
+        if not await ratestore.rate_check(db, "ad_link_ip", [(address, per_address)], window_s):
+            await db.rollback()
+            raise SignupError("too_many_links")
+        await ratestore.sweep(db, AD_LINK_NS)
+        await ratestore.kv_put(db, AD_LINK_NS, crypto.hash_token(code),
+                               {"cookie": quote(f"{kind}|{click_id}|{landing}", safe=""),
+                                "minted_at": time.time()},
+                               ttl_s=AD_LINK_TTL.total_seconds())
+        await db.commit()
+    return code
+
+
+async def redeem_ad_link(code: str) -> tuple[str, int]:
+    """(cookie value, seconds it may still live) for a code, or ("", 0) for an unknown, expired,
+    already redeemed or malformed code. A code redeems once."""
+    if not code or not AD_LINK_RE.fullmatch(code) or not adsconv.enabled():
+        return "", 0
+    async with session_maker() as db:
+        row = await ratestore.kv_take(db, AD_LINK_NS, crypto.hash_token(code))
+        await db.commit()
+    cookie = str((row or {}).get("cookie") or "")
+    max_age = int(float((row or {}).get("minted_at") or 0) + AD_CLICK_STASH_TTL.total_seconds() - time.time())
+    if not cookie or max_age <= 0:
+        return "", 0
+    return cookie, max_age
+
+
+async def stash_ad_click(email: str, raw_cookie: str) -> None:
+    """Remember an observed click for this email; never log this first-party association."""
+    try:
+        kind, click_id, landing = _ad_attribution_from(raw_cookie)
+        if not click_id:
+            return
+        async with session_maker() as db:
+            if db.bind.dialect.name == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert
+            else:
+                from sqlalchemy.dialects.sqlite import insert
+            now = _utcnow_naive()
+            stmt = insert(AdClickStash).values(
+                email=email.strip().lower(), raw_cookie=quote(f"{kind}|{click_id}|{landing}", safe=""),
+                created_at=now, updated_at=now,
+            )
+            await db.execute(stmt.on_conflict_do_update(
+                index_elements=["email"],
+                set_={"raw_cookie": stmt.excluded.raw_cookie, "updated_at": now},
+                where=AdClickStash.updated_at <= now,
+            ))
+            await db.commit()
+    except Exception:  # noqa: BLE001 - the ad click stash is optional; sign-in continues
+        # Exception text can contain SQL parameters (email and click id), so omit it too.
+        logging.getLogger("treg").warning("ad click stash failed; sign-in continues")
+
+
+# Google accepts a click conversion for 90 days, and the `treg_ad` cookie lives as long.
+AD_CLICK_STASH_TTL = timedelta(days=90)
+
+
+async def _ad_cookie_for(db: AsyncSession, email: str, raw_cookie: str) -> str:
+    if raw_cookie or not adsconv.enabled():
+        return raw_cookie
+    stash = await db.get(AdClickStash, email.strip().lower())
+    if stash is not None and stash.updated_at >= _utcnow_naive() - AD_CLICK_STASH_TTL:
+        return stash.raw_cookie
+    return ""
+
+
+async def _forget_ad_click(db: AsyncSession, email: str) -> None:
+    """The team now holds the click itself, so the email association has no further use."""
+    await db.execute(delete(AdClickStash).where(AdClickStash.email == email.strip().lower()))
+
+
+async def purge_expired_ad_clicks(*, session_factory=session_maker) -> dict:
+    """Delete stash rows past the lookup window; run daily by `treg-worker admin purge-ad-clicks`."""
+    async with session_factory() as db:
+        result = await db.execute(
+            delete(AdClickStash).where(AdClickStash.updated_at < _utcnow_naive() - AD_CLICK_STASH_TTL))
+        await db.commit()
+    return {"deleted": result.rowcount or 0}
 
 
 _UTM_FIELDS = ("utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_referrer")
@@ -169,7 +346,7 @@ def _utm_attribution_from(raw_cookie: str) -> dict[str, str]:
 def _stamp_utm(org: Org, raw_cookie: str) -> None:
     """Persist the first-touch source on a brand-new team. Independent of the Google-Ads `treg_ad`
     path: a sponsor link or a newsletter has no click id, and this is what lets us count its
-    signups. Called from both signup doors, like `_ad_attribution_from`."""
+    signups. Called at team creation, like `_ad_attribution_from`."""
     for key, value in _utm_attribution_from(raw_cookie).items():
         setattr(org, key, value)
 
@@ -204,59 +381,6 @@ async def _redeem_referral(
         logging.getLogger("treg").warning("referral attribution failed for org %s: %s", org_id, exc)
 
 
-async def register_user(
-    *, email: str, webhook_url: str | None, ad_cookie: str, utm_cookie: str, referral_cookie: str,
-) -> dict:
-    async with session_maker() as db:
-        email = _norm_email(email)
-        # Open registration predates find_or_create_user, so it needs the same machine-domain block;
-        # otherwise a caller could squat an agent address before an admin mints that agent.
-        if _is_machine_email(email):
-            raise SignupError("machine_identity")
-        if blocked_email(email, "register"):  # unverified registration still checks the domain
-            raise SignupError("blocked_domain")
-        if webhook_url and not health.safe_webhook_url(webhook_url):  # SSRF guard on the alert URL
-            raise SignupError("unsafe_webhook")
-        if (await db.execute(select(User).where(User.email == email))).scalar_one_or_none():
-            raise SignupError("email_exists")
-        user = User(email=email)
-        db.add(user)
-        await db.flush()
-        # The default team is named after the email; one that reads as reserved gets a plain slug.
-        base = _slugify(email) if not reserved_reason(email, reserved_team_names()) else f"team-{user.id}"
-        org, token = await _make_org_membership(
-            db, user, name=email, slug_base=base, role="owner", webhook_url=webhook_url,
-        )
-        click_field, gclid, landing = _ad_attribution_from(ad_cookie)
-        if gclid:
-            org.ad_gclid = gclid
-            org.ad_click_id_type = click_field
-            org.ad_landing = landing or None
-            # asyncpg rejects aware datetimes for this TIMESTAMP WITHOUT TIME ZONE column.
-            org.ad_click_at = _utcnow_naive()
-            db.add(org)
-        _stamp_utm(org, utm_cookie)
-        db.add(org)
-        try:
-            await db.commit()
-        except IntegrityError as exc:
-            raise SignupError("email_exists") from exc
-        # Read the response now: a failed promo grant below rolls the session back, which expires
-        # every tracked object, and a lazy reload after that is implicit async I/O (MissingGreenlet).
-        response = {
-            "id": user.id,
-            "email": user.email,
-            "org": org.slug,
-            "org_id": org.id,
-            "role": "owner",
-            "token": token,
-        }
-        await _grant_signup_promo(db, org, user_id=user.id)
-        # Both org-creating doors redeem because both end with a person owning a fresh team.
-        await _redeem_referral(db, referral_cookie, user, org)
-        return response
-
-
 async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
 ) -> dict:
@@ -268,8 +392,8 @@ async def create_org(
             raise SignupError("blocked_domain")
         if not user.is_superadmin and reserved_reason(name, reserved_team_names()):
             raise SignupError("reserved_name")
-        click_field, gclid, landing = _ad_attribution_from(ad_cookie)
-        # A browser sign-in reaches this door instead of /users, so both doors must read attribution.
+        click_field, gclid, landing = _ad_attribution_from(
+            await _ad_cookie_for(db, user.email, ad_cookie))
         for _ in range(3):  # a concurrent create can claim the slug before commit; retry a fresh lookup
             org, token = await _make_org_membership(
                 db, user, name=name, slug_base=_slugify(name), role="owner",
@@ -281,6 +405,7 @@ async def create_org(
                 # asyncpg rejects aware datetimes for this TIMESTAMP WITHOUT TIME ZONE column.
                 org.ad_click_at = _utcnow_naive()
                 db.add(org)
+                await _forget_ad_click(db, user.email)  # inside the loop: a rollback undoes it
             _stamp_utm(org, utm_cookie)
             db.add(org)
             try:
@@ -290,7 +415,8 @@ async def create_org(
                 await db.rollback()
         else:
             raise SignupError("slug_conflict")
-        # Read the response now, before the grant can roll back and expire it (see register_user).
+        # Read the response now: a failed promo grant below rolls the session back, which expires
+        # every tracked object, and a lazy reload after that is implicit async I/O (MissingGreenlet).
         response = {
             "org": org.slug,
             "org_id": org.id,

@@ -1,6 +1,7 @@
 {
-  "treg": {
-    "url": "https://treg.to/mcp/",
-    "bearer_token_env_var": "TREG_TOKEN"
+  "mcpServers": {
+    "treg": {
+      "url": "https://treg.to/mcp/"
+    }
   }
 }

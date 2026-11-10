@@ -9,8 +9,9 @@ source:
 
 # PARTIALLY VERIFIED 2026-07-28 — transcribed from PDL's OpenAPI spec (v5) plus prose docs for the
 # routes the spec omits (ip/enrich, the three cleaner APIs). The core file (pdl.yaml) already
-# curates person/enrich, person/search, company/enrich, company/search and autocomplete — those
-# (method, path) pairs are excluded here per core-wins dedup.
+# defines person/enrich, person/search, company/enrich, company/search and autocomplete — those
+# (method, path) pairs are excluded here per core-wins dedup. These extended rows are retained
+# as retired definitions.
 #
 # Of the 9 entries carrying a test_request, 8 were called live and passed (examples captured under
 # examples/); person-enrich-preview returned http 402 (this account's Preview allotment is
@@ -24,6 +25,9 @@ source:
 
 endpoints:
   - id: pdl.x.person-enrich-preview
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
@@ -63,6 +67,8 @@ endpoints:
     capability: people.enrich
 
   - id: pdl.x.person-identify
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     domain: contacts
     tier: extended
     platform: people
@@ -100,10 +106,14 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: flat 1 credit per call regardless of profiles returned; PDL does not publish a flat $/credit}
     docs_url: https://docs.peopledatalabs.com/docs/reference-identify-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.person-identify.json
     capability: people.identity.resolve
 
   - id: pdl.x.person-retrieve-by-id
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
@@ -124,6 +134,9 @@ endpoints:
     capability: people.enrich
 
   - id: pdl.x.person-retrieve-bulk
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
@@ -145,6 +158,8 @@ endpoints:
     capability: people.enrich
 
   - id: pdl.x.person-search-post
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     domain: contacts
     tier: extended
     capability: people.search
@@ -169,9 +184,12 @@ endpoints:
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: 1 credit PER RECORD in the data array; a size=1000 call costs 1000 credits}
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-search-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.person-search-post.json
 
   - id: pdl.x.company-search-post
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     domain: companies
     tier: extended
     capability: companies.search
@@ -195,9 +213,12 @@ endpoints:
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: 1 credit PER RECORD returned}
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-search-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.company-search-post.json
 
   - id: pdl.x.job-title-enrich
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     kind: utility
     tier: extended
     platform: people
@@ -214,15 +235,18 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: billed like other enrich routes — 1 credit per matched title; NOT free despite looking like a lookup utility}
     docs_url: https://docs.peopledatalabs.com/docs/reference-job-title-enrichment-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.job-title-enrich.json
     capability: people.title.enrich
 
   - id: pdl.x.ip-enrich
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     tier: extended
     platform: web
     method: GET
     path: /ip/enrich
-    name: "Enrich an IP address — location, company behind it"
+    name: "IP location and company"
     summary: "Enrich data on an IP by performing a one-to-one match of this IP with the nearly 2 Billion IPs hosted in our dataset, returning location, company, and metadata"
     input:
       queryParams:
@@ -239,9 +263,12 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: charged per match on HTTP 200; a 404 is free — 1 credit per successful lookup}
     docs_url: https://docs.peopledatalabs.com/docs/reference-ip-enrichment-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.ip-enrich.json
 
   - id: pdl.x.company-clean
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     kind: utility
     tier: extended
     platform: companies
@@ -261,9 +288,12 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.company-clean.json
 
   - id: pdl.x.location-clean
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     kind: utility
     tier: extended
     platform: people
@@ -280,9 +310,12 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.location-clean.json
 
   - id: pdl.x.school-clean
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     kind: utility
     tier: extended
     platform: people
@@ -302,10 +335,14 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.school-clean.json
     capability: people.school.clean
 
   - id: pdl.x.subscription-list
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -323,6 +360,9 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-create
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -334,6 +374,9 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-get
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -348,6 +391,9 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-update
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -362,6 +408,9 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-delete
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -376,6 +425,9 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.person-subjectrequest
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
+    added: '2026-07-28'
     kind: utility
     tier: extended
     platform: people

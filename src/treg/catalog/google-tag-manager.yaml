@@ -19,6 +19,7 @@ limits: "Google Tag Manager API project and per-user quotas apply"
 pricing_url: https://developers.google.com/tag-platform/tag-manager/api/v2/limits-quotas
 endpoints:
   - id: google-tag-manager.accounts
+    added: '2026-08-28'
     capability: google-tag-manager.accounts
     platform: google-tag-manager
     scope: own_account
@@ -34,6 +35,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts/list
 
   - id: google-tag-manager.containers
+    added: '2026-08-28'
     capability: google-tag-manager.containers
     platform: google-tag-manager
     scope: own_account
@@ -51,6 +53,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers/list
 
   - id: google-tag-manager.workspaces
+    added: '2026-08-28'
     capability: google-tag-manager.workspaces
     platform: google-tag-manager
     scope: own_account
@@ -69,6 +72,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/list
 
   - id: google-tag-manager.tags
+    added: '2026-08-28'
     capability: google-tag-manager.tags
     platform: google-tag-manager
     scope: own_account
@@ -88,6 +92,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces.tags/list
 
   - id: google-tag-manager.live-version
+    added: '2026-08-28'
     capability: google-tag-manager.live_version
     platform: google-tag-manager
     scope: own_account
@@ -104,6 +109,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.versions/live
 
   - id: google-tag-manager.workspace-sync
+    added: '2026-08-28'
     kind: action
     capability: google-tag-manager.workspace.sync
     platform: google-tag-manager
@@ -122,6 +128,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/sync
 
   - id: google-tag-manager.version-create
+    added: '2026-08-28'
     kind: action
     capability: google-tag-manager.version.create
     platform: google-tag-manager
@@ -144,6 +151,7 @@ endpoints:
     docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/create_version
 
   - id: google-tag-manager.version-publish
+    added: '2026-08-28'
     kind: action
     capability: google-tag-manager.version.publish
     platform: google-tag-manager

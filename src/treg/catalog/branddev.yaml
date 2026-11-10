@@ -51,6 +51,7 @@ endpoints:
     test_request: {queryParams: {domain: "stripe.com", maxSpeed: "true"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "key_metadata.credits_consumed = 10 on the captured response; the pricing page's plan popovers say '10 credits per call' for brand retrieval. Failed/invalid calls consume 0"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -72,6 +73,7 @@ endpoints:
     test_request: {queryParams: {domain: "stripe.com"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-simplified.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -95,6 +97,7 @@ endpoints:
     test_request: {queryParams: {name: "Anthropic"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-name.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -117,6 +120,7 @@ endpoints:
     test_request: {queryParams: {email: "support@stripe.com", maxSpeed: "true"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-email.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -139,6 +143,7 @@ endpoints:
     test_request: {queryParams: {ticker: "NVDA", maxSpeed: "true"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-ticker.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -161,6 +166,7 @@ endpoints:
     test_request: {queryParams: {isin: "US0378331005", maxSpeed: "true"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-isin.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
@@ -181,6 +187,7 @@ endpoints:
     test_request: {queryParams: {transaction_info: "TST* STARBUCKS SEATTLE"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.transaction-identifier.json
     docs_url: https://docs.context.dev/guides/enrich-transaction-codes
 
@@ -201,6 +208,7 @@ endpoints:
     test_request: {queryParams: {input: "stripe.com"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.naics.json
     docs_url: https://docs.context.dev/guides/classification/NAICS
 
@@ -222,6 +230,7 @@ endpoints:
     test_request: {queryParams: {domain: "stripe.com"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.styleguide.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/styleguide
 
@@ -243,6 +252,7 @@ endpoints:
     test_request: {queryParams: {domain: "stripe.com"}}
     cost: {type: per_success, value: 5, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 5 — half the brand-retrieval price"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.fonts.json
     docs_url: https://docs.context.dev/api-reference/brand-intelligence/fonts
 
@@ -266,6 +276,7 @@ endpoints:
     test_request: {queryParams: {domain: "stripe.com"}}
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 1, for both the viewport and the fullScreenshot=true variant"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.screenshot.json
     docs_url: https://docs.context.dev/guides/take-webpage-screenshot
 
@@ -292,6 +303,7 @@ endpoints:
           - {datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 for a one-datapoint request; the pricing page prices structured extraction at 10 credits per call"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.ai.query.json
     docs_url: https://docs.context.dev/api-reference/web-extraction/extract
 
@@ -314,6 +326,7 @@ endpoints:
       body: {domain: "stripe.com"}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 regardless of how many products come back"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.ai.products.json
     docs_url: https://docs.context.dev/api-reference/web-extraction/products
 
@@ -351,6 +364,7 @@ endpoints:
       confidence: verified
       note: "One credit per ten returned results; the curated ten-result request used one credit live. Settle from the provider's reported credits."
     verified: '2026-09-28'
+    added: '2026-09-28'
     example_response: examples/branddev.web.search.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/search
 
@@ -387,6 +401,7 @@ endpoints:
       confidence: verified
       note: "One basic Markdown request consumed one credit live; the current rate card prices the other basic formats at the same base. Settle from reported credits."
     verified: '2026-09-28'
+    added: '2026-09-28'
     example_response: examples/branddev.web.scrape.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/scrape
 
@@ -421,6 +436,7 @@ endpoints:
       confidence: verified
       note: "A ten-URL map returned links and consumed one credit live. The priced search option is excluded; settle from reported credits."
     verified: '2026-09-28'
+    added: '2026-09-28'
     example_response: examples/branddev.web.map.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/map
 
@@ -466,6 +482,7 @@ endpoints:
       confidence: verified
       note: "The one-page live crawl consumed one credit. Context.dev charges one per successful page; hold the requested ceiling and settle actual reported usage."
     verified: '2026-09-28'
+    added: '2026-09-28'
     example_response: examples/branddev.web.crawl.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/crawl
 

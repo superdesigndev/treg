@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "tiktok-comments",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 173,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "comment_id": "7654038924163466014",
+      "created_at": "2026-06-22T02:20:32Z",
+      "language": "en",
+      "liked_by_creator": false,
+      "likes": 326462,
+      "post_id": "7654036719242726670",
+      "replies": 53,
+      "text": "\"When I try to save the world\" 😂 I cant with you."
+    },
+    {
+      "author": "[redacted]",
+      "comment_id": "7654099239752516383",
+      "created_at": "2026-06-22T06:14:47Z",
+      "language": "en",
+      "liked_by_creator": false,
+      "likes": 169446,
+      "post_id": "7654036719242726670",
+      "replies": 302,
+      "text": "Hear me out... this bag with those shoes when you save the world"
+    }
+  ]
+}

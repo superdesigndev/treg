@@ -5,6 +5,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
+from treg import archive_bodies
 from treg.application import arena_insights as service
 from treg.domain import arena_insights as rules
 from treg.domain.catalog import store
@@ -43,6 +44,24 @@ async def test_naive_datetime_insert_does_not_raise_value_error(clients):
     """
     backlog = await service.collect_batch(session_maker)
     assert backlog is False  # no records, but INSERT succeeded
+
+
+async def test_evidence_pointers_name_their_reader_and_carry_the_media_type(clients, monkeypatch):
+    call_id = await record("media", response={"data": {"email": "found@example.test"}})
+    async with session_maker() as db:
+        snapshot = (await db.execute(select(ArchiveSnapshot))).scalars().one()
+        snapshot.media_type = "application/json"
+        db.add(snapshot)
+        await db.commit()
+        row = await db.get(CallRecord, call_id)
+    readers = []
+    options = archive_bodies.read_options
+    monkeypatch.setattr(archive_bodies, "read_options", lambda path: readers.append(path) or options(path))
+    async with session_maker() as db:
+        keymap, pointers, media = await service._evidence_pointers(db, [row], path="replay")
+    pair = (keymap[row.archive_key_hash].id, row.archive_content_hash)
+    assert set(pointers) == {pair} and media == {pair: "application/json"}
+    assert readers == ["replay"]
 
 
 async def test_database_stats_reclassify_deduplicate_and_exclude_errors(clients):
@@ -91,7 +110,7 @@ async def test_initial_backlog_hidden_and_incremental_refresh(clients, monkeypat
     assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"]==2
 
 
-async def test_catalog_rebuild_serves_previous_snapshot_until_new_one_is_complete(clients, monkeypatch):
+async def test_rules_change_serves_previous_snapshot_until_new_one_is_complete(clients, monkeypatch):
     await record("first", response={"data": {"email": "found@example.test"}}, duration=100)
     await service.collect_batch(session_maker)
     initial = await service.public_snapshot(session_maker)
@@ -156,7 +175,7 @@ async def test_missing_archive_is_revisited_and_old_window_removed(clients):
         db.add(key);await db.flush()
         db.add(ArchiveSnapshot(key_id=key.id,content_hash="late-body",body=b'{"data":{"email":"new@example.test"}}'))
         row.archive_key_hash=key.key_hash;row.archive_content_hash="late-body";db.add(row)
-        state=(await db.execute(select(ArenaInsightState))).scalar_one();state.updated_at=now()-timedelta(seconds=121)
+        state=(await db.execute(select(ArenaInsightState))).scalar_one();state.updated_at=now()-timedelta(seconds=service.REFRESH_SECONDS+1)
         db.add(state);await db.commit()
     await service.collect_batch(session_maker)
     row=(await service.public_snapshot(session_maker))["rows"][0]
@@ -238,3 +257,110 @@ async def test_corrupt_compressed_body_does_not_block_other_arena_evidence(clien
 def test_explicit_unknown_body_error_is_not_a_coverage_miss():
     assert rules.body_failure({"status":"error", "message":"unexpected provider failure"}) == "unresolved_body_error"
     assert rules.body_failure({"error":"unrecognized failure"}) == "unresolved_body_error"
+
+
+async def test_bounceban_finished_answers_count_and_verifying_is_unresolved(clients):
+    """BounceBan's row is async only for the rare `verifying` answer (`terminal_on_submission`), so
+    it stays on the leaderboard: a finished first answer is judged as usual, a `verifying` one is no
+    answer yet."""
+    bb = "bounceban.people.email.verify"
+    assert bb in service._catalog()[1]
+
+    async def bounceban(hash_, response):
+        async with session_maker() as db:
+            row = CallRecord(user_email="synthetic@example.test", tool_name=bb, method="GET",
+                path="/v1/verify/single", status_code=200, endpoint_id=bb, provider="bounceban",
+                credential_tier="platform", params_hash=hash_, error_request="?email=dev%40bounceban.com",
+                cached=False, duration_ms=100, created_at=now() - timedelta(seconds=180))
+            db.add(row); await db.flush()
+            key = ArchiveKey(key_hash=f"synthetic-{row.id}", endpoint_id=bb,
+                req_url="https://api.bounceban.com/v1/verify/single?email=dev%40bounceban.com")
+            db.add(key); await db.flush()
+            db.add(ArchiveSnapshot(key_id=key.id, content_hash=f"body-{row.id}", body=json.dumps(response).encode()))
+            row.archive_key_hash = key.key_hash; row.archive_content_hash = f"body-{row.id}"
+            db.add(row); await db.commit()
+
+    await bounceban("found", {"id": "a", "status": "success", "result": "deliverable"})
+    await bounceban("no-verdict", {"id": "b", "status": "success", "result": None})
+    await bounceban("verifying", {"id": "c", "status": "verifying", "try_again_at": 1})
+    assert not await service.collect_batch(session_maker)
+    snapshot = await service.public_snapshot(session_maker)
+    row = next(r for r in snapshot["rows"] if r["endpoint"] == bb)
+    assert row["hits"] == 1 and row["misses"] == 1 and row["unresolved"] == 1
+    async with session_maker() as db:
+        categories = (await db.execute(select(ArenaObservation.category).where(
+            ArenaObservation.endpoint == bb))).scalars().all()
+    assert sorted(categories) == ["hit", "miss", "unresolved_pending"]
+
+
+def test_async_rows_without_terminal_on_submission_stay_out_of_insights():
+    endpoints = service._catalog()[1]
+    assert "wiza.people.email.find" not in endpoints
+
+
+def test_cursor_version_survives_catalog_changes(monkeypatch):
+    cat, endpoints, version = service._catalog()
+    monkeypatch.setattr(store, "load", lambda: cat)
+    monkeypatch.setitem(cat.by_id, EP, {**endpoints[EP], "path": "/moved"})
+    monkeypatch.delitem(cat.by_id, next(eid for eid in endpoints if eid != EP))
+    assert service._catalog()[2] == version
+    monkeypatch.setattr(rules, "RULES_VERSION", rules.RULES_VERSION + "-next")
+    assert service._catalog()[2] != version
+
+
+async def test_aggregate_counts_only_the_current_endpoint_set(clients, monkeypatch):
+    await record("first", response={"data": {"email": "found@example.test"}})
+    cat, endpoints, version = service._catalog()
+    async with session_maker() as db:
+        db.add(ArenaObservation(id=10**9, version=version, endpoint="gone.people.email.find", task="people.email.find",
+            input="name_domain", request_hash="h", category="hit", created_at=now() - timedelta(minutes=5)))
+        await db.commit()
+    assert not await service.collect_batch(session_maker)
+    rows = (await service.public_snapshot(session_maker))["rows"]
+    assert [r["endpoint"] for r in rows] == [EP]
+
+
+async def test_prune_runs_during_a_backlog_and_clears_superseded_versions(clients, monkeypatch):
+    monkeypatch.setattr(service, "BATCH_SIZE", 1)
+    await record("first", response={"data": {"email": "found@example.test"}})
+    await record("second", response={"data": {"email": "other@example.test"}})
+    version = service._catalog()[2]
+    old = dict(task="people.email.find", input="name_domain", request_hash="h", category="hit")
+    async with session_maker() as db:
+        db.add(ArenaObservation(id=10**9, version=version, endpoint=EP, created_at=now() - timedelta(days=40), **old))
+        db.add(ArenaObservation(id=10**9 + 1, version="superseded", endpoint=EP, created_at=now(), **old))
+        db.add(ArenaInsightState(id="superseded", scan_until=now(), updated_at=now(),
+            payload={**service._empty(now()), "status": "ready", "updated_at": "2000-01-01T00:00:00Z"}))
+        await db.commit()
+
+    assert (await service.drain(session_maker, max_seconds=0))["backlog"]
+    async with session_maker() as db:
+        ids = set((await db.execute(select(ArenaObservation.id))).scalars())
+        assert not ids & {10**9, 10**9 + 1}
+        # Still the fallback while the current version has not published.
+        assert await db.get(ArenaInsightState, "superseded")
+
+    assert not (await service.drain(session_maker))["backlog"]
+    await service.prune(session_maker)
+    async with session_maker() as db:
+        assert await db.get(ArenaInsightState, "superseded") is None
+    assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"] == 2
+
+
+async def test_rollback_after_prune_rebuilds_before_publishing(clients, monkeypatch):
+    await record("first", response={"data": {"email": "found@example.test"}})
+    cat, endpoints, version = service._catalog()
+    monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, "rolled-back"))
+    assert not await service.collect_batch(session_maker)
+    published = await service.public_snapshot(session_maker)
+    assert published["rows"][0]["unique_requests"] == 1
+
+    monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, version))
+    await service.prune(session_maker)
+    async with session_maker() as db:
+        old = await db.get(ArenaInsightState, "rolled-back")
+        assert old.cursor == 0 and old.updated_at is None and old.payload["rows"] == published["rows"]
+
+    monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, "rolled-back"))
+    assert not await service.collect_batch(session_maker)
+    assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"] == 1

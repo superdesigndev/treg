@@ -51,6 +51,7 @@ async def test_import_flags_missing_env_secret(clients: AsyncClient):
                                     "name": "Authorization", "format": "Bearer {secret}"}]})
     files = [{"path": "x/SKILL.md", "content": "# x"}, {"path": "x/treg.json", "content": bad}]
     a = (await clients.post("/skills/analyze", json={"files": files})).json()["skills"][0]
+    assert a["secrets"] == [{"name": "x", "source": "env", "ref": "X_KEY", "present": False}]
     # value can still be supplied at import time
     r = await clients.post("/skills/import", json={"files": files, "select": ["x"],
                                                    "env_values": {"X_KEY": "live-value"}})

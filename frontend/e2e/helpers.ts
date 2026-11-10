@@ -13,10 +13,19 @@ export async function signIn(page: Page, who = 'browser', team = 'Browser test t
   const code = await page.getByText(/dev code \d{6}/).innerText()
   await page.getByPlaceholder('6-digit code').fill(code.match(/\d{6}/)![0])
   await page.getByRole('dialog', { name: 'Sign in' }).getByRole('button', { name: 'Sign in', exact: true }).click()
-  await page.getByPlaceholder('Team name, e.g. Superdesign').fill(team)
-  await page.getByRole('button', { name: 'Create team →', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Set up your team' }).getByText('Which agent are you using?', { exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Skip', exact: true }).click()
+  // The first team is made for a new account; rename it so specs can find it by name.
+  await expect(page.getByText(/^We made your team/)).toBeVisible()
+  const welcome = page.getByRole('dialog', { name: 'Set up your team' })
+  await expect(welcome.getByText('Which agent are you using?', { exact: true })).toBeVisible()
+  await welcome.getByRole('link', { name: 'Skip', exact: true }).click()
+  await expect(welcome).toBeHidden()
+  const [org] = await page.evaluate(() => fetch('/orgs', { credentials: 'include' }).then(r => r.json()))
+  const renamed = await page.evaluate(([id, slug, name]) => fetch(`/orgs/${id}`, {
+    method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json', 'x-treg-org': slug },
+    body: JSON.stringify({ name }),
+  }).then(r => r.ok), [org.org_id, org.slug, team] as const)
+  expect(renamed).toBe(true)
+  await page.reload()
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible()
 }
 
@@ -111,17 +120,15 @@ export async function textCollisions(page: Page, rows: string): Promise<string[]
   }, rows)
 }
 
-// PostHog stood in by a stub that answers the catalog-v2 flag (state/catalogExperiment.js) with
-// `variant` and records what the page reads (`__ph.reads`), registers and captures.
-export async function stubPostHog(page: Page, variant: string | null) {
-  await page.addInitScript(v => {
+// PostHog stood in by a stub that records what the page captures (`__ph.events`).
+export async function stubPostHog(page: Page) {
+  await page.addInitScript(() => {
     const w = window as any
-    w.__ph = { reads: [] as string[], registered: {} as Record<string, unknown>, events: [] as [string, any][] }
+    w.__ph = { events: [] as [string, any][] }
     w.posthog = {
-      onFeatureFlags(cb: () => void) { setTimeout(cb, 50) },
-      getFeatureFlag(key: string) { w.__ph.reads.push(key); return v ?? undefined },
-      register(props: Record<string, unknown>) { Object.assign(w.__ph.registered, props) },
+      onFeatureFlags() {},
+      register() {}, unregister() {},
       capture(name: string, props: any) { w.__ph.events.push([name, props]) },
     }
-  }, variant)
+  })
 }

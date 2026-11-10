@@ -18,9 +18,11 @@ from treg.domain.hub import ManifestError, price_label, validate, validate_check
 from treg.domain.catalog import store as catalog_store
 from tests.test_marketplace_call import platform_on  # noqa: F401 — tier 4 on, so catalog steps resolve
 
-EP = "tikhub.tiktok.video.comments"      # a real catalog id
-
 from treg.application.call import service as call_service
+from treg.domain.hub import graph as hub_graph
+from treg.domain.hub import refs
+
+EP = "tikhub.tiktok.video.comments"      # a real catalog id
 
 
 def _fake_relay(status: int, body: bytes):
@@ -113,7 +115,7 @@ def test_refusals_name_field_and_rule(change, field, rule_words):
 
 
 # ---------------------------------------------------------------------------------------------
-# Pricing: one rule per kind (docs/hub-pricing-decisions.md round 4, 2026-09-24). A steps recipe
+# Pricing: one rule per kind. A steps recipe
 # has one fixed price; a script declares `max_price_usd` and prices itself with ctx.charge.
 
 def _no_price(m):
@@ -291,7 +293,7 @@ async def test_script_road_needs_the_script_body(clients: AsyncClient, hub_on):
 
 
 async def test_viewer_cannot_publish(clients: AsyncClient, hub_on, monkeypatch):
-    from sqlalchemy import select, update
+    from sqlalchemy import update
     from treg.infra.db import session_maker
     from treg.models import Membership
     async with session_maker() as s:
@@ -379,9 +381,6 @@ async def test_a_catalog_id_is_never_a_hub_tool(clients: AsyncClient, hub_on):
 
 # ---------------------------------------------------------------------------------------------
 # The reference language and the graph (phase 2), pure
-
-from treg.domain.hub import graph as hub_graph
-from treg.domain.hub import refs
 
 
 def test_refs_parse_every_form_and_nothing_else():
@@ -532,7 +531,6 @@ async def test_an_old_version_stops_serving_thirty_days_after_a_newer_one(client
     tool_id = (await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "v1"})).json()["tool_id"]
     await clients.put(f"/hub/tools/{tool_id}", json={"manifest": m, "check": CHECK, "readme": "v2"})
     from datetime import timedelta
-    from sqlalchemy import update
     from treg.infra.db import session_maker
     from treg.models import HubTool
     from sqlalchemy import select as _select
@@ -613,6 +611,16 @@ async def test_catalog_get_answers_for_a_hub_id_and_hides_what_the_maker_hides(c
     assert tool_id not in s.text
     # the same through the MCP-shaped miss path: an unknown hub-shaped id is still a 404 with hints
     assert (await clients.get("/catalog/endpoints/nobody.nothing")).status_code == 404
+
+
+async def test_catalog_gets_view_of_a_hub_id_is_its_contract(clients: AsyncClient, hub_on, platform_on):
+    from toon_format import decode
+    tool_id = await _publish_live(clients)
+    r = await clients.get(f"/catalog/endpoints/{tool_id}", headers={"X-Treg-View": "1"})
+    assert r.status_code == 200 and r.headers["X-Treg-View"] == "1"
+    page = decode(r.json()["text"])
+    assert page["id"] == tool_id and page["maker"] == r.json()["data"]["endpoint"]["provider"]
+    assert page["call"].startswith(f"treg call {tool_id} --data") and page["health"].startswith("live")
 
 
 async def test_catalog_get_on_a_hub_id_with_the_flag_off_is_a_plain_404(clients: AsyncClient, hub_on, platform_on, monkeypatch):
@@ -835,9 +843,6 @@ async def test_a_run_is_readable_by_its_caller_and_its_maker_with_different_view
     assert c["error"]["step"] == "people" and "secret error body" not in json.dumps(c)
     m = (await clients.get(f"/hub/runs/{bad_id}")).json()
     assert "secret error body" in json.dumps(m["error"])
-    # the SPA path for the run page answers with the app
-    page = await clients.get(f"/app/runs/{run_id}")
-    assert page.status_code == 200 and "shared run" in page.text
 
 
 async def test_the_makers_list_carries_health_and_thirty_day_numbers(clients: AsyncClient, hub_on, platform_on, monkeypatch):
@@ -998,7 +1003,7 @@ async def test_earnings_report_carries_the_average_price(clients: AsyncClient, h
 
 
 # ---------------------------------------------------------------------------------------------
-# Listing (docs/hub-listing-decisions.md round 2, 2026-09-24): `listed` is a request; a superadmin
+# Listing: `listed` is a request; a superadmin
 # approves or rejects it; only an approved tool is in search; the approval outlives a version.
 
 ADMIN = "hub-admin-token"
@@ -1049,7 +1054,8 @@ async def test_only_an_approved_tool_is_in_search(clients: AsyncClient, hub_on, 
     row = [r for r in body["results"] if r["id"] == tool_id][0]
     assert row["kind"] == "hub" and row["provider"] and row["price_line"].startswith("seller ")
     assert row["cost"]["usd"] == 0.011 and row["price_range"] == "$0.011/run (from the maker's own tests)" and "score" in row and "script" not in row and "uses" not in row
-    assert body["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response" or tool_id in json.dumps(body["hints"])
+    exact = (await clients.get("/catalog/search", params={"q": tool_id})).json()
+    assert exact["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response"
     assert (await clients.delete(f"/hub/tools/{tool_id}")).status_code == 200      # retired never appears
     assert tool_id not in await _search_ids(clients)
 
@@ -1210,7 +1216,7 @@ async def test_mcp_catalog_search_returns_an_approved_hub_tool(clients: AsyncCli
 
 
 # ---------------------------------------------------------------------------------------------
-# Phase 10.3: the public run log (docs/hub-listing-decisions.md, decisions 3-5).
+# Phase 10.3: the public run log.
 
 async def test_the_public_page_shows_recent_runs_and_never_the_caller_inputs_or_output(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     pub = await _live_tool_with_readme(clients, monkeypatch, price=0.01)
@@ -1429,7 +1435,7 @@ async def test_a_price_edit_on_a_script_moves_its_cap(clients: AsyncClient, hub_
 
 
 # ---------------------------------------------------------------------------------------------
-# Capability (docs/hub-listing-decisions.md round 3): the maker proposes a catalog job; the approval
+# Capability: the maker proposes a catalog job; the approval
 # sets it; the tool then sits beside that job's providers in catalog_get, with a seeded success rate.
 
 CAP = "tiktok.video.comments"           # EP's own job, with several catalog providers

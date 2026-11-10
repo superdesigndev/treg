@@ -14,6 +14,7 @@ from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg.domain import provider_resources
+from treg.domain.identity import api_keys as managed_keys
 from treg.infra.db import _engine, session_maker
 from treg.models import ProviderResource
 
@@ -76,6 +77,10 @@ async def test_voice_create_is_private_and_becomes_an_org_resource(
         ("voice-created", "Narrator", "active")
     ]
     assert seen == [("POST", "https://api.fish.audio/model")]
+    async with session_maker() as db:
+        row = (await db.execute(select(ProviderResource).where(
+            ProviderResource.upstream_id == "voice-created"))).scalars().one()
+    assert row.key_slot == "primary", "the voice names the account it lives on"
 
 
 async def test_unified_voice_list_uses_byok_and_normalizes_without_holding_db(
@@ -83,6 +88,8 @@ async def test_unified_voice_list_uses_byok_and_normalizes_without_holding_db(
 ):
     await clients.post("/secrets", json={"name": "fishaudio", "value": "OWN-FISH-KEY"})
     await audit.drain()
+    # SQLite shares this pool with key metadata writes; finish them before sampling it.
+    await managed_keys.drain_last_used()
     checked_out = []
 
     async def relay(*args, **kwargs):
@@ -274,6 +281,12 @@ async def test_tts_accepts_a_live_verified_public_community_voice_without_holdin
     clients: AsyncClient, fishaudio_platform_on, monkeypatch,
 ):
     await audit.drain()
+    # SQLite tests share the API engine with the best-effort managed-key metadata writer.
+    # Finish the writer scheduled by fixture login before inspecting the global pool count.
+    await managed_keys.drain_last_used()
+    # Auth on this call can schedule another optional display-metadata write. Keep the pool
+    # assertion scoped to the call runtime whose transaction boundary this test guards.
+    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     calls = []
     checked_out = []
 

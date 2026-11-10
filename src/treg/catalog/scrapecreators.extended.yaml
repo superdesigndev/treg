@@ -1,21 +1,20 @@
 # scrapecreators — EXTENDED tier: the provider's full documented endpoint surface,
 # generated from ScrapeCreators' own OpenAPI spec (docs.scrapecreators.com/openapi.json).
-# All 170 documented GET routes are covered; no core scrapecreators.yaml exists yet
-# (this is a new provider), so nothing is deduped out here.
+# All 170 documented GET routes are covered across both tiers; the routes the core
+# scrapecreators.yaml serves are deduped out of this file.
 #
 # `input` / `test_request` come from the spec's per-parameter `example` values (the
 # provider's own demo values); a route whose only required param ships no example is
-# marked `untestable` rather than guessed. `cost` is `credits_charged` from the spec's own
+# marked `untestable` rather than guessed. `price` is `credits_charged` from the spec's own
 # response example for that route (1 credit for nearly all routes, 26 for
-# tiktok/user/audience) — ScrapeCreators does not publish a USD-per-credit rate, so cost is
-# recorded in the provider's own unit (currency: credit) rather than invented in USD.
+# tiktok/user/audience).
 # NOT VERIFIED: no live calls were made in this pass (see docs_url per entry; verification
 # is a separate pass per docs/context/architecture/catalog.md).
 #
 # 2026-07-28: platform slugs added to capabilities.yaml and endpoints re-filed off `web`:
 # apple-music, bluesky, github, kick, pinterest, rumble, snapchat, soundcloud, spotify,
 # truthsocial, twitch, plus komi/linkbio/linkme/linktree/pillar under `linkinbio`.
-# Only detect-age-gender (image detection, no platform) remains on `web`.
+# Creator photo age and gender estimation files under the creators platform.
 
 provider: scrapecreators
 source:
@@ -26,7 +25,7 @@ source:
 endpoints:
 - id: scrapecreators.x.v1-account-get-api-usage
   kind: account
-  tier: extended
+  provenance: null
   platform: account
   method: GET
   path: /v1/account/get-api-usage
@@ -54,11 +53,12 @@ endpoints:
     queryParams:
       page: '1'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-account-get-api-usage.json
   observed_time: 1.15
 - id: scrapecreators.x.v1-account-get-daily-usage-count
   kind: account
-  tier: extended
+  provenance: null
   platform: account
   method: GET
   path: /v1/account/get-daily-usage-count
@@ -68,11 +68,12 @@ endpoints:
   test_request:
     queryParams: {}
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-account-get-daily-usage-count.json
   observed_time: 1.09
 - id: scrapecreators.x.v1-account-get-most-used-routes
   kind: account
-  tier: extended
+  provenance: null
   platform: account
   method: GET
   path: /v1/account/get-most-used-routes
@@ -95,25 +96,16 @@ endpoints:
     queryParams:
       start_time: '2025-04-01T00:00:00.000Z'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-account-get-most-used-routes.json
   observed_time: 1.19
 - id: scrapecreators.x.v1-amazon-shop
-  tier: extended
   platform: amazon
   method: GET
   path: /v1/amazon/shop
   name: "Amazon Shop storefront by URL — profile, products"
   summary: Scrapes a creator's Amazon Shop page by URL, returning their storefront profile and product collections.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/amazon/shop
   input:
     queryParams:
@@ -126,25 +118,17 @@ endpoints:
     queryParams:
       url: https://www.amazon.com/shop/sydneydelrey
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-amazon-shop.json
   observed_time: 8.1
 - id: scrapecreators.x.v1-apple-music-album
-  tier: extended
+  added: '2026-07-28'
   platform: apple-music
   method: GET
   path: /v1/apple-music/album
   name: "Apple Music album by id or URL — tracks, release info"
   summary: Retrieves public Apple Music album details, including title, artist, artwork, release info, tracks, and more by the artist.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/apple-music/album
   input:
     queryParams:
@@ -163,22 +147,13 @@ endpoints:
       id: '1468058165'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-apple-music-artist
-  tier: extended
+  added: '2026-07-28'
   platform: apple-music
   method: GET
   path: /v1/apple-music/artist
   name: "Apple Music artist by id or URL — top songs, albums"
   summary: Retrieves public Apple Music artist details, including artwork, editorial notes, top songs, albums, music videos, playlists, and related sections.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/apple-music/artist
   input:
     queryParams:
@@ -197,22 +172,13 @@ endpoints:
       id: '159260351'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-apple-music-search
-  tier: extended
+  added: '2026-07-28'
   platform: apple-music
   method: GET
   path: /v1/apple-music/search
   name: "Search Apple Music by keyword — songs, artists, albums"
   summary: Searches Apple Music and returns public result sections for artists, albums, songs, playlists, stations, and music videos.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/apple-music/search
   input:
     queryParams:
@@ -231,22 +197,13 @@ endpoints:
       query: taylor swift
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-apple-music-track
-  tier: extended
+  added: '2026-07-28'
   platform: apple-music
   method: GET
   path: /v1/apple-music/track
   name: "Apple Music track by id or URL — song details"
   summary: Retrieves public Apple Music song details by id or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/apple-music/track
   input:
     queryParams:
@@ -265,22 +222,13 @@ endpoints:
       id: '1833328840'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-bluesky-post
-  tier: extended
+  added: '2026-07-28'
   platform: bluesky
   method: GET
   path: /v1/bluesky/post
   name: "Bluesky post by URL — text, author, engagement counts"
   summary: Fetches a single Bluesky post by URL, returning the post's record text, author info, embed content, replyCount, repostCount, likeCount, and quoteCount.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/bluesky/post
   input:
     queryParams:
@@ -295,22 +243,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: bluesky.post.detail
 - id: scrapecreators.x.v1-bluesky-profile
-  tier: extended
+  added: '2026-07-28'
   platform: bluesky
   method: GET
   path: /v1/bluesky/profile
   name: "Bluesky profile by username — bio, follower counts"
   summary: Retrieves a Bluesky user's public profile including handle, displayName, avatar, description, followersCount, followsCount, postsCount, createdAt, and verification status.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/bluesky/profile
   input:
     queryParams:
@@ -325,22 +264,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: bluesky.user.profile
 - id: scrapecreators.x.v1-bluesky-user-posts
-  tier: extended
+  added: '2026-07-28'
   platform: bluesky
   method: GET
   path: /v1/bluesky/user/posts
   name: "Bluesky user posts by username — text, engagement"
   summary: Fetches a paginated feed of posts from a Bluesky user, returning each post's uri, record text, author info, embed content, replyCount, repostCount, likeCount, quoteCount, and indexedAt.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/bluesky/user/posts
   input:
     queryParams:
@@ -360,23 +290,15 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: bluesky.user.posts
 - id: scrapecreators.x.v1-detect-age-gender
+  added: '2026-07-28'
   kind: utility
-  tier: extended
-  platform: web
+  capability: creators.photo.demographics
+  platform: creators
   method: GET
   path: /v1/detect-age-gender
-  name: "Estimate age and gender from a profile photo URL"
+  name: "Estimate age and gender"
   summary: Uses AI to analyze a creator's profile photo and estimate their age and gender.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/detect-age-gender
   input:
     queryParams:
@@ -390,22 +312,13 @@ endpoints:
       url: https://twitter.com/levelsio
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-facebook-adlibrary-ad
-  tier: extended
+  added: '2026-07-28'
   platform: meta-ads
   method: GET
   path: /v1/facebook/adLibrary/ad
   name: "Facebook ad library ad details by id or URL"
   summary: Retrieves detailed information about a specific Facebook ad by its ID or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/adLibrary/ad
   input:
     queryParams:
@@ -434,22 +347,13 @@ endpoints:
       id: '702369045530963'
   unverified: 'http 404: Shoot it looks like the ad doesn''t exist :('
 - id: scrapecreators.x.v1-facebook-adlibrary-ad-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: meta-ads
   method: GET
   path: /v1/facebook/adLibrary/ad/transcript
   name: "Facebook ad library video ad transcript by id or URL"
   summary: Retrieves a transcript for a single Facebook Ad Library video ad by ID or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/adLibrary/ad/transcript
   input:
     queryParams:
@@ -473,23 +377,16 @@ endpoints:
       id: '1020359190509080'
   unverified: 'http 404: Shoot it looks like the ad doesn''t exist :('
 - id: scrapecreators.x.v1-facebook-adlibrary-company-ads
-  tier: extended
+  added: '2026-07-28'
   platform: meta-ads
   capability: meta-ads.library.advertiser
   method: GET
   path: /v1/facebook/adLibrary/company/ads
   name: "Facebook ad library company ads by page id or name"
   summary: Fetches all ads currently running for a specific company from the Meta Ad Library.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
   docs_url: https://docs.scrapecreators.com/facebook/adLibrary/company/ads
   input:
     queryParams:
@@ -551,25 +448,17 @@ endpoints:
   test_request:
     queryParams:
       pageId: '367152833370567'
-  skipped: not called — $1.0000 would exceed this run's $45.00 budget
+  verified: '2026-10-20'
+  example_response: examples/scrapecreators.x.v1-facebook-adlibrary-company-ads.json
 - id: scrapecreators.x.v1-facebook-adlibrary-search-ads
-  tier: extended
+  added: '2026-07-28'
   platform: meta-ads
   capability: meta-ads.library.search
   method: GET
   path: /v1/facebook/adLibrary/search/ads
   name: "Search Facebook ad library ads by keyword"
   summary: Searches the Meta Ad Library by keyword and returns matching ads.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/adLibrary/search/ads
   input:
     queryParams:
@@ -635,22 +524,13 @@ endpoints:
       query: running
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-facebook-adlibrary-search-companies
-  tier: extended
+  added: '2026-07-28'
   platform: meta-ads
   method: GET
   path: /v1/facebook/adLibrary/search/companies
   name: "Search Facebook ad library companies by name — page ids"
   summary: Searches for companies by name in the Meta Ad Library and returns their page IDs for use with other ad library endpoints.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/adLibrary/search/companies
   input:
     queryParams:
@@ -664,22 +544,12 @@ endpoints:
       query: nike
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-facebook-event-details
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/event/details
   name: "Facebook event details by id or URL"
   summary: Get a specific event by its URL or id.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/event/details
   input:
     queryParams:
@@ -697,26 +567,17 @@ endpoints:
     queryParams:
       id: '2255360061870188'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-event-details.json
   observed_time: 0.89
   capability: facebook.event.detail
 - id: scrapecreators.x.v1-facebook-events
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/events
   name: "Facebook events for a city by URL"
   summary: Get the events of a city.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/events
   input:
     queryParams:
@@ -738,26 +599,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/events/explore/saint-petersburg-florida/111326725552547
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-events.json
   observed_time: 3.19
   capability: facebook.events.city
 - id: scrapecreators.x.v1-facebook-events-search
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/events/search
   name: "Search Facebook events by name"
   summary: Search for events by name.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/events/search
   input:
     queryParams:
@@ -775,26 +627,17 @@ endpoints:
     queryParams:
       query: Event name or description
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-events-search.json
   observed_time: 1.99
   capability: facebook.search.events
 - id: scrapecreators.x.v1-facebook-group
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/group
   name: "Facebook group profile by URL or id — members, admins"
   summary: Fetches the public information shown on a Facebook group's About page, including its description, privacy and visibility, member and activity counts, categories, administrators and moderators when Facebook exposes them, group history, and rules.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/group
   input:
     queryParams:
@@ -812,26 +655,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/groups/366190054572553/about
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-group.json
   observed_time: 1.71
   capability: facebook.group.info
 - id: scrapecreators.x.v1-facebook-group-posts
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/group/posts
   name: "Facebook group posts by URL or group id"
   summary: Fetches posts from a public Facebook group, limited to 3 posts per page due to API limitations.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/group/posts
   input:
     queryParams:
@@ -859,26 +693,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/groups/1270525996445602/
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-group-posts.json
   observed_time: 3.0
   capability: facebook.group.posts
 - id: scrapecreators.x.v1-facebook-marketplace-item
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/marketplace/item
   name: "Facebook Marketplace item by id or URL — price, seller"
   summary: Fetches details for a Facebook Marketplace item by item id or Marketplace item URL, including title, description, price, location, condition, photos, seller, and availability flags.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/marketplace/item
   input:
     queryParams:
@@ -896,26 +721,17 @@ endpoints:
     queryParams:
       id: '1656586118821988'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-marketplace-item.json
   observed_time: 2.77
   capability: facebook.marketplace.item.detail
 - id: scrapecreators.x.v1-facebook-marketplace-location-search
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/marketplace/location/search
   name: "Search Facebook Marketplace locations by city — lat/lng"
   summary: Searches Facebook Marketplace locations/cities and returns coordinates you can use with the Marketplace Search endpoint.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/marketplace/location/search
   input:
     queryParams:
@@ -928,26 +744,17 @@ endpoints:
     queryParams:
       query: Austin
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-marketplace-location-search.json
   observed_time: 1.3
   capability: facebook.marketplace.location.search
 - id: scrapecreators.x.v1-facebook-marketplace-search
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/marketplace/search
   name: "Search Facebook Marketplace listings by keyword and lat/lng"
   summary: Searches Facebook Marketplace listings by keyword and lat/lng.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/marketplace/search
   input:
     queryParams:
@@ -1022,26 +829,17 @@ endpoints:
       lat: '30.2677'
       lng: '-97.7475'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-marketplace-search.json
   observed_time: 2.33
   capability: facebook.marketplace.search
 - id: scrapecreators.x.v1-facebook-post
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/post
   name: "Facebook post or reel by URL"
   summary: Retrieves a single public Facebook post or reel by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/post
   input:
     queryParams:
@@ -1059,26 +857,18 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/reel/1535656380759655
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-post.json
   observed_time: 3.59
   capability: facebook.post.detail
 - id: scrapecreators.x.v1-facebook-post-comment-replies
-  tier: extended
+  added: '2026-07-28'
   platform: facebook
   method: GET
   path: /v1/facebook/post/comment/replies
   name: "Facebook comment replies by feedback id"
   summary: Get the replies to a comment.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/post/comment/replies
   input:
     queryParams:
@@ -1104,23 +894,15 @@ endpoints:
   unverified: 'http 500: Error at scrapeFacebookCommentReplies: A server error field_exception occured. C'
   capability: facebook.comment.replies
 - id: scrapecreators.x.v1-facebook-post-comments
-  tier: extended
   platform: facebook
   capability: facebook.post.comments
   method: GET
   path: /v1/facebook/post/comments
   name: "Facebook post or reel comments by URL"
   summary: Fetches comments from a Facebook post or reel with cursor-based pagination.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
   docs_url: https://docs.scrapecreators.com/facebook/post/comments
   input:
     queryParams:
@@ -1143,25 +925,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/reel/753347914167361
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-post-comments.json
   observed_time: 5.21
 - id: scrapecreators.x.v1-facebook-post-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: facebook
   method: GET
   path: /v1/facebook/post/transcript
   name: "Facebook video post transcript by URL"
   summary: Extracts the transcript text from a Facebook video post or reel.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/post/transcript
   input:
     queryParams:
@@ -1180,22 +954,14 @@ endpoints:
   unverified: 'http 400: You must provide a url'
   capability: facebook.post.transcript
 - id: scrapecreators.x.v1-facebook-profile
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/profile
   name: "Facebook page profile by URL — contact info, followers"
   summary: Retrieves public Facebook page details including category, address, email, phone, website, services, priceRange, rating, likeCount, and followerCount.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.name, op: absent}}
   docs_url: https://docs.scrapecreators.com/facebook/profile
   input:
     queryParams:
@@ -1223,26 +989,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/mantraindianfolsom
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-profile.json
   observed_time: 4.21
   capability: facebook.user.profile
 - id: scrapecreators.x.v1-facebook-profile-events
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/profile/events
   name: "Facebook page events by URL"
   summary: Get the events of a public Facebook page.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/profile/events
   input:
     queryParams:
@@ -1260,26 +1017,17 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/brickyardoldtown
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-profile-events.json
   observed_time: 3.32
   capability: facebook.page.events
 - id: scrapecreators.x.v1-facebook-profile-photos
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/profile/photos
   name: "Facebook page photos by URL"
   summary: Fetches photos from a public Facebook page with pagination support.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/profile/photos
   input:
     queryParams:
@@ -1302,27 +1050,20 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/Spurs
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-profile-photos.json
   observed_time: 1.63
   capability: facebook.page.photos
 - id: scrapecreators.x.v1-facebook-profile-posts
-  tier: extended
   platform: facebook
   capability: facebook.user.posts
   method: GET
   path: /v1/facebook/profile/posts
   name: "Facebook page posts by URL or page id"
   summary: Returns publicly visible Facebook profile posts, limited to 3 posts per page due to API limitations.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
   docs_url: https://docs.scrapecreators.com/facebook/profile/posts
   input:
     queryParams:
@@ -1345,25 +1086,16 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/pacemorby
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-profile-posts.json
   observed_time: 5.37
 - id: scrapecreators.x.v1-facebook-profile-reels
-  tier: extended
   platform: facebook
   method: GET
   path: /v1/facebook/profile/reels
   name: "Facebook page reels by URL"
   summary: Fetches up to 10 reels per request from a public Facebook page.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/facebook/profile/reels
   input:
     queryParams:
@@ -1386,26 +1118,18 @@ endpoints:
     queryParams:
       url: https://www.facebook.com/pacemorby
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-facebook-profile-reels.json
   observed_time: 3.41
   capability: facebook.page.reels
 - id: scrapecreators.x.v1-github-repository
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/repository
   name: "GitHub repository by URL — stars, forks, topics"
   summary: Retrieves public metadata for one GitHub repository, including owner, description, language, stars, forks, topics, license, visibility, default branch, open issues, and timestamps.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/repository
   input:
     queryParams:
@@ -1420,22 +1144,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.repo.profile
 - id: scrapecreators.x.v1-github-trending-developers
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/trending/developers
   name: "GitHub trending developers — filter by language"
   summary: Scrapes GitHub's public Trending developers page.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/trending/developers
   input:
     queryParams:
@@ -1455,22 +1170,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.trending.developers
 - id: scrapecreators.x.v1-github-trending-repositories
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/trending/repositories
   name: "GitHub trending repositories — filter by language"
   summary: Scrapes GitHub's public Trending repositories page.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/trending/repositories
   input:
     queryParams:
@@ -1495,22 +1201,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.trending.repositories
 - id: scrapecreators.x.v1-github-user
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user
   name: "GitHub user profile by username — bio, followers"
   summary: Retrieves public GitHub user details including name, bio, avatar, company, location, blog, follower counts, public repo counts, and account timestamps.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user
   input:
     queryParams:
@@ -1530,22 +1227,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.profile
 - id: scrapecreators.x.v1-github-user-activity
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/activity
   name: "GitHub user activity timeline by username"
   summary: Retrieves GitHub profile contribution activity for a user from the public profile activity timeline.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/activity
   input:
     queryParams:
@@ -1575,22 +1263,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.activity
 - id: scrapecreators.x.v1-github-user-contributions
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/contributions
   name: "GitHub contribution graph by username and year"
   summary: Retrieves the public GitHub contribution graph for a user and year, including total contributions and daily contribution counts/intensity.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/contributions
   input:
     queryParams:
@@ -1615,22 +1294,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.contributions
 - id: scrapecreators.x.v1-github-user-followers
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/followers
   name: "GitHub user followers by username"
   summary: Retrieves public GitHub followers for a user.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/followers
   input:
     queryParams:
@@ -1655,22 +1325,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.followers
 - id: scrapecreators.x.v1-github-user-following
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/following
   name: "GitHub user following list by username"
   summary: Retrieves public accounts followed by a GitHub user.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/following
   input:
     queryParams:
@@ -1695,22 +1356,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.following
 - id: scrapecreators.x.v1-github-user-pull-requests
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/pull-requests
   name: "GitHub user pull requests by username"
   summary: Searches public GitHub pull requests authored by a user using GitHub's public search index.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/pull-requests
   input:
     queryParams:
@@ -1740,22 +1392,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.pull_requests
 - id: scrapecreators.x.v1-github-user-repositories
-  tier: extended
+  added: '2026-07-28'
   platform: github
   method: GET
   path: /v1/github/user/repositories
   name: "GitHub user repositories by username — stars, language"
   summary: Retrieves a user's public repositories with repo metadata like description, language, stars, forks, topics, license, visibility, default branch, and timestamps.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/github/user/repositories
   input:
     queryParams:
@@ -1795,22 +1438,12 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: github.user.repos
 - id: scrapecreators.x.v1-google-ad
-  tier: extended
   platform: google-ads
   method: GET
   path: /v1/google/ad
   name: "Google ad library ad details by URL — impressions"
   summary: Retrieves detailed information about a specific Google ad including advertiserId, creativeId, format, firstShown, lastShown, and overallImpressions.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/google/ad
   input:
     queryParams:
@@ -1828,25 +1461,16 @@ endpoints:
     queryParams:
       url: https://adstransparency.google.com/advertiser/AR01614014350098432001/creative/CR10449491775734153217
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-google-ad.json
   observed_time: 3.01
 - id: scrapecreators.x.v1-google-adlibrary-advertisers-search
-  tier: extended
   platform: google-ads
   method: GET
   path: /v1/google/adLibrary/advertisers/search
   name: "Search Google ad library advertisers by name"
   summary: Searches the Google Ad Transparency Library for advertisers by name.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/google/adLibrary/advertisers/search
   input:
     queryParams:
@@ -1864,25 +1488,16 @@ endpoints:
     queryParams:
       query: lululemon
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-google-adlibrary-advertisers-search.json
   observed_time: 1.11
 - id: scrapecreators.x.v1-google-company-ads
-  tier: extended
   platform: google-ads
   method: GET
   path: /v1/google/company/ads
   name: "Google ad library company ads by domain or advertiser id"
   summary: Fetches public ads for a company from the Google Ad Transparency Library by domain or advertiser_id.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/google/company/ads
   input:
     queryParams:
@@ -1940,26 +1555,19 @@ endpoints:
     queryParams:
       domain: lululemon.com
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-google-company-ads.json
   observed_time: 1.64
 - id: scrapecreators.x.v1-google-search
-  tier: extended
   platform: google
   capability: google.serp.organic
   method: GET
   path: /v1/google/search
   name: "Search Google by keyword — organic results"
   summary: Performs a Google search and returns organic results with url, title, and description for each result.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
   docs_url: https://docs.scrapecreators.com/google/search
   input:
     queryParams:
@@ -1987,26 +1595,17 @@ endpoints:
     queryParams:
       query: austen allred
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-google-search.json
   observed_time: 1.77
 - id: scrapecreators.x.v1-instagram-audio-reels
-  tier: extended
   platform: instagram
   capability: instagram.music.posts
   method: GET
   path: /v1/instagram/audio/reels
   name: "Instagram reels using an audio, by audio id"
   summary: Fetches the reels Instagram exposes for an audio page like instagram.com/reels/audio/{audio_id}/.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/audio/reels
   input:
     queryParams:
@@ -2024,26 +1623,19 @@ endpoints:
     queryParams:
       audio_id: '1392969992841787'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-audio-reels.json
   observed_time: 2.27
 - id: scrapecreators.x.v1-instagram-basic-profile
-  tier: extended
   platform: instagram
   capability: instagram.user.profile
   method: GET
   path: /v1/instagram/basic-profile
   name: "Instagram basic profile by user id — bio, followers"
   summary: Fetches a lightweight Instagram profile summary by user ID, returning username, full name, biography, profile picture URL, verification status, follower count, following count, media count, and account privacy and type.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.username, op: absent}}
   docs_url: https://docs.scrapecreators.com/instagram/basic-profile
   input:
     queryParams:
@@ -2061,26 +1653,18 @@ endpoints:
     queryParams:
       userId: '314216'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-basic-profile.json
   observed_time: 0.65
 - id: scrapecreators.x.v1-instagram-post
-  tier: extended
+  added: '2026-07-28'
   platform: instagram
   capability: instagram.post.detail
   method: GET
   path: /v1/instagram/post
   name: "Instagram post or reel by URL or shortcode"
   summary: Fetches detailed metadata for a single Instagram post or reel by shortcode or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/post
   input:
     queryParams:
@@ -2111,47 +1695,30 @@ endpoints:
       region: US
   unverified: 'http 400: You must provide a url'
 - id: scrapecreators.x.v1-instagram-reels-trending
-  tier: extended
   platform: instagram
   capability: instagram.reels.recommended
   method: GET
   path: /v1/instagram/reels/trending
   name: "Instagram trending reels feed"
   summary: Fetches trending reels from Instagram's public instagram.com/reels page.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/reels/trending
   test_request:
     queryParams: {}
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-reels-trending.json
   observed_time: 3.68
 - id: scrapecreators.x.v1-instagram-search-hashtag
-  tier: extended
   platform: instagram
   capability: instagram.hashtag.posts
   method: GET
   path: /v1/instagram/search/hashtag
   name: "Search Instagram posts by hashtag — caption, engagement"
   summary: Finds public Instagram posts for a hashtag using Google Search, then returns post details such as caption, play count when available, like count, comment count, owner, and post time.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
   docs_url: https://docs.scrapecreators.com/instagram/search/hashtag
   input:
     queryParams:
@@ -2179,26 +1746,19 @@ endpoints:
     queryParams:
       hashtag: makeup
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-search-hashtag.json
   observed_time: 11.28
 - id: scrapecreators.x.v1-instagram-search-profiles
-  tier: extended
   platform: instagram
   capability: instagram.search.users
   method: GET
   path: /v1/instagram/search/profiles
   name: "Search Instagram profiles by keyword"
   summary: Searches Google for public Instagram results matching a keyword or phrase, then returns matching public profiles.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.profiles, op: present}, {path: response.profiles, op: empty}]}
   docs_url: https://docs.scrapecreators.com/instagram/search/profiles
   input:
     queryParams:
@@ -2216,25 +1776,16 @@ endpoints:
     queryParams:
       query: fitness coach
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-search-profiles.json
   observed_time: 9.03
 - id: scrapecreators.x.v1-instagram-user-embed
-  tier: extended
   platform: instagram
   method: GET
   path: /v1/instagram/user/embed
   name: "Instagram profile embed HTML by username"
   summary: Returns the raw HTML embed snippet for an Instagram user's profile widget.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/user/embed
   input:
     queryParams:
@@ -2247,26 +1798,17 @@ endpoints:
     queryParams:
       handle: jane
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-user-embed.json
   observed_time: 3.92
 - id: scrapecreators.x.v1-instagram-user-highlight-detail
-  tier: extended
   platform: instagram
   capability: instagram.highlight.items
   method: GET
   path: /v1/instagram/user/highlight/detail
   name: "Instagram story highlight contents by highlight id"
   summary: Fetches the full contents of a specific Instagram story highlight album by its ID.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/user/highlight/detail
   input:
     queryParams:
@@ -2279,26 +1821,17 @@ endpoints:
     queryParams:
       id: '18067016518767507'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-user-highlight-detail.json
   observed_time: 3.98
 - id: scrapecreators.x.v1-instagram-user-highlights
-  tier: extended
   platform: instagram
   capability: instagram.user.highlights
   method: GET
   path: /v1/instagram/user/highlights
   name: "Instagram story highlights by username or user id"
   summary: Lists all story highlight albums for an Instagram user.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/user/highlights
   input:
     queryParams:
@@ -2316,26 +1849,19 @@ endpoints:
     queryParams:
       user_id: '2700692569'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-user-highlights.json
   observed_time: 2.2
 - id: scrapecreators.x.v1-instagram-user-reels
-  tier: extended
   platform: instagram
   capability: instagram.user.reels
   method: GET
   path: /v1/instagram/user/reels
   name: "Instagram user reels by username — short videos"
   summary: Returns a paginated list of a user's public Instagram reels (short-form videos).
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.items, op: present}, {path: response.items, op: empty}]}
   docs_url: https://docs.scrapecreators.com/instagram/user/reels
   input:
     queryParams:
@@ -2363,25 +1889,17 @@ endpoints:
     queryParams:
       user_id: '2700692569'
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-instagram-user-reels.json
   observed_time: 1.03
 - id: scrapecreators.x.v1-kick-clip
-  tier: extended
+  added: '2026-07-28'
   platform: kick
   method: GET
   path: /v1/kick/clip
   name: "Kick clip by URL — video, channel info"
   summary: Fetches detailed data for a Kick clip by URL, including video, metadata, and channel info.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/kick/clip
   input:
     queryParams:
@@ -2395,22 +1913,13 @@ endpoints:
       url: https://kick.com/xqc/clips/clip_01JGJHB6CEVFCQRYTVPM8DW892
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-komi
-  tier: extended
+  added: '2026-07-28'
   platform: linkinbio
   method: GET
   path: /v1/komi
   name: "Komi link-in-bio page by URL — profile, social links"
   summary: Scrapes a Komi page by URL, extracting the creator's profile, social links, and featured content.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/komi
   input:
     queryParams:
@@ -2429,23 +1938,13 @@ endpoints:
       url: https://kimkardashian.komi.io/
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-kwai-post
-  tier: extended
   platform: kuaishou
   capability: kuaishou.video.detail
   method: GET
   path: /v1/kwai/post
   name: "Kwai post by URL — caption, media, counts"
   summary: Fetches public Kwai post details including caption, media URLs, cover images, counts, author info, and music metadata.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/kwai/post
   input:
     queryParams:
@@ -2458,26 +1957,17 @@ endpoints:
     queryParams:
       url: https://www.kwai.com/@KwaiBrasilOficial/photo/5193363430624671876
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-kwai-post.json
   observed_time: 4.58
 - id: scrapecreators.x.v1-kwai-profile
-  tier: extended
   platform: kuaishou
   capability: kuaishou.user.profile
   method: GET
   path: /v1/kwai/profile
   name: "Kwai profile by username or URL — bio, counts"
   summary: Fetches public Kwai profile data including username, bio, avatar, verification status, gender, and public counts.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/kwai/profile
   input:
     queryParams:
@@ -2495,25 +1985,16 @@ endpoints:
     queryParams:
       handle: KwaiBrasilOficial
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-kwai-profile.json
   observed_time: 5.84
 - id: scrapecreators.x.v1-kwai-user-posts
-  tier: extended
   platform: kuaishou
   method: GET
   path: /v1/kwai/user/posts
   name: "Kwai user posts by username or URL"
   summary: Fetches a paginated list of public Kwai posts for a user, including captions, media URLs, covers, counts, author info, and the next cursor when more results are available.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/kwai/user/posts
   input:
     queryParams:
@@ -2541,25 +2022,17 @@ endpoints:
     queryParams:
       handle: KwaiBrasilOficial
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-kwai-user-posts.json
   observed_time: 4.88
 - id: scrapecreators.x.v1-linkbio
-  tier: extended
+  added: '2026-07-28'
   platform: linkinbio
   method: GET
   path: /v1/linkbio
   name: "Linkbio (lnk.bio) link-in-bio page by URL"
   summary: Scrapes a Linkbio (lnk.bio) page by URL, extracting the creator's profile and all their links.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkbio
   input:
     queryParams:
@@ -2578,23 +2051,13 @@ endpoints:
       url: https://lnk.bio/msjennafischer
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-linkedin-ad
-  tier: extended
   platform: linkedin
   capability: linkedin.ad.detail
   method: GET
   path: /v1/linkedin/ad
   name: "LinkedIn ad details by URL"
   summary: Retrieves detailed information about a specific LinkedIn ad by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkedin/ad
   input:
     queryParams:
@@ -2607,26 +2070,17 @@ endpoints:
     queryParams:
       url: https://www.linkedin.com/ad-library/detail/666281156
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-ad.json
   observed_time: 1.46
 - id: scrapecreators.x.v1-linkedin-ads-search
-  tier: extended
   platform: linkedin
   capability: linkedin.search.ads
   method: GET
   path: /v1/linkedin/ads/search
   name: "Search LinkedIn ad library by company or keyword"
   summary: Searches the LinkedIn Ad Library by company name, keyword, or companyId with optional country and date filters.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkedin/ads/search
   input:
     queryParams:
@@ -2669,26 +2123,19 @@ endpoints:
     queryParams:
       company: microsoft
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-ads-search.json
   observed_time: 5.08
 - id: scrapecreators.x.v1-linkedin-company
-  tier: extended
   platform: linkedin
   capability: linkedin.company.profile
   method: GET
   path: /v1/linkedin/company
   name: "LinkedIn company profile by URL — headcount, industry"
   summary: Fetches a LinkedIn company page with details including name, description, logo, cover image, slogan, location, headquarters, employee count (headcount/staff size), website, industry, company type, founded year, specialties, funding rounds with investors, featured employees, recent posts, and simi...
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.name, op: absent}}
   docs_url: https://docs.scrapecreators.com/linkedin/company
   input:
     queryParams:
@@ -2701,26 +2148,19 @@ endpoints:
     queryParams:
       url: https://linkedin.com/company/shopify
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-company.json
   observed_time: 3.45
 - id: scrapecreators.x.v1-linkedin-company-posts
-  tier: extended
   platform: linkedin
   capability: linkedin.company.posts
   method: GET
   path: /v1/linkedin/company/posts
   name: "LinkedIn company posts by URL — full text, dates"
   summary: Retrieves paginated posts from a LinkedIn company page, including each post's URL, ID, publication date, and full text content.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
   docs_url: https://docs.scrapecreators.com/linkedin/company/posts
   input:
     queryParams:
@@ -2738,26 +2178,19 @@ endpoints:
     queryParams:
       url: https://linkedin.com/company/shopify
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-company-posts.json
   observed_time: 3.78
 - id: scrapecreators.x.v1-linkedin-post
-  tier: extended
   platform: linkedin
   capability: linkedin.post.detail
   method: GET
   path: /v1/linkedin/post
   name: "LinkedIn post or article by URL — likes, comments"
   summary: Fetches a single LinkedIn post or article, returning the title, headline, full description text, author info with follower count, publication date, like count (reactions), comment count, and individual comments.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.name, op: absent}}
   docs_url: https://docs.scrapecreators.com/linkedin/post
   input:
     queryParams:
@@ -2770,25 +2203,16 @@ endpoints:
     queryParams:
       url: https://www.linkedin.com/pulse/being-father-has-made-me-better-leader-vice-versa-austen-allred/
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-post.json
   observed_time: 2.29
 - id: scrapecreators.x.v1-linkedin-post-transcript
-  tier: extended
   platform: linkedin
   method: GET
   path: /v1/linkedin/post/transcript
   name: "LinkedIn post video transcript by URL"
   summary: Fetches the transcript from a LinkedIn post video when LinkedIn exposes one publicly.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkedin/post/transcript
   input:
     queryParams:
@@ -2801,26 +2225,17 @@ endpoints:
     queryParams:
       url: https://www.linkedin.com/posts/gemini-35-flash-is-a-step-forward-for-google-ugcPost-7465082215316525056-MHBd/
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-post-transcript.json
   observed_time: 2.75
 - id: scrapecreators.x.v1-linkedin-search-posts
-  tier: extended
   platform: linkedin
   capability: linkedin.search.posts
   method: GET
   path: /v1/linkedin/search/posts
   name: "Search LinkedIn posts by keyword"
   summary: Finds public LinkedIn posts, feed updates, and Pulse articles by keyword using Google Search, then returns post details such as description, author, media, images, like count, comment count, and published date when LinkedIn exposes them publicly.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkedin/search/posts
   input:
     queryParams:
@@ -2844,25 +2259,17 @@ endpoints:
     queryParams:
       query: ai agents
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-linkedin-search-posts.json
   observed_time: 17.75
 - id: scrapecreators.x.v1-linkme
-  tier: extended
+  added: '2026-07-28'
   platform: linkinbio
   method: GET
   path: /v1/linkme
   name: "Linkme link-in-bio profile by URL — links, contacts"
   summary: Retrieves a Linkme profile by URL, including identity, social links, and contact details.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linkme
   input:
     queryParams:
@@ -2881,22 +2288,13 @@ endpoints:
       url: https://link.me/danucd
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-linktree
-  tier: extended
+  added: '2026-07-28'
   platform: linkinbio
   method: GET
   path: /v1/linktree
   name: "Linktree link-in-bio page by URL — profile, links"
   summary: Scrapes a Linktree page by URL, extracting the creator's profile and all their links.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/linktree
   input:
     queryParams:
@@ -2915,22 +2313,13 @@ endpoints:
       url: https://linktr.ee/miguelangeles
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-pillar
-  tier: extended
+  added: '2026-07-28'
   platform: linkinbio
   method: GET
   path: /v1/pillar
   name: "Pillar link-in-bio page by URL — links, products"
   summary: Scrapes a Pillar page by URL, extracting the creator's profile, social links, and products.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/pillar
   input:
     queryParams:
@@ -2949,22 +2338,13 @@ endpoints:
       url: https://pillar.io/angelstrife
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-pinterest-board
-  tier: extended
+  added: '2026-07-28'
   platform: pinterest
   method: GET
   path: /v1/pinterest/board
   name: "Pinterest board pins by board URL"
   summary: Fetches a paginated list of pins from a Pinterest board by URL, returning each pin's id, description, title, images, board info, pin_join annotations, and aggregated_pin_data.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/pinterest/board
   input:
     queryParams:
@@ -2989,22 +2369,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: pinterest.board.pins
 - id: scrapecreators.x.v1-pinterest-pin
-  tier: extended
+  added: '2026-07-28'
   platform: pinterest
   method: GET
   path: /v1/pinterest/pin
   name: "Pinterest pin by URL — title, images, annotations"
   summary: Fetches detailed information about a single Pinterest pin by URL, returning title, description, link, dominantColor, originPinner, pinner, images at multiple resolutions (imageSpec_236x through imageSpec_orig), and pinJoin with visual annotations.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/pinterest/pin
   input:
     queryParams:
@@ -3029,22 +2400,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: pinterest.pin.detail
 - id: scrapecreators.x.v1-pinterest-search
-  tier: extended
+  added: '2026-07-28'
   platform: pinterest
   method: GET
   path: /v1/pinterest/search
   name: "Search Pinterest pins by keyword"
   summary: Searches Pinterest for pins matching a query, returning results with id, url, title, description, images, link, domain, board info, and pinner details.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/pinterest/search
   input:
     queryParams:
@@ -3069,22 +2431,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: pinterest.search.pins
 - id: scrapecreators.x.v1-pinterest-user-boards
-  tier: extended
+  added: '2026-07-28'
   platform: pinterest
   method: GET
   path: /v1/pinterest/user/boards
   name: "Pinterest user boards by username — pin counts"
   summary: Fetches a paginated list of boards for a Pinterest user, returning each board's name, url, description, pin_count, follower_count, owner info, cover_images, and created_at.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/pinterest/user/boards
   input:
     queryParams:
@@ -3104,23 +2457,14 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: pinterest.user.boards
 - id: scrapecreators.x.v1-reddit-post-comments
-  tier: extended
+  added: '2026-07-28'
   platform: reddit
   capability: reddit.post.comments
   method: GET
   path: /v1/reddit/post/comments
   name: "Reddit post comments by URL"
   summary: Retrieves comments and post details from a Reddit post by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/reddit/post/comments
   input:
     queryParams:
@@ -3144,22 +2488,13 @@ endpoints:
       url: https://www.reddit.com/r/AskReddit/comments/ablzuq/people_who_havent_pooped_in_2019_yet_why_are_you/
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-reddit-post-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: reddit
   method: GET
   path: /v1/reddit/post/transcript
   name: "Reddit video post transcript by URL — captions"
   summary: Gets the transcript from a Reddit video post or direct v.redd.it URL when Reddit exposes a VTT caption file.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/reddit/post/transcript
   input:
     queryParams:
@@ -3183,23 +2518,14 @@ endpoints:
       url: https://www.reddit.com/r/youseeingthisshit/comments/1oiu9xm/football_nostalgiasaints_punter_head_coach_cant/
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-reddit-subreddit-details
-  tier: extended
+  added: '2026-07-28'
   platform: reddit
   capability: reddit.subreddit.info
   method: GET
   path: /v1/reddit/subreddit/details
   name: "Subreddit details by name or URL"
   summary: Retrieves metadata about a subreddit by name or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/reddit/subreddit/details
   input:
     queryParams:
@@ -3223,22 +2549,13 @@ endpoints:
       subreddit: AskReddit
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-reddit-subreddit-search
-  tier: extended
+  added: '2026-07-28'
   platform: reddit
   method: GET
   path: /v1/reddit/subreddit/search
   name: "Search within a subreddit by keyword — posts, comments"
   summary: Searches within a specific subreddit for posts, comments, and media matching a query.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/reddit/subreddit/search
   input:
     queryParams:
@@ -3269,22 +2586,13 @@ endpoints:
       query: push ups
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-rumble-channel-videos
-  tier: extended
+  added: '2026-07-28'
   platform: rumble
   method: GET
   path: /v1/rumble/channel/videos
   name: "Rumble channel videos by username or URL"
   summary: Gets videos from a Rumble channel by handle or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/rumble/channel/videos
   input:
     queryParams:
@@ -3309,22 +2617,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: rumble.channel.videos
 - id: scrapecreators.x.v1-rumble-search
-  tier: extended
+  added: '2026-07-28'
   platform: rumble
   method: GET
   path: /v1/rumble/search
   name: "Search Rumble videos by keyword"
   summary: Searches Rumble videos by keyword.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/rumble/search
   input:
     queryParams:
@@ -3344,22 +2643,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: rumble.search.videos
 - id: scrapecreators.x.v1-rumble-video
-  tier: extended
+  added: '2026-07-28'
   platform: rumble
   method: GET
   path: /v1/rumble/video
   name: "Rumble video details by URL"
   summary: Gets Rumble video details by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/rumble/video
   input:
     queryParams:
@@ -3374,22 +2664,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: rumble.video.detail
 - id: scrapecreators.x.v1-rumble-video-comments
-  tier: extended
+  added: '2026-07-28'
   platform: rumble
   method: GET
   path: /v1/rumble/video/comments
   name: "Rumble video comments by URL — top level"
   summary: Gets all top level comments for a Rumble video by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/rumble/video/comments
   input:
     queryParams:
@@ -3404,22 +2685,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: rumble.video.comments
 - id: scrapecreators.x.v1-rumble-video-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: rumble
   method: GET
   path: /v1/rumble/video/transcript
   name: "Rumble video transcript by URL — captions"
   summary: Gets a Rumble video's transcript when captions are available.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/rumble/video/transcript
   input:
     queryParams:
@@ -3434,22 +2706,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: rumble.video.transcript
 - id: scrapecreators.x.v1-snapchat-profile
-  tier: extended
+  added: '2026-07-28'
   platform: snapchat
   method: GET
   path: /v1/snapchat/profile
   name: "Snapchat profile by username — stories, spotlight"
   summary: Retrieves a Snapchat user's public profile by handle, including identity, stories, and spotlight content.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/snapchat/profile
   input:
     queryParams:
@@ -3463,22 +2726,13 @@ endpoints:
       handle: zane
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-snapchat-spotlight
-  tier: extended
+  added: '2026-07-28'
   platform: snapchat
   method: GET
   path: /v1/snapchat/spotlight
   name: "Snapchat Spotlight video by URL"
   summary: Fetches public data for a Snapchat Spotlight video by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/snapchat/spotlight
   input:
     queryParams:
@@ -3492,22 +2746,13 @@ endpoints:
       url: https://www.snapchat.com/@lilah4823/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYY2pvZnd0ZXVmAZ8fgG8pAZ8ff-_IAAAAAQ
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-snapchat-spotlight-comments
-  tier: extended
+  added: '2026-07-28'
   platform: snapchat
   method: GET
   path: /v1/snapchat/spotlight/comments
   name: "Snapchat Spotlight comments by URL"
   summary: Fetches public comments from Snapchat's Spotlight comments API by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/snapchat/spotlight/comments
   input:
     queryParams:
@@ -3526,22 +2771,13 @@ endpoints:
       url: https://www.snapchat.com/@lilah4823/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYY2pvZnd0ZXVmAZ8fgG8pAZ8ff-_IAAAAAQ
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-soundcloud-artist
-  tier: extended
+  added: '2026-07-28'
   platform: soundcloud
   method: GET
   path: /v1/soundcloud/artist
   name: "SoundCloud artist profile by username or URL"
   summary: Fetches detailed information about a SoundCloud artist by its handle or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/soundcloud/artist
   input:
     queryParams:
@@ -3560,22 +2796,13 @@ endpoints:
       handle: kehlanimusic
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-soundcloud-artist-tracks
-  tier: extended
+  added: '2026-07-28'
   platform: soundcloud
   method: GET
   path: /v1/soundcloud/artist/tracks
   name: "SoundCloud artist tracks by username or URL"
   summary: Fetches tracks/songs for a SoundCloud artist by handle or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/soundcloud/artist/tracks
   input:
     queryParams:
@@ -3599,22 +2826,13 @@ endpoints:
       handle: kehlanimusic
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-soundcloud-track
-  tier: extended
+  added: '2026-07-28'
   platform: soundcloud
   method: GET
   path: /v1/soundcloud/track
   name: "SoundCloud track by URL — song details"
   summary: Fetches detailed information about a SoundCloud track/song by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/soundcloud/track
   input:
     queryParams:
@@ -3628,22 +2846,13 @@ endpoints:
       url: https://soundcloud.com/kehlanimusic/lights-on-feat-big-sean
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-spotify-album
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/album
   name: "Spotify album by id or URL — tracks, release info"
   summary: Retrieves detailed information about a Spotify album by its id or URL, including album metadata, artists, release date, cover art, copyright info, tracks, and sharing details.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/album
   input:
     queryParams:
@@ -3663,22 +2872,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.album.detail
 - id: scrapecreators.x.v1-spotify-artist
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/artist
   name: "Spotify artist by id or URL — followers, genres"
   summary: Retrieves detailed information about a Spotify artist by their handle, including name, followers count, genres, and related artists.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/artist
   input:
     queryParams:
@@ -3698,22 +2898,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.artist.detail
 - id: scrapecreators.x.v1-spotify-podcast
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/podcast
   name: "Spotify podcast details by id or URL"
   summary: Retrieves detailed information about a Spotify podcast by its id or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/podcast
   input:
     queryParams:
@@ -3733,22 +2924,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.podcast.detail
 - id: scrapecreators.x.v1-spotify-podcast-episodes
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/podcast/episodes
   name: "Spotify podcast episodes by id or URL"
   summary: Returns episodes for a Spotify podcast.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/podcast/episodes
   input:
     queryParams:
@@ -3773,22 +2955,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.podcast.episodes
 - id: scrapecreators.x.v1-spotify-search
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/search
   name: "Search Spotify by keyword — tracks, artists, albums"
   summary: Search Spotify for tracks, artists, albums, episodes, podcasts, and audiobooks.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/search
   input:
     queryParams:
@@ -3803,22 +2976,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.search
 - id: scrapecreators.x.v1-spotify-track
-  tier: extended
+  added: '2026-07-28'
   platform: spotify
   method: GET
   path: /v1/spotify/track
   name: "Spotify track by id or URL — album, duration"
   summary: Retrieves detailed information about a Spotify track by its id or URL, including track metadata, artists, album info, duration, playability, and sharing details.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/spotify/track
   input:
     queryParams:
@@ -3838,23 +3002,14 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: spotify.track.detail
 - id: scrapecreators.x.v1-threads-post
-  tier: extended
+  added: '2026-07-28'
   platform: threads
   capability: threads.post.detail
   method: GET
   path: /v1/threads/post
   name: "Threads post by URL — likes, views, replies"
   summary: Fetches a single Threads post by URL, returning the post's caption, like_count, view_counts, reshare_count, direct_reply_count, image_versions2, and taken_at.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/threads/post
   input:
     queryParams:
@@ -3878,23 +3033,14 @@ endpoints:
       url: https://www.threads.com/@trendspider/post/DIU8naHS6q_
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-threads-profile
-  tier: extended
+  added: '2026-07-28'
   platform: threads
   capability: threads.user.profile
   method: GET
   path: /v1/threads/profile
   name: "Threads profile by username — bio, followers"
   summary: Retrieves a Threads user's public profile including username, full_name, biography, profile_pic_url, follower_count, is_verified, bio_links, and hd_profile_pic_versions.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/threads/profile
   input:
     queryParams:
@@ -3913,23 +3059,14 @@ endpoints:
       handle: trendspider
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-threads-search
-  tier: extended
+  added: '2026-07-28'
   platform: threads
   capability: threads.search.posts
   method: GET
   path: /v1/threads/search
   name: "Search Threads posts by keyword"
   summary: Searches Threads for posts matching a keyword, returning up to 10 results with caption text, like_count, reshare_count, direct_reply_count, user info, and image_versions2.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/threads/search
   input:
     queryParams:
@@ -3958,23 +3095,14 @@ endpoints:
       query: basketball
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-threads-search-users
-  tier: extended
+  added: '2026-07-28'
   platform: threads
   capability: threads.search.profiles
   method: GET
   path: /v1/threads/search/users
   name: "Search Threads users by name"
   summary: Searches for Threads users by username, returning matching profiles with username, full_name, profile_pic_url, is_verified, and pk.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/threads/search/users
   input:
     queryParams:
@@ -3988,23 +3116,14 @@ endpoints:
       query: shams
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-threads-user-posts
-  tier: extended
+  added: '2026-07-28'
   platform: threads
   capability: threads.user.posts
   method: GET
   path: /v1/threads/user/posts
   name: "Threads user posts by username — likes, reshares"
   summary: Fetches the most recent posts from a Threads user, returning id, caption text, code, like_count, reshare_count, direct_reply_count, repost_count, image_versions2, video_versions, and taken_at.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/threads/user/posts
   input:
     queryParams:
@@ -4023,23 +3142,14 @@ endpoints:
       handle: trendspider
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-ad-library-ad
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-ads
   capability: tiktok-ads.library.ad.detail
   method: GET
   path: /v1/tiktok/ad-library/ad
   name: "TikTok ad library ad details by ad id"
   summary: Fetches one TikTok ad by ID or URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/ad-library/ad
   input:
     queryParams:
@@ -4053,23 +3163,14 @@ endpoints:
       ad_id: '1869335220395266'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-ad-library-search
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-ads
   capability: tiktok-ads.library.search
   method: GET
   path: /v1/tiktok/ad-library/search
   name: "Search TikTok ad library by keyword or advertiser"
   summary: Searches TikTok's public Ads Library by advertiser name or keyword.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/ad-library/search
   input:
     queryParams:
@@ -4088,22 +3189,13 @@ endpoints:
       query: Anysphere
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-creators-popular
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   method: GET
   path: /v1/tiktok/creators/popular
   name: "TikTok popular creators — filter by followers, country"
   summary: Discovers trending and popular TikTok creators, filterable by follower count range, creator country, and audience country.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/creators/popular
   input:
     queryParams:
@@ -4137,23 +3229,14 @@ endpoints:
       page: 1
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-get-trending-feed
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.feed.home
   method: GET
   path: /v1/tiktok/get-trending-feed
   name: "TikTok trending feed by region — viral videos"
   summary: Fetches TikTok's trending/For You feed for a given region — useful for discovering viral content and what's currently popular.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/get-trending-feed
   input:
     queryParams:
@@ -4172,23 +3255,14 @@ endpoints:
       region: US
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-live
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.live.detail
   method: GET
   path: /v1/tiktok/live
   name: "TikTok live room info by room id or user id"
   summary: Gets curated room-level info for a TikTok live using TokAPI's live info endpoint.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/live
   input:
     queryParams:
@@ -4208,23 +3282,14 @@ endpoints:
       user_id: '6742945285876515845'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-product
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-shop
   capability: tiktok-shop.product.detail
   method: GET
   path: /v1/tiktok/product
   name: "TikTok Shop product by URL — stock, affiliate videos"
   summary: Fetches full details for a specific US TikTok Shop product by its URL, including stock levels and affiliate videos.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/product
   input:
     queryParams:
@@ -4243,23 +3308,14 @@ endpoints:
       url: https://www.tiktok.com/shop/pdp/goli-ashwagandha-gummies-with-vitamin-d-ksm-66-vegan-non-gmo/1729587769570529799
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-profile-region
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.user.country
   method: GET
   path: /v1/tiktok/profile/region
   name: "TikTok profile region code by username"
   summary: Returns the TikTok region code for a public profile, like `US` for United States or `MX` for Mexico.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/profile/region
   input:
     queryParams:
@@ -4273,23 +3329,14 @@ endpoints:
       handle: stoolpresidente
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-search-hashtag
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.search.hashtags
   method: GET
   path: /v1/tiktok/search/hashtag
   name: "Search TikTok videos by hashtag"
   summary: Searches for TikTok videos under a specific hashtag — useful for finding content by topic or trend.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/search/hashtag
   input:
     queryParams:
@@ -4316,23 +3363,14 @@ endpoints:
       region: US
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-search-suggestions
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.search.suggestions
   method: GET
   path: /v1/tiktok/search/suggestions
   name: "TikTok search autocomplete suggestions by keyword"
   summary: Gets the autocomplete suggestions TikTok shows while someone is typing in search.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/search/suggestions
   input:
     queryParams:
@@ -4351,23 +3389,14 @@ endpoints:
       query: dogs
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-search-top
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.search.general
   method: GET
   path: /v1/tiktok/search/top
   name: "Search TikTok top results by keyword — videos, photos"
   summary: Searches TikTok's 'Top' results by query — returns both videos and photo carousels, unlike keyword search which only returns videos.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/search/top
   input:
     queryParams:
@@ -4399,23 +3428,14 @@ endpoints:
       query: funny
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-search-users
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.search.users
   method: GET
   path: /v1/tiktok/search/users
   name: "Search TikTok users by name or keyword"
   summary: Searches for TikTok users by keyword or name — useful for finding creators or accounts matching a query.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/search/users
   input:
     queryParams:
@@ -4437,23 +3457,14 @@ endpoints:
       cursor: 10
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-shop-product-reviews
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-shop
   capability: tiktok-shop.product.reviews
   method: GET
   path: /v1/tiktok/shop/product/reviews
   name: "TikTok Shop product reviews by URL or product id"
   summary: Fetches customer reviews for a TikTok Shop product by URL or product_id.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/shop/product/reviews
   input:
     queryParams:
@@ -4482,23 +3493,14 @@ endpoints:
       url: https://www.tiktok.com/shop/pdp/cat-nail-clipper-by-potaroma-adjustable-sizes-built-in-file-safe-for-kittens-cats/1731578642912612516
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-shop-products
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-shop
   capability: tiktok-shop.shop.products
   method: GET
   path: /v1/tiktok/shop/products
   name: "TikTok Shop store products by store URL"
   summary: Lists all products from a specific TikTok Shop store by its URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/shop/products
   input:
     queryParams:
@@ -4526,23 +3528,14 @@ endpoints:
       url: https://www.tiktok.com/shop/store/goli-nutrition/7495794203056835079
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-shop-search
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-shop
   capability: tiktok-shop.search.products
   method: GET
   path: /v1/tiktok/shop/search
   name: "Search TikTok Shop products by keyword"
   summary: Searches TikTok Shop for products matching a keyword query.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/shop/search
   input:
     queryParams:
@@ -4566,23 +3559,14 @@ endpoints:
       query: shoes
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-song
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.music.detail
   method: GET
   path: /v1/tiktok/song
   name: "TikTok sound or song details by clip id"
   summary: Fetches detailed metadata for a specific TikTok sound or song by its clipId.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/song
   input:
     queryParams:
@@ -4596,23 +3580,14 @@ endpoints:
       clipId: '7439295283975702544'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-song-videos
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.music.videos
   method: GET
   path: /v1/tiktok/song/videos
   name: "TikTok videos using a sound, by clip id"
   summary: Fetches TikTok videos that use a specific sound or song, identified by its clipId.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/song/videos
   input:
     queryParams:
@@ -4631,22 +3606,13 @@ endpoints:
       clipId: '7439295283975702544'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-user-audience
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   method: GET
   path: /v1/tiktok/user/audience
   name: "TikTok audience demographics by username — countries"
   summary: Retrieves audience demographic data for a TikTok user, showing where their followers are located by country.
-  cost:
-    type: per_call
-    value: 26
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '26', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/user/audience
   input:
     queryParams:
@@ -4660,23 +3626,14 @@ endpoints:
       handle: shakira
   skipped: not called — $26.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-user-followers
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.user.followers
   method: GET
   path: /v1/tiktok/user/followers
   name: "TikTok user followers by username or id"
   summary: Retrieves the follower list of a TikTok account by handle or user_id — useful for seeing who follows a creator or getting subscriber data.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/user/followers
   input:
     queryParams:
@@ -4704,23 +3661,14 @@ endpoints:
       handle: stoolpresidente
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-user-following
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.user.following
   method: GET
   path: /v1/tiktok/user/following
   name: "TikTok user following list by username"
   summary: Retrieves the following list — accounts that a TikTok user follows — by their handle.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/user/following
   input:
     queryParams:
@@ -4743,23 +3691,14 @@ endpoints:
       handle: stoolpresidente
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-user-live
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.live.status
   method: GET
   path: /v1/tiktok/user/live
   name: "TikTok live status by username — room details"
   summary: Checks if a TikTok user is currently live streaming and retrieves their live room details.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/user/live
   input:
     queryParams:
@@ -4773,22 +3712,13 @@ endpoints:
       handle: thejustalex
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-user-showcase
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok-shop
   method: GET
   path: /v1/tiktok/user/showcase
   name: "TikTok Shop creator showcase products by username"
   summary: Fetches products featured in a TikTok user's public showcase — the products a creator promotes on their profile.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/user/showcase
   input:
     queryParams:
@@ -4812,23 +3742,14 @@ endpoints:
       handle: mrtiktokreviews
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-video-comment-replies
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.comment.replies
   method: GET
   path: /v1/tiktok/video/comment/replies
   name: "TikTok comment replies by comment id"
   summary: Fetches replies to a specific TikTok comment by its ID.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/video/comment/replies
   input:
     queryParams:
@@ -4853,23 +3774,14 @@ endpoints:
       url: https://www.tiktok.com/@stoolpresidente/video/7623818255903329566
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-video-transcript
+  added: '2026-07-28'
   capability: tiktok.video.captions
   platform: tiktok
-  tier: extended
   method: GET
   path: /v1/tiktok/video/transcript
   name: "TikTok video transcript by URL — captions, subtitles"
   summary: Extracts the transcript, captions, or subtitles from a TikTok video by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/video/transcript
   input:
     queryParams:
@@ -4893,22 +3805,13 @@ endpoints:
       url: https://www.tiktok.com/@stoolpresidente/video/7499229683859426602
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-truthsocial-post
-  tier: extended
+  added: '2026-07-28'
   platform: truthsocial
   method: GET
   path: /v1/truthsocial/post
   name: "Truth Social post by URL — text, engagement counts"
   summary: Fetches a single Truth Social post by URL, returning text, id, created_at, url, content, account details, media_attachments, card link previews, replies_count, reblogs_count, and favourites_count.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/truthsocial/post
   input:
     queryParams:
@@ -4922,22 +3825,13 @@ endpoints:
       url: https://truthsocial.com/@realDonaldTrump/posts/114315219437063160
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-truthsocial-profile
-  tier: extended
+  added: '2026-07-28'
   platform: truthsocial
   method: GET
   path: /v1/truthsocial/profile
   name: "Truth Social profile by username — bio, followers"
   summary: Retrieves a Truth Social user's public profile including display_name, username, avatar, header, followers_count, following_count, statuses_count, verified status, website, and created_at.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/truthsocial/profile
   input:
     queryParams:
@@ -4951,22 +3845,13 @@ endpoints:
       handle: realDonaldTrump
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-truthsocial-user-posts
-  tier: extended
+  added: '2026-07-28'
   platform: truthsocial
   method: GET
   path: /v1/truthsocial/user/posts
   name: "Truth Social user posts by username"
   summary: Fetches a paginated list of posts from a Truth Social user, returning text, id, created_at, url, content, account info, media_attachments, card link previews, replies_count, reblogs_count, and favourites_count.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/truthsocial/user/posts
   input:
     queryParams:
@@ -4995,7 +3880,7 @@ endpoints:
       handle: realDonaldTrump
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-twitch-clip
-  tier: extended
+  provenance: null
   platform: twitch
   method: GET
   path: /v1/twitch/clip
@@ -5018,26 +3903,18 @@ endpoints:
     queryParams:
       url: https://www.twitch.tv/staryuuki/clip/CloudySavageMarjoramRuleFive--ErzsYbE7UWvgCMQ?filter=clips&range=all&sort=time
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v1-twitch-clip.json
   observed_time: 1.34
   capability: twitch.clip.detail
 - id: scrapecreators.x.v1-twitch-profile
-  tier: extended
+  added: '2026-07-28'
   platform: twitch
   method: GET
   path: /v1/twitch/profile
   name: "Twitch profile by username — identity, links"
   summary: Retrieves a Twitch user's public profile by handle, including identity, social links, and content.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitch/profile
   input:
     queryParams:
@@ -5057,22 +3934,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: twitch.user.profile
 - id: scrapecreators.x.v1-twitch-user-schedule
-  tier: extended
+  added: '2026-07-28'
   platform: twitch
   method: GET
   path: /v1/twitch/user/schedule
   name: "Twitch stream schedule by username"
   summary: Fetches a user's schedule by handle, returning a list of scheduled events with start time, end time, title, description, and thumbnail URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitch/user/schedule
   input:
     queryParams:
@@ -5087,22 +3955,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: twitch.user.schedule
 - id: scrapecreators.x.v1-twitch-user-videos
-  tier: extended
+  added: '2026-07-28'
   platform: twitch
   method: GET
   path: /v1/twitch/user/videos
   name: "Twitch user videos by username — views, game info"
   summary: Fetches a list of videos (100 max) for a Twitch user, returning each video's id, slug, url, embedURL, title, viewCount, language, durationSeconds, game info, broadcaster details with follower count, thumbnailURL, and videoQualities at multiple resolutions with a signed videoURL for playback.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitch/user/videos
   input:
     queryParams:
@@ -5125,22 +3984,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: twitch.user.videos
 - id: scrapecreators.x.v1-twitter-community
-  tier: extended
+  added: '2026-07-28'
   platform: x
   method: GET
   path: /v1/twitter/community
   name: "X (Twitter) community details by URL"
   summary: Retrieves details about a Twitter/X Community by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitter/community
   input:
     queryParams:
@@ -5155,22 +4005,13 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: x.community.detail
 - id: scrapecreators.x.v1-twitter-community-tweets
-  tier: extended
+  added: '2026-07-28'
   platform: x
   method: GET
   path: /v1/twitter/community/tweets
   name: "X (Twitter) community tweets by URL"
   summary: Fetches tweets posted within a Twitter/X Community by URL.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitter/community/tweets
   input:
     queryParams:
@@ -5185,23 +4026,14 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: x.community.posts
 - id: scrapecreators.x.v1-twitter-tweet
-  tier: extended
+  added: '2026-07-28'
   platform: x
   capability: x.post.detail
   method: GET
   path: /v1/twitter/tweet
   name: "X (Twitter) tweet by URL — author, engagement"
   summary: Retrieves detailed information about a specific tweet by URL, including the author's profile and engagement metrics.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitter/tweet
   input:
     queryParams:
@@ -5224,22 +4056,13 @@ endpoints:
       trim: 'false'
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-twitter-tweet-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: x
   method: GET
   path: /v1/twitter/tweet/transcript
   name: "X (Twitter) video tweet transcript by URL"
   summary: Extracts the transcript from a Twitter video tweet using AI-powered transcription.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/twitter/tweet/transcript
   input:
     queryParams:
@@ -5260,23 +4083,14 @@ endpoints:
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
   capability: x.post.transcript
 - id: scrapecreators.x.v1-youtube-channel-videos
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.channel.videos
   method: GET
   path: /v1/youtube/channel-videos
   name: "YouTube channel videos by id or username — views, dates"
   summary: Fetches a paginated list of videos uploaded by a YouTube channel, including each video's title, URL, thumbnail, view count (views), publish date, duration, and description.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/channel-videos
   input:
     queryParams:
@@ -5315,23 +4129,14 @@ endpoints:
       channelId: UC-9-kyTW8ZkZNDHQJ6FgpwQ
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-channel-community-posts
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.channel.posts
   method: GET
   path: /v1/youtube/channel/community-posts
   name: "YouTube channel community posts by id or username"
   summary: Fetches community posts from a YouTube channel's Posts tab, including post ID, URL, content, images, attached video, like count, publish time, channel info, and a continuationToken when YouTube has more results.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/channel/community-posts
   input:
     queryParams:
@@ -5355,22 +4160,13 @@ endpoints:
       channelId: UCX6OQ3DkcsbYNE6H8uQQuVA
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-channel-lives
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   method: GET
   path: /v1/youtube/channel/lives
   name: "YouTube channel live streams by id or username"
   summary: Fetches live streams and past streams from a YouTube channel's Live tab, including title, URL, thumbnail, view count, publish time, duration, and a continuationToken when YouTube has more results.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/channel/lives
   input:
     queryParams:
@@ -5394,22 +4190,13 @@ endpoints:
       channelId: UCWsDFcIhY2DBi3GB5uykGXA
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-channel-playlists
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   method: GET
   path: /v1/youtube/channel/playlists
   name: "YouTube channel playlists by id or username"
   summary: Fetches playlists from a YouTube channel's Playlists tab, including playlist ID, title, thumbnail, video count, channel info, playlist URL, and a continuationToken when YouTube has more results.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/channel/playlists
   input:
     queryParams:
@@ -5433,23 +4220,14 @@ endpoints:
       channelId: UCX6OQ3DkcsbYNE6H8uQQuVA
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-channel-shorts
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.channel.shorts
   method: GET
   path: /v1/youtube/channel/shorts
   name: "YouTube channel Shorts by id or username — views, likes"
   summary: Retrieves a paginated list of short-form videos (Shorts) from a YouTube channel, including each short's title, URL, view count (views), likes, comments, and description.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/channel/shorts
   input:
     queryParams:
@@ -5478,23 +4256,14 @@ endpoints:
       handle: starterstory
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-community-post
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.post.detail
   method: GET
   path: /v1/youtube/community-post
   name: "YouTube community post by URL — text, images, likes"
   summary: Retrieves the full details of a YouTube community post, including its text content, attached images, like count, publish date, and associated channel info.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/community-post
   input:
     queryParams:
@@ -5508,22 +4277,13 @@ endpoints:
       url: https://www.youtube.com/post/Ugkxvj2KoApYAXoqLWnKVr6zZe5JjeHrQeP8
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-playlist
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   method: GET
   path: /v1/youtube/playlist
   name: "YouTube playlist videos by playlist id"
   summary: Retrieves all videos in a YouTube playlist, including the playlist title, owner info, total video count, and each video's title, URL, thumbnail, duration, and channel.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/playlist
   input:
     queryParams:
@@ -5537,23 +4297,14 @@ endpoints:
       playlist_id: PLP32wGpgzmIlInfgKVFfCwVsxgGqZNIiS
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-search
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.search.videos
   method: GET
   path: /v1/youtube/search
   name: "Search YouTube by keyword — videos, channels, playlists"
   summary: Searches YouTube by keyword query and returns matching videos, channels, playlists, shorts, shelves, and live streams.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/search
   input:
     queryParams:
@@ -5604,22 +4355,13 @@ endpoints:
       sortBy: relevance
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-search-hashtag
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   method: GET
   path: /v1/youtube/search/hashtag
   name: "Search YouTube videos by hashtag"
   summary: Searches YouTube for content matching a specific hashtag and returns matching videos with title, URL, thumbnail, view count (views), publish date, duration, and channel info.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/search/hashtag
   input:
     queryParams:
@@ -5643,45 +4385,27 @@ endpoints:
       hashtag: funny
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-shorts-trending
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.trending.videos
   method: GET
   path: /v1/youtube/shorts/trending
   name: "YouTube trending Shorts — views, likes, channels"
   summary: Fetches approximately 48 currently trending YouTube Shorts (viral/popular short-form videos) per call, returning each short's title, URL, thumbnail, view count (views), like count (likes), comment count, publish date, channel info, keywords, and duration.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/shorts/trending
   test_request:
     queryParams: {}
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-video-comment-replies
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.comment.replies
   method: GET
   path: /v1/youtube/video/comment/replies
   name: "YouTube comment replies by continuation token"
   summary: Fetches replies to a specific comment on a YouTube video, including each reply's text content, author details (name, channel ID, avatar, verified/creator status), like count, and publish date.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/video/comment/replies
   input:
     queryParams:
@@ -5695,22 +4419,13 @@ endpoints:
       continuationToken: "<omitted: expires>"
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-video-sponsors
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   method: GET
   path: /v1/youtube/video/sponsors
   name: "YouTube video sponsors by URL (experimental)"
   summary: Experimental endpoint.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/video/sponsors
   input:
     queryParams:
@@ -5729,23 +4444,14 @@ endpoints:
       url: https://www.youtube.com/watch?v=AVO0ifle-OU
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-youtube-video-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: youtube
   capability: youtube.video.captions
   method: GET
   path: /v1/youtube/video/transcript
   name: "YouTube video transcript by URL — captions, subtitles"
   summary: Retrieves the captions, subtitles, or transcript of a YouTube video or short.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/youtube/video/transcript
   input:
     queryParams:
@@ -5769,22 +4475,13 @@ endpoints:
       url: https://www.youtube.com/watch?v=bjVIDXPP7Uk
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v2-instagram-media-transcript
-  tier: extended
+  added: '2026-07-28'
   platform: instagram
   method: GET
   path: /v2/instagram/media/transcript
   name: "Instagram video or reel transcript by URL"
   summary: Generates an AI-powered speech-to-text transcription for an Instagram video post or reel.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/instagram/media/transcript
   input:
     queryParams:
@@ -5802,23 +4499,15 @@ endpoints:
       cache_max_age: 7d
   unverified: 'http 400: You must provide a url'
 - id: scrapecreators.x.v2-instagram-reels-search
-  tier: extended
   platform: instagram
   capability: instagram.search.reels
   method: GET
   path: /v2/instagram/reels/search
   name: "Search Instagram reels by keyword"
   summary: Searches for Instagram reels matching a keyword or phrase via Google Search, bypassing Instagram's login-gated search.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.reels, op: present}, {path: response.reels, op: empty}]}
   docs_url: https://docs.scrapecreators.com/instagram/reels/search
   input:
     queryParams:
@@ -5842,26 +4531,18 @@ endpoints:
     queryParams:
       query: dogs
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/scrapecreators.x.v2-instagram-reels-search.json
   observed_time: 6.02
 - id: scrapecreators.x.v3-tiktok-profile-videos
-  tier: extended
+  added: '2026-07-28'
   platform: tiktok
   capability: tiktok.user.videos
   method: GET
   path: /v3/tiktok/profile/videos
   name: "TikTok user videos by username or id"
   summary: Fetches videos posted by a TikTok user, sortable by latest or most popular — use this to get a creator's video feed or TikToks.
-  cost:
-    type: per_call
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: rate_card_api
-    source_url: https://docs.scrapecreators.com/openapi.json
-    checked: '2026-07-28'
-    confidence: verified
+  price: {value: '1', currency: credit, per: 1, unit: call}
   docs_url: https://docs.scrapecreators.com/tiktok/profile/videos
   input:
     queryParams:

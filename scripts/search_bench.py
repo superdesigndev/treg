@@ -24,10 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from treg.domain.catalog import store as cs  # noqa: E402
+from treg.domain.catalog import store as cs
 
 
-# ---- the frozen pre-change engine (every token must match; score = sum of field weights) --------
+# The frozen pre-change engine (every token must match; score = sum of field weights).
 def search_legacy(query: str, cat, limit: int = 25):
     tokens = cs._tokens(query)
     if not tokens:
@@ -47,16 +47,15 @@ def search_legacy(query: str, cat, limit: int = 25):
     return scored[:max(limit, 0)], len(scored)
 
 
-# ---- labeled queries -----------------------------------------------------------------------------
 # (style, query, truth ids). A `family:` truth expands at runtime to every id containing ALL its
 # words — used where a job is served by a whole family and pinning one id would be arbitrary.
 CASES = [
-    # -- sentences: agent voice (first two are the real SearchMiss rows, verbatim) --
+    # Sentences: agent voice (first two are the real SearchMiss rows, verbatim).
     ("sentence", "company job postings hiring open jobs linkedin",
      {"apollo.companies.jobs", "apify.linkedin.search.jobs", "leadmagic.x.jobs-search-v3"}),
     ("sentence", "company search filter by location industry headcount growth",
      {"apollo.companies.search", "pdl.companies.search", "crunchbase.companies.search",
-      "thecompaniesapi.companies.search", "pdl.x.company-search-post"}),
+      "thecompaniesapi.companies.search"}),
     ("sentence", "find work email address from person name and company domain",
      {"hunter.people.email.find", "leadmagic.people.email.find"}),
     ("sentence", "verify if an email address is valid and deliverable",
@@ -111,7 +110,7 @@ CASES = [
      {"scrapecreators.x.v1-linkedin-company", "apollo.companies.enrich",
       "leadsforge.people.identity.resolve.bulk", "fiber-ai.people.identity.resolve",
       "icypeas.people.identity.resolve"}),
-    # -- short: the refinement style the old rule served well (regression guard) --
+    # Short: the refinement style the old rule served well (regression guard).
     ("short", "tiktok comments", "family:tiktok comment"),
     ("short", "ad library",
      {"scrapecreators.x.v1-tiktok-ad-library-search", "meta-ad-library.meta-ads.library.search",
@@ -159,6 +158,8 @@ def summarize(name, per_case, zero, style=None):
 
 
 def main() -> None:
+    from treg import bootstrap
+    bootstrap.configure_provider_labels()   # provider display names, as the server wires them
     cat = cs.load()
     bad = [q for _, q, t in CASES if not expand(t, cat)]
     if bad:
@@ -175,8 +176,10 @@ def main() -> None:
     print("\nper-query rank of first correct id (None = not in top 8; total=0 marked ∅):")
     legacy_rows = results["legacy"][0]
     current_rows = results["current"][0]
+    def mark(r, t):
+        return "∅" if t == 0 else (str(r) if r else "-")
+
     for (style, q, r_old, t_old), (_, _, r_new, t_new) in zip(legacy_rows, current_rows):
-        mark = lambda r, t: "∅" if t == 0 else (str(r) if r else "—")
         flag = "  <-- fixed" if (t_old == 0 or not r_old) and r_new else \
                ("  <-- REGRESSED" if r_old and not r_new else "")
         print(f"  [{style[:4]}] {q[:58]:58} legacy={mark(r_old, t_old):2} current={mark(r_new, t_new):2}{flag}")

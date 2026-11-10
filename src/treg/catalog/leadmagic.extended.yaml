@@ -76,6 +76,7 @@ endpoints:
       confidence: verified
       note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: a hit answered credits_consumed: 10 (charged $0.25 exactly), a miss credits_consumed: 0 (charged $0). The 'b2b overstatement' suspicion from the August sweep was checked and REFUTED for this endpoint — the over-billing it was blamed for was the settle bug fixed in d458ee5"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile.json
     docs_url: https://leadmagic.io/docs/api-reference/email-to-profile
     capability: people.identity.resolve
@@ -108,6 +109,7 @@ endpoints:
       confidence: verified
       note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: credits_consumed: 5, charged $0.125 exactly. The August-sweep value was correct"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile-email.json
     docs_url: https://leadmagic.io/docs/api-reference/profile-to-email
 
@@ -138,9 +140,10 @@ endpoints:
       confidence: documented
       note: 2 credits if found; free if not found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.personal-email-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/personal-email-finder
-    capability: people.email.find
+    capability: people.email.find.personal
 
   - id: leadmagic.x.role-finder
     domain: contacts
@@ -173,6 +176,7 @@ endpoints:
       confidence: documented
       note: 2 credits when found; free on no match
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.role-finder.json
     docs_url: https://leadmagic.io/docs/reference/role-finder
 
@@ -207,6 +211,7 @@ endpoints:
       confidence: documented
       note: 0.05 credits per employee returned (20 employees = 1 credit); free if no results
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.employee-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/employee-finder
 
@@ -240,11 +245,13 @@ endpoints:
       confidence: documented
       note: 3 credits per call, regardless of outcome
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.job-change-detector.json
     docs_url: https://leadmagic.io/docs/api-reference/job-change-detector
     capability: people.signals
 
   - id: leadmagic.x.competitors-search
+    added: '2026-07-28'
     domain: companies
     tier: extended
     platform: companies
@@ -305,6 +312,7 @@ endpoints:
       confidence: documented
       note: 4 credits if funding data is found; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.company-funding.json
     docs_url: https://leadmagic.io/docs/api-reference/company-funding
 
@@ -335,6 +343,7 @@ endpoints:
       confidence: documented
       note: 1 credit if technologies are detected; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.technographics.json
     docs_url: https://leadmagic.io/docs/api-reference/technographics
 
@@ -377,6 +386,7 @@ endpoints:
       confidence: documented
       note: 1 credit per company returned; free if zero matches. Rate limit 100 req/min, ~2 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.companies-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/company-search-v3
 
@@ -417,6 +427,7 @@ endpoints:
       confidence: documented
       note: 1 credit per returned job/signal; free when no jobs are returned. Rate limit 300 req/min, ~5 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/job-search
 
@@ -457,10 +468,12 @@ endpoints:
       confidence: documented
       note: 1 credit per job returned; free if no jobs found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/jobs-finder
 
   - id: leadmagic.x.google-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: google-ads
     method: POST
@@ -491,6 +504,7 @@ endpoints:
     docs_url: https://leadmagic.io/docs/api-reference/google-ads-search
 
   - id: leadmagic.x.meta-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: meta-ads
     method: POST
@@ -541,6 +555,7 @@ endpoints:
     # captured live 2026-08-14 (5 ads, 1.2 credits consumed — an exact fit to the verified
     # 0.2 x (ads+1) formula, a fourth confirmation of it), redaction-scanned, $0.03 charged.
     verified: 2026-08-14
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-ads-search.json
     cost:
       type: per_call

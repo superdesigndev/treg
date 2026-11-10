@@ -30,6 +30,7 @@ endpoints:
       bodyType: json
       body:
         q: {type: string, required: true, example: "OpenAI API documentation"}
+        num: {type: integer, required: false, default: 10, min: 10, max: 100}
         location: {type: string, required: false, note: "Canonical Google location name; discover supported values with Serper's public /locations route.", example: "New York, New York, United States"}
         gl: {type: string, required: false, default: us, note: "Two-letter country code.", example: us}
         hl: {type: string, required: false, default: en, note: "Google interface language code.", example: en}
@@ -51,6 +52,7 @@ endpoints:
       note: "One credit per successful response. Live response.credits and before/after GET /account balance deltas agreed; malformed and unauthorized requests used zero credits."
       reported_charge: &reported_credits {path: credits, unit: credit}
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.web.search.json
     docs_url: https://serper.dev/playground
 
@@ -92,6 +94,7 @@ endpoints:
       note: "Serper reports the exact credits in every successful response; treg reserves from num and settles that value."
       reported_charge: *reported_credits
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.images.json
     docs_url: https://serper.dev/playground
 
@@ -119,6 +122,7 @@ endpoints:
     test_request: {body: {q: "OpenAI developer keynote", gl: us, hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.videos.json
     docs_url: https://serper.dev/playground
 
@@ -145,6 +149,7 @@ endpoints:
     test_request: {body: {q: "coffee near Times Square", location: "New York, New York, United States", gl: us, hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.places.json
     docs_url: https://serper.dev/playground
 
@@ -165,6 +170,7 @@ endpoints:
         location: {type: string, required: false}
         gl: {type: string, required: false, default: us, example: us}
         hl: {type: string, required: false, default: en, example: en}
+        num: {type: integer, required: false, min: 1, max: 100, note: "Requested article count."}
         tbs: {type: string, required: false, note: "Google date filter. A valid but over-restrictive value can return HTTP 200 with an empty news array and still costs one credit."}
         page: {type: integer, required: false, default: 1, min: 1}
         autocorrect: {type: boolean, required: false, default: true}
@@ -172,6 +178,7 @@ endpoints:
     test_request: {body: {q: "OpenAI", gl: us, hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.news.json
     docs_url: https://serper.dev/playground
 
@@ -203,6 +210,7 @@ endpoints:
       value: 2
       note: "Two credits per successful 40-result Shopping response, confirmed by response.credits and the account balance delta."
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.shopping.json
     docs_url: https://serper.dev/playground
 
@@ -229,6 +237,7 @@ endpoints:
     test_request: {body: {q: "attention is all you need", gl: us, hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.scholar.json
     docs_url: https://serper.dev/playground
 
@@ -252,6 +261,7 @@ endpoints:
     test_request: {body: {q: "transformer neural network"}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.patents.json
     docs_url: https://serper.dev/playground
 
@@ -276,6 +286,7 @@ endpoints:
     test_request: {body: {q: "how to build an ai", gl: us, hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.autocomplete.json
     docs_url: https://serper.dev/playground
 
@@ -305,6 +316,7 @@ endpoints:
       value: 3
       note: "Three credits per successful Maps response, confirmed by response.credits and the account balance delta."
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.maps.json
     docs_url: https://serper.dev/playground
 
@@ -333,6 +345,7 @@ endpoints:
     test_request: {body: {cid: "855637193957362546", hl: en}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.reviews.json
     docs_url: https://serper.dev/playground
 
@@ -361,6 +374,7 @@ endpoints:
       value: 3
       note: "Three credits per successful Lens response, including an empty match set; confirmed by response.credits and the account balance delta."
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.google.serp.lens.json
     docs_url: https://serper.dev/playground
 
@@ -400,5 +414,6 @@ endpoints:
       note: "Serper documents 2, 6, or 10 credits by scrape difficulty and returns the exact value in response.credits. treg reserves 10, settles the reported value, and releases the rest; the live example.com probe cost 2 credits."
       reported_charge: *reported_credits
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/serper.web.extract.json
     docs_url: https://serper.dev/playground

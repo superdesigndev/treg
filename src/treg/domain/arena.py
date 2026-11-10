@@ -32,8 +32,8 @@ class Task:
 
 TASKS = {
     t.capability: t for t in (
-        # Variant order = real demand: 94% of routed people.search calls send a company domain, with
-        # or without a title; free-text `q` is ~5% (30-day prod sample, 2026-09-14).
+        # Variant order = real demand: most routed people.search calls send a company domain, with
+        # or without a title; free-text `q` is rare.
         Task("people.search", "Find people", "Find people at a company by job title, or by a search description, or by role and country.",
              (("title", "company_domain"), ("company_domain",), ("q",), ("title", "country"))),
         Task("companies.similar", "Find similar companies", "Discover companies similar to a seed company domain.",
@@ -91,7 +91,7 @@ class ArenaError(Exception):
         self.status = status
 
 
-# Runs saved before the two people tasks were merged (2026-09-14) still carry the old id.
+# Runs saved before the two people tasks were merged still carry the old id.
 _LEGACY = {"people.company.search": "people.search"}
 
 
@@ -285,7 +285,7 @@ def search_rows(value, *, company=False):
     for item in value[:DISCOVERY_LIMIT]:
         if not isinstance(item, dict):
             continue
-        def pick(*paths):
+        def pick(*paths, item=item):
             for path in paths:
                 node = item
                 for part in path.split("."):

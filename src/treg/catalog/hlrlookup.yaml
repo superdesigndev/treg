@@ -1,0 +1,121 @@
+# HLR Lookup authenticates inside the JSON body. The provider registry injects api_key and
+# api_secret; callers never supply either field. Catalog rows take one number per call: the
+# nested `requests` batch (up to 80 numbers) and the ported-date, landline-status and IMSI-hash
+# riders stay on a team's raw tool. Results are cached privately and never read from a cache, so
+# every catalog lookup is live and is never shared with other HLR Lookup accounts.
+provider: hlrlookup
+source:
+  docs: https://www.hlrlookup.com/knowledge
+  openapi: https://www.hlrlookup.com/hlr-api-v2.openapi.json
+  curated: '2026-10-08'
+limits: "Each customer may hold 210 concurrent requests. HLR Lookup throttles per telephone network and answers an unbilled HTTP 429 when a network is busy, at random above about 200 requests per second. Slow networks can take about 10 seconds to answer."
+pricing_url: https://www.hlrlookup.com/pricing
+proposed_capabilities:
+  people.phone.network: Find the network that currently serves a phone number, including whether it was ported
+endpoints:
+  - id: hlrlookup.people.phone.verify
+    domain: contacts
+    capability: people.phone.live
+    platform: people
+    scope: any_account
+    method: POST
+    path: /apiv2/hlr
+    body_allowlist: true
+    name: Check if a phone number is live
+    summary: "Performs a live HLR lookup, returning number type, live status, original and current network, and porting information. Warning: a national number sent without input_format can be read as another country's number (a US 617... number as an Australian 61... number), and that lookup is still charged."
+    input:
+      bodyType: json
+      body:
+        telephone_number: {type: string, required: true, example: '447540822872', note: "International E.164 digits without the leading +, or a national number with input_format."}
+        input_format: {type: string, required: false, note: "ISO3 country code when telephone_number is in national format, e.g. GBR. Leave unset for international input."}
+        output_format: {type: string, required: false, note: "Format of formatted_telephone_number: E164, PLUS_E164, NATIONAL, or an ISO3 country code."}
+        usa_status: {type: string, required: false, default: 'NO', enum: ['YES', 'NO'], note: "Set YES only for +1 numbers. Without it a US number returns NOT_AVAILABLE_NETWORK_ONLY. A US mobile with YES costs two credits."}
+        save_to_cache: {type: string, required: true, enum: [PRIVATE], note: "The result is cached only for this account, never shared."}
+        cache_days_global: {type: integer, required: true, enum: [0], note: "0 never reads the shared cache, so the lookup is live."}
+        cache_days_private: {type: integer, required: true, enum: [0], note: "0 never reads this account's cache, so the lookup is live."}
+      note: "Answers arrive in results[0]. live_status is LIVE, DEAD, ABSENT_SUBSCRIBER, NO_TELESERVICE_PROVISIONED, NOT_AVAILABLE_NETWORK_ONLY, NO_COVERAGE, INCONCLUSIVE or NOT_APPLICABLE; current_network_details names the serving network and is_ported says whether the number moved. Some networks give no live status (NOT_AVAILABLE_NETWORK_ONLY) but the lookup still costs a credit. Landlines and other non-mobile numbers return NO_COVERAGE and bad formats return BAD_FORMAT; both are free. A results[0].error other than NONE (INSUFFICIENT_CREDIT, TOO_MANY_REQUESTS, INTERNAL_ERROR, NULL_RESULT) is free and should be retried later."
+    test_request: {body: {telephone_number: '447540822872', save_to_cache: PRIVATE, cache_days_global: 0, cache_days_private: 0}}
+    expect: {json_path: results.0.error, equals: NONE}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.usa_status: 'YES'}, value: 2}
+        - {when: {body.usa_status: 'NO'}, value: 1}
+      fallback: {value: 2, note: "A US mobile looked up with usa_status YES costs two credits, the most a catalog lookup can cost."}
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://www.hlrlookup.com/knowledge/charging
+      checked: '2026-10-08'
+      confidence: verified
+      note: "One credit per live mobile lookup; a US mobile with usa_status YES costs two. Landlines, NO_COVERAGE, BAD_FORMAT, per-result errors and HTTP 4xx/5xx are free. A live mobile lookup reported credits_spent 1 and lowered the balance by one credit; a landline reported 0 and left it unchanged. A US mobile with usa_status YES reported credits_spent 2 and lowered the balance by two credits. treg reserves from usa_status and settles results[0].credits_spent."
+      reported_charge: &reported_credits {path: results.0.credits_spent, unit: credit}
+    verified: '2026-10-08'
+    added: '2026-10-07'
+    example_response: examples/hlrlookup.people.phone.verify.json
+    docs_url: https://www.hlrlookup.com/knowledge/full-api-result
+
+  - id: hlrlookup.people.phone.network
+    domain: contacts
+    capability: people.phone.network
+    platform: people
+    scope: any_account
+    method: POST
+    path: /apiv2/mnp
+    body_allowlist: true
+    name: Find which network serves a phone number
+    summary: Mobile Number Portability lookup returning the original and current network and porting information, without a live status.
+    input:
+      bodyType: json
+      body:
+        telephone_number: {type: string, required: true, example: '447540822872', note: "International E.164 digits without the leading +, or a national number with input_format."}
+        input_format: {type: string, required: false, note: "ISO3 country code when telephone_number is in national format, e.g. GBR."}
+        output_format: {type: string, required: false, note: "Format of formatted_telephone_number: E164, PLUS_E164, NATIONAL, or an ISO3 country code."}
+        save_to_cache: {type: string, required: true, enum: [PRIVATE], note: "The result is cached only for this account, never shared."}
+        cache_days_global: {type: integer, required: true, enum: [0], note: "0 never reads the shared cache, so the lookup is live."}
+        cache_days_private: {type: integer, required: true, enum: [0], note: "0 never reads this account's cache, so the lookup is live."}
+      note: "Answers arrive in results[0]: current_network_details and is_ported. live_status is NOT_AVAILABLE_NETWORK_ONLY because this route does not check the line; use hlrlookup.people.phone.verify for that. For +1 numbers telephone_number_type is omitted. NO_COVERAGE, BAD_FORMAT and per-result errors are free."
+    test_request: {body: {telephone_number: '447540822872', save_to_cache: PRIVATE, cache_days_global: 0, cache_days_private: 0}}
+    expect: {json_path: results.0.error, equals: NONE}
+    cost:
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://www.hlrlookup.com/knowledge/charging
+      checked: '2026-10-08'
+      confidence: verified
+      note: "Half the price of an HLR lookup. A live mobile lookup reported credits_spent 0.5 and lowered the balance by half a credit. NO_COVERAGE, NOT_APPLICABLE and per-result errors are free. treg settles results[0].credits_spent."
+      reported_charge: *reported_credits
+    verified: '2026-10-08'
+    added: '2026-10-07'
+    example_response: examples/hlrlookup.people.phone.network.json
+    docs_url: https://www.hlrlookup.com/hlr-api-v2.openapi.json
+
+  - id: hlrlookup.people.phone.validate
+    domain: contacts
+    capability: people.phone.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /apiv2/validate
+    body_allowlist: true
+    name: Validate and format a phone number
+    summary: Validates the number and returns number type, issuing network and formatted output without a live HLR lookup.
+    input:
+      bodyType: json
+      body:
+        telephone_number: {type: string, required: true, example: '447540822872', note: "International E.164 digits without the leading +, or a national number with input_format."}
+        input_format: {type: string, required: false, note: "ISO3 country code when telephone_number is in national format, e.g. GBR."}
+        output_format: {type: string, required: false, note: "Format of formatted_telephone_number: E164, PLUS_E164, NATIONAL, or an ISO3 country code."}
+      note: "Free: a live call reported credits_spent 0 and left the balance unchanged. Answers arrive in results[0]: telephone_number_type and original_network_details. This is the network that issued the number range, not the one serving it now, and there is no live status."
+    test_request: {body: {telephone_number: '447540822872'}}
+    expect: {json_path: results.0.error, equals: NONE}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    verified: '2026-10-08'
+    added: '2026-10-07'
+    example_response: examples/hlrlookup.people.phone.validate.json
+    docs_url: https://www.hlrlookup.com/hlr-api-v2.openapi.json

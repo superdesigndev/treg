@@ -7,7 +7,9 @@ export default { setup: useDashboard }
 <div  class="scrim" role="dialog" aria-labelledby="resource-picker-dialog-title" aria-modal="true" v-dialog="() => { resPick=null }" @click.self="resPick=null">
       <div class="modal" style="padding:16px">
         <h3 id="resource-picker-dialog-title" style="margin:0 0 10px">Choose {{article(resPick.label)}} {{resPick.label}}</h3>
-        <p class="sub" style="margin:0 0 10px">The {{resPick.label}} your agent uses by default.
+        <p class="sub" v-if="resPick.scoped" style="margin:0 0 10px">This connection works on this {{resPick.label}} only.
+          To use another {{resPick.label}}, add another account.</p>
+        <p class="sub" v-else style="margin:0 0 10px">The {{resPick.label}} your agent uses by default.
           It can still use another one per call — this just saves it guessing.</p>
         <div v-if="resPick.loading" class="ttable-wrap">
           <div style="padding:22px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12.5px">

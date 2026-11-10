@@ -8,6 +8,7 @@ walks every URL it publishes rather than spot-checking, and the host tests asser
 
 from __future__ import annotations
 
+import re
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -96,15 +97,6 @@ async def test_head_is_still_refused_where_there_is_no_get(clients: AsyncClient)
 
 # --------------------------------------------------------------------------------- catalog pages
 
-async def test_the_prerender_is_a_sibling_of_the_vue_root(clients: AsyncClient):
-    """Vue compiles #app's own innerHTML as its template, so prerendered markup inside it would be
-    parsed as a template (and blow up on the first stray moustache). It must sit outside."""
-    body = (await clients.get("/catalog")).text
-    assert body.index('id="prerender"') < body.index('id="app"')
-    app_html = body[body.index('<div id="app"'):]
-    assert 'id="prerender"' not in app_html
-
-
 async def test_the_json_catalog_routes_still_answer_json(clients: AsyncClient):
     """`/catalog/<slug>` sits in front of these. Registration order keeps them matching first, and
     if that ever changes the dashboard and every CLI break at once."""
@@ -180,6 +172,19 @@ async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient, path: s
     text = r.text
     for placeholder in ("{BASE}", "{ENDPOINTS}", "{PROVIDERS}"):
         assert placeholder not in text, (path, placeholder)
+
+
+@pytest.mark.parametrize("source", ["/llms.txt", "/skill.md"])
+async def test_every_document_an_agent_file_links_answers(clients: AsyncClient, source: str):
+    """llms.txt once promised Markdown twins of three index pages that were never built, and agents
+    following it got 404s. Any `.md` or `.txt` it or the skill links must exist."""
+    text = (await clients.get(source)).text
+    paths = {url[len(_base()):] for url in re.findall(r"https?://[^\s`\"')<>\]*]+\.(?:md|txt)\b", text)
+             if url.startswith(_base() + "/")}
+    assert paths, source
+    for path in sorted(paths):
+        r = await clients.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code} (linked from {source})"
 
 
 # ------------------------------------------------------------------------------------ redirects

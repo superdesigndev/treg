@@ -15,8 +15,8 @@ from .config import get_settings
 
 RESEND_URL = "https://api.resend.com/emails"
 
-# ---- Monologue-skin email chrome (matches the landing page): charcoal ground, hardware
-# card, cyan accent, mono everywhere. Inline styles + solid fallbacks only (email-safe).
+# Email chrome (matches the landing page): charcoal ground, hardware card, cyan accent, mono
+# everywhere. Inline styles + solid fallbacks only (email-safe).
 _MONO = "ui-monospace,Menlo,Consolas,'DM Mono',monospace"
 _WRAP = (
     '<div style="background:#151412;padding:36px 16px;font-family:' + _MONO + '">'
@@ -116,7 +116,7 @@ async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balan
     # explains a balance that went up $110 on a $100 card charge, which otherwise reads as a mistake.
     bonus = f' <span style="color:#19D0E8">+ {_money(bonus_micro)} bonus</span>' if bonus_micro else ""
     lead = (f'Your balance dropped below your auto top-up threshold, so we charged your saved card '
-            f'<b style="color:#f2efe8">{added}</b>.' if auto
+            f'<b style="color:#f2efe8">{added}</b>{bonus}.' if auto
             else f'Thanks — <b style="color:#f2efe8">{added}</b>{bonus} has been added to your balance.')
     body = (
         f'<p style="margin:0 0 6px;color:#f2efe8;font-size:16px;font-weight:600">{how} confirmed</p>'
@@ -143,10 +143,26 @@ async def send_autotopup_disabled(email: str, org_name: str, reason: str,
         "authentication_required": "your bank asked for verification (3-D Secure), which can't be done "
                                    "while you're away from the keyboard",
         "max_attempts": "the card was declined too many times in a row",
+        "stripe_unconfirmed": "we could not confirm whether Stripe collected the payment",
+        "no_card": "Stripe can no longer charge the saved card",
+        "payment_refunded": "a top-up payment was refunded and its unspent credit removed",
     }.get(reason.split(":")[0], f"of a payment problem ({_esc(reason)})")
-    fix = ("Open the dashboard and complete the payment once — your bank will remember the "
-           "verification for future charges." if recovery_pi
-           else "Open the dashboard to update your card and switch auto top-up back on.")
+    if reason == "authentication_required" and not recovery_pi:
+        fix = ("The attempted auto top-up was cancelled. Make a manual top-up in the dashboard "
+               "to verify with your bank. Auto top-up will turn back on after that payment succeeds.")
+    elif recovery_pi:
+        fix = ("Open the dashboard and complete the payment once; your bank will remember the "
+               "verification for future charges.")
+    elif reason == "stripe_unconfirmed":
+        fix = "Check billing history and contact support before switching auto top-up back on."
+    elif reason == "payment_refunded":
+        fix = ("Nothing else was charged. Switch auto top-up back on in the dashboard when you want "
+               "refills to resume.")
+    elif reason == "no_card":
+        fix = ("Nothing was charged. Make a top-up in the dashboard to save a card; auto top-up "
+               "turns back on once it is saved.")
+    else:
+        fix = "Open the dashboard to update your card and switch auto top-up back on."
     body = (
         '<p style="margin:0 0 6px;color:#f2efe8;font-size:16px;font-weight:600">Auto top-up is off</p>'
         f'<p style="margin:0 0 14px;color:#8e8c86;font-size:13px;line-height:1.6">We stopped topping up '

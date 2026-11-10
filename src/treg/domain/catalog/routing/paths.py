@@ -56,8 +56,6 @@ def set_path(doc: dict, path: str, value: Any) -> None:
     cur[parts[-1]] = value
 
 
-# ---- named transforms -----------------------------------------------------------------------
-
 def split_first(name: Any) -> str | None:
     if not isinstance(name, str) or not name.strip():
         return None
@@ -76,6 +74,36 @@ def join(*parts: Any) -> str | None:
     return " ".join(words) if words else None
 
 
+def phrase(*parts: Any) -> str | None:
+    """`phrase(q, title)` → the parts as one text, each part left out when the text so far already
+    says it as whole words (case-insensitive): a title the caller also wrote into `q`, or a `q`
+    built from it. "CTO" is not said by "semiconductor"."""
+    words: list[str] = []
+    for p in parts:
+        if not (isinstance(p, str) and p.strip()):
+            continue
+        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
+        if not said:
+            words.append(p.strip())
+    return " ".join(words) if words else None
+
+
+def place(*parts: Any) -> str | None:
+    """`place(city, state, country)` → "Berlin, Germany": the non-empty parts, in order, each once."""
+    seen: list[str] = []
+    for p in parts:
+        if isinstance(p, str) and p.strip() and p.strip() not in seen:
+            seen.append(p.strip())
+    return ", ".join(seen) or None
+
+
+def texts(v: Any) -> str | None:
+    """`texts(highlights)` — a list of passages as one text; a string passes through."""
+    if isinstance(v, list):
+        v = " ".join(str(x).strip() for x in v if isinstance(x, str) and x.strip())
+    return v if isinstance(v, str) and v.strip() else None
+
+
 def has_type(items: Any, kind: Any) -> bool:
     return isinstance(items, list) and any(isinstance(i, dict) and i.get("type") == kind for i in items)
 
@@ -84,16 +112,14 @@ def length(items: Any) -> int | None:
     return len(items) if isinstance(items, (list, dict, str)) else None
 
 
-# The location table, in miniature (routing plan §1.1 names a full one as an R1 deliverable): the
-# countries the SEO providers are actually called for, mapped to each provider's own code.
-_DFS_LOCATION = {"us": 2840, "gb": 2826, "uk": 2826, "ca": 2124, "au": 2036, "de": 2276, "fr": 2250, "es": 2724,
-                 "it": 2380, "nl": 2528, "in": 2356, "br": 2076, "mx": 2484, "jp": 2392, "sg": 2702, "ie": 2372,
-                 "se": 2752, "ch": 2756, "at": 2040, "be": 2056, "pl": 2616, "pt": 2620, "nz": 2554, "za": 2710,
-                 "ae": 2784, "kr": 2410, "tr": 2792, "id": 2360, "ph": 2608, "vn": 2704}
-
-
-def dfs_location(country: Any) -> int:
-    return _DFS_LOCATION.get(str(country or "us").lower(), 2840)
+def dfs_location(country: Any) -> int | None:
+    """DataForSEO's location_code for a country: its country codes are Google Ads geo target ids,
+    2000 + the ISO 3166-1 numeric code (us 2840, gb 2826, ma 2504). Takes an alpha-2 code, `uk`, or
+    a country name. None for a value that names no country, so the adapter sends no location and
+    the plan reports `country` as ignored instead of asking about the United States."""
+    code = _country_code(country if country not in (None, "") else "us")
+    numeric = _table("country_numeric.json").get(code or "")
+    return 2000 + int(numeric) if numeric else None
 
 
 def seranking_source(country: Any) -> str:
@@ -118,18 +144,35 @@ def at_least(v: Any, floor: Any) -> Any:
         return floor
 
 
+def ceil_to(v: Any, step: Any) -> Any:
+    """Round a caller's limit UP to a provider's step (results come in pages of 10): 25 -> 30."""
+    try:
+        s = int(step)
+        return max(s, -(-int(v) // s) * s)
+    except (TypeError, ValueError):
+        return step
+
+
+def at_most(v: Any, ceiling: Any) -> int:
+    """Cap a provider's page size while keeping the routed quote at that same maximum."""
+    try:
+        return max(1, min(int(v), int(ceiling)))
+    except (TypeError, ValueError):
+        return int(ceiling)
+
+
 def linkedin_handle(v: Any) -> str | None:
     """`https://www.linkedin.com/in/patrickcollison/` → `patrickcollison` (hunter wants the handle)."""
     if not isinstance(v, str) or not v:
         return None
-    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v)
+    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v, re.I)
     return m.group(1) if m else (v if "/" not in v else None)
 
 
 def linkedin_url(v: Any) -> str | None:
     """A handle → the public profile URL; a URL passes through; a scheme-less URL
-    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://` — quickenrich 422'd 311 routed
-    calls in two days with "linkedin url must be a valid URL" on exactly that shape (2026-09-18)."""
+    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`. Anything else that is not
+    handle-shaped (no letter or digit, or a `/`, `?`, `#` or space in it: `N/A`, `-`) is None, never `/in/N/A`."""
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
@@ -138,7 +181,15 @@ def linkedin_url(v: Any) -> str | None:
     m = re.match(r"^((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)(/.*)$", v, re.I)  # anchored: the HOST is linkedin, not a path that mentions it
     if m:
         return f"https://{m.group(1).lower()}{m.group(2)}"   # lower-cased host so linkedin_handle() can derive from it
-    return f"https://www.linkedin.com/in/{v.strip('/')}"
+    handle = v.strip("/")
+    if not re.search(r"[^\W_]", handle) or re.search(r"[/?#\s]", handle):
+        return None
+    return f"https://www.linkedin.com/in/{handle}"
+
+
+def free_mail(domain: Any) -> bool:
+    """True for a mailbox domain anyone can open (gmail.com, outlook.com, ...)."""
+    return isinstance(domain, str) and domain.lower() in _FREE_MAIL
 
 
 def email_domain(v: Any) -> str | None:
@@ -148,8 +199,37 @@ def email_domain(v: Any) -> str | None:
     return None if d in _FREE_MAIL else d
 
 
-_FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com", "live.com",
-              "aol.com", "proton.me", "protonmail.com", "me.com", "msn.com", "qq.com", "163.com", "126.com"}
+# Mailboxes anyone can open (global and regional free mail, ISP mail, common disposable and alias services):
+# their domain says nothing about the person's company.
+_FREE_MAIL = frozenset({
+    # global free mail
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com",
+    "ymail.com", "rocketmail.com", "aol.com", "aim.com", "icloud.com", "me.com", "mac.com",
+    "proton.me", "protonmail.com", "protonmail.ch", "pm.me", "tutanota.com", "tuta.io", "zoho.com",
+    "zohomail.com", "gmx.com", "gmx.net", "mail.com", "email.com", "hey.com", "fastmail.com",
+    "yandex.com", "yandex.ru", "ya.ru", "mail.ru", "inbox.ru", "list.ru", "bk.ru", "rambler.ru",
+    # regional free mail
+    "qq.com", "foxmail.com", "163.com", "126.com", "yeah.net", "sina.com", "sina.cn", "sohu.com",
+    "aliyun.com", "139.com", "naver.com", "daum.net", "hanmail.net", "nate.com", "yahoo.co.jp",
+    "yahoo.co.uk", "yahoo.fr", "yahoo.de", "yahoo.es", "yahoo.it", "yahoo.com.br", "yahoo.co.in",
+    "hotmail.co.uk", "hotmail.fr", "hotmail.de", "hotmail.it", "hotmail.es", "outlook.de", "outlook.fr",
+    "outlook.es", "outlook.jp", "live.co.uk", "live.fr", "web.de", "gmx.de", "gmx.at", "gmx.ch",
+    "t-online.de", "freenet.de", "orange.fr", "wanadoo.fr", "free.fr", "laposte.net", "sfr.fr",
+    "libero.it", "virgilio.it", "tiscali.it", "seznam.cz", "wp.pl", "onet.pl", "o2.pl", "interia.pl",
+    "uol.com.br", "bol.com.br", "terra.com.br", "rediffmail.com",
+    # ISP mail
+    "comcast.net", "verizon.net", "att.net", "sbcglobal.net", "bellsouth.net", "cox.net", "charter.net",
+    "earthlink.net", "optonline.net", "btinternet.com", "sky.com", "virginmedia.com", "talktalk.net",
+    "shaw.ca", "rogers.com", "sympatico.ca", "bigpond.com", "optusnet.com.au", "xtra.co.nz",
+    # disposable
+    "mailinator.com", "guerrillamail.com", "10minutemail.com", "temp-mail.org", "tempmail.com",
+    "yopmail.com", "trashmail.com", "sharklasers.com", "getnada.com", "dispostable.com",
+    "maildrop.cc", "throwawaymail.com", "mohmal.com", "emailondeck.com", "fakeinbox.com",
+    # forwarding aliases: a real company's site, but anyone can get an address there
+    "duck.com", "privaterelay.appleid.com", "mozmail.com", "relay.firefox.com", "simplelogin.com",
+    "simplelogin.co", "simplelogin.fr", "slmail.me", "aleeas.com", "8alias.com", "addy.io", "anonaddy.com",
+    "anonaddy.me", "passmail.net", "passmail.com", "passinbox.com", "33mail.com",
+})
 
 
 def host(v: Any) -> str | None:
@@ -187,21 +267,44 @@ def csv(v: Any) -> str | None:
     return ",".join(str(x) for x in v) if isinstance(v, list) else str(v)
 
 
-_COUNTRIES: dict[str, str] | None = None
+_TABLES: dict[str, dict[str, str]] = {}
+
+
+def _table(name: str) -> dict[str, str]:
+    """An ISO 3166 table keyed by lowercase alpha-2 code, generated from pycountry: `countries.json`
+    (common names), `country_numeric.json` (the numeric code)."""
+    if name not in _TABLES:
+        from pathlib import Path
+        _TABLES[name] = json.loads((Path(__file__).resolve().parents[3] / "catalog" / name).read_text())
+    return _TABLES[name]
+
+
+def _country_code(v: Any) -> str | None:
+    """`TH`, `th`, `Thailand` or `uk` -> `th`/`gb`; None when the value names no ISO country."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    key = v.strip().lower()
+    if key == "uk":
+        return "gb"
+    names = _table("countries.json")
+    if key in names:
+        return key
+    return next((code for code, name in names.items() if name.lower() == key), None)
+
+
+def country_code(v: Any) -> Any:
+    """`country_code('United Kingdom')` → 'gb': the ISO 3166 alpha-2 code, lowercase, for providers that
+    take only a code. A value that names no ISO country passes through, so the provider still says why."""
+    return _country_code(v) or v
 
 
 def country_name(v: Any) -> str | None:
     """`country_name('fr')` → 'France' — the ISO 3166 alpha-2 table (catalog/countries.json, generated
-    from pycountry, 249 rows, common names). Providers that filter on a location NAME (icypeas,
-    lusha, apollo) get this; code-taking providers keep the code. A name passes through."""
-    global _COUNTRIES
+    from pycountry, common names). Providers that filter on a location NAME (icypeas, lusha, apollo)
+    get this; code-taking providers keep the code. A name passes through."""
     if not isinstance(v, str) or not v.strip():
         return None
-    if _COUNTRIES is None:
-        import json
-        from pathlib import Path
-        _COUNTRIES = json.loads((Path(__file__).resolve().parents[3] / "catalog" / "countries.json").read_text())
-    return _COUNTRIES.get(v.strip().lower(), v if len(v) > 3 else None)
+    return _table("countries.json").get(v.strip().lower(), v if len(v) > 3 else None)
 
 
 def as_list(v: Any) -> Any:
@@ -209,6 +312,61 @@ def as_list(v: Any) -> Any:
     if v is None:
         return None
     return v if isinstance(v, list) else [v]
+
+
+# Role words in a job title → the seniority and department a people search can filter by. Checked
+# in order; the first seniority that matches wins, every department that matches is kept.
+_SENIORITY = (
+    ("owner_founder", r"\b(owner|founder|co-?founder|proprietor)\b"),
+    ("c_level", r"\b(c[a-z]o|chief\b|president|managing director|general manager)\b"),
+    ("vp", r"\b(vp|svp|evp|vice[ -]president)\b"),
+    ("director", r"\b(director|head of|head)\b"),
+    ("manager", r"\b(manager|lead|supervisor)\b"),
+    ("intern", r"\b(intern|trainee)\b"),
+)
+_DEPARTMENT = (
+    ("executive", r"\b(ceo|coo|founder|owner|president|managing director|general manager)\b"),
+    ("engineering", r"\b(cto|engineer\w*|developer|devops|software)\b"),
+    ("product", r"\b(cpo|product)\b"),
+    ("sales", r"\b(cro|sales|account executive|business development|bdr|sdr)\b"),
+    ("marketing", r"\b(cmo|marketing|growth|brand|seo|content)\b"),
+    ("finance", r"\b(cfo|finance|financial|accounting|controller)\b"),
+    ("hr", r"\b(chro|hr|human resources|people|talent|recruit\w*)\b"),
+    ("operations", r"\b(operations|ops)\b"),
+    ("legal", r"\b(legal|counsel|general counsel)\b"),
+    ("it", r"\b(cio|it|information technology|security|ciso)\b"),
+    ("design", r"\b(design\w*|ux|ui)\b"),
+)
+
+
+def _role_texts(v: Any) -> list[str]:
+    items = v if isinstance(v, list) else [v]
+    return [str(x).lower() for x in items if x not in (None, "")]
+
+
+def role_seniority(v: Any) -> list[str] | None:
+    """`role_seniority(['CMO', 'VP Marketing'])` → ['c_level', 'vp']: each title's seniority, once."""
+    out: list[str] = []
+    for text in _role_texts(v):
+        hit = next((name for name, rx in _SENIORITY if re.search(rx, text)), None)
+        if hit and hit not in out:
+            out.append(hit)
+    return out or None
+
+
+def role_department(v: Any) -> list[str] | None:
+    """`role_department(['CMO', 'Head of Growth'])` → ['marketing']: every department a title names."""
+    out: list[str] = []
+    for text in _role_texts(v):
+        for name, rx in _DEPARTMENT:
+            if re.search(rx, text) and name not in out:
+                out.append(name)
+    return out or None
+
+
+def scalar(v: Any) -> Any:
+    """A one-element list → its element; anything else unchanged (`['stripe.com']` → 'stripe.com')."""
+    return v[0] if isinstance(v, list) and len(v) == 1 else v
 
 
 def null_if(value: Any, *sentinels: Any) -> Any:
@@ -222,10 +380,257 @@ def choose(condition: Any, when_true: Any, when_false: Any) -> Any:
     return when_true if condition else when_false
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
+def e164_digits(v: Any) -> str | None:
+    """`+44 7790 606023` or `0044…` → `447790606023`; None for a number not written internationally.
+
+    Digits alone are never trusted: a national `6175551212` reads as a `61` (Australian) number."""
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    if s.startswith("+"):
+        digits = re.sub(r"\D", "", s)
+    elif s.startswith("00"):
+        digits = re.sub(r"\D", "", s)[2:]
+    else:
+        return None
+    return digits if 7 <= len(digits) <= 15 else None
+
+
+# ITU country calling codes are prefix-free: one digit for 1 and 7, these two-digit codes, and
+# three digits for every other country.
+_CC2 = frozenset({"20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46",
+                  "47", "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63",
+                  "64", "65", "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98"})
+
+
+def calling_code(v: Any) -> str | None:
+    """`+44 7790 606023` → `44`, `+1 617…` → `1`: the country calling code of an international
+    number (shared by every country of one plan, so `1` is the US, Canada and the Caribbean)."""
+    digits = e164_digits(v)
+    if digits is None:
+        return None
+    if digits[0] in "17":
+        return digits[0]
+    return digits[:2] if digits[:2] in _CC2 else digits[:3]
+
+
+def key(obj: Any, name: Any) -> Any:
+    """`key(queryParams, 'phone.country_hint')`: one entry by its whole name, for parameter names
+    that contain a dot (a path would read it as nesting)."""
+    return obj.get(name) if isinstance(obj, dict) and isinstance(name, str) else None
+
+
+# A national number is trusted only with a country whose numbering plan it fits exactly.
+_NATIONAL_PLANS = {"US": ("1", re.compile(r"[2-9]\d{9}")), "CA": ("1", re.compile(r"[2-9]\d{9}"))}
+
+
+def with_country_code(v: Any, country: Any) -> Any:
+    """`6175550142` or `(617) 555-0142` with country `US` → `+16175550142`; anything else comes back unchanged.
+
+    Only national digits (spaces, `-`, `.` and parentheses aside) that fit the plan of a country in
+    `_NATIONAL_PLANS` are rewritten."""
+    plan = _NATIONAL_PLANS.get(country.strip().upper()) if isinstance(country, str) else None
+    digits = re.sub(r"[\s\-.()]", "", v) if isinstance(v, str) else ""
+    if plan is None or not plan[1].fullmatch(digits):
+        return v
+    return f"+{plan[0]}{digits}"
+
+
+# An Instagram handle in page text: `instagram.com/<handle>` anywhere, or `@<handle>` on a page that
+# mentions Instagram (elsewhere an @ is as likely an X or TikTok handle). Not after a word or a dot, so
+# an email address is no handle.
+_IG_HANDLE = re.compile(r"(?:instagram\.com/|(?<![\w.@])@)([A-Za-z0-9_](?:[A-Za-z0-9_.]{0,28}[A-Za-z0-9_])?)")
+_IG_LINK_ONLY = re.compile(r"instagram\.com/")
+# Instagram's own paths, which look like handles after `instagram.com/`.
+_IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "about", "developer", "legal",
+                "direct", "instagram", "web", "help", "privacy", "terms"}
+
+
+def current_role(history: Any) -> dict | None:
+    """`current_role(workHistory)` — the role a person holds now, from a work history whose items carry
+    `dates: {from, to}`: of the roles with no end date the latest started, else the latest started
+    of all (someone between jobs keeps their last role). A role with a start date beats one without;
+    equal starts, including none at all, keep list order."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    if not roles:
+        return None
+    def start(r: dict) -> str:
+        d = r.get("dates")
+        return str((d or {}).get("from") or "") if isinstance(d, dict) or d is None else ""
+    def ended(r: dict) -> bool:
+        d = r.get("dates")
+        return isinstance(d, dict) and bool(d.get("to"))
+    pool = [r for r in roles if not ended(r)] or roles
+    return max(pool, key=start)  # max keeps the first of equal starts
+
+
+def past_titles(history: Any) -> list | None:
+    """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
+    carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
+    current role is something else."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    def to(r: dict) -> str:
+        d = r.get("dates")
+        return str(d.get("to") or "") if isinstance(d, dict) else ""
+    out: list[str] = []
+    for r in sorted((r for r in roles if to(r)), key=to, reverse=True):
+        t = r.get("title")
+        if isinstance(t, str) and t.strip() and t.strip() not in out:
+            out.append(t.strip())
+    return out[:5] or None
+
+
+def instagram_handles(results: Any) -> list | None:
+    """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
+    directory or list page of creators), one row each in page order, first mention wins: username,
+    profile url, the words around the mention as evidence (short: the agent reads every row), and
+    the site it came from."""
+    if not isinstance(results, list):
+        return None
+    rows, seen = [], set()
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        text = " ".join(t for t in (r.get("highlights") or []) if isinstance(t, str))
+        on_instagram = "instagram" in (text + " " + str(r.get("url") or "")).lower()
+        for m in _IG_HANDLE.finditer(text):
+            if not on_instagram and not _IG_LINK_ONLY.match(text, m.start()):
+                continue
+            handle = m.group(1)
+            # An all-digit handle is a real account (`instagram.com/433`) only in a link; after an @
+            # it is as likely a number in prose.
+            if (handle.lower() in _IG_RESERVED or handle.lower() in seen
+                    or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
+                continue
+            seen.add(handle.lower())
+            around = " ".join(text[max(0, m.start() - 40):m.end() + 100].split())
+            rows.append({"username": handle, "url": f"https://www.instagram.com/{handle}/",
+                         "biography": around, "matched_from": host(r.get("url"))})
+    return rows
+
+
+def count_with(items: Any, path: Any) -> int | None:
+    """`count_with(people, 'email.value')` → how many rows carry a non-empty value at `path`."""
+    if not isinstance(items, list) or not isinstance(path, str):
+        return None
+    return sum(1 for item in items if get_path(item, path) not in (None, "", [], {}))
+
+
+_SITE = re.compile(r"(?:^|[\s(])site:([^\s()]+)", re.I)
+
+
+def _host_path(url: str) -> tuple[str, str]:
+    from urllib.parse import urlsplit
+    u = url.strip()
+    parts = urlsplit(u if "//" in u else "//" + u)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return host, parts.path.rstrip("/").lower()
+
+
+def no_result_on_site(q: Any, rows: Any) -> bool:
+    """True when the question restricts results to sites (`site:stripe.com`, `site:a.com/blog`, several
+    joined by OR) and not one row's link is on any of them: a subdomain counts, and a path in the
+    restriction must prefix the row's path. A question with no `site:` (a negated `-site:` is not a
+    restriction), no rows, or no row with a readable link is never judged."""
+    if not isinstance(q, str) or not isinstance(rows, list) or not rows:
+        return False
+    sites = [_host_path(s) for s in _SITE.findall(q)]
+    sites = [(h, p) for h, p in sites if h]
+    if not sites:
+        return False
+    links = []
+    for row in rows:
+        if isinstance(row, dict):
+            link = next((row[k] for k in ("url", "link", "href") if isinstance(row.get(k), str) and row[k]), None)
+            if link:
+                links.append(_host_path(link))
+    if not links:
+        return False
+    def on(site, link):
+        (sh, sp), (lh, lp) = site, link
+        return (lh == sh or lh.endswith("." + sh)) and (not sp or lp == sp or lp.startswith(sp + "/"))
+    return not any(on(s, ln) for s in sites for ln in links)
+
+
+_QUOTED = re.compile(r'"([^"]{2,})"|\u201c([^\u201d]{2,})\u201d')
+
+
+def _fold(text: str) -> str:
+    """Lowercase, accents stripped, punctuation to spaces: `Café-Société` and `cafe societe` meet."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", t).split())
+
+
+def _strings(v: Any) -> list[str]:
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, dict):
+        return [s for x in v.values() for s in _strings(x)]
+    if isinstance(v, list):
+        return [s for x in v for s in _strings(x)]
+    return []
+
+
+def quoted_absent(q: Any, rows: Any) -> bool:
+    """True when the question quotes phrases (`"Dolby Family Ventures"`) and not one row mentions any of
+    them in any of its text (title, snippet, link: every string the row carries), compared without
+    case, accents or punctuation. A phrase the search operator excludes (`-"careers"`,
+    `-intitle:"jobs"`) is not asked for. A question with no quoted phrase, or no rows, is never judged."""
+    if not isinstance(q, str) or not isinstance(rows, list) or not rows:
+        return False
+    phrases = [_fold(m.group(1) or m.group(2)) for m in _QUOTED.finditer(q)
+               if not re.search(r"\S*$", q[:m.start()]).group().startswith("-")]
+    phrases = [p for p in phrases if p]
+    if not phrases:
+        return False
+    texts = [" " + _fold(" ".join(_strings(r))) + " " for r in rows if isinstance(r, dict)]
+    if not texts:
+        return False
+    return not any(" " + p + " " in t for p in phrases for t in texts)
+
+
+_LOCALE_SEGMENT = re.compile(r"[a-z]{2}(?:[-_][a-z]{2})?")
+
+
+def lost_path(requested: Any, final: Any) -> bool:
+    """True when the page asked for had a path but the provider ended on the site's home page: the
+    root, or one locale segment (`/`, `/en`, `/en-us/`). A provider that reports where it finally
+    read the page names both fields in its miss rule, so a redirect to a storefront or a sign-in
+    root is not taken for the page. Missing either address is never a loss."""
+    from urllib.parse import urlsplit
+    if not isinstance(requested, str) or not isinstance(final, str) or not requested or not final:
+        return False
+    asked = [s for s in urlsplit(requested).path.split("/") if s]
+    ended = [s for s in urlsplit(final).path.split("/") if s]
+    if not asked or len(ended) > 1:
+        return False
+    if ended and not _LOCALE_SEGMENT.fullmatch(ended[0].lower()):
+        return False
+    return len(asked) > len(ended)
+
+
+def http_error(v: Any) -> bool:
+    """True when `v` is an HTTP error status, 400 to 599 (an int or a numeric string). A provider that
+    answers 200 while reporting the TARGET's own status in the body names that field in its miss rule,
+    so the target's error page is not an extracted page."""
+    try:
+        return 400 <= int(v) <= 599
+    except (TypeError, ValueError):
+        return False
+
+
+def starts_with(v: Any, prefix: Any) -> bool:
+    return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
+
+
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
-              "list": as_list, "at_least": at_least, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
-              "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name}
+              "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
+              "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
+              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")
@@ -279,6 +684,47 @@ def evaluate(expr: str, doc: Any) -> Any:
     if lit is not _MISSING and (not re.match(r"^[A-Za-z_]", e) or e in ("null", "true", "false")):
         return lit
     return get_path(doc, e)
+
+
+_PATH_STEP = re.compile(r"[A-Za-z_][\w-]*(?:\[\d+\])?|\[\d+\]")
+
+
+def parse(expr: str) -> None:
+    """Raise ValueError unless `evaluate` reads `expr` as written: every call names a known
+    transform, every path is dotted steps, and the parentheses balance."""
+    e = expr.strip() if isinstance(expr, str) else ""
+    if not e:
+        raise ValueError(f"empty expression {expr!r}")
+    m = _CMP.match(e)
+    if m and not _CALL.match(e):
+        left, _, right = m.groups()
+        parse(left)
+        if _literal(right) is _MISSING:
+            parse(right)
+        return
+    m = _DIV.match(e)
+    if m and not _CALL.match(e):
+        parse(m.group(1))
+        return
+    m = _CALL.match(e)
+    if m:
+        name, args = m.group(1), m.group(2)
+        if name != "coalesce" and name not in TRANSFORMS:
+            raise ValueError(f"unknown transform {name!r} in {expr!r}")
+        depth = 0
+        for ch in args:
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            if depth < 0:
+                break
+        if depth:
+            raise ValueError(f"unbalanced parentheses in {expr!r}")
+        for arg in _split_args(args):
+            parse(arg)
+        return
+    if _literal(e) is not _MISSING and (not re.match(r"^[A-Za-z_]", e) or e in ("null", "true", "false")):
+        return
+    if e != "." and not all(_PATH_STEP.fullmatch(step) for step in e.split(".")):
+        raise ValueError(f"not a path, literal or call: {expr!r}")
 
 
 def _split_args(s: str) -> list[str]:

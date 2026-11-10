@@ -1,9 +1,10 @@
 
+import { TIKTOK_PUBLISH } from '../tiktokPost'
+
 export default {
-// ---- marketplace endpoint Try-it ----
     openEpTry(e){
       this.closeEpTry();
-      this.epTry=e; this.epTryTab='agent'; this.epTryResp=''; this.epTryStatus=null; this.epTryMs=null; this.epTryCost=null;
+      this.epTry=e; this.epTryTab=this.isTikTokPost(e)?'manual':'agent'; this.epTryResp=''; this.epTryStatus=null; this.epTryMs=null; this.epTryCost=null;
       this.epTryAccess=null; this.epTryAccessByMethod={}; this.epTryBusy=false;
       this.epTryAuthMethod=e.authorization_method||((e.authorization_methods||[])[0])||'';
       const secs=this.paramSections(e);
@@ -39,6 +40,8 @@ export default {
       if(e.id==='fishaudio.voices.list') this.epTryAccess={tier:'platform',detail:'Uses your connected Fish Audio account when present; otherwise lists voices owned by this treg team. No BYOK key is required for team voices.'};
       else this.loadEpTryAccessPolicy();
     },
+// TikTok's direct post opens straight on its post screen: no tabs, no endpoint id, no JSON.
+isTikTokPost(e){ return !!e && e.id===TIKTOK_PUBLISH; },
 epTryParamAllowed(p){ return !p.authorization_methods || !p.authorization_methods.length
       || p.authorization_methods.includes(this.epTryAuthMethod); },
 async loadEpTryAccessPolicy(){

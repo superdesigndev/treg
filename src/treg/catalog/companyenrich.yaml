@@ -60,7 +60,6 @@ proposed_capabilities:
   people.email.bulk.start: "Queue a bulk work-email lookup job"
   people.email.bulk.status: "Check a bulk work-email lookup job"
   account.jobs.list: "List every background job on your account"
-  account.jobs.get: "Get one background job's details"
 
 endpoints:
 
@@ -99,6 +98,7 @@ endpoints:
       note: "1 credit per call. VERIFIED live 2026-08-20 by reading GET /me before and after — the credit meter moved by exactly 1. `expand=workforce` adds 5 credits."
     docs_url: https://docs.companyenrich.com/reference/get_companies-enrich
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.json
 
   - id: companyenrich.companies.enrich.by_properties
@@ -142,6 +142,7 @@ endpoints:
       note: "1 credit per call, VERIFIED against the live credit meter 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/post_companies-enrich
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.by_properties.json
 
   - id: companyenrich.companies.enrich.batch
@@ -174,6 +175,7 @@ endpoints:
       note: "1 credit per domain enriched. VERIFIED 2026-08-20: a 2-domain batch moved the credit meter by exactly 2."
     docs_url: https://docs.companyenrich.com/reference/post_companies-enrich-batch
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.batch.json
 
   - id: companyenrich.companies.get
@@ -205,6 +207,7 @@ endpoints:
       note: "1 credit per call, VERIFIED against the live credit meter 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/get_companies
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.get.json
 
   - id: companyenrich.companies.workforce
@@ -236,6 +239,7 @@ endpoints:
       note: "5 credits per SUCCESSFUL call. VERIFIED 2026-08-20 against the live credit meter."
     docs_url: https://docs.companyenrich.com/reference/get_companies-workforce
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.workforce.json
 
   - id: companyenrich.companies.autocomplete
@@ -256,6 +260,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20 — the credit meter did not move'}
     docs_url: https://docs.companyenrich.com/reference/get_companies-autocomplete
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.autocomplete.json
 
   # ---------------------------------------------------------------------------------------------
@@ -294,7 +299,7 @@ endpoints:
         type: {type: "array[string]", required: false, note: "private, public, nonprofit, educational, government"}
         naicsCode: {type: "array[integer]", required: false, note: "2-6 digit NAICS; a short code matches all its children"}
         foundedYear: {type: object, required: false, note: "range object, e.g. {min: 2015, max: 2022}"}
-        fundingRounds: {type: "array[string]", required: false, note: "seed, series-a, …"}
+        fundingRounds: {type: "array[string]", required: false, note: "seed, debt_financing, angel, venture, series_a, series_b, series_c, series_d, series_e, series_f, series_g, series_h, other; hyphen forms like series-a are rejected", example: ["series_a"]}
         fundingAmount: {type: object, required: false, note: "range object in USD"}
         fundingYear: {type: object, required: false, note: "range object"}
         require: {type: "array[string]", required: false, note: "features that MUST be present on the company record"}
@@ -314,6 +319,8 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
+      miss_units: 1
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -321,6 +328,7 @@ endpoints:
       note: "1 credit PER COMPANY RETURNED — `pageSize` is the price. 1-credit minimum when nothing matches. A `semanticQuery` search is 2 credits per company instead. VERIFIED 2026-08-20: pageSize 1 moved the meter by exactly 1."
     docs_url: https://docs.companyenrich.com/reference/post_companies-search
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.json
 
   - id: companyenrich.companies.search.scroll
@@ -352,6 +360,7 @@ endpoints:
       note: "1 credit per company returned, 1-credit minimum on an empty page. VERIFIED live 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/post_companies-search-scroll
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.scroll.json
 
   - id: companyenrich.companies.search.count
@@ -373,9 +382,11 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20 — the credit meter did not move'}
     docs_url: https://docs.companyenrich.com/reference/post_companies-search-count
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.count.json
 
   - id: companyenrich.companies.search.preview
+    added: '2026-08-20'
     domain: companies
     capability: companies.search
     platform: companies
@@ -428,6 +439,8 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
+      miss_units: 1
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -435,6 +448,7 @@ endpoints:
       note: "5 credits PER COMPANY RETURNED, and 5 credits even when nothing matches. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 5."
     docs_url: https://docs.companyenrich.com/reference/post_companies-similar
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.similar.json
 
   - id: companyenrich.companies.similar.scroll
@@ -467,6 +481,7 @@ endpoints:
       note: "5 credits per company returned, 5 on an empty page. VERIFIED live 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/post_companies-similar-scroll
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.similar.scroll.json
 
   - id: companyenrich.companies.similar.count
@@ -488,6 +503,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20 — the credit meter did not move'}
     docs_url: https://docs.companyenrich.com/reference/post_companies-similar-count
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.similar.count.json
 
   # ---------------------------------------------------------------------------------------------
@@ -525,6 +541,7 @@ endpoints:
       note: "1 credit per domain SUCCESSFULLY enriched, charged when the job completes (not at submission). VERIFIED 2026-08-20: a 1-domain job reported credits_charged 1 on completion and the account meter moved by 1."
     docs_url: https://docs.companyenrich.com/reference/post_companies-enrich-bulk
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.bulk.start.json
 
   - id: companyenrich.companies.enrich.bulk.status
@@ -547,6 +564,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20 — polling did not move the credit meter'}
     docs_url: https://docs.companyenrich.com/reference/get_companies-enrich-bulk-jobid
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.bulk.status.json
 
   - id: companyenrich.companies.enrich.bulk.jobs
@@ -569,6 +587,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_companies-enrich-bulk-jobs
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.enrich.bulk.jobs.json
 
   - id: companyenrich.companies.search.async.start
@@ -605,6 +624,7 @@ endpoints:
       note: "1 credit per company returned when exporting a standard search (5 per company when the job wraps a `similar` search), reserved at creation and settled on completion. VERIFIED 2026-08-20: a count-1 search export reported credits_charged 1."
     docs_url: https://docs.companyenrich.com/reference/post_companies-search-async
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.async.start.json
 
   - id: companyenrich.companies.search.async.status
@@ -627,6 +647,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_companies-search-async-jobid
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.async.status.json
 
   - id: companyenrich.companies.search.async.jobs
@@ -649,6 +670,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_companies-search-async-jobs
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.companies.search.async.jobs.json
 
   # ---------------------------------------------------------------------------------------------
@@ -691,6 +713,8 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      bills_miss: true
+      miss_units: 1
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -698,6 +722,7 @@ endpoints:
       note: "2 credits PER PERSON RETURNED — pageSize is the price — with a 2-credit minimum on an empty result. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 2."
     docs_url: https://docs.companyenrich.com/reference/post_people-search
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.search.json
 
   - id: companyenrich.people.search.scroll
@@ -731,6 +756,7 @@ endpoints:
       note: "2 credits per person returned, 2-credit minimum on an empty page. VERIFIED live 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/post_people-search-scroll
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.search.scroll.json
 
   - id: companyenrich.people.get
@@ -762,6 +788,7 @@ endpoints:
       note: "2 credits per call. VERIFIED against the live credit meter 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/get_people
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.get.json
 
   - id: companyenrich.people.lookup
@@ -797,6 +824,7 @@ endpoints:
       note: "5 credits per SUCCESSFUL call. VERIFIED against the live credit meter 2026-08-20."
     docs_url: https://docs.companyenrich.com/reference/post_people-lookup
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.lookup.json
 
   - id: companyenrich.people.email
@@ -828,6 +856,7 @@ endpoints:
       note: "10 credits per newly accessed FOUND email — a not-found or a repeat of an address you already bought is free. VERIFIED 2026-08-20: the credit meter moved by exactly 10 on the first resolve, and a later bulk job re-requesting the same address reported credits_charged 0."
     docs_url: https://docs.companyenrich.com/reference/get_people-email
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.email.json
 
   - id: companyenrich.people.email.bulk.start
@@ -862,6 +891,7 @@ endpoints:
       note: "up to 10 credits per item, charged on completion for newly accessed FOUND emails only — not-found items and addresses already bought are free. The live 2026-08-20 test job completed with credits_charged 0 because its one address had been resolved minutes earlier by the single-lookup route, which confirms the already-accessed exemption but leaves the 10-credit case documented rather than observed here."
     docs_url: https://docs.companyenrich.com/reference/post_people-email-bulk
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.email.bulk.start.json
 
   - id: companyenrich.people.email.bulk.status
@@ -884,6 +914,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_people-email-bulk-jobid
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.email.bulk.status.json
 
   - id: companyenrich.people.search.async.start
@@ -924,6 +955,7 @@ endpoints:
       note: "2 credits per person returned, reserved when the job is created and settled on completion. VERIFIED 2026-08-20: a count-1 export reported credits_charged 2."
     docs_url: https://docs.companyenrich.com/reference/post_people-search-async
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.search.async.start.json
 
   - id: companyenrich.people.search.async.status
@@ -946,6 +978,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_people-search-async-jobid
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.search.async.status.json
 
   - id: companyenrich.people.search.async.jobs
@@ -968,6 +1001,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_people-search-async-jobs
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.people.search.async.jobs.json
 
   # ---------------------------------------------------------------------------------------------
@@ -995,6 +1029,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_jobs
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.jobs.list.json
 
   - id: companyenrich.jobs.get
@@ -1016,6 +1051,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_jobs-jobid
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.jobs.get.json
 
   # ---------------------------------------------------------------------------------------------
@@ -1037,6 +1073,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_industries
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.industries.list.json
 
   - id: companyenrich.keywords.autocomplete
@@ -1057,6 +1094,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_keywords-autocomplete
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.keywords.autocomplete.json
 
   - id: companyenrich.technologies.autocomplete
@@ -1077,6 +1115,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_technologies-autocomplete
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.technologies.autocomplete.json
 
   - id: companyenrich.positions.autocomplete
@@ -1097,6 +1136,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_positions-autocomplete
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.positions.autocomplete.json
 
   - id: companyenrich.geo.regions
@@ -1115,6 +1155,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_geo-regions
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.geo.regions.json
 
   - id: companyenrich.geo.country.get
@@ -1135,6 +1176,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/get_geo-countries-countrycode
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.geo.country.get.json
 
   - id: companyenrich.geo.countries.search
@@ -1156,6 +1198,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/post_geo-countries
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.geo.countries.search.json
 
   - id: companyenrich.geo.states.search
@@ -1178,6 +1221,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/post_geo-states
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.geo.states.search.json
 
   - id: companyenrich.geo.cities.search
@@ -1200,6 +1244,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20'}
     docs_url: https://docs.companyenrich.com/reference/post_geo-cities
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.geo.cities.search.json
 
   # ---------------------------------------------------------------------------------------------
@@ -1222,4 +1267,5 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented FREE and confirmed live 2026-08-20; auth is still required, so a bad key is rejected with 401'}
     docs_url: https://docs.companyenrich.com/reference/get_me
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/companyenrich.account.me.json

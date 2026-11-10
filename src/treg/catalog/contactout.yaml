@@ -13,6 +13,7 @@ expect:
   equals: 200
 endpoints:
 - id: contactout.people.count
+  added: '2026-09-08'
   domain: contacts
   capability: people.search.count
   platform: people
@@ -108,6 +109,7 @@ endpoints:
       account required.
   docs_url: https://api.contactout.com/
 - id: contactout.people.personal_email.available
+  added: '2026-09-08'
   domain: contacts
   capability: people.email.personal.availability
   platform: people
@@ -136,6 +138,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.work_email.available
+  added: '2026-09-08'
   domain: contacts
   capability: people.email.work.availability
   platform: people
@@ -159,6 +162,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.phone.available
+  added: '2026-09-08'
   domain: contacts
   capability: people.phone.availability
   platform: people
@@ -188,7 +192,7 @@ endpoints:
   scope: any_account
   method: GET
   path: /v1/email/verify
-  name: Verify email deliverability
+  name: Verify email address — catch-all (accept-all) status
   summary: Verify email deliverability
   input:
     queryParams:
@@ -210,9 +214,11 @@ endpoints:
     note: 'Free under current commercial terms: verifier credits are not charged.
       Recheck this rate if ContactOut starts metering verification.'
   verified: 2026-09-09
+  added: '2026-09-08'
   example_response: examples/contactout.people.email.verify.json
   docs_url: https://api.contactout.com/
 - id: contactout.people.search
+  added: '2026-09-08'
   domain: contacts
   capability: people.search
   platform: people
@@ -308,6 +314,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.decision-makers
+  added: '2026-09-08'
   domain: contacts
   capability: people.search
   platform: people
@@ -360,6 +367,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.search.reveal
+  added: '2026-09-08'
   domain: contacts
   capability: people.search
   platform: people
@@ -453,6 +461,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.decision-makers.reveal
+  added: '2026-09-08'
   domain: contacts
   capability: people.search
   platform: people
@@ -565,6 +574,7 @@ endpoints:
       job: company_search
       rates_micro: *id033
   verified: 2026-09-09
+  added: '2026-09-08'
   example_response: examples/contactout.companies.search.json
   docs_url: https://api.contactout.com/
 - id: contactout.companies.enrich
@@ -607,9 +617,11 @@ endpoints:
       job: domains
       rates_micro: *id033
   verified: 2026-09-09
+  added: '2026-09-08'
   example_response: examples/contactout.companies.enrich.json
   docs_url: https://api.contactout.com/
 - id: contactout.people.linkedin.from-email
+  added: '2026-09-08'
   domain: contacts
   capability: linkedin.profile.from_email
   platform: linkedin
@@ -644,6 +656,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.contact.work
+  added: '2026-09-08'
   domain: contacts
   capability: people.email.find
   platform: people
@@ -688,8 +701,13 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request is stored under the catalog PII rule. The example is a
     hand-sanitized structural routing fixture with reserved fake contact data.
+  miss:
+    status: 404
+    when: "status_code == 404"
+    means: "no ContactOut profile for this LinkedIn URL — a normal outcome (and free), not an API failure"
   example_response: examples/contactout.people.contact.work.json
 - id: contactout.people.contact.personal
+  added: '2026-09-08'
   domain: contacts
   capability: people.email.find.personal
   platform: people
@@ -732,8 +750,15 @@ endpoints:
       rates_micro: *id033
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
-    verification request or stored example under the catalog PII rule.
+    verification request is stored under the catalog PII rule. The example is a
+    hand-sanitized structural routing fixture with reserved fake contact data.
+  miss:
+    status: 404
+    when: "status_code == 404"
+    means: "no ContactOut profile for this LinkedIn URL — a normal outcome (and free), not an API failure"
+  example_response: examples/contactout.people.contact.personal.json
 - id: contactout.people.contact.phone
+  added: '2026-09-08'
   domain: contacts
   capability: people.phone.find
   platform: people
@@ -780,8 +805,13 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request is stored under the catalog PII rule. The example is a
     hand-sanitized structural routing fixture with reserved fake contact data.
+  miss:
+    status: 404
+    when: "status_code == 404"
+    means: "no ContactOut profile for this LinkedIn URL — a normal outcome (and free), not an API failure"
   example_response: examples/contactout.people.contact.phone.json
 - id: contactout.people.linkedin.enrich
+  added: '2026-09-08'
   domain: contacts
   capability: linkedin.user.profile
   platform: linkedin
@@ -825,6 +855,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.enrich
+  added: '2026-09-08'
   domain: contacts
   capability: people.enrich
   platform: people
@@ -887,6 +918,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.enrich.work_email
+  added: '2026-09-08'
   domain: contacts
   capability: people.enrich
   platform: people
@@ -941,6 +973,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.enrich.personal_email
+  added: '2026-09-08'
   domain: contacts
   capability: people.enrich
   platform: people
@@ -995,6 +1028,7 @@ endpoints:
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
 - id: contactout.people.email.enrich
+  added: '2026-09-08'
   domain: contacts
   capability: people.enrich
   platform: people

@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: weworkremotely-jobs: programming · 25 items in the feed · 25 rows for keyword ''"
+    ]
+  },
+  "recipe": "weworkremotely-jobs",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 165,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "category": "Front-End Programming",
+      "company": "Air Apps",
+      "description": "Headquarters: Helsinki URL: http://airapps.com Framer Website Designer (Onsite – Presidio, San Francisco) About Air Apps At Air Apps, we believe in thinking bigger and moving faster. We’re a family-founded company on a mission to create the world’s first AI-powered Personal & Entrepreneurial Resourc…",
+      "published": "Mon, 28 Sep 2026 22:12:46 +0000",
+      "region": "Helsinki",
+      "title": "Framer Website Designer",
+      "type": null,
+      "url": "https://weworkremotely.com/remote-jobs/air-apps-framer-website-designer-1"
+    },
+    {
+      "category": "Front-End Programming",
+      "company": "Wisevu",
+      "description": "Headquarters: Bosnia And Herzegovina URL: http://wisevu.com Description Wisevu™, along with our sister agencies Homevu™ and charitymarketing.com ™, has been providing industry-leading digital marketing services to medical practices, home service companies, and charities for over 17 years. Our multi-…",
+      "published": "Mon, 28 Sep 2026 22:12:45 +0000",
+      "region": "Anywhere in the World",
+      "title": "Web Development Project Manager",
+      "type": null,
+      "url": "https://weworkremotely.com/remote-jobs/wisevu-web-development-project-manager"
+    }
+  ]
+}

@@ -309,6 +309,55 @@ def test_llm_parse_dedupes_by_var():
     assert len(prov.llm_parse(payload)) == 1
 
 
+def test_llm_parse_strips_inline_thinking_with_json_draft():
+    """Self-hosted reasoning models (vLLM/llama-server without --reasoning-parser) return thinking
+    inline in `content` as <think>…</think>JSON. When the thinking contains JSON drafts, the naive
+    first-`{` to last-`}` slice glues the draft to the answer and json.loads fails. Issue #756."""
+    # Full <think>...</think>JSON format with JSON draft in the thinking block
+    text = ('<think>Let me analyze these vars... I could respond with something like '
+            '{"resolved":[{"var":"DRAFT"}]} but let me check the base_url format...</think>'
+            '{"resolved":[{"var":"ACME_API_KEY","provider":"Acme",'
+            '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1
+    assert out[0]["var"] == "ACME_API_KEY"
+    assert out[0]["base_url"] == "https://api.acme.com"
+
+
+def test_llm_parse_strips_inline_thinking_prefilled():
+    """When chat template pre-fills `<think>`, the model returns `...reasoning</think>JSON`
+    (no opening tag). The fix must still strip content before the closing tag."""
+    text = ('Let me think about this... ACME_API_KEY looks like an Acme credential '
+            '{"maybe": "draft"}</think>'
+            '{"resolved":[{"var":"ACME_API_KEY","provider":"Acme",'
+            '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "ACME_API_KEY"
+
+
+def test_llm_parse_strips_nested_braces_in_thinking():
+    """Thinking blocks may contain nested braces (multiple JSON drafts or objects)."""
+    text = ('<think>First attempt: {"a":1} no wait... second: {"b":{"c":2}} still not right</think>'
+            '{"resolved":[{"var":"X","base_url":"https://x.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "X"
+
+
+def test_llm_parse_works_without_thinking_tags():
+    """Regression: models that return clean content (no thinking tags) must still work."""
+    text = '{"resolved":[{"var":"Y","base_url":"https://y.com","auth":{"shape":"bearer"}}]}'
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "Y"
+
+
+def test_llm_parse_uses_last_think_tag():
+    """When multiple </think> tags appear (nested thinking?), use the last one."""
+    text = ('<think>inner</think> more thought <think>again</think>'
+            '{"resolved":[{"var":"Z","base_url":"https://z.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "Z"
+
+
 def test_scan_env_respects_passed_catalog(tmp_path):
     env = _write_env(tmp_path, "FOO_API_KEY=x\n")
     custom = [{"provider": "Foo", "tokens": ["FOO"], "base_url": "https://foo.test", "auth": {"shape": "bearer"}}]

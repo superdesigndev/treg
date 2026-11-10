@@ -57,13 +57,13 @@ async def assert_outcome(
     # task's coroutine stack and the pool state instead of hanging until the runner kills the job.
     try:
         await asyncio.wait_for(audit.drain(), timeout=90)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as stalled:
         import traceback
         from treg.infra.db import _engine
         lines = [f"audit.drain stalled; pending={len(audit._pending)}"]
         try:
             lines.append(f"pool: {_engine.pool.status()}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - a diagnostic dump must finish whatever the pool says
             lines.append(f"pool status unavailable: {exc}")
         for task in list(audit._pending):
             lines.append(f"--- pending task {task!r}")
@@ -74,7 +74,7 @@ async def assert_outcome(
                 lines.append(f"--- live task {task!r}")
                 for frame in task.get_stack():
                     lines.extend(traceback.format_stack(frame, limit=2))
-        raise AssertionError("\n".join(lines))
+        raise AssertionError("\n".join(lines)) from stalled
 
     assert response.status_code == expect.status, response.text
     if expect.body is not None:

@@ -24,6 +24,7 @@ endpoints:
     test_request:
       queryParams: {}
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.account.usage.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/get-credits
@@ -44,6 +45,7 @@ endpoints:
     test_request:
       queryParams: {model: "CHATGPT"}
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.account.coverage.countries.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/countries
@@ -57,13 +59,14 @@ endpoints:
     method: GET
     path: /v1/states
     name: "List supported US states"
-    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT, Copilot, Perplexity, Gemini and Grok endpoints. Only US is supported; any other country returns an empty array."
+    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT and Gemini endpoints. Only US is supported; any other country returns an empty array."
     input:
       queryParams:
         country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
     test_request:
       queryParams: {country: "US"}
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.account.coverage.regions.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/states
@@ -76,8 +79,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /v1/monitor/chatgpt
-    name: "ChatGPT answer — text, sources, ads, shopping"
-    summary: "Runs a prompt through the live ChatGPT web interface from a chosen country and returns the answer text with its cited sources, citation pills, brand entities, shopping cards and sponsored ads as structured fields."
+    name: "ChatGPT answer with web search — text, sources, entities"
+    summary: "Runs a prompt through the live ChatGPT web interface, with its web search, from a chosen country and returns the answer text with its cited sources, citation pills and brand entities as structured fields. For shopping cards and sponsored ads, use cloro.ai-search.chatgpt.shopping. A long research prompt can run past the request timeout; queue it with cloro.ai-search.chatgpt.scrape.task instead."
     input:
       body:
         prompt: {type: string, required: true, note: "1-10,000 characters", example: "best running shoes for flat feet"}
@@ -94,13 +97,14 @@ endpoints:
       body:
         prompt: "what is a stock split"
         country: "US"
-        include: {markdown: true, html: true, rawResponse: true, searchQueries: true, ads: true, shopping: true}
+        include: {markdown: true, html: true}
       bodyType: json
-    verified: '2026-09-07'
+    verified: '2026-09-29'
+    added: '2026-09-07'
     example_response: examples/cloro.ai-search.chatgpt.scrape.json
     cost:
-      type: per_call
-      value: 9
+      type: per_success
+      value: 7
       currency: credit
       per: 1
       unit: call
@@ -110,10 +114,146 @@ endpoints:
       confidence: documented
       modifiers:
         state: {location: body, when: present, add_credits: 2}
-      note: "9 = 5 base + 2 for the include.rawResponse / searchQueries / ads / shopping family (charged once, however many of the four are set) + the 2-credit sync surcharge every /v1/monitor/* call carries. A plain call with none of those four flags is 7. `state` adds 2 more. Setting the ads/shopping flags is what is billed; whether those blocks actually render is a separate matter — they appear on the desktop UI, which `legacy: true` (free) selects. A failed extraction is not charged."
+      note: "7 = 5 base + the 2-credit sync surcharge every /v1/monitor/* call carries. markdown and html are free. Any of include.rawResponse / searchQueries / ads / shopping adds 2 once, which the X-Credits-Charged header bills. `state` adds 2. A failed extraction is not charged."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt
 
+  - id: cloro.ai-search.chatgpt.shopping
+    domain: chatgpt
+    capability: ai-search.chatgpt.shopping
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/monitor/chatgpt
+    platform_request: {body.legacy: true, body.include.ads: true, body.include.shopping: true}
+    name: "ChatGPT answer with shopping and ads"
+    summary: "Runs a prompt through the live ChatGPT desktop interface, where shopping and ads render, from a chosen country and returns the answer with its shopping cards, inline products and sponsored ads next to the text, sources and brand entities."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "best running shoes for flat feet"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, CZ, HK, IR, MO, RU and VE are refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        legacy: {type: boolean, required: true, enum: [true], note: "the desktop UI, where ads and shopping render; free"}
+        disableWebSearch: {type: boolean, required: false, note: "answer from the model alone, without a web search"}
+        include:
+          type: object
+          required: true
+          note: "ads and shopping are required; markdown and html are free, and rawResponse / searchQueries are in the same paid family, so they add nothing more."
+          properties:
+            ads: {type: boolean, required: true, enum: [true]}
+            shopping: {type: boolean, required: true, enum: [true]}
+            markdown: {type: boolean, required: false}
+            html: {type: boolean, required: false}
+            rawResponse: {type: boolean, required: false}
+            searchQueries: {type: boolean, required: false}
+      note: "treg's key requires legacy: true and include.ads / include.shopping set to true. ChatGPT shows ads only for some prompts, so an empty ads array is a normal answer."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "best running shoes for flat feet"
+        country: "US"
+        legacy: true
+        include: {markdown: true, html: true, ads: true, shopping: true}
+      bodyType: json
+    verified: '2026-09-29'
+    added: '2026-11-06'
+    example_response: examples/cloro.ai-search.chatgpt.shopping.json
+    cost:
+      type: per_success
+      value: 9
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-29'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "9 = 5 base + 2 for the ads / shopping family (rawResponse and searchQueries are in the same family, so they add nothing more) + the 2-credit sync surcharge. `state` adds 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt
+
+  - id: cloro.ai-search.chatgpt.scrape.task
+    added: '2026-11-04'
+    domain: chatgpt
+    capability: ai-search.chatgpt.scrape.task
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/async/task
+    body_allowlist: true
+    name: "Queue a ChatGPT answer scrape, read it when ready"
+    summary: "Queues the same live ChatGPT scrape as cloro.ai-search.chatgpt.scrape and returns a task id at once, so a long answer never hits a request timeout. Poll cloro.ai-search.task.status (or use treg call --await) for the answer text, sources, citation pills and entities, plus shopping cards and ads when payload.include asks for them. Costs 2 credits less than the synchronous call."
+    input:
+      body:
+        taskType: {type: string, required: true, enum: [CHATGPT], example: CHATGPT}
+        payload:
+          type: object
+          required: true
+          note: "the body of cloro.ai-search.chatgpt.scrape: prompt (a string, or an array of up to 5 for a multi-turn conversation) and country are required"
+          example: {prompt: "best running shoes for flat feet", country: "US"}
+      bodyType: json
+    test_request:
+      body:
+        taskType: CHATGPT
+        payload: {prompt: "what is a stock split", country: "US", include: {markdown: true}}
+      bodyType: json
+    expect: {json_path: success, equals: true}
+    cost:
+      type: per_success
+      value: 5
+      fallback: {value: 13, note: "every add-on, state and 5 prompts"}
+      currency: credit
+      per: 1
+      unit: call
+      settle: usage
+      usage: {path: credits.creditsCharged, unit: credit}
+      source: observed
+      source_url: 'https://cloro.dev/docs/guides/making-requests/async.md'
+      checked: '2026-11-04'
+      confidence: verified
+      note: "Any of include.rawResponse, searchQueries, ads or shopping adds 2 credits once; payload.state adds 2; each prompt after the first adds 1. A FAILED task is free; an answer that is ChatGPT's own refusal is billed."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/create-async-task
+    verified: '2026-11-04'
+    example_response: examples/cloro.ai-search.chatgpt.scrape.task.json
+    terminal_example_response: examples/cloro.ai-search.task.status.json
+    async:
+      id_from: task.id
+      poll:
+        endpoint: cloro.ai-search.task.status
+        param: {in: pathParams, name: taskId}
+      status:
+        path: task.status
+        progress: [QUEUED, PROCESSING]
+        success: [COMPLETED]
+        failure: [FAILED]
+      result: {path: response}
+      interval: 10
+
+  - id: cloro.ai-search.task.status
+    added: '2026-11-04'
+    kind: utility
+    domain: chatgpt
+    capability: ai-search.task.status
+    platform: ai-search
+    scope: any_account
+    method: GET
+    path: /v1/async/task/{taskId}
+    name: "Check a queued AI answer scrape"
+    summary: "An owned cloro task's status (QUEUED, PROCESSING, COMPLETED, FAILED), its credits, and once COMPLETED the full answer under response. Finished tasks are deleted 24 hours after they were queued."
+    resource_ownership:
+      requires: {kind: "poll:cloro.ai-search.task.status", param: taskId}
+    input:
+      pathParams:
+        taskId: {type: string, required: true, example: "933539ca-0fdb-41db-b082-0f322505b547"}
+    test_request: {pathParams: {taskId: "933539ca-0fdb-41db-b082-0f322505b547"}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/get-task-status
+    verified: '2026-11-04'
+    example_response: examples/cloro.ai-search.task.status.json
+
   - id: cloro.ai-search.copilot.scrape
+    status: retired
+    status_note: "cloro discontinued its Copilot endpoint: Copilot now blocks logged-out sessions, and every call answers 400 MODEL_UNAVAILABLE at no credit cost."
     domain: copilot
     capability: ai-search.copilot.scrape
     platform: ai-search
@@ -139,6 +279,7 @@ endpoints:
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.ai-search.copilot.scrape.json
     cost:
       type: per_call
@@ -156,6 +297,8 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-copilot
 
   - id: cloro.ai-search.perplexity.answer
+    status: retired
+    status_note: "cloro discontinued its Perplexity endpoint: Perplexity now blocks logged-out sessions, and every call answers 400 MODEL_UNAVAILABLE at no credit cost. For a Perplexity answer, use dataforseo.x.ai-optimization-perplexity-llm-responses-live (the sonar model API)."
     domain: perplexity
     capability: ai-search.perplexity.answer
     platform: ai-search
@@ -181,6 +324,7 @@ endpoints:
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.ai-search.perplexity.answer.json
     cost:
       type: per_call
@@ -223,9 +367,10 @@ endpoints:
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.ai-search.gemini.scrape.json
     cost:
-      type: per_call
+      type: per_success
       value: 6
       currency: credit
       per: 1
@@ -269,9 +414,10 @@ endpoints:
         include: {markdown: true, html: true, googleGoto: true}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.google.serp.ai_mode.json
     cost:
-      type: per_call
+      type: per_success
       value: 6
       currency: credit
       per: 1
@@ -312,13 +458,14 @@ endpoints:
         query: "what is a stock split"
         gl: "US"
         pages: 1
-        include: {html: true, aioverview: true, paaAioverview: true, googleGoto: true}
+        include: {html: true, googleGoto: true}
       bodyType: json
-    verified: '2026-09-07'
+    verified: '2026-09-29'
+    added: '2026-09-07'
     example_response: examples/cloro.google.serp.organic.json
     cost:
-      type: per_call
-      value: 7
+      type: per_success
+      value: 5
       currency: credit
       per: 1
       unit: call
@@ -326,7 +473,7 @@ endpoints:
       source_url: 'https://cloro.dev/docs/guides/providers'
       checked: '2026-09-05'
       confidence: documented
-      note: "7 = 3 base + 2 for include.aioverview / paaAioverview + the 2-credit sync surcharge, for one page. A plain call without the AI Overview flags is 5. html and googleGoto are free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
+      note: "5 = 3 base + the 2-credit sync surcharge, for one page. include.aioverview or paaAioverview adds 2, which the X-Credits-Charged header bills. html and googleGoto are free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-google
 
   - id: cloro.google.serp.news
@@ -358,9 +505,10 @@ endpoints:
         include: {html: true}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.google.serp.news.json
     cost:
-      type: per_call
+      type: per_success
       value: 5
       currency: credit
       per: 1
@@ -390,6 +538,7 @@ endpoints:
       body: {url: "https://www.google.com/url?q=https://example.com/"}
       bodyType: json
     verified: '2026-09-07'
+    added: '2026-09-07'
     example_response: examples/cloro.google.redirect.resolve.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
@@ -398,6 +547,9 @@ proposed_capabilities:
   # ai-search already carries chatgpt/gemini `.scrape` and perplexity `.answer`. Copilot is the same
   # job against one more answer engine and has no id yet.
   ai-search.copilot.scrape: "Scrape a live Microsoft Copilot answer page for a keyword"
+  # Queue-then-read is a different call shape from the synchronous scrape, so it gets its own ids.
+  ai-search.chatgpt.scrape.task: "Queue a live ChatGPT answer scrape and read it when it is ready"
+  ai-search.task.status: "Check a queued AI answer scrape and read its answer"
   # Google ships encrypted /goto redirect links on the SERP. Resolving one is its own job, separate
   # from fetching the SERP that carried it.
   google.redirect.resolve: "Resolve a Google redirect link to its destination URL"
@@ -405,3 +557,6 @@ proposed_capabilities:
   # here, and the answer differs per answer engine. `account.usage` covers balance, not coverage.
   account.coverage.countries: "List the countries a provider can run a request from"
   account.coverage.regions: "List the sub-national regions a provider can target"
+  # Shopping cards and sponsored ads need ChatGPT's desktop interface and a paid flag. Ad and
+  # product research is a different job from reading the answer.
+  ai-search.chatgpt.shopping: "Scrape the shopping cards and sponsored ads on a live ChatGPT answer"

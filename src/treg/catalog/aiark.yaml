@@ -26,7 +26,7 @@ endpoints:
       bodyType: json
       body:
         account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
-        contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: Native person, role, location, skill and education filters.}
+        contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: "Native person, role, location, skill and education filters."}
         lists: {type: object, required: false, note: Exclude temporary people_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
         size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
@@ -46,6 +46,7 @@ endpoints:
       note: Platform fixes size to one. A returned person costs 0.5 credit; an empty page is free. Live one-row pages reported X-Credit -0.5 and reduced the balance by 0.5.
     docs_url: https://docs.ai-ark.com/reference/people-search-1
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.search.json
 
   - id: aiark.people.preview
@@ -73,6 +74,7 @@ endpoints:
       note: One credit per served page. A live one-row page reported X-Credit -1.0 and reduced the balance by one credit; rejected input was free.
     docs_url: https://docs.ai-ark.com/reference/people-preview
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.preview.json
 
   - id: aiark.companies.search
@@ -108,6 +110,7 @@ endpoints:
       note: Platform fixes size to one. A returned company costs 0.1 credit; an empty page is free. A live result reported X-Credit -0.1 and reduced the balance by 0.1.
     docs_url: https://docs.ai-ark.com/reference/company-search-1
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.companies.search.json
 
   - id: aiark.people.email.find
@@ -139,6 +142,7 @@ endpoints:
       note: One credit when a profile and valid email are returned; a data-null miss is free. Live hit and miss deltas were 1 and 0.
     docs_url: https://docs.ai-ark.com/reference/people-export-single-v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.email.find.json
 
   - id: aiark.people.phone.find
@@ -171,6 +175,7 @@ endpoints:
       note: Five credits when a mobile is returned; a data-null miss is free. Live hit and miss deltas were 5 and 0.
     docs_url: https://docs.ai-ark.com/reference/people-mobile-phone-finder-v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.phone.find.json
 
   - id: aiark.people.enrich
@@ -181,6 +186,10 @@ endpoints:
     method: POST
     path: /v1/people/reverse-lookup
     name: Reverse lookup a person
+    miss:
+      status: 404
+      when: "error == 'data not found'"
+      means: "no person on record for this email (404 with error 'data not found') — a normal, free outcome. Its rare HTML 404 page is a real routing error."
     summary: Enrich a person profile from an email address.
     input:
       bodyType: json
@@ -200,6 +209,7 @@ endpoints:
       note: The docs say 0.5 credit per request, but a live 404 miss reduced the balance by zero. treg charges only a successful profile response.
     docs_url: https://docs.ai-ark.com/reference/people-reverse-lookup
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.enrich.json
 
   - id: aiark.people.personality.analyze
@@ -230,6 +240,7 @@ endpoints:
       note: Four credits for a successful analysis. The live response reported X-Credit -4.0 and reduced the balance by four credits.
     docs_url: https://docs.ai-ark.com/reference/people-analysis
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.people.personality.analyze.json
 
   - id: aiark.lists.upsert
@@ -254,5 +265,6 @@ endpoints:
     docs_url: https://docs.ai-ark.com/reference/save-list
     test_request: {body: {type: people_id, values: [00000000-0000-0000-0000-000000000000]}}
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/aiark.lists.upsert.json
     cache: forbidden

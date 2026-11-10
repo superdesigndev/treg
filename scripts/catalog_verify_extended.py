@@ -17,10 +17,10 @@ skip, and how big does the repo get. This script is the extended-tier answer to 
   * **The account's own balance is the ground truth.** The provider's balance is read before and
     after and printed as the real spend, because a rate card can be stale in a way our arithmetic
     cannot detect. Where the provider states a per-call charge in its response (DataForSEO's
-    `tasks.0.cost`), that number is also written onto the endpoint as `observed_cost` — what it
-    ACTUALLY cost, next to the `cost` rate card that says what it should. Balance arithmetic cannot
-    separate this run's spend from anything else touching the same key, so a summed observed_cost
-    is the defensible figure for a report.
+    `tasks.0.cost`), that number becomes the `price` of an endpoint no rate card prices, with
+    `provenance: {source: observed}` — what it ACTUALLY cost. Balance arithmetic cannot separate
+    this run's spend from anything else touching the same key, so a summed observed price is the
+    defensible figure for a report.
   * **Examples trimmed far harder than core.** 1385 files at core's 10 KB cap would add ~14 MB of
     JSON to the repo. Here: arrays keep ONE item, strings clip at 200 chars, 2 KB per document.
     An extended example exists to show the response SHAPE; the core tier is where a full-fidelity
@@ -55,6 +55,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -71,9 +72,8 @@ MAX_BYTES = 2_000
 
 RATE_LIMIT_PER_SEC = 8.0  # provider allows 10/s; leave headroom so we are never the cause of a 429
 
-# Per-call ceiling. Was 60s, which sat right on top of the slowest real endpoint we have measured:
-# DataForSEO's /v3/merchant/amazon/products/live/advanced answered in 55.3s on a live probe. A
-# timeout gets recorded as the endpoint's verdict, so a margin that thin turns a slow-but-working
+# Per-call ceiling, with a wide margin over the slowest real endpoint measured. A
+# timeout gets recorded as the endpoint's verdict, so a thin margin turns a slow-but-working
 # route into an intermittent "unverified" — the failure mode this file exists to avoid.
 CALL_TIMEOUT = 180
 
@@ -137,22 +137,27 @@ def render_example(doc) -> str:
 def cost_of(ep: dict) -> float:
     """What the next call to this endpoint should be budgeted at.
 
-    The rate card (`cost`) is preferred, but several providers publish prices per API family rather
-    than per route and their entries carry none at all — every DataForSEO entry, for one. A missing
-    price silently reads as FREE, which makes `--budget` inert: a run can queue the whole file at an
-    estimated $0.000 and still spend real money, with only the balance readback noticing afterwards.
-    So fall back to `observed_cost`, what the provider charged last time. It is the better number
-    anyway — measured rather than transcribed — and it makes the cap bind from the second run on.
+    The rate card (`cost`, or a v2 row's `price`). Several providers publish prices per API family
+    rather than per route, so a DataForSEO entry is priced by what the provider charged when it was
+    last verified (`observed_price`): measured rather than transcribed, and it makes the cap bind
+    from the second run on. A missing price reads as free, which a balance readback still catches.
     """
-    c = ep.get("cost") or {}
+    c = ep.get("cost") or ep.get("price") or {}
     try:
-        listed = float(c.get("value") or 0.0)
+        return float(c.get("value") or 0.0)
     except (TypeError, ValueError):
-        listed = 0.0
-    if listed:
-        return listed
-    observed = ep.get("observed_cost")
-    return float(observed) if isinstance(observed, (int, float)) else 0.0
+        return 0.0
+
+
+def observed_price(ep: dict, charged: float, day: str) -> None:
+    """Price a row no rate card prices at what the provider reported charging for this call. A row
+    priced this way carries an observed provenance and no note; one with a note was priced by hand."""
+    price, provenance = ep.get("price"), ep.get("provenance") or {}
+    if price is not None and (provenance.get("source") != "observed" or "note" in price):
+        return
+    ep["price"] = {"value": format(Decimal(repr(charged)), "f") if charged else "0", "currency": "USD",
+                   "per": 1, "unit": "call"}
+    ep["provenance"] = {"source": "observed", "checked": day, "confidence": "verified"}
 
 
 def auth_headers(service: str, cred: str) -> tuple[dict, dict, str]:
@@ -232,7 +237,7 @@ def read_balance(client: httpx.Client, service: str, base: str, headers: dict, q
             value = dig(r.json(), route[1])
             if isinstance(value, (int, float)):
                 return value
-        except Exception:
+        except Exception:  # noqa: BLE001 - any failed probe is retried, then reported as no value
             pass
         time.sleep(1.0 * (attempt + 1))
     return None
@@ -256,8 +261,7 @@ def unclamped(ep: dict) -> dict | None:
 
 
 # TikHub answers a failed SCRAPE with 400 and this text — the request was well-formed, their
-# upstream fetch just did not come back. LinkedIn measured ~1-in-3 on first attempt and passed on
-# a retry, so a single attempt would have written off 44 working endpoints as broken. Retrying is
+# upstream fetch just did not come back, and a retry often passes. Retrying is
 # free (nothing is billed unless the call succeeds), which makes "try again" strictly better than
 # recording a verdict we know is unreliable.
 RETRYABLE = re.compile(r"please retry|timed? ?out|temporarily|try again|too fast", re.I)
@@ -266,8 +270,7 @@ RETRY_ATTEMPTS = 3
 # RATE_LIMIT_PER_SEC paces. The global throttle cannot help here — it spaces consecutive requests
 # across DIFFERENT routes — so any retry, which by definition hits the same route again, must wait
 # out that second itself. A sub-second backoff turns a retry into a guaranteed 429, and the 429
-# then gets recorded as if the endpoint had failed. That mistake cost 66 endpoints a real verdict
-# on the first full run.
+# then gets recorded as if the endpoint had failed.
 PER_ROUTE_GAP = 1.3
 
 
@@ -347,7 +350,7 @@ def save(path: Path, data: dict, header: str) -> None:
 
 
 RESULT_FIELDS = ("verified", "unverified", "skipped", "example_response", "test_request",
-                 "observed_cost", "observed_time")
+                 "price", "provenance", "observed_time")
 
 
 class _Elapsed(threading.local):
@@ -358,21 +361,19 @@ class _Elapsed(threading.local):
 LAST_ELAPSED = _Elapsed()
 # `observed_time` is OUR wall-clock around the request, not a number read out of the response.
 # Only DataForSEO reports its own duration, and TikHub's `time` field is a TIMESTAMP
-# ("2026-07-27 23:27:48") — an extractor that trusted the field name would write a date string
+# ("YYYY-MM-DD hh:mm:ss") - an extractor that trusted the field name would write a date string
 # into a numeric column. Client-side is also the number that matters here: CALL_TIMEOUT applies to
 # our client, so what tells us a route is near the ceiling is how long WE waited. Recorded because
-# a timeout is written down as the endpoint's verdict, and DataForSEO's
-# /v3/merchant/amazon/products/live/advanced answered in 55.3s and 26.2s on two identical calls —
-# a 2x spread that would have made a healthy route intermittently "unverified" under the old 60s.
+# a timeout is written down as the endpoint's verdict, and one route's duration can vary 2x
+# between identical calls.
 
 # service -> how to read what the provider says THIS call cost, from its own response.
-# `cost` in the catalog is a rate card: what the price list claims, entered by hand and liable to
-# age. `observed_cost` is what the provider actually charged, straight from the response that
-# produced the example — so the two can be compared, a run's spend can be summed without balance
-# arithmetic (which cannot separate our calls from anyone else's on the same key), and the router
-# later has a real per-endpoint price to rank on.
+# A rate card is what the price list claims, entered by hand and liable to age. An observed price
+# is what the provider actually charged, straight from the response that produced the example — so
+# a run's spend can be summed without balance arithmetic (which cannot separate our calls from
+# anyone else's on the same key), and the router has a real per-endpoint price to rank on.
 # TikHub is deliberately absent: it publishes no per-call charge in the response body, so its
-# entries carry no observed_cost and its rate card stays the only figure available.
+# rate card stays the only figure available.
 OBSERVED_COST = {
     "dataforseo": lambda doc: dig(doc, "tasks.0.cost"),
 }
@@ -463,8 +464,7 @@ def merge_results(service: str, paths: list[Path]) -> int:
                 if field in res:
                     # an EMPTY value counts as absent, never as a claim. A state key present but
                     # blank passes a "has a state" check while saying nothing, which is worse than
-                    # no key at all — the entry looks handled and isn't. (Same bug the dataforseo
-                    # run hit when a re-run dropped a curated reason string.)
+                    # no key at all - the entry looks handled and isn't.
                     if res[field] is None or res[field] == "":
                         ep.pop(field, None)
                     else:
@@ -614,8 +614,8 @@ def main(argv: list[str]) -> int:
                 ep["verified"] = date.today().isoformat()
                 ep["example_response"] = rel
                 observed = (OBSERVED_COST.get(args.service) or (lambda _d: None))(doc)
-                if isinstance(observed, (int, float)):
-                    ep["observed_cost"] = observed
+                if isinstance(observed, (int, float)) and not isinstance(observed, bool):
+                    observed_price(ep, observed, ep["verified"])
                 if isinstance(LAST_ELAPSED.seconds, (int, float)):
                     ep["observed_time"] = LAST_ELAPSED.seconds
                 ep.pop("unverified", None)

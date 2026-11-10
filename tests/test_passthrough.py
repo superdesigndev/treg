@@ -166,11 +166,13 @@ async def test_control_infra_headers_and_treg_cookie_stripped(clients: AsyncClie
         headers={
             "X-Treg-Org": active_org, "ngrok-skip-browser-warning": "1", "X-Treg-Key-Protocol": "1",
             "X-Forwarded-For": "1.2.3.4", "X-Forwarded-Proto": "https", "Via": "1.1 edge",
-            "X-Keep": "yes", "Cookie": "treg_session=SECRET; keep=1; treg_oauth_state=xyz",
+            "CF-Connecting-IP": "1.2.3.4", "True-Client-IP": "1.2.3.4", "CF-Ray": "0-PDX",
+            "CDN-Loop": "cloudflare", "X-Keep": "yes", "Cookie": "treg_session=SECRET; keep=1; treg_oauth_state=xyz",
         },
     )
     h = r.json()["headers"]
-    for leak in ("x-treg-org", "ngrok-skip-browser-warning", "x-forwarded-for", "x-forwarded-proto", "via"):
+    for leak in ("x-treg-org", "ngrok-skip-browser-warning", "x-forwarded-for", "x-forwarded-proto", "via",
+                 "cf-connecting-ip", "true-client-ip", "cf-ray", "cdn-loop"):
         assert leak not in h, f"{leak} leaked upstream"
     assert "x-treg-token" not in h     # our control header never leaks upstream
     assert h["x-keep"] == "yes"        # unrelated caller header preserved

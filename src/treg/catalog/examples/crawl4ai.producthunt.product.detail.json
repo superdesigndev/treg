@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "producthunt-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 192,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "categories": [
+        "Video editing",
+        "AI Generative Media"
+      ],
+      "description": "The ultimate AI-powered camera control for creators by creators",
+      "followers": 1790,
+      "is_online": true,
+      "latest_launch": {
+        "comments": 5,
+        "daily_rank": 6,
+        "date": "2026-09-17T00:01:00-07:00",
+        "name": "Higgsfield API",
+        "score": 176,
+        "tagline": "One async API for 50+ generative media models",
+        "url": "https://www.producthunt.com/posts/higgsfield-api"
+      },
+      "launches": [
+        {
+          "comments": 5,
+          "daily_rank": 6,
+          "date": "2026-09-17T00:01:00-07:00",
+          "name": "Higgsfield API",
+          "score": 176,
+          "tagline": "One async API for 50+ generative media models",
+          "url": "https://www.producthunt.com/posts/higgsfield-api"
+        },
+        {
+          "comments": 2,
+          "daily_rank": 7,
+          "date": "2026-09-03T00:01:00-07:00",
+          "name": "Higgsfield Genjutsu",
+          "score": 148,
+          "tagline": "Recast motion with your characters, locations & products",
+          "url": "https://www.producthunt.com/posts/higgsfield-genjutsu"
+        }
+      ],
+      "launches_count": 15,
+      "linkedin": null,
+      "listed_at": "2025-04-10T17:34:07.214-07:00",
+      "logo": "https://ph-files.imgix.net/bc2f3698-fbfd-4763-bd59-992b9b529f44.png?auto=format",
+      "name": "Higgsfield",
+      "rating": 4.93,
+      "reviews": 15,
+      "slug": "higgsfield",
+      "tagline": "The ultimate AI-powered platform for creators",
+      "twitter": "https://twitter.com/higgsfield",
+      "url": "https://www.producthunt.com/products/higgsfield",
+      "website": "https://higgsfield.ai"
+    }
+  ]
+}

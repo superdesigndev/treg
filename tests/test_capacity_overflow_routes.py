@@ -1,13 +1,15 @@
-"""Step B′ of docs/PROVIDER-CAPACITY-PLAN.md — overflow routes, the signature table and the
+"""Provider capacity: overflow routes, the signature table and the
 aggregator envelopes. Fixtures are recorded aggregator bodies (PII hashed) from the 2026-08-26
 mapping run. No call-path involvement."""
 
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -132,7 +134,7 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
         row = await db.get(OverflowRoute, ("findymail.search.business-profile", "monid"))
         assert not row.enabled and row.disabled_reason.startswith("ratio 6.5")
     async with session_maker() as db:
-        r2 = await R.apply_sync(db, [x for x in seed if x["endpoint_id"] != "findymail.search.business-profile"],
+        await R.apply_sync(db, [x for x in seed if x["endpoint_id"] != "findymail.search.business-profile"],
                                 catalog=cat, now=now)
         await db.commit()
         row = await db.get(OverflowRoute, ("findymail.search.business-profile", "orthogonal"))
@@ -207,6 +209,84 @@ def test_signature_table_classifies_balance_quota_and_burst():
     assert S.is_exhausting(S.classify("findymail", 402, {}, b"x")) and not S.is_exhausting(None)
 
 
+_OUT_OF_CREDITS = [
+    ("wiza", 400, b'{"status":{"code":400,"message":"Insufficient API credits. You need 2 credits for company enrichment."}}',
+     b'{"status":{"code":400,"message":"company_domain is invalid"}}'),
+    ("coingecko", 401, b'{"status":{"timestamp":"2026-11-03T16:15:06.855+00:00","error_code":10003,'
+     b'"error_message":"API subscription deactivated. Please reactivate your account via '
+     b'https://www.coingecko.com/en/api/pricing or submit a ticket at: https://support.coingecko.com"}}',
+     b'{"status":{"error_code":10002,"error_message":"API Key Missing"}}'),
+    ("dropcontact", 403, b'{"error":true,"reason":"You submitted 1 valid items but only have 0 credits left","success":false}',
+     b'{"error":true,"reason":"Invalid API key","success":false}'),
+    ("aviato", 400, b'{"message":"Insufficient credits. Need 15, have 1.25."}',
+     b'{"message":"linkedinURL must be a valid URL"}'),
+    ("orbisearch", 403, b'{"detail":"Insufficient credits: 0 available, 0.2 needed"}',
+     b'{"detail":"Not authenticated"}'),
+]
+
+
+@pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
+def test_an_out_of_credits_answer_is_a_balance_signature(provider, status, out, _):
+    sig = S.classify(provider, status, {}, out)
+    assert sig is not None and sig.kind == "balance" and S.is_exhausting(sig)
+
+
+@pytest.mark.parametrize("provider, status, _, other", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
+def test_the_same_status_with_another_body_is_no_capacity_signal(provider, status, _, other):
+    assert S.classify(provider, status, {}, other) is None
+
+
+def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
+    sig = S.classify("dropcontact", 403, {}, b'{"error":true,"reason":"You submitted 5 valid items but only have 2 credits left"}')
+    assert not S.is_exhausting(sig)
+
+
+_NOW = datetime(2026, 1, 2, 23, 59, 59)
+_NOW_EPOCH = int(_NOW.replace(tzinfo=timezone.utc).timestamp())
+
+
+@pytest.mark.parametrize("headers, wait", [
+    ({"Retry-After": "2.1"}, 3),
+    ({"Retry-After": "-5"}, 0),
+    ({"Retry-After": "8 days, 02:48:09"}, 8 * 86400 + 2 * 3600 + 48 * 60 + 9),
+    ({"Retry-After": "00:01:00"}, 60),
+    ({"Retry-After": "0:00:05.500000"}, 6),
+    ({"Retry-After": "-1 day, 23:59:54"}, 0),
+    ({"Retry-After": "Sat, 03 Jan 2026 00:00:09 GMT"}, 10),
+    ({"Retry-After": "Fri, 02 Jan 2026 23:00:00 GMT"}, 0),
+    ({"RateLimit-Reset": "30"}, 30),
+    ({"RateLimit-Reset": str(_NOW_EPOCH + 41)}, 41),
+    ({"X-RateLimit-Reset": str(_NOW_EPOCH - 100)}, 0),
+    ({"Retry-After": "7", "RateLimit-Reset": "30", "X-RateLimit-Reset": "50"}, 7),
+    ({"Retry-After": "soon", "RateLimit-Reset": "30"}, 30),
+    ({"RateLimit-Reset": "later", "X-RateLimit-Reset": "50"}, 50),
+    ({"Retry-After": "nan"}, None),
+    ({"RateLimit-Reset": "1767398440000", "X-RateLimit-Reset": "12"}, 12),
+    ({"Retry-After": "99999999 days, 00:00:00"}, None),
+    ({"Retry-After": "12:99:00"}, None),
+    ({"Retry-After": "8 weeks, 02:48:09"}, None),
+    ({"X-RateLimit-Reset": "Sat, 03 Jan 2026 00:00:09 GMT"}, None),
+    (None, None),
+])
+def test_wait_headers_parse_by_format(headers, wait):
+    assert S._retry_after(None if headers is None else httpx.Headers(headers), _NOW) == wait
+
+
+def test_wait_header_formats_decide_burst_and_quota():
+    short = S.classify("diffbot", 429, httpx.Headers({"Retry-After": "0 days, 00:00:06"}), b"Too many requests", now=_NOW)
+    assert short.kind == "burst" and short.retry_after_s == 6 and not S.is_exhausting(short)
+    long = S.classify("diffbot", 429, httpx.Headers({"Retry-After": "8 days, 02:48:09"}), b"Too many requests", now=_NOW)
+    assert long.kind == "quota" and long.resets_at == datetime(2026, 1, 11, 2, 48, 8)
+    ietf = S.classify("someone", 429, httpx.Headers({"RateLimit-Reset": "20", "RateLimit-Limit": "50"}), b"", now=_NOW)
+    assert ietf.kind == "burst" and ietf.retry_after_s == 20
+
+
+def test_a_daily_quota_without_a_wait_header_resets_at_the_next_utc_midnight():
+    lusha = S.classify("lusha", 429, {}, b'{"message":"Daily search limit reached"}', now=_NOW)
+    assert lusha.kind == "quota" and lusha.resets_at == datetime(2026, 1, 3)
+    with pytest.raises(ValueError):
+        S.Signature("x", 429, r"", "quota", resets="next_tuesday")
+
 # Apollo API reference, "422 Unprocessable Entity": the body an empty credit pool gets (live 2026-09-01).
 APOLLO_OUT_OF_CREDITS = b'{"error": "Insufficient credits. Please upgrade your plan."}'
 # The SAME status for a caller's mistake - must never read as our account running dry.
@@ -234,15 +314,43 @@ def test_icypeas_says_out_of_credits_with_a_200():
     assert S.classify("hunter", 200, None, ICYPEAS_OUT_OF_CREDITS) is None, "a 2xx is only ever read per provider"
 
 
-def test_every_recorded_phrase_arms_the_tripwire():
-    """Recording one vendor's wording must arm the tripwire for every other: each literal body
-    phrase in `_TABLE` (the 429 rows carry period words, not capacity phrases) is in CAPACITY_PHRASES."""
-    import re as _re
-    for provider, status, pattern, kind in S._TABLE:
-        if kind not in ("balance", "quota") or not pattern or status == 429 or _re.escape(pattern) != pattern:
-            continue  # empty (the bare 402 row), a period word, or a regex we cannot use as a body
-        sig = S.classify("someone-else", 400, None, pattern.encode())
-        assert sig is not None and sig.kind == "unrecorded", f"{provider}'s phrase {pattern!r} does not arm the tripwire"
+def test_hlrlookup_says_out_of_credit_with_a_200():
+    out = b'{"body":"OK","results":[{"error":"INSUFFICIENT_CREDIT","telephone_number":"447540822872"}]}'
+    sig = S.classify("hlrlookup", 200, None, out)
+    assert sig.kind == "balance" and S.is_exhausting(sig)
+    assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"NONE","live_status":"LIVE"}]}') is None
+    assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"TOO_MANY_REQUESTS"}]}') is None
+
+
+def test_each_tripwire_row_arms_the_tripwire_whole():
+    rows = [sig for sig in S._TABLE if sig.tripwire]
+    assert rows
+    for sig in rows:
+        assert re.fullmatch(r"[\w '-]+", sig.body_regex), f"{sig.provider}'s tripwire is not a plain phrase"
+        got = S.classify("someone-else", 400, None, sig.body_regex.upper().encode())
+        assert got is not None and got.kind == "unrecorded" and got.detail == sig.body_regex.lower()
+
+
+def test_every_recorded_capacity_phrase_arms_the_tripwire():
+    """Recording one vendor's wording must arm the tripwire for every other, through its own
+    `tripwire` flag or a generic noun; 429 rows carry period words and stay out."""
+    for sig in S._TABLE:
+        if sig.kind not in S.EXHAUSTING_KINDS or sig.status == 429 or not re.fullmatch(r"[\w '-]+", sig.body_regex):
+            continue
+        got = S.classify("someone-else", 400, None, sig.body_regex.encode())
+        assert got is not None and got.kind == "unrecorded", f"{sig.provider}'s {sig.body_regex!r} does not arm the tripwire"
+
+
+def test_not_having_enough_credit_arms_the_tripwire_in_any_spelling():
+    for body in ("sorry, you don't have enough credit", "You don’t have enough credits",
+                 "The account does not have enough quota remaining"):
+        got = S.classify("someone-else", 400, None, body.encode())
+        assert got is not None and got.kind == "unrecorded", body
+
+
+def test_a_caller_error_never_arms_the_tripwire():
+    for body in (b"insufficient parameters", b"unbalanced quotes", b"quotation mark missing"):
+        assert S.classify("someone-else", 400, None, body) is None
 
 
 def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
@@ -274,20 +382,19 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
-    "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
+    "apify", "branddev", "brightdata", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "dropleads",  # free trial was not exhausted; no provider-specific 402 body recorded
-    "prospeo",  # Starter allowance was not exhausted; no provider-specific body was forced
-    "aiark",  # funded allowance was not exhausted; no provider-specific body was forced
-    "wiza",  # The funded grant was not exhausted; no provider-specific body was forced
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
     "olostep",  # funded credit balance remains; documented 402 was not forced
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
+    "search1api",  # funded credits remain; documented generic 402 was not deliberately forced
+    "bravesearch",  # prepaid credits remain; no empty-credit response was deliberately forced
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
@@ -311,8 +418,15 @@ _UNRECORDED_SIGNATURE = {
     "perplexity",  # auto top-up is enabled; no empty-credit response was forced
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
     "you",  # funded wallet remains; no provider-specific empty-balance response was forced
+    "valyu",  # subscription credits remain; no provider-specific empty-balance response was forced
+    "octen",  # PAYG balance remains; no provider-specific empty-balance response was forced
+    "parallel",  # funded balance remains; documented 402 insufficient credit was not forced
+    "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
+    "blitzapi",  # monthly records remain; an exhausted-key response was not forced
+    "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
+    "theirstack",  # funded API credits remain; the documented 402 body was not observed
 
-    "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
+    "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }
 
 
@@ -328,7 +442,7 @@ def test_every_platform_provider_has_a_recorded_or_acknowledged_signature():
     catalog_ids = {e["provider"] for e in catalog_store.load().endpoints}
     slots = {p for p in catalog_ids if platform_setting_name(p) in settings}
     assert len(slots) == len(settings), f"a key slot with no catalog provider: {sorted(settings - {platform_setting_name(p) for p in slots})}"
-    recorded = {p for p, *_ in S._TABLE if p != "*"}
+    recorded = {sig.provider for sig in S._TABLE if sig.provider != "*" and sig.kind in S.EXHAUSTING_KINDS}
     missing = slots - recorded - _UNRECORDED_SIGNATURE
     assert not missing, f"record how these say 'out of credits' or acknowledge them: {sorted(missing)}"
     stale = (_UNRECORDED_SIGNATURE & recorded) | (_UNRECORDED_SIGNATURE - slots)
@@ -405,6 +519,11 @@ def test_monid_build_and_parse_fixtures():
     }, "Monid's Akta schema models the vendor's comma-separated sections parameter as an array"
     alt = monid.build(r, "K", {"domain": "stripe.com"}, None, params_as_body=True)
     assert alt.json["input"] == {"queryParams": {}, "body": {"domain": "stripe.com"}, "pathParams": {}}
+    for path in ("/v5/person/enrich", "/v5/company/enrich", "/v5/person/search", "/v5/company/search"):
+        pdl = _route(aggregator="monid", agg_slug="pdl", agg_path=path)
+        request = monid.build(pdl, "K", {"size": "1", "name": "Example"}, None)
+        assert request.json["input"] == {"queryParams": {}, "body": {"size": 1, "name": "Example"},
+                                          "pathParams": {}}
     ok = _fixture("monid_ok_sync")
     res = monid.parse(ok["status"], json.dumps(ok["body"]).encode())
     assert res.ok and res.upstream_status == 200 and res.cost_micro == 23_920

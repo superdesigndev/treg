@@ -1,4 +1,7 @@
 provider: fishaudio
+# Fish's single-model GET /model/{id} is not a catalog tool: it answers 403 for private workspace
+# voices that list, update, delete and TTS accept. It serves only as the public-voice lookup in the
+# TTS row's managed_resource.
 source:
   docs: https://docs.fish.audio/api-reference/introduction
   curated: 2026-09-21
@@ -74,6 +77,7 @@ endpoints:
       note: "Fish bills S2.1 Pro by UTF-8 input bytes."
       display: {unit: "UTF-8 bytes", grouped: true}
     verified: 2026-09-22
+    added: '2026-09-22'
     example_response: examples/fishaudio.tts.s2-1-pro.json
     docs_url: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
 
@@ -111,10 +115,12 @@ endpoints:
         voices: {filename: voice-reference.wav, content_type: audio/wav, note: "Supply a consenting spoken-voice sample when deliberately re-running this write verification."}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "No separate model-management charge is published; verify against the funded account before enabling Fish in the platform allow-list."}
     verified: 2026-09-22
+    added: '2026-09-22'
     example_response: examples/fishaudio.voices.create.json
     docs_url: https://docs.fish.audio/api-reference/endpoint/model/create-model
 
   - id: fishaudio.voices.list
+    added: '2026-09-22'
     capability: voice-gen.private-voices.list
     platform: voice-gen
     domain: models
@@ -157,10 +163,12 @@ endpoints:
       queryParams: {self: "false", licensed: "true", page_size: 3, page_number: 1}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Public-voice discovery is a free account-management read."}
     verified: 2026-09-22
+    added: '2026-09-22'
     example_response: examples/fishaudio.voices.discover.json
     docs_url: https://docs.fish.audio/api-reference/endpoint/model/list-models
 
   - id: fishaudio.voices.update
+    added: '2026-09-22'
     capability: voice-gen.private-voices.update
     platform: voice-gen
     domain: models
@@ -188,6 +196,7 @@ endpoints:
     docs_url: https://docs.fish.audio/api-reference/endpoint/model/update-model
 
   - id: fishaudio.voices.delete
+    added: '2026-09-22'
     capability: voice-gen.private-voices.delete
     platform: voice-gen
     domain: models

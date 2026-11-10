@@ -3,6 +3,8 @@ import { isJobQuery } from './find.js'
 // The shelf's order: the last 30 days' calls, most first; then the jobs more providers do; then by
 // title, so an unused shelf still reads in a stable order.
 const byTitle = new Intl.Collator()
+// How many of a shelf's most used items lead as cards: two rows at the widest layout.
+const PLAT_TOP = 6
 const byUse = (a, b) => (b.usage - a.usage) || (b.provN - a.provN) || byTitle.compare(a.title, b.title)
 
 // What each comparison column means, on hover or focus of its heading (comparisonColumns).
@@ -14,15 +16,12 @@ const COL_TIPS = {
 }
 
 export default {
-// The catalog-v2 control arm (state/catalogExperiment.js): the ledger, and no comparison pages anywhere.
-    catalogLegacy(){ return this.catalogArm==='control'; },
 mkProvider(){ return this.providers.find(p=>p.service===this.mkService)||null; },
-mkConns(){ return this.connections.filter(c=>c.provider===this.mkService); },
-mkNeedsCred(){ return this.mkConns.filter(c=>c.extra_credential_note); },
+mkPaused(){ return this.providerPaused(this.mkService); },
+mkAccounts(){ return this.connAccounts.filter(a=>a.service===this.mkService); },
 // Which capabilities ANY account here already holds — a page-level "you have this" summary,
     // since the permission list describes the integration, not one account.
-    mkGranted(){ const s=new Set(); for(const c of this.mkConns) for(const cap of (c.capabilities||[])) s.add(cap); return s; },
-// ---- endpoint catalog ----
+    mkGranted(){ const s=new Set(); for(const a of this.mkAccounts) for(const cap of ((a.c&&a.c.capabilities)||[])) s.add(cap); return s; },
     // Platform tiles grouped by the category the catalog assigns each platform. "Other" (the
     // taxonomy's bucket for things like `account`) gets no tile — those capabilities are only
     // meaningful inside a platform page, not as a destination of their own.
@@ -30,10 +29,6 @@ mkNeedsCred(){ return this.mkConns.filter(c=>c.extra_credential_note); },
     // from the data, so a category the catalog invents tomorrow still gets a shelf and a tab (sorted
     // to the end) instead of vanishing. A hint is optional for the same reason.
     platCategories(){
-      // The founder's reading order. The answer engines (ChatGPT, Perplexity, Gemini…) used to be
-      // their own shelf; they are SEO now, unfeatured, so they surface inside its "see more" row
-      // rather than as a category of six. The list is a lookup, not a schema — a category the
-      // catalog invents tomorrow still gets a shelf, sorted to the end.
       const order=['Enrichment','SEO/AEO','Social','Advertising','E-commerce','Reviews & Apps','AI generation','Community'];
       const hints={
         'AI generation':'video, image, voice and music models, the same model over several routes priced side by side',
@@ -51,7 +46,7 @@ mkNeedsCred(){ return this.mkConns.filter(c=>c.extra_credential_note); },
       const rest=Object.keys(by).filter(c=>!order.includes(c)).sort();
       return known.concat(rest).map(c=>({category:c, hint:hints[c]||'', items:by[c]}));
     },
-// The catalog's size as a headline ("3,300+"), from the platform shelves already loaded: rounded
+// The catalog's size as a headline, from the platform shelves already loaded: rounded
     // down to the hundred so it never overstates, and empty until the list arrives so no stale
     // number is ever shown.
     toolCountText(){
@@ -59,9 +54,9 @@ mkNeedsCred(){ return this.mkConns.filter(c=>c.extra_credential_note); },
       return n>=100 ? (Math.floor(n/100)*100).toLocaleString('en-US')+'+' : '';
     },
 // The platform-name filter the Catalog search box applies, lowercased; '' for none. A sentence is
-    // a job, not a name (the finder answers it), and a find answer lights shelves instead of
-    // filtering them, so neither filters anything.
-    platNameQuery(){ return this.findActive || isJobQuery(this.q) ? '' : this.q.trim().toLowerCase(); },
+    // a job, not a name (the finder answers it), and a full find answer lights shelves instead of
+    // filtering them, so neither filters anything. An auto answer leaves the filter on.
+    platNameQuery(){ return this.findFull || isJobQuery(this.q) ? '' : this.q.trim().toLowerCase(); },
 mkTabs(){
       // With a name filter typed, each tab counts what it would SHOW; a tab reading "Social 33" over
       // an empty result made the filter look broken.
@@ -69,25 +64,20 @@ mkTabs(){
       const n=g=>q ? g.items.filter(p=>this.platNameHit(p, q)).length : g.items.length;
       const out=[{key:'all', label:'All', n:this.platCategories.reduce((a,g)=>a+n(g),0)}];
       for(const g of this.platCategories) out.push({key:g.category, label:g.category, n:n(g)});
-      out.push({key:'platform', label:'Platform', n:this.providers.length});
       return out;
     },
-// A build without /catalog has no tiles to show, so it falls back to the integration shelves
-    // rather than opening on an empty tab. Only once the shelves have answered: falling back while
-    // they load flashed the integration list on every visit before the tiles replaced it.
-    mkTabActive(){ return this.platCategories.length || !this.plats.settled ? this.mkTab : 'platform'; },
 // Shelves, with the long ones cut down to their featured tiles. A category of 14 platforms is a
     // wall you scroll past rather than read, so past PLAT_SHELF_MAX only the catalog's `featured`
     // ranks get a full tile and the tail collapses into one "See X, Y, and N more" row. Rank first,
     // then endpoint count — the tail sorts by size alone, which is the only signal it has left.
     platCatGroups(){
-      const groups = this.mkTabActive==='all' ? this.platCategories
-        : this.platCategories.filter(g=>g.category===this.mkTabActive);
+      const groups = this.mkTab==='all' ? this.platCategories
+        : this.platCategories.filter(g=>g.category===this.mkTab);
       // The top-nav search reaches here too: with a query, every match shows (no featured collapse —
       // a hit hidden behind "N more" reads as no hit) and empty shelves drop away.
-      // A find answer (state/find.js) owns the box while it is showing: the sentence is not a name
-      // to filter by, so every shelf stays, platforms the answer landed on first and uncollapsed.
-      if(this.findActive){
+      // A full find answer (state/find.js) owns the box while it is showing: the sentence is not a
+      // name to filter by, so every shelf stays, platforms the answer landed on first and uncollapsed.
+      if(this.findFull){
         const hits=this.findHits;
         if(!Object.keys(hits).length) return groups.map(g=>({...g, rest:[], total:g.items.length}));
         return groups.map(g=>{ const items=[...g.items].sort((a,b)=>(hits[b.slug]||0)-(hits[a.slug]||0) || (b.endpoints||0)-(a.endpoints||0));
@@ -113,7 +103,6 @@ mkTabs(){
         return {...g, items:feat, rest:items.filter(p=>p.featured==null), total:items.length};
       });
     },
-mkPlatforms(){ return this.plats.list.filter(pl=>(pl.providers||[]).includes(this.mkService)); },
 platRow(){ return this.plats.list.find(pl=>pl.slug===this.platSlug)||null; },
 platLabel(){ return (this.platData&&this.platData.platform&&this.platData.platform.label)
       || (this.platRow&&this.platRow.label)
@@ -127,7 +116,6 @@ platProviders(){  // providers with endpoints here, in catalog order
       // registry. Depending on that async registry made the entire row flicker away locally. `treg`
       // is the synthetic router, not a provider page a person can open.
       return seen.filter(s=>s!=='treg'); },
-// ---- the shelf's rows ----
     // Which endpoints file together (a job several providers do, or one endpoint alone) is decided by
     // the server (catalog_store.domain_rows), so the CLI, the API and this page cannot disagree about
     // what a platform contains. What is added here is presentation: the title a row shows, whether it
@@ -138,15 +126,15 @@ platProviders(){  // providers with endpoints here, in catalog order
       for(const sec of (this.platData.domains||[])) for(const r of (sec.rows||[])){
         const eps=r.endpoints||[]; if(!eps.length) continue;
         out.push({...r, domain:sec.domain, endpoints:eps,
-          // The server picks `name` over `summary` where a curated name exists; the clip guards the
-          // rows where one does not yet, whose summary is documentation prose.
-          title:this.clip(r.description, 90),
+          // A compared job may carry a short `title` for people; its `description` is also written for
+          // agents and stays whole (the card's hover). The server picks `name` over `summary` where a
+          // curated name exists; the clip guards the rows where one does not yet.
+          title:this.clip(r.title||r.description, 90),
           mgmt: eps.every(e=>e.kind==='account'||e.kind==='utility'),
-          hay: (r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
+          hay: ((r.title||'')+' '+r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
                  e.provider+' '+(e.provider_display||'')+' '+(e.name||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
       }
       return out; },
-// ---- the shelf, read as comparisons and tools ----
     // A capability at least two providers serve on the shelf is the one place a comparison means
     // something, so it gets a card and a page of its own. The server marks those rows (`compare`,
     // the key its URL uses; `Catalog.compared`). Everything else is a TOOL, opened in the drawer.
@@ -155,7 +143,7 @@ platProviders(){  // providers with endpoints here, in catalog order
       return this.platRowsAll.filter(r=>r.compare).map(r=>{
         const direct=r.endpoints.filter(e=>e.kind!=='routed'), provs=[...new Set(direct.map(e=>e.provider))];
         const range=this.priceRange(direct);
-        return {job:true, key:r.capability, slug:r.compare, row:r, title:r.description, hay:r.hay, logos:provs.slice(0,5),
+        return {job:true, key:r.capability, slug:r.compare, row:r, title:r.title, hint:r.description, hay:r.hay, logos:provs.slice(0,5), logosFew:provs.slice(0,3), range,
                 routed:r.endpoints.find(e=>e.kind==='routed')||null, provN:provs.length,
                 // An auto-routed call is also recorded on every provider it tries, so the providers'
                 // own calls already count it; adding the routed row too would count it twice.
@@ -177,18 +165,32 @@ platProviders(){  // providers with endpoints here, in catalog order
           out.push({id:e.id, title, e, mgmt:r.mgmt, usage:this.callsOf(e), provN:1,
                     hay:(title+' '+e.provider+' '+(e.provider_display||'')+' '+(e.summary||'')+' '+e.id).toLowerCase()}); } }
       return out.sort(byUse); },
-// The shelf itself: comparisons and single-provider tools in ONE list, most used first. A visitor
-    // comes for a job, not for whether one provider or several serve it; a comparison still reads as
-    // one (its logo stack, and Auto-route where treg can pick).
-    // Sorted once per shelf; the search box only filters it.
+// The shelf itself, most used first, whether one provider serves an item or several: the head of it
+    // as cards, the rest as a list. One grid of equal cards gave the eye nowhere to land; ranking a
+    // comparison above a busier single tool put the eye on the wrong thing. Sorted once per shelf;
+    // the search box only filters it.
     platShelfIndex(){ return [...this.platComparisons, ...this.platToolIndex.filter(t=>!t.mgmt)].sort(byUse); },
 platShelf(){ const q=this.platFilterQ; return q ? this.platShelfIndex.filter(t=>t.hay.includes(q)) : this.platShelfIndex; },
+platTop(){ return this.platShelf.slice(0, PLAT_TOP); },
+platRest(){ return this.platShelf.slice(PLAT_TOP); },
+// Only a measured count earns "Most used"; with none (a fresh server), the order is the tie-break's.
+platTopMeasured(){ return this.platTop.some(t=>t.usage>0); },
+// The lists under the cards. Plumbing is looked up, not browsed: its head until asked for the rest,
+// or all of it while a search is narrowing it.
+platSections(){
+      const setup=this.platPlumbing, fold=!this.platSetupOpen && !this.platFilterQ && setup.length>PLAT_TOP;
+      return [
+        {key:'tools', label:this.platTop.length ? 'More tools' : 'Tools', items:this.platRest, shown:this.platRest, hidden:0},
+        {key:'setup', label:'Account and setup', quiet:true, items:setup, shown:fold ? setup.slice(0, PLAT_TOP) : setup, hidden:fold ? setup.length : 0},
+      ].filter(s=>s.items.length); },
 platPlumbing(){ const q=this.platFilterQ; return this.platToolIndex.filter(t=>t.mgmt && (!q || t.hay.includes(q))); },
 platEpById(){ const m={}; for(const r of this.platRowsAll) for(const e of r.endpoints) m[e.id]=e; return m; },
 // The drawer reads from the list of the view it was opened on.
     drawerEp(){ if(!this.drawerTool) return null;
       return (this.view==='provider' ? this.mkToolById : this.platEpById)[this.drawerTool]||null; },
 drawerInfo(){ const i=this.drawerTool && this.epInfo[this.drawerTool]; return i&&i.data||null; },
+// The row's caveat rides only on the tool's own detail, never on the list the drawer opened from.
+    drawerNote(){ const d=this.drawerInfo; return d && d.endpoint && d.endpoint.note || ''; },
 // The comparison a URL names, by its key (`enrich` on the companies shelf is `companies.enrich`).
     platComparison(){ return this.platCap ? this.platComparisons.find(j=>j.slug===this.platCap)||null : null; },
 platCapRow(){ return this.platComparison ? this.platComparison.row : null; },
@@ -234,6 +236,7 @@ drawerIds(){
 // What stands between your agent and this tool: an account to connect (OAuth), a key to add (a tool
     // only your own key can call), or nothing, and the line can go to the agent as it is.
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
+      if(this.providerPaused(e.provider)) return 'paused';
       if(this.catEndpointConnected(e)) return 'copy';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },
@@ -259,21 +262,21 @@ catalogExtra(){  // catalog patterns not already in the own list — the union d
 sortedInvites(){  // the clicked email link's team first, then newest-first (the API's order)
       return [...this.pendingInvites].sort((a,b)=>(b.org_id===this.inviteLinkOrg?1:0)-(a.org_id===this.inviteLinkOrg?1:0)); },
 selectedInvites(){ return this.sortedInvites.filter(i=>this.inviteSel[i.id]); },
-inviteFirstRun(){ return !this.myOrgs.some(o=>!this.isPersonal(o)); },
 // no real team yet → decline offers create-team
-    activityRows(){  // proxy calls + server CLI runs, one time-sorted feed (ISO strings compare fine)
-      // Local runs now arrive via /runs (where:'local'); drop them from the calls feed so they aren't double-counted.
+inviteFirstRun(){ return !this.myOrgs.some(o=>!this.isPersonal(o)); },
+    activityRows(){  // calls + runs from `/activity`, one time-sorted feed (ISO strings compare fine)
       // Cost precedence: what was CHARGED (settle amount; 0 on a release — the estimate alone would
       // over-report a refunded call as spend), else observed, else the estimate (old rows / own-key).
       // A metered async task (video/image generation) is the one row whose charge is decided AFTER
       // the call returned: the server nulls the charge while the task is pending, so show the hold.
-      const calls=(this.calls||[]).filter(c=>c.kind!=='local_run').map(c=>({kind:'call', id:c.id, created_at:c.created_at, user_email:c.user_email, client:c.client, tool:c.tool_name, action:c.method, status:c.status_code, ok:c.status_code<400,
+      const calls=(this.calls||[]).map(c=>({kind:'call', id:c.id, created_at:c.created_at, user_email:c.user_email, client:c.client, tool:c.tool_name, action:c.method, status:c.status_code, ok:c.status_code<400,
         task:c.async_task||null, held:!!(c.async_task&&c.async_task.status==='pending'),
         cost:(c.async_task&&c.async_task.status==='pending')?c.async_task.reserved_micro:(c.cost_charged_micro!=null?c.cost_charged_micro:(c.cost_observed_micro!=null?c.cost_observed_micro:c.cost_estimated_micro)), tier:c.credential_tier, tags:c.tags,
         has_result:!!c.has_result, endpoint_id:c.endpoint_id, call_ref:c.call_ref, path:c.path, cached:c.cached, api_key_id:c.api_key_id, api_key_name:c.api_key_name, api_key_prefix:c.api_key_prefix}));
       const runs=(this.runs||[]).map(r=>({kind:'run', where:r.where, id:r.id, created_at:r.created_at, user_email:r.user_email, client:r.client, tool:r.tool, action:(r.argv||[]).join(' ').slice(0,48)||'-', status:(r.where==='local'?'local run':'exit '+r.exit_code), ok:(r.where==='local'?true:r.exit_code===0), api_key_id:r.api_key_id, api_key_name:r.api_key_name, api_key_prefix:r.api_key_prefix}));
       return calls.concat(runs).sort((a,b)=>a.created_at<b.created_at?1:-1);
     },
+activityHasOlder(){ return !!this.activityNext; },
 activityCallCount(){ return this.activityRows.filter(a=>a.kind==='call').length; },
 activityCachedCount(){ return this.activityRows.filter(a=>a.kind==='call' && a.cached).length; },
 apiKeyGroups(){
@@ -295,7 +298,8 @@ apiKeyGroups(){
       }
       return groups;
     },
-activityShown(){ return this.actOkOnly ? this.activityRows.filter(a=>a.ok) : this.activityRows; },
+activityOkRows(){ return this.activityRows.filter(a=>a.ok); },
+activityShown(){ return this.actOkOnly ? this.activityOkRows : this.activityRows; },
 callBodyPretty(){ const t=this.callView&&this.callView.response&&this.callView.response.body_text; return t?this.pretty(t):''; },
 // JSON pretty-printed when it parses (a 2 MB parse is ~20 ms)
     callBodyTruncated(){ return !this.callViewFull && this.callBodyPretty.length>262144; },

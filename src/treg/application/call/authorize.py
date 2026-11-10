@@ -1,5 +1,6 @@
 """Framework-neutral authorization for a resolved proxied call."""
 
+from ... import oauth_providers
 from ... import sandbox as demo_sandbox
 from ...infra.db import session_maker
 from ...domain.governance import access as access_policy
@@ -25,8 +26,8 @@ async def authorize_call(
         # whichever shape the caller used. The relay never follows redirects, so a blocked host
         # cannot be reached through a 3xx bounce.
         try:
-            await access_policy.enforce_deny(
-                caller, upstream_url, method, db, tool.project_id)
+            for url in [upstream_url, *oauth_providers.legacy_aliases(upstream_url)]:
+                await access_policy.enforce_deny(caller, url, method, db, tool.project_id)
         except access_policy.AccessPolicyError as exc:
             raise AuthorizationFailed(
                 "policy_denied", status_code=403, detail=exc.detail) from exc

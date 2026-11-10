@@ -6,57 +6,84 @@ import CatalogSearch from '../components/CatalogSearch.vue'
 import ProviderLogo from '../components/ProviderLogo.vue'
 import { DataTable } from '../components/ui/table'
 
+const LIST = [
+  { key: 'tool', header: 'Tool', wrap: true, mobile: 'primary' },
+  { key: 'provider', header: 'Provider' },
+  { key: 'price', header: 'Price', align: 'right' },
+]
+
 // A platform shelf, read at two levels: the shelf (the capabilities several providers serve, then
 // every other tool) and one comparison (let treg pick, or compare the providers). A tool opens in a drawer over either,
 // so a comparison never loses its table. The look is the landing page's: surfaces, not boxes.
 export default {
   components: { ToolDrawer, FindAnswer, CatalogSearch, DataTable, ProviderLogo },
   setup: useDashboard,
+  data: () => ({ listColumns: LIST }),
+  methods: {
+    shelfKey(t) { return t.job ? 'job:'+t.key : t.id },
+    // A job several providers do opens its comparison; a one-provider tool opens in the drawer.
+    openShelfItem(t) { t.job ? this.openComparison(t.slug) : this.openTool(t.id) },
+  },
 }
 </script>
 
 <template>
 <div class="pl" :class="{dopen:!!drawerEp}">
-  <div v-if="platLoading || catalogArm==='pending'" class="pl-empty">Loading the catalog…</div>
+  <div v-if="platLoading" class="pl-empty">Loading the catalog…</div>
   <div v-else-if="platErr" class="pl-empty">{{platErr}}</div>
 
   <!-- THE SHELF -->
   <template v-else-if="platData && !platCap">
     <header class="pl-hero">
-      <nav class="pl-crumbs" aria-label="Breadcrumb"><a href="/catalog" @click.prevent="go('connections')">Catalog</a><span>/</span>{{platLabel}}</nav>
-      <p class="pl-eyebrow">{{platShelfIndex.length}} {{platShelfIndex.length === 1 ? 'tool' : 'tools'}} · {{platComparisons.length}} compared across providers · {{platProvLine.length}} {{platProvLine.length === 1 ? 'provider' : 'providers'}}</p>
+      <nav class="pl-crumbs" aria-label="Breadcrumb"><a href="/catalog" @click.prevent="go('catalog')">Catalog</a><span>/</span>{{platLabel}}</nav>
       <h1>{{platLabel}}</h1>
       <p v-if="platRow && platRow.summary" class="pl-lede">{{platRow.summary}}</p>
+      <p v-if="platPaused(platRow)" class="mk-notice">{{providerPaused(platRow.providers[0]).message}}</p>
       <CatalogSearch v-model="platQ" :scope="platSlug" :scope-label="platLabel"
                      :placeholder="'Search '+platLabel+', or describe what your agent needs to do'" />
     </header>
 
     <FindAnswer v-if="findActive && find.scope===platSlug" class="pl-find" />
 
-    <!-- The shelf: comparisons and single-provider tools in one list, most used first; then the
-         account and setup plumbing, the same cards in a quieter weight. -->
-    <section v-for="sec in [{key:'tools', label:'Tools', items:platShelf},
-                            {key:'setup', label:'Account and setup', items:platPlumbing, quiet:true}].filter(s=>s.items.length)"
-             :key="sec.key" class="pl-sec">
-      <h2 class="pl-h" :class="{'pl-h-quiet':sec.quiet}"><span>{{sec.label}}</span><i></i><em>{{sec.items.length}}</em></h2>
+    <!-- The shelf, by use: the most used items as cards of one height (a short title, who serves it,
+         the price), then the rest, and the account plumbing, as lists. A job several providers do
+         opens its comparison; a one-provider tool opens in the drawer. -->
+    <section v-if="platTop.length" class="pl-sec">
+      <h2 class="pl-h"><span>{{platTopMeasured ? 'Most used' : 'Featured'}}</span><i></i></h2>
       <div class="pl-grid pl-grid-t">
-        <template v-for="t in sec.items" :key="t.job ? 'job:'+t.key : t.id">
-          <a v-if="t.job" class="pl-card pl-cmp" :href="platUrl(platSlug, t.slug)" @click.prevent="openComparison(t.slug)">
+        <template v-for="t in platTop" :key="t.job ? 'job:'+t.key : t.id">
+          <a v-if="t.job" class="pl-card pl-cmp pl-job" :href="platUrl(platSlug, t.slug)" :title="t.hint" @click.prevent="openComparison(t.slug)">
             <b>{{t.title}}</b>
-            <span class="pl-cmp-f">
-              <span class="pl-cmp-r">
-                <span class="pl-stack" aria-hidden="true"><ProviderLogo v-for="s in t.logos" :key="s" :service="s" /></span>
-                <span v-if="t.routed" class="pl-auto" title="One call: treg picks the provider for you">Auto-route</span>
-              </span>
-              <span class="pl-meta">{{t.meta}}</span>
+            <span class="pl-job-f">
+              <span class="pl-stack" aria-hidden="true"><ProviderLogo v-for="s in t.logos" :key="s" :service="s" /></span>
+              <span v-if="t.range" class="pl-job-p">{{t.range}}</span>
             </span>
+            <span class="pl-meta">{{t.provN}} providers<template v-if="t.routed"> · <span class="pl-job-auto" title="One call: treg picks the provider for you">auto-route</span></template></span>
           </a>
-          <button v-else class="pl-card pl-tool" :class="{on:drawerTool===t.id, quiet:sec.quiet}" @click="openTool(t.id)">
-            <ProviderLogo :service="t.e.provider" large />
-            <span class="pl-tool-b"><b>{{t.title}}</b><span class="pl-meta">{{t.e.provider_display||t.e.provider}} · {{toolPrice(t.e)}}</span></span>
+          <button v-else class="pl-card pl-job" :class="{on:drawerTool===t.id}" :title="t.e.summary||t.title" @click="openTool(t.id)">
+            <b>{{t.title}}</b>
+            <span class="pl-job-f">
+              <span class="pl-stack" aria-hidden="true"><ProviderLogo :service="t.e.provider" /></span>
+              <span class="pl-job-p">{{toolPrice(t.e)}}</span>
+            </span>
+            <span class="pl-meta">{{t.e.provider_display||t.e.provider}}</span>
           </button>
         </template>
       </div>
+    </section>
+
+    <section v-for="sec in platSections" :key="sec.key" class="pl-sec">
+      <h2 class="pl-h" :class="{'pl-h-quiet':sec.quiet}"><span>{{sec.label}}</span><i></i><em>{{sec.items.length}}</em></h2>
+      <DataTable :class="{'pl-list-quiet':sec.quiet}" :columns="listColumns" :rows="sec.shown" :row-key="shelfKey" :selected="drawerTool"
+                 interactive surface @row-click="openShelfItem">
+        <template #cell-tool="{ row: t }"><b :title="t.job ? t.hint : (t.e.summary||t.title)">{{t.title}}</b></template>
+        <template #cell-provider="{ row: t }">
+          <span v-if="t.job" class="pl-by"><span class="pl-stack" aria-hidden="true"><ProviderLogo v-for="s in t.logosFew" :key="s" :service="s" /></span>{{t.provN}} providers<template v-if="t.routed"> · <span class="pl-job-auto">auto-route</span></template></span>
+          <span v-else class="pl-by"><ProviderLogo :service="t.e.provider" />{{t.e.provider_display||t.e.provider}}</span>
+        </template>
+        <template #cell-price="{ row: t }">{{t.job ? t.range : toolPrice(t.e)}}</template>
+      </DataTable>
+      <button v-if="sec.hidden" class="pl-link pl-more-rows" @click="platSetupOpen=true">Show all {{sec.hidden}}</button>
     </section>
 
     <p v-if="platFilterQ && !platShelf.length && !platPlumbing.length && !findActive && !findSoon" class="pl-empty">
@@ -77,10 +104,10 @@ export default {
       <button class="pl-link" @click="closeComparison">See every job on {{platLabel}}</button></div>
     <template v-else>
       <header class="pl-hero">
-        <nav class="pl-crumbs" aria-label="Breadcrumb"><a href="/catalog" @click.prevent="go('connections')">Catalog</a><span>/</span><a
+        <nav class="pl-crumbs" aria-label="Breadcrumb"><a href="/catalog" @click.prevent="go('catalog')">Catalog</a><span>/</span><a
           :href="platUrl(platSlug)" @click.prevent="closeComparison">{{platLabel}}</a></nav>
-        <p class="pl-eyebrow">{{platComparison.meta}}</p>
-        <h1 class="pl-h1-cmp">{{platCapRow.description}}</h1>
+        <h1 class="pl-h1-cmp">{{platCapRow.title||platCapRow.description}}</h1>
+        <p v-if="platCapRow.title && platCapRow.title!==platCapRow.description" class="pl-lede">{{platCapRow.description}}</p>
       </header>
 
       <!-- treg's own answer first when there is one: one call, and nobody has to choose. -->

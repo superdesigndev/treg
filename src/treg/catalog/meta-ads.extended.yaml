@@ -31,6 +31,7 @@ source:
   - https://developers.facebook.com/docs/graph-api/reference
 endpoints:
 - id: meta-ads.x.me-businesses
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -46,6 +47,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -61,6 +63,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-activities
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -76,6 +79,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-adcreatives
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -91,6 +95,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.adcreative-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -108,6 +113,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.account-adimages
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -123,6 +129,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-adlabels
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -138,6 +145,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-adrules-library
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -153,6 +161,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-ads
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -168,6 +177,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.ad-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -185,6 +195,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.account-adsets
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -200,6 +211,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.adset-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -217,6 +229,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.account-adspixels
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -232,6 +245,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-advideos
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -247,6 +261,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.campaign-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -264,6 +279,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.account-customaudiences
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -279,6 +295,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-customconversions
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -294,6 +311,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-delivery-estimate
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -310,6 +328,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-reachestimate
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -326,6 +345,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-targetingbrowse
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -342,6 +362,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-targetingsearch
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -358,6 +379,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.account-targetingsuggestions
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -374,6 +396,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.ad
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -389,6 +412,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.ad-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -406,6 +430,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.ad-leads
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -422,6 +447,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs leads_retrieval
 - id: meta-ads.x.ad-previews
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: meta-ads
@@ -438,6 +464,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.adset
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -453,6 +480,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.adset-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -470,6 +498,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.adset-ads
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -485,6 +514,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.business-owned-ad-accounts
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -500,6 +530,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.campaign
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -515,6 +546,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.campaign-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: meta-ads
@@ -532,6 +564,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
   scope_gap: treg's OAuth app does not request this; needs ads_management
 - id: meta-ads.x.campaign-ads
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET
@@ -547,6 +580,7 @@ endpoints:
     note: no per-call charge; counted against the app's Graph API rate limit
   docs_url: https://developers.facebook.com/docs/marketing-api/reference
 - id: meta-ads.x.campaign-adsets
+  added: '2026-07-28'
   tier: extended
   platform: meta-ads
   method: GET

@@ -51,6 +51,7 @@ endpoints:
     test_request:
       queryParams: {"user.fields": "id,name,username,description,public_metrics,verified,created_at"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/x.x.user.profile.json
     docs_url: https://docs.x.com/x-api/users/user-lookup-me
 
@@ -76,6 +77,7 @@ endpoints:
       pathParams: {username: "elonmusk"}
       queryParams: {"user.fields": "id,name,username,description,public_metrics,verified,created_at"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/x.x.user.profile.by_username.json
     docs_url: https://docs.x.com/x-api/users/user-lookup-by-username
 
@@ -102,6 +104,7 @@ endpoints:
       pathParams: {id: "44196397"}
       queryParams: {max_results: 5, "tweet.fields": "id,text,created_at,public_metrics"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/x.x.user.posts.json
     docs_url: https://docs.x.com/x-api/posts/user-posts-timeline-by-user-id
 
@@ -116,6 +119,7 @@ endpoints:
   # (Postiz sidesteps this by holding OAuth 1.0a user tokens and signing the legacy v1.1 upload
   # endpoint — a different credential shape treg does not store.)
   - id: x.x.post.create
+    added: '2026-07-28'
     kind: action
     capability: x.post.create
     platform: x
@@ -138,6 +142,7 @@ endpoints:
     docs_url: https://docs.x.com/x-api/posts/creation-of-a-post
 
   - id: x.x.post.reply
+    added: '2026-07-28'
     kind: action
     # Same route and same scope, but a distinct job — and the mechanism behind a thread: publish
     # the first post, then chain each next one to the id the previous call returned.

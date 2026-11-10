@@ -1,0 +1,27 @@
+{
+  "results": [
+    {
+      "error": "NONE",
+      "uuid": "00000000-0000-4000-8000-000000000000",
+      "request_parameters": {
+        "telephone_number": "447540822872",
+        "input_format": "",
+        "output_format": ""
+      },
+      "credits_spent": 0,
+      "detected_telephone_number": "447540822872",
+      "formatted_telephone_number": "",
+      "original_network": "AVAILABLE",
+      "original_network_details": {
+        "name": "Telefonica UK Limited",
+        "mccmnc": "23410",
+        "country_name": "United Kingdom",
+        "country_iso3": "GBR",
+        "area": "United Kingdom",
+        "country_prefix": "44"
+      },
+      "timestamp": "2026-10-07T19:51:24Z",
+      "telephone_number_type": "MOBILE"
+    }
+  ]
+}

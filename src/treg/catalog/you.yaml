@@ -46,10 +46,12 @@ endpoints:
       confidence: documented
       note: "One call costs $0.005 even with no matches; snippets, highlights, news and knowledge carry no add-on."
     verified: '2026-09-29'
+    added: '2026-09-29'
     example_response: examples/you.web.search.json
     docs_url: https://you.com/docs/api-reference/search/v1-search
 
   - id: you.web.search.highlights
+    added: '2026-09-29'
     capability: web.search
     platform: web
     domain: search
@@ -81,6 +83,7 @@ endpoints:
     docs_url: https://you.com/docs/guides/search/retrieve-page-content
 
   - id: you.web.search.full_page.cache
+    added: '2026-09-29'
     capability: web.search
     platform: web
     domain: search
@@ -115,6 +118,7 @@ endpoints:
     docs_url: https://you.com/docs/guides/search/retrieve-page-content
 
   - id: you.web.search.full_page.live
+    added: '2026-09-29'
     capability: web.search
     platform: web
     domain: search
@@ -176,16 +180,19 @@ endpoints:
       value: 0.001
       currency: USD
       unit: page
+      bills_miss: true
       source: docs
       source_url: https://you.com/docs/administration/billing
       checked: '2026-09-29'
       confidence: documented
       note: "$0.001 per page fetched; the hold follows the requested URL count and settles from the returned page count."
     verified: '2026-09-29'
+    added: '2026-09-29'
     example_response: examples/you.web.contents.json
     docs_url: https://you.com/docs/api-reference/contents
 
   - id: you.web.answer
+    added: '2026-09-29'
     capability: web.answer
     platform: web
     domain: answer
@@ -219,6 +226,7 @@ endpoints:
     docs_url: https://you.com/docs/api-reference/answer/v1-answer
 
   - id: you.web.research
+    added: '2026-09-29'
     capability: web.answer.research
     platform: web
     domain: answer
@@ -251,6 +259,7 @@ endpoints:
     docs_url: https://you.com/docs/api-reference/research/v1-research
 
   - id: you.web.research.background
+    added: '2026-09-29'
     capability: web.answer.research
     platform: web
     domain: answer
@@ -297,6 +306,7 @@ endpoints:
       interval: 5
 
   - id: you.web.research.status
+    added: '2026-09-29'
     kind: utility
     capability: web.answer.status
     platform: web
@@ -315,6 +325,7 @@ endpoints:
     docs_url: https://you.com/docs/api-reference/research/v1-research-task
 
   - id: you.finance.research
+    added: '2026-09-29'
     capability: stocks.research
     platform: stocks
     domain: stocks
@@ -345,6 +356,7 @@ endpoints:
     docs_url: https://you.com/docs/api-reference/finance-research/v1-finance_research
 
   - id: you.finance.research.exhaustive
+    added: '2026-09-29'
     capability: stocks.research
     platform: stocks
     domain: stocks

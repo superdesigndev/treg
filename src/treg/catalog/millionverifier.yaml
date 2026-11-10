@@ -23,7 +23,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/v3/
-    name: "Verify an email address is deliverable"
+    name: "Verify email — catch-all, disposable and role flags"
     summary: "Verify an email address in real time"
     input:
       queryParams:
@@ -45,6 +45,7 @@ endpoints:
       confidence: documented
       note: "One credit per verification at the $89 / 50,000-credit pack rate, including invalid results. Credits never expire. Upstream deducts a credit first, then automatically returns it for unknown/catch-all results on eligible accounts; accounts flagged for misuse may still pay. On platform keys, treg settles unknown/catch-all at zero without waiting for the upstream return and absorbs any eligibility exception. Own keys are not metered by treg. Credit returns were observed on the promotional account; the account owner confirmed a $89 purchase of the base 50,000-credit pack. This rate excludes the initial free credits and variable promotional bonuses; it is the documented base-pack rate, not the effective cost after bonuses."
     verified: '2026-09-08'
+    added: '2026-09-08'
     example_response: examples/millionverifier.people.email.verify.json
     docs_url: https://developer.millionverifier.com/#tag/Single-API
 
@@ -62,5 +63,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Free account balance check; also the registry's connection probe"}
     verified: '2026-09-08'
+    added: '2026-09-08'
     example_response: examples/millionverifier.account.usage.json
     docs_url: https://developer.millionverifier.com/#tag/API-credits

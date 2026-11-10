@@ -139,16 +139,12 @@ async def test_admin_review_pagination(clients, monkeypatch):
     assert (await clients.get('/admin/reviews', headers=headers, params={'limit': 101})).status_code == 422
 
 
-@pytest.mark.parametrize('surface', ['team', 'directory'])
-async def test_mcp_review_relay(clients, surface):
+async def test_mcp_review_relay(clients):
     from test_mcp import _call_tool as team_call, mcp_session
-    from test_mcp_directory import _call_tool as directory_call, directory_session
 
     org = await seed(clients)
-    context = mcp_session(clients) if surface == 'team' else directory_session()
-    call = team_call if surface == 'team' else directory_call
-    async with context as client:
-        result = await call(client, 'review', {'call_id': 'review-call', 'usefulness': 'partly',
+    async with mcp_session(clients) as client:
+        result = await team_call(client, 'review', {'call_id': 'review-call', 'usefulness': 'partly',
                                              'reason': 'Some results helped.'}, token=org['token'])
     row, = await rows()
     assert result == {'review_id': row.id, 'status': 'received'}
@@ -159,15 +155,16 @@ async def test_mcp_review_schema():
     from treg.mcp import mcp, directory_mcp
     from treg.feedback_contract import REVIEW_DESCRIPTION, REVIEW_USEFULNESS
 
-    for server in [mcp, directory_mcp]:
-        tool = next(tool for tool in await server.list_tools() if tool.name == 'review')
-        assert tool.description == REVIEW_DESCRIPTION
-        assert tool.input_schema['properties']['usefulness']['enum'] == list(REVIEW_USEFULNESS)
-        assert tool.input_schema['required'] == ['call_id', 'usefulness']
-        assert tool.annotations.read_only_hint is False
-        assert tool.annotations.destructive_hint is False
-        assert tool.annotations.open_world_hint is False
-        assert tool.annotations.idempotent_hint is False
+    tool = next(tool for tool in await mcp.list_tools() if tool.name == 'review')
+    assert tool.description == REVIEW_DESCRIPTION
+    assert tool.input_schema['properties']['usefulness']['enum'] == list(REVIEW_USEFULNESS)
+    assert tool.input_schema['required'] == ['call_id', 'usefulness']
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is False
+    assert tool.annotations.open_world_hint is True
+    assert tool.annotations.idempotent_hint is False
+    # the directory listing was submitted without it
+    assert 'review' not in {tool.name for tool in await directory_mcp.list_tools()}
 
 
 async def test_commit_failure_never_persists_or_acknowledges_a_review(clients, monkeypatch):

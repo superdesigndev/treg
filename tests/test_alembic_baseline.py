@@ -64,13 +64,27 @@ async def test_alembic_head_has_no_model_drift():
         await db.reset_db()
 
 
+async def _insert_at_revision(session, model, **fields) -> None:
+    """Insert a row using only the columns the CURRENT schema revision has for `model`'s table."""
+    name = model.__tablename__
+    present = {c["name"] for c in await session.run_sync(
+        lambda sync: sa_inspect(sync.connection()).get_columns(name))}
+    values = {k: v for k, v in model(**fields).model_dump().items() if k in present and v is not None}
+    # A table of exactly those columns: inserting through `model.__table__` would add the model's
+    # defaults for every column it knows, including ones the old revision does not have yet.
+    from sqlalchemy import column, table
+    await session.execute(insert(table(name, *(column(k) for k in values))).values(**values))
+
+
 async def _insert_org_at_revision(session, **fields) -> int:
     """Insert an org row using only the columns the CURRENT schema revision has."""
-    present = {c["name"] for c in await session.run_sync(
-        lambda sync: sa_inspect(sync.connection()).get_columns("org"))}
-    values = {k: v for k, v in Org(**fields).model_dump().items() if k in present and v is not None}
-    result = await session.execute(insert(Org.__table__).values(**values))
-    return result.inserted_primary_key[0]
+    await _insert_at_revision(session, Org, **fields)
+    return (await session.execute(select(Org.id).where(Org.slug == fields["slug"]))).scalar_one()
+
+
+async def _insert_user_at_revision(session, email: str) -> int:
+    await _insert_at_revision(session, User, email=email)
+    return (await session.execute(select(User.id).where(User.email == email))).scalar_one()
 
 
 async def test_managed_key_migration_backfills_human_and_agent_hashes():
@@ -86,14 +100,12 @@ async def test_managed_key_migration_backfills_human_and_agent_hashes():
             # columns that exist there, with the model's own defaults.
             org_id = await _insert_org_at_revision(session, name="Before upgrade", slug="before-upgrade")
             org = Org(id=org_id, name="Before upgrade", slug="before-upgrade")
-            human = User(email="human@example.dev")
-            agent = User(email="worker@agents.treg.local")
-            session.add(human); session.add(agent)
-            await session.flush()
-            session.add(Membership(user_id=human.id, org_id=org.id, role="owner",
+            human_id = await _insert_user_at_revision(session, "human@example.dev")
+            agent_id = await _insert_user_at_revision(session, "worker@agents.treg.local")
+            session.add(Membership(user_id=human_id, org_id=org.id, role="owner",
                                    token_hash=human_hash))
-            session.add(Membership(user_id=agent.id, org_id=org.id, role="member",
-                                   token_hash=agent_hash, created_by=human.email))
+            session.add(Membership(user_id=agent_id, org_id=org.id, role="member",
+                                   token_hash=agent_hash, created_by="human@example.dev"))
             await session.commit()
 
         await _upgrade_to("head")

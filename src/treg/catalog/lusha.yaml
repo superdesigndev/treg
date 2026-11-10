@@ -86,6 +86,7 @@ endpoints:
         2026-08-13). CAVEAT: re-revealing a contact already revealed to this account recently is
         discounted (an immediate repeat charged 1, not 2); value 2 is the fresh/upper-bound cost.'
     verified: 2026-08-13
+    added: '2026-07-28'
     example_response: examples/lusha.people.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
@@ -115,6 +116,7 @@ endpoints:
       currency: credit
       per: 1
       unit: result
+      bills_miss: true
       source: rate_card_api
       source_url: https://www.lusha.com/pricing/
       checked: '2026-09-04'
@@ -126,6 +128,7 @@ endpoints:
         with no number still costs the 1-credit search (creditsCharged 1, observed 2026-09-04 twice).
         Every response carries `billing.creditsCharged`, which is what treg settles on.'
     verified: 2026-09-04
+    added: '2026-09-04'
     example_response: examples/lusha.people.phone.find.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
@@ -148,6 +151,7 @@ endpoints:
       body: {pagination: {page: 0, size: 10}, filters: {contacts: {include: {jobTitles: ["Head of Marketing"]}}}}
     cost: {type: per_result, value: 1, currency: credit, per: 25, unit: result, source: observed, checked: '2026-07-31', confidence: verified, note: 'OBSERVED live 2026-07-28: billing.creditsCharged 1 for 10 results — 1 credit per up to 25 results (pricing.contactSearch), NOT free as the prose on this endpoint''s docs page claims. Re-confirmed 2026-07-31 against the live rate card (contactSearch: {credits: 1, perQuantity: 25}). Verify against GET /v3/account/usage.pricing before trusting the docs text on any Lusha endpoint'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.people.search.json
     docs_url: https://docs.lusha.com/apis/openapi/prospecting-search-and-enrich
 
@@ -187,6 +191,7 @@ endpoints:
         a 100-id batch is a 500-credit call. Unlike the search-and-enrich routes this one charges
         the reveal only, because the search was already paid for by the prospecting call.'
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.people.contacts.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
@@ -223,6 +228,7 @@ endpoints:
         POST /v3/companies/enrich on the ids you keep) is the cheaper one when you already hold ids.
         A no-match is free, as on the contact side.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/lusha.companies.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/company-search-and-enrich
 
@@ -245,6 +251,7 @@ endpoints:
       body: {pagination: {page: 0, size: 10}, filters: {companies: {include: {domains: ["lusha.com"]}}}}
     cost: {type: per_result, value: 1, currency: credit, per: 25, unit: result, source: observed, checked: '2026-07-31', confidence: verified, note: 'OBSERVED live 2026-07-28: billing.creditsCharged 1 for 1 result — 1 credit per up to 25 results (pricing.companySearch), not free as the docs prose claims. Re-confirmed 2026-07-31 against the live rate card (companySearch: {credits: 1, perQuantity: 25}), so a size=10 page and a size=25 page cost the same: page in 25s'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.companies.search.json
     docs_url: https://docs.lusha.com/apis/openapi/prospecting-search-and-enrich/searchprospectingcompanies
 
@@ -262,5 +269,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'explicitly free — consumes no credits (observed: the balance was unchanged across calls on 2026-07-31). Rate limit 5 req/min'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/lusha.account.usage.json
     docs_url: https://docs.lusha.com/apis/openapi/account-usage-api/get-account-usage

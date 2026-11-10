@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: app-store-app: 389801252 · Instagram · us"
+    ]
+  },
+  "recipe": "app-store-app",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 194,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "app_id": "389801252",
+      "bundle_id": "com.burbn.instagram",
+      "categories": [
+        "Photo & Video",
+        "Social Networking"
+      ],
+      "category": "Photo & Video",
+      "content_advisories": [
+        "Infrequent/Mild Alcohol, Tobacco, or Drug Use or References",
+        "Infrequent/Mild Profanity or Crude Humor"
+      ],
+      "content_rating": "12+",
+      "currency": "USD",
+      "description": "Little moments lead to big friendships. Share yours on Instagram. \n— From Meta\n\nConnect with friends, find other fans, and see what people around you are up to and into. Explore your interests and post what's going on, from your daily moments to life's highlights.\n\nShare what you’re up to and into:\n…",
+      "developer": "Instagram, Inc.",
+      "developer_id": "389801255",
+      "developer_url": "https://apps.apple.com/us/developer/instagram-inc/id389801255",
+      "developer_website": "http://instagram.com/",
+      "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/30/17/93/30179310-7a32-f8b3-5b31-a01addf6c367/Prod-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+      "languages": [
+        "BN",
+        "HR"
+      ],
+      "minimum_os": "16.3",
+      "name": "Instagram",
+      "price": 0.0,
+      "rating": 4.69,
+      "rating_count": 29577554,
+      "release_notes": "Performance optimizations and stability improvements for a smoother, more reliable experience.",
+      "released_at": "2010-10-06T08:12:41Z",
+      "screenshots_ipad": [
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/76/04/4d/76044de8-e420-2e6b-cea4-60821fb85156/10.5__Following_tab.png/360x480bb.jpg",
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/33/ab/20/33ab20cf-dddf-ac3b-8634-e98ccffeb900/10.5__Home.png/360x480bb.jpg"
+      ],
+      "screenshots_iphone": [
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/50/e2/8b/50e28b44-daa5-7101-6fb6-2d0e10fc72f3/1_iOS_5.5.jpg/392x696bb.jpg",
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/4d/a5/33/4da53369-3dce-b9b4-2a0c-1c6957dd40c4/1_iOS_5.5.jpg/392x696bb.jpg"
+      ],
+      "size_bytes": 623194112,
+      "url": "https://apps.apple.com/us/app/instagram/id389801252",
+      "version": "450.1.0",
+      "version_released_at": "2026-10-06T12:29:07Z"
+    }
+  ]
+}

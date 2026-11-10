@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>treg.to: Connect your agent to real data</title>
+<meta name="description" content="One prompt to paste into Claude Code, Codex or Cursor. Your agent sets treg.to up, signs you in, and comes back with real data: lead lists, AI search visibility, competitor ads, X posts. $1 free credit.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* the home page's system: sans everywhere, mono for identifiers, commands and counts; Geist Pixel on
+   the h1 only; cards are surfaces (shadow, not border); the prompt pane keeps the inverse surface. */
+:root{
+  --bg:#f4f4f1; --surface:#fff; --panel:#fafaf9; --panel2:#f0f0ee;
+  --ink:#1a1a1a; --muted:#666460; --muted2:#7c7c7c;   /* a step darker than the home page: 4.5:1+ on the page background for the instructions */
+  --line:#2626231a; --line2:#25252233;
+  --teal:#1a7da6;
+  --green:#118453; --amber:#ba6603; --red:#c0362f;
+  --inverse:#1a1a1a; --inverse-ink:#f8f8f7;
+  --shadow-sm:0 1px 2px #00000014;
+  --shadow-md:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f;
+  --shadow-lg:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f,0 8px 16px #0000000a;
+  --ease:cubic-bezier(.2,.72,.25,1); --ease-out:cubic-bezier(.22,1,.36,1);
+  --r:15px; --rb:10px;
+  --display:"Geist Pixel",Georgia,serif;
+  --sans:"Suisse Intl","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:0;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* nav */
+.nav{display:flex;align-items:center;gap:22px;padding:18px 24px;max-width:1180px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:600;font-size:15px;color:var(--ink)}
+.brand .glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--inverse);color:var(--inverse-ink)}
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
+.nav .links{margin-left:auto;display:flex;align-items:center;gap:22px}
+.nav .links #navSignin{font-family:var(--sans);font-size:13.5px;font-weight:500;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
+.nav .links #navSignin:hover{color:var(--ink)}
+.candy{display:inline-block;font-family:var(--sans);font-weight:550;letter-spacing:.01em;color:var(--inverse-ink);background:var(--inverse);border:0;border-radius:999px;padding:12px 26px;font-size:14px;cursor:pointer;box-shadow:var(--shadow-sm);transition:box-shadow .24s var(--ease),transform .12s var(--ease-out)}
+.candy:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.candy.sm{padding:8px 18px;font-size:12.5px}
+
+/* hero: one job, one prompt */
+.hero{padding:70px 0 0;text-align:center;position:relative}
+.kicker{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:5px 15px;background:var(--surface)}
+.hero-h1{font-family:var(--display);font-weight:400;letter-spacing:0;margin:28px 0 0;font-size:clamp(30px,4.6vw,58px);line-height:1.16}
+.hero-h1 .l2{font-size:.58em;display:block;margin-top:.42em;color:var(--muted)}
+
+/* the agent picker: the four most picked, the rest behind More */
+.givebox{max-width:860px;margin:44px auto 0;border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow-lg);padding:16px 16px 16px;text-align:left}
+.gb-h{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13.5px;font-weight:600;color:var(--ink);padding:2px 4px 12px}
+.agents{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:0 4px 16px}
+.agents button{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-size:13.5px;font-weight:550;letter-spacing:-.1px;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:99px;padding:8px 15px 8px 10px;cursor:pointer;transition:color .2s var(--ease),background .2s var(--ease),box-shadow .2s var(--ease),border-color .2s}
+.agents button img{width:18px;height:18px;display:block;border-radius:4px}
+.agents>button,.more>button{height:38px}
+.agents button:hover{color:var(--ink);border-color:var(--line2)}
+.agents button[aria-pressed="true"]{color:var(--ink);background:var(--panel2);border-color:transparent;box-shadow:var(--shadow-sm)}
+.agents .caret{width:10px;height:10px;margin-left:-2px;opacity:.7;transition:transform .2s var(--ease)}
+.agents #moreBtn{padding-left:15px}
+.agents #moreBtn.has-icon{padding-left:10px}
+.agents #moreBtn[aria-expanded="true"] .caret{transform:rotate(180deg)}
+.more{position:relative}
+.more-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:20;min-width:190px;background:var(--surface);border-radius:12px;box-shadow:0 0 0 1px var(--line),var(--shadow-lg);padding:6px;display:none}
+.more-menu.open{display:block}
+.agents .more-menu button{display:flex;width:100%;border:0;border-radius:8px;padding:8px 10px;color:var(--ink);font-weight:500}
+.agents .more-menu button:hover,.agents .more-menu button:focus-visible{background:var(--panel2);box-shadow:none}
+.agents .more-menu button[aria-checked="true"]{background:var(--panel2)}
+.agents .more-menu .blank{width:18px;height:18px;flex:none}
+
+/* connector steps (Claude.ai, ChatGPT, Grok Bot) */
+.gb-steps{background:var(--panel);border-radius:var(--rb);padding:4px 20px 18px}
+.gb-steps ol{margin:0;padding:0 0 0 22px}
+.gb-steps li{margin:16px 0 0;font-size:14.5px;color:var(--ink);line-height:1.55}
+.gb-steps li::marker{font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.step-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.step-row .then{color:var(--muted);font-size:13.5px}
+.connect{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line2);border-radius:999px;padding:7px 16px 7px 10px;font:550 14px var(--sans);color:var(--ink);box-shadow:var(--shadow-sm);transition:border-color .12s,box-shadow .24s var(--ease)}
+.connect:hover{border-color:var(--muted);box-shadow:var(--shadow-md)}
+.connect img{width:18px;height:18px;border-radius:4px}
+.connect svg{width:12px;height:12px;color:var(--muted)}
+#stepAsk .composer{margin-top:10px}
+
+/* the prompt: drawn as the chat box it gets pasted into, one font, one button; the full text is one click away */
+.composer{background:var(--surface);border:1px solid var(--line2);border-radius:24px;box-shadow:0 2px 6px #0000000d,0 10px 28px #0000000d;padding:18px 16px 12px 22px;text-align:left}
+.gb-task{font:400 18px/1.5 var(--sans);color:var(--ink);margin:0 6px 0 0;text-wrap:pretty}
+.gb-task .caret{display:inline-block;width:2px;height:1.1em;background:#d9692f;vertical-align:-.18em;margin-left:3px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.composer pre{margin:0 6px 0 0;max-height:300px;overflow:auto;font:400 15px/1.6 var(--sans);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
+.js .composer:not(.full) pre{display:none}
+.js .composer.full .gb-task{display:none}
+.composer pre .dim{color:var(--muted)}
+.composer pre .cmd{font-family:var(--mono);font-size:13px;background:var(--panel2);border-radius:6px;padding:1px 6px}
+.composer-bar{display:flex;align-items:center;gap:6px;margin-top:16px}
+.agent-chip{display:inline-flex;align-items:center;gap:7px;font:500 13px var(--sans);color:var(--ink);background:var(--panel2);border-radius:9px;padding:6px 10px}
+.agent-chip img{width:16px;height:16px;border-radius:4px}
+.toggle{display:none;background:none;border:0;border-radius:9px;padding:6px 10px;font:500 13px var(--sans);color:var(--muted);cursor:pointer}
+.js .toggle{display:inline-block}
+.toggle:hover{color:var(--ink);background:var(--panel2)}
+.copy-cta{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:8px;background:var(--inverse);color:var(--inverse-ink);border:0;border-radius:999px;padding:11px 20px 11px 16px;font:600 14.5px var(--sans);letter-spacing:-.1px;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .12s var(--ease-out),box-shadow .24s var(--ease),background .2s}
+.copy-cta svg{width:16px;height:16px}
+.copy-cta:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg)}
+.copy-cta.done{background:var(--green)}
+.after{margin:18px auto 0;max-width:640px;font-size:13.5px;color:var(--muted);line-height:1.6;text-wrap:balance}
+.after code{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel2);padding:1px 6px;border-radius:5px}
+.after button{background:none;border:0;padding:0;font:inherit;color:var(--teal);cursor:pointer}
+.after button:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* the use cases: a bento of real runs. Spans go by position, so the visitor's own card can lead. */
+.uses{margin-top:110px}
+.uses h2{text-align:center;font-weight:650;letter-spacing:-.4px;font-size:clamp(26px,3.2vw,36px);margin:0 0 8px;line-height:1.15}
+.uses .lede{text-align:center;color:var(--muted);margin:0 auto 36px;max-width:36em}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px}
+.swipe{display:none;justify-content:center;gap:6px;margin-top:4px}
+.swipe i{width:6px;height:6px;border-radius:50%;background:var(--line2);transition:background .2s,width .2s var(--ease)}
+.swipe i.on{width:16px;border-radius:3px;background:var(--ink)}
+.grid>.use:nth-child(4n+1),.grid>.use:nth-child(4n){grid-column:span 7}
+.grid>.use:nth-child(4n+2),.grid>.use:nth-child(4n+3){grid-column:span 5}
+.use{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow-md);overflow:hidden;display:flex;flex-direction:column}
+.use-top{padding:26px 26px 0}
+.cat{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2)}
+.cat .ic{display:flex}
+.cat .ic img{width:22px;height:22px;padding:3px;border-radius:50%;background:#fff;box-shadow:var(--shadow-sm);margin-right:-5px}
+.cat .ic+span{margin-left:5px}
+.use h3{font-weight:650;letter-spacing:-.4px;font-size:22px;line-height:1.2;margin:14px 0 20px;text-wrap:balance}
+.bubble-row{position:relative;display:flex;justify-content:flex-end;padding:0 20px}
+.bubble-row::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--line)}
+.bubble{position:relative;display:inline-flex;gap:9px;align-items:flex-start;max-width:94%;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font:400 14px/1.45 var(--sans);color:var(--ink);text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.bubble:hover{border-color:var(--line2);background:#eaeae7}
+.bubble svg,.chip svg{width:14px;height:14px;flex:none;margin-top:3px;color:var(--muted2)}
+.bubble .hint{display:none;font:500 11px/1.9 var(--mono);color:var(--muted2);margin-left:4px}
+.bubble:hover .hint{display:inline}
+.bubble.done,.chip.done{border-color:var(--green)}
+.bubble.done svg,.chip.done svg{color:var(--green)}
+.use-body{flex:1;display:flex;flex-direction:column;background:var(--panel);padding:22px 20px 18px}
+.use-body>.viz{flex:1;display:flex;flex-direction:column;justify-content:center}
+.tally{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding-top:16px;font-size:12.5px;color:var(--muted)}
+.tally b{font-family:var(--mono);font-weight:500;color:var(--green)}
+.tally s{text-decoration-color:var(--red);text-decoration-thickness:2px}
+
+/* the runs, drawn the way the agent's answer reads */
+.box{background:var(--surface);border-radius:var(--rb);box-shadow:var(--shadow-sm);overflow:hidden}
+.box-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;font-weight:600}
+.box-h .t{display:flex;align-items:center;gap:8px;min-width:0}
+.box-h .t img{width:16px;height:16px}
+.box-h small{flex:none;font:400 11px var(--mono);color:var(--muted2)}
+.person{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:11px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.person:last-child{border-bottom:0}
+.person img{width:22px;height:22px;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
+.person .who{font-size:13.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.person .who small{display:block;font-size:12px;color:var(--muted)}
+.person .em{font:400 12px var(--mono);color:var(--green);white-space:nowrap}
+.person .em::before{content:"✓ ";font-weight:600}
+.chat{background:var(--surface);border-radius:var(--rb);box-shadow:var(--shadow-sm);padding:16px}
+.chat .q{width:fit-content;max-width:85%;margin-left:auto;background:var(--panel2);border-radius:14px 14px 4px 14px;padding:8px 13px;font-size:13.5px}
+.chat .a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;margin-top:14px}
+.chat .a>img{width:24px;height:24px;border-radius:50%;box-shadow:0 0 0 1px var(--line);padding:3px;background:#fff}
+.chat ol{margin:0;padding:0;list-style:none;counter-reset:r}
+.chat li{counter-increment:r;display:flex;align-items:center;gap:8px;padding:5px 8px;margin:0 -8px;border-radius:7px;font-size:13.5px}
+.chat li::before{content:counter(r);font:400 11.5px var(--mono);color:var(--muted2);width:12px}
+.chat li small{margin-left:auto;font:400 11.5px var(--mono);color:var(--muted2)}
+.chat li.you{background:#11845314}
+.chat li.you small{color:var(--green)}
+.chat .src{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.chat .src span{font-family:var(--mono);background:var(--panel2);border-radius:99px;padding:2px 9px}
+.fan{display:grid;place-items:center;padding:6px 0 4px}
+.fan>*{grid-area:1/1}
+.ad{width:min(46%,236px);background:var(--surface);border-radius:11px;box-shadow:var(--shadow-lg),0 0 0 1px var(--line);overflow:hidden;transition:transform .35s var(--ease)}
+.ad .hd{display:flex;align-items:center;gap:7px;padding:8px 10px;font-size:12px;font-weight:600}
+.ad .hd img{width:18px;height:18px;border-radius:50%}
+.ad .hd small{font-weight:400;color:var(--muted2);font-size:11px}
+.ad .cr{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:var(--panel2)}
+.ad .ft{display:flex;justify-content:space-between;gap:6px;padding:7px 10px;font:400 10.5px var(--mono);color:var(--muted)}
+.fan .l{transform:translateX(-60%) rotate(-5deg) scale(.84)}
+.fan .r{transform:translateX(60%) rotate(5deg) scale(.84)}
+.fan .c{z-index:1}
+.use:hover .fan .l{transform:translateX(-66%) rotate(-6deg) scale(.86)}
+.use:hover .fan .r{transform:translateX(66%) rotate(6deg) scale(.86)}
+.angles{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:14px}
+.angles span{font-size:12px;background:var(--surface);box-shadow:0 0 0 1px var(--line);border-radius:99px;padding:3px 10px;color:var(--ink)}
+.angles span::before{content:attr(data-n);font:400 11px var(--mono);color:var(--muted2);margin-right:6px}
+.tw{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;background:var(--surface);border-radius:12px;box-shadow:var(--shadow-sm);padding:12px 14px}
+.tw+.tw{margin-top:10px}
+.tw .av{width:34px;height:34px;border-radius:50%}
+.tw .by{display:flex;align-items:center;gap:4px;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden}
+.tw .by svg{width:14px;height:14px;flex:none}
+.tw .by span{font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.tw p{margin:2px 0 0;font-size:13.5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tw .media{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-top:8px;box-shadow:0 0 0 1px var(--line)}
+.tw .m{display:flex;gap:14px;margin-top:6px;font:400 11.5px var(--mono);color:var(--muted)}
+.tw .m b{font-weight:500;color:var(--ink)}
+
+/* more things to ask */
+.asks{margin-top:90px;text-align:center}
+.asks h2{font-weight:650;letter-spacing:-.4px;font-size:clamp(24px,3vw,32px);margin:0 0 22px}
+.asks>p{color:var(--muted);margin:0 auto 24px;max-width:34em}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;max-width:960px;margin:0 auto}
+.chip{display:inline-flex;gap:8px;align-items:flex-start;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font:400 14px/1.45 var(--sans);color:var(--ink);box-shadow:var(--shadow-sm);transition:border-color .12s}
+.chip:hover{border-color:var(--line2)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;transition:.25s var(--ease);background:var(--inverse);color:var(--inverse-ink);padding:11px 18px;border-radius:999px;font-size:13.5px;z-index:300;pointer-events:none;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow-lg)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+.trust{display:flex;justify-content:center;gap:10px 28px;flex-wrap:wrap;margin:64px auto 0;font-size:13.5px;color:var(--muted)}
+.trust span::before{content:"✓ ";color:var(--green);font-weight:600}
+.fine{max-width:860px;margin:22px auto 0;font-size:11.5px;color:var(--muted2);text-align:center;line-height:1.6}
+footer{border-top:1px solid var(--line);margin:72px auto 0;padding:22px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);max-width:1180px}
+footer a{color:var(--muted);margin-left:18px}
+footer a:hover{color:var(--ink)}
+
+/* sign-in modal, the same doors as every launch page */
+.scrim{position:fixed;inset:0;background:#1a1a1a8c;display:none;place-items:center;z-index:200;padding:20px;backdrop-filter:blur(6px)}
+.scrim.open{display:grid}
+.smodal{width:min(400px,94vw);background:var(--surface);border-radius:var(--r);padding:30px 28px;text-align:center;position:relative;box-shadow:var(--shadow-lg)}
+.smodal .cls{position:absolute;top:12px;right:15px;background:none;border:0;color:var(--muted);font-size:16px;cursor:pointer}
+.smodal h3{font-weight:650;font-size:21px;margin:4px 0 6px;letter-spacing:-.3px}
+.smodal p{font-size:13px;color:var(--muted);margin:0 0 16px}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:9px;font-weight:500;font-size:14px;font-family:var(--sans);padding:11px 20px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);cursor:pointer}
+.pill:hover{background:var(--panel)}
+.pill.dark{background:var(--inverse);color:var(--inverse-ink);border-color:var(--inverse)}
+.pill.dark:hover{background:#2b2b2a}
+.smodal .div{display:flex;align-items:center;gap:10px;margin:16px 0 6px;color:var(--muted);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-family:var(--mono)}
+.smodal .div::before,.smodal .div::after{content:"";flex:1;height:1px;background:var(--line)}
+.smodal input{width:100%;margin-top:9px;background:var(--panel);border:1px solid var(--line2);color:var(--ink);border-radius:var(--rb);padding:11px 13px;font-family:var(--mono);font-size:13px;outline:none}
+.smodal input:focus{border-color:var(--ink)}
+.smodal .err{color:var(--red);font-size:12px;margin-top:10px;min-height:14px}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;transform:none!important}}
+@media (max-width:900px){
+  .grid{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -24px;padding:2px 24px 14px;scrollbar-width:none;overscroll-behavior-x:contain}
+  .grid::-webkit-scrollbar{display:none}
+  .grid>.use{flex:0 0 min(86%,520px);scroll-snap-align:center;box-shadow:var(--shadow-sm)}
+  .swipe{display:flex}
+}
+@media (max-width:640px){
+  .wrap{padding:0 16px}
+  .nav{padding-left:16px;padding-right:16px}
+  .hero{padding-top:44px}
+  .kicker{font-size:10.5px;letter-spacing:.02em;padding:5px 12px}
+  .hero-h1{font-size:29px}
+  .givebox{padding:12px 10px 10px}
+  .composer{padding:16px 12px 12px 16px;border-radius:20px}
+  .gb-task{font-size:17px}
+  .composer-bar{flex-wrap:wrap}
+  .copy-cta{order:3;width:100%;margin:6px 0 0;justify-content:center;padding:13px 20px}
+  .agents{gap:6px}
+  .agents button{padding:7px 11px 7px 8px;font-size:12.5px}
+  .gb-steps{padding:2px 12px 14px}
+  .gb-steps ol{padding-left:18px}
+  .uses{margin-top:80px}
+  .grid{margin:0 -16px;padding:2px 16px 14px}
+  .use-top{padding:22px 18px 0}
+  .use-body{padding:18px 12px 14px}
+  .bubble-row{padding:0 12px}
+  .ad{width:min(60%,236px)}
+  .ad .ft{white-space:nowrap}
+  .person .em{display:none}
+  footer a{margin:0 16px 0 0}
+}
+</style>
+</head>
+<body data-page="start">
+
+<nav class="nav" aria-label="treg.to">
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
+  <div class="links">
+    <button type="button" id="navSignin">Sign in</button>
+    <button type="button" class="candy sm" data-cta="nav">Start free</button>
+  </div>
+</nav>
+
+<main class="wrap">
+<section class="hero" aria-labelledby="heroH1">
+  <span class="kicker" id="heroKicker">{ENDPOINTS} tools · {PROVIDERS} providers · $1 free</span>
+  <h1 class="hero-h1" id="heroH1">Connect your agent to real data</h1>
+
+  <div class="givebox">
+    <div class="gb-h" id="agentsH">Which agent do you use?</div>
+    <div class="agents" id="agents" role="group" aria-labelledby="agentsH"></div>
+
+    <!-- connector agents (Claude.ai, ChatGPT, Grok Bot): connect once, then paste the ask; the script
+         moves the prompt pane into step 3 -->
+    <div class="gb-steps" id="paneConnector" hidden>
+      <ol>
+        <li><div class="step-row" id="stepConnect"></div></li>
+        <li>Sign in when it asks. <b>$1 free</b>, no card.</li>
+        <li id="stepAsk">Then paste this into the chat:</li>
+      </ol>
+    </div>
+
+    <!-- terminal agents (Claude Code, Codex, Cursor, other): one paste, setup included -->
+    <div id="paneSlot">
+      <div class="composer" id="pane">
+        <p class="gb-task"><span id="paneTask">Propose 3 things you can do with real data</span><span class="caret" aria-hidden="true"></span></p>
+        <pre id="heroPrompt"><span class="dim">Set up treg if this agent does not have it yet. Run
+</span><span class="cmd">curl -fsSL https://treg.to/install.sh | sh &amp;&amp; treg login</span><span class="dim">
+and let me sign in when the browser opens (new accounts get $1 free). How it works: https://treg.to/llms.txt
+
+Then: </span><span class="ask">Look at what we are working on and propose three things you could do for us right now with real data (lead lists with work emails, whether AI assistants recommend us, a competitor's live ads, what is working on X), with the price of each. Then run the one I pick and tell me what it cost.</span></pre>
+        <div class="composer-bar">
+          <span class="agent-chip" id="paneAgent"><img src="/media/landing/assets/claudecode-color.svg" alt="">Claude Code</span>
+          <button type="button" class="toggle" id="paneToggle" aria-expanded="false" aria-controls="heroPrompt">See full prompt</button>
+          <button type="button" class="copy-cta" id="copyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy for Claude Code</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="after" id="after"><noscript>Select the prompt above and copy it. To pick a different agent, or to sign in, enable JavaScript or go to <a href="/app">treg.to/app</a>.</noscript></p>
+</section>
+
+<section class="uses" aria-labelledby="usesH">
+  <h2 id="usesH">What came back, and what it cost</h2>
+  <p class="lede">Each card is a real run through treg.to. Click a question to ask your agent the same.</p>
+  <div class="grid" id="grid">
+
+    <article class="use" data-job="leads">
+      <div class="use-top">
+        <div class="cat"><span class="ic"><img src="/logos/platforms/linkedin.svg" alt=""></span><span>leads</span></div>
+        <h3>Leads with work emails, without a $120 seat</h3>
+      </div>
+      <div class="bubble-row"><button type="button" class="bubble" data-ask="Find heads of marketing at financial services companies in London, with work emails"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Find heads of marketing at financial services companies in London, with work emails<span class="hint">copy</span></span></button></div>
+      <div class="use-body">
+        <div class="viz">
+          <div class="box">
+            <div class="box-h"><span class="t">Heads of marketing · financial services · London</span><small>458 found</small></div>
+            <div class="person"><img src="/media/start/co-lseg.png" alt=""><div class="who">Group Head of Marketing<small>LSEG</small></div><span class="em">a•••@lseg.com</span></div>
+            <div class="person"><img src="/media/start/co-barclaycard.png" alt=""><div class="who">Director, Head of Marketing Operations<small>Barclaycard Payments</small></div><span class="em">g•••@barclayscorp.com</span></div>
+            <div class="person"><img src="/media/start/co-elwood.png" alt=""><div class="who">Head of Marketing<small>Elwood</small></div><span class="em">t•••@elwood.io</span></div>
+          </div>
+        </div>
+        <div class="tally"><span><b>$0.0076</b> for 20 people · 6 of 6 work emails <b>$0.036</b></span><span><s>Sales Navigator $119.99/mo</s></span></div>
+      </div>
+    </article>
+
+    <article class="use" data-job="seo">
+      <div class="use-top">
+        <div class="cat"><span class="ic"><img src="/logos/platforms/chatgpt.svg" alt=""><img src="/logos/platforms/perplexity.svg" alt=""><img src="/logos/platforms/gemini.svg" alt=""></span><span>ai answers</span></div>
+        <h3>Is ChatGPT naming you, or a competitor?</h3>
+      </div>
+      <div class="bubble-row"><button type="button" class="bubble" data-ask="Does ChatGPT recommend us for &quot;best CRM for a startup&quot;? Who does it name instead, and which pages does it cite?"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Does ChatGPT recommend us for "best CRM for a startup"?<span class="hint">copy</span></span></button></div>
+      <div class="use-body">
+        <div class="viz">
+          <div class="chat">
+            <div class="q">What is the best CRM for a startup?</div>
+            <div class="a"><img src="/logos/platforms/chatgpt.svg" alt="ChatGPT">
+              <div>
+                <ol>
+                  <li>HubSpot CRM<small>best overall</small></li>
+                  <li class="you">Attio<small>you, if you're Attio</small></li>
+                  <li>Pipedrive</li>
+                  <li>Zoho CRM</li>
+                  <li>Close CRM</li>
+                </ol>
+                <div class="src">Cited<span>parlel.com</span><span>emergent.sh</span><span>spotsaas.com</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tally"><span><b>$0.0036</b> a check</span><span><s>Semrush AI Visibility $99/mo</s></span></div>
+      </div>
+    </article>
+
+    <article class="use" data-job="ads">
+      <div class="use-top">
+        <div class="cat"><span class="ic"><img src="/logos/platforms/meta-ads.svg" alt=""></span><span>competitor ads</span></div>
+        <h3>A competitor's live ads, creative and all</h3>
+      </div>
+      <div class="bubble-row"><button type="button" class="bubble" data-ask="What ads is Notion running on Facebook and Instagram right now? Group them by angle and tell me which have run the longest."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>What ads is Notion running on Facebook and Instagram?<span class="hint">copy</span></span></button></div>
+      <div class="use-body">
+        <div class="viz">
+          <div class="fan">
+            <div class="ad l"><div class="hd"><img src="/media/start/x-notion.jpg" alt="">Notion <small>Sponsored</small></div><img class="cr" src="/media/start/ad-2am.jpg" alt="Notion video ad: You at 2 a.m." loading="lazy"><div class="ft"><span>video</span><span>since 5 Aug</span></div></div>
+            <div class="ad r"><div class="hd"><img src="/media/start/x-notion.jpg" alt="">Notion <small>Sponsored</small></div><img class="cr" src="/media/start/ad-200-hours.jpg" alt="Notion video ad: We are saving up to 200 hours per month" loading="lazy"><div class="ft"><span>video</span><span>since 5 Aug</span></div></div>
+            <div class="ad c"><div class="hd"><img src="/media/start/x-notion.jpg" alt="">Notion <small>Sponsored</small></div><img class="cr" src="/media/start/ad-workspace.jpg" alt="Notion image ad: The connected AI workspace, free 3 month trial" loading="lazy"><div class="ft"><span>image · 9 ads</span><span>since 5 Aug</span></div></div>
+          </div>
+          <div class="angles"><span data-n="01">Free 3-month trial</span><span data-n="02">Custom AI agents</span><span data-n="03">Customer proof: 200 hours saved</span></div>
+        </div>
+        <div class="tally"><span><b>$0.00165</b> for Notion's 30 live ads</span></div>
+      </div>
+    </article>
+
+    <article class="use" data-job="social">
+      <div class="use-top">
+        <div class="cat"><span class="ic"><img src="/logos/platforms/x.svg" alt=""></span><span>x posts</span></div>
+        <h3>Which X posts got the likes, and who wrote them</h3>
+      </div>
+      <div class="bubble-row"><button type="button" class="bubble" data-ask="Find this week's most-liked X posts about AI agents, with author, followers and likes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Find this week's most-liked X posts about AI agents<span class="hint">copy</span></span></button></div>
+      <div class="use-body">
+        <div class="viz">
+          <div class="tw"><img class="av" src="/media/start/x-nvidiartxspark.jpg" alt=""><div>
+            <div class="by">NVIDIA RTX Spark <svg viewBox="0 0 24 24" aria-label="verified"><path fill="#1d9bf0" d="M22.5 12.5c0-1.58-.88-2.95-2.18-3.65.15-.44.23-.91.23-1.4 0-2.21-1.71-4-3.82-4-.47 0-.92.08-1.34.25C14.79 2.39 13.49 1.5 12 1.5s-2.79.89-3.39 2.2c-.42-.17-.87-.25-1.34-.25-2.11 0-3.82 1.79-3.82 4 0 .49.08.96.23 1.4C2.38 9.55 1.5 10.92 1.5 12.5c0 1.5.8 2.8 1.97 3.53-.03.2-.04.4-.04.6 0 2.21 1.71 4 3.82 4 .47 0 .92-.09 1.34-.25.6 1.31 1.9 2.2 3.39 2.2s2.79-.89 3.39-2.2c.42.16.87.25 1.34.25 2.11 0 3.82-1.79 3.82-4 0-.2-.01-.4-.04-.6 1.17-.73 1.97-2.03 1.97-3.53zm-12.4 4.06-3.6-3.6 1.4-1.42 2.2 2.2 5.1-5.25 1.42 1.4-6.52 6.67z"/></svg><span>@NVIDIARTXSpark · 21 Oct</span></div>
+            <p>When @jensenhuang asks for a somersault, you deliver. 🦆 See how AI agents on NVIDIA RTX Spark help bring @huggingface's Microduck from simulation to the real world.</p>
+            <img class="media" src="/media/start/x-media0.jpg" alt="" loading="lazy">
+            <div class="m"><span><b>6.7K</b> likes</span><span><b>901</b> reposts</span><span><b>356K</b> views</span></div>
+          </div></div>
+        </div>
+        <div class="tally"><span><b>$0.00065</b> for 20 posts</span><span><s>X API $0.10</s></span></div>
+      </div>
+    </article>
+
+
+
+  </div>
+  <div class="swipe" id="swipe" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+
+  <div class="asks">
+    <h2>More things to ask</h2>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="trust"><span>$1 free credit, no card</span><span>Prepaid, so no surprise bills</span><span>Use your own keys at no extra charge</span><span>Open source</span></div>
+  <p class="fine">Prices are what treg.to charged on the real runs shown, on 22 Oct 2026, with no markup; another provider can cost more. The people found are shown by role and company only. Work emails for the same 24 people on 14 Oct 2026: treg.to found 20 for $0.17, Clay 18 for $0.88 (13.2 credits at the Launch plan's $0.0668 a credit, 15 Sep 2026). Vendor prices from their pricing pages on 13 and 14 Oct 2026: Semrush AI Visibility Base $99 a month per domain billed annually, LinkedIn Sales Navigator Core $119.99 a month billed monthly, X API $0.005 per post read.</p>
+</section>
+</main>
+
+<footer>
+  <span>© 2026 treg.to · open source</span>
+  <span><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub</a></span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-modal="true" aria-labelledby="signinH">
+    <button class="cls" id="signinClose" type="button" aria-label="Close">✕</button>
+    <h3 id="signinH">Start free</h3>
+    <p>Your first sign-in creates your account with $1 of free credit.</p>
+    <a class="pill dark" href="/auth/google" data-method="google">Continue with Google</a>
+    <a class="pill" href="/auth/github" data-method="github">Continue with GitHub</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com" autocomplete="email"/>
+      <button class="pill" id="em-btn1" type="button">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code" autocomplete="one-time-code"/>
+      <button class="pill dark" id="em-btn2" type="button">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/captcha.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  document.documentElement.classList.add('js');
+  function $(id) { return document.getElementById(id); }
+  function track(ev, props) { try { if (window.TregTracking) window.TregTracking.capture(ev, props || {}); } catch (e) {} }
+
+  /* ---------- one job per ad group (?job=); the visitor picks their agent and gets that agent's connection ----------
+     Terminal agents (Claude Code, Codex, Cursor, anything with a shell) get ONE paste: the setup (install +
+     sign in) and then the task; the full prompt behind "See the full prompt" is exactly what the clipboard
+     gets. Connector agents (Claude.ai, ChatGPT, Grok Bot) cannot run a shell, so they connect treg once (the
+     Claude.ai add-connector deep link the dashboard uses, the treg plugin listing on chatgpt.com, the Grok
+     plugin) and then paste the task alone, prefixed "Use treg to". The tasks say "us" and tell the agent to
+     work out who that is from the project, or ask one question. `short` is the line the pane shows. */
+  var MCP_URL = 'https://treg.to/mcp/';
+  var SETUP_CMD = 'curl -fsSL https://treg.to/install.sh | sh && treg login';
+  /* An ad click in the cookie (adtrack.js runs first) gets a short install link bound to it, so a sign-in
+     finished in an agent's own browser still attributes. Plain command without a click or until the code arrives. */
+  if (/(^|;\s*)treg_ad=/.test(document.cookie)) {
+    fetch('/i', { method: 'POST', credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var code = d && d.code;
+      if (code && /^[a-z0-9]{6}$/.test(code)) { SETUP_CMD = 'curl -fsSL https://treg.to/i/' + code + ' | sh && treg login'; render(); }
+    }).catch(function () {});
+  }
+  var SETUP_BEFORE = 'Set up treg if this agent does not have it yet. Run\n';
+  var SETUP_AFTER = '\nand let me sign in when the browser opens (new accounts get $1 free). How it works: https://treg.to/llms.txt\n\nThen: ';
+  var JOBS = {
+    general: {   /* bare /start, no ad group: the whole offer, and a task that lets the agent propose */
+      kicker: '{ENDPOINTS} tools · {PROVIDERS} providers · $1 free',
+      h1: 'Connect your agent to real data', l2: 'leads, AI answers, competitor ads, X posts · no subscriptions',
+      short: 'Propose 3 things you can do with real data',
+      task: 'look at what we are working on and propose three things you could do for us right now with real data (lead lists with work emails, whether AI assistants recommend us, a competitor\'s live ads, what is working on X), with the price of each. Then run the one I pick and tell me what it cost.'
+    },
+    leads: {
+      kicker: 'lead lists · cents per person · $1 free',
+      h1: 'A lead list from your agent', l2: 'with work emails, for cents',
+      short: 'Find 25 people we should sell to, with work emails',
+      task: 'find 25 people we should sell to. Work out our ideal customer from what you can see, or ask me in one question. Search by role, company and location, then find each person\'s work email. Save them as leads.csv with name, title, company, LinkedIn URL and email, and tell me what it cost.'
+    },
+    seo: {
+      kicker: 'ai search visibility · $0.0036 a check · $1 free',
+      h1: 'Is AI recommending you?', l2: 'ChatGPT, Perplexity and Google AI, checked by your agent',
+      short: 'Check if ChatGPT, Perplexity and Google AI recommend us',
+      task: 'check whether ChatGPT, Perplexity and Google AI recommend us. Work out our brand and what we sell from what you can see, or ask me in one question. Write the 5 questions a buyer would ask and run each one. For every question show where we appear, which brands are named instead, and which pages are cited. Finish with the one thing to fix first, and tell me what the run cost.'
+    },
+    ads: {
+      kicker: 'competitor ads · $0.00165 a competitor · $1 free',
+      h1: 'Every ad your competitor runs', l2: 'Facebook and Instagram, live, from your agent',
+      short: 'Show the Facebook and Instagram ads our competitors run',
+      task: 'find our top 3 competitors from what you can see, or ask me in one question. Pull the ads each one is running on Facebook and Instagram right now. Group them by angle and offer, tell me which have run the longest, and what it cost.'
+    },
+    social: {
+      kicker: 'x data · 150x cheaper than the x api · $1 free',
+      h1: "What's working on X", l2: 'posts, authors and likes, no X API plan',
+      short: "Find this week's most-liked X posts about our space",
+      task: 'find the most-liked X posts from the last 7 days about our space. Work out the topic from what you can see, or ask me in one question. Include author, followers, likes and link. Tell me what the top 10 have in common, and what the search cost.'
+    }
+  };
+  /* ordered the way the dashboard orders them: by how many who pick each agent go on to make a call.
+     The first PRIMARY show as buttons; the rest sit behind More. */
+  var LOBE = 'https://unpkg.com/@lobehub/icons-static-png@latest/light/';
+  var PRIMARY = 4;
+  var AGENTS = [
+    { id: 'claude-code', name: 'Claude Code', icon: '/media/landing/assets/claudecode-color.svg', kind: 'terminal' },
+    { id: 'codex', name: 'Codex', icon: '/media/landing/assets/codex-color.svg', kind: 'terminal' },
+    { id: 'claudeai', name: 'Claude.ai', icon: LOBE + 'claude-color.png', kind: 'connector',
+      connect: { button: 'Add treg.to to Claude.ai', href: 'https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Treg&connectorUrl=' + encodeURIComponent(MCP_URL), after: 'then click Connect' } },
+    { id: 'chatgpt', name: 'ChatGPT', icon: LOBE + 'openai.png', kind: 'connector',
+      connect: { button: 'Get the treg.to plugin', href: 'https://chatgpt.com/plugins/plugin_asdk_app_6ac4c2df9c548191b83ea0c156bd9b6a', after: 'then click Install' } },
+    { id: 'cursor', name: 'Cursor', icon: LOBE + 'cursor.png', kind: 'terminal' },
+    { id: 'grokbot', name: 'Grok Bot', icon: '/logos/agents/grokbot.png', kind: 'connector',
+      connect: { button: 'Add the treg plugin', href: 'https://x.ai/bot/plugin/55647425', after: '' } },
+    { id: 'other', name: 'Other', icon: null, kind: 'terminal' }
+  ];
+  var MORE = [
+    'Find Reddit threads from this month asking for a tool like ours',
+    'Find 200 dentists in Leeds with phone number, website and email',
+    'Which keywords do we rank 5 to 15 for that could reach page one?',
+    'Who posted on LinkedIn this week about the problem we solve?',
+    'What ads is our top competitor running on Google?'
+  ];
+  var param = new URLSearchParams(location.search).get('job');
+  var key = Object.prototype.hasOwnProperty.call(JOBS, param) ? param : null;
+  var cur = key || 'general';
+  var j = JOBS[cur];
+
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function span(cls, text) { var s = document.createElement('span'); s.className = cls; s.textContent = text; return s; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function icon(a) { if (!a.icon) return el('span', 'blank'); var im = el('img'); im.src = a.icon; im.alt = ''; im.onerror = function () { im.style.visibility = 'hidden'; }; return im; }
+  var CARET = '<svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+  /* the agent: remembered per browser. First time, Claude Code on a computer and ChatGPT on a phone,
+     where nobody has a terminal to paste into (paid traffic is mostly phones). */
+  var touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  var first = touch ? 'chatgpt' : 'claude-code', saved = null, agent;
+  try { saved = localStorage.getItem('treg_start_agent'); } catch (e) {}
+  AGENTS.forEach(function (a) { if (a.id === first && !agent) agent = a; });
+  AGENTS.forEach(function (a) { if (a.id === saved) agent = a; });
+  /* what the clipboard gets for a task, for the chosen agent */
+  function promptFor(task) { return agent.kind === 'terminal' ? SETUP_BEFORE + SETUP_CMD + SETUP_AFTER + cap(task) : 'Use treg to ' + task.charAt(0).toLowerCase() + task.slice(1); }
+
+  /* the hero */
+  $('heroKicker').textContent = j.kicker;
+  var h1 = $('heroH1'); h1.textContent = j.h1; h1.appendChild(span('l2', j.l2));
+  var picker = $('agents');
+  function choose(a) { agent = a; try { localStorage.setItem('treg_start_agent', a.id); } catch (e) {} closeMore(); render(); track('start_agent_selected', { agent: a.id, job: cur }); }
+  AGENTS.slice(0, PRIMARY).forEach(function (a) {
+    var btn = el('button', null); btn.type = 'button'; btn.setAttribute('data-agent', a.id);
+    btn.appendChild(icon(a)); btn.appendChild(document.createTextNode(a.name));
+    btn.addEventListener('click', function () { choose(a); });
+    picker.appendChild(btn);
+  });
+  var more = el('div', 'more'), moreBtn = el('button'), menu = el('div', 'more-menu');
+  moreBtn.type = 'button'; moreBtn.id = 'moreBtn'; moreBtn.setAttribute('aria-haspopup', 'menu'); moreBtn.setAttribute('aria-expanded', 'false');
+  menu.setAttribute('role', 'menu'); menu.id = 'moreMenu'; moreBtn.setAttribute('aria-controls', 'moreMenu');
+  AGENTS.slice(PRIMARY).forEach(function (a) {
+    var it = el('button'); it.type = 'button'; it.setAttribute('role', 'menuitemradio'); it.setAttribute('data-agent', a.id);
+    it.appendChild(icon(a)); it.appendChild(document.createTextNode(a.name));
+    it.addEventListener('click', function () { choose(a); moreBtn.focus(); });
+    menu.appendChild(it);
+  });
+  more.appendChild(moreBtn); more.appendChild(menu); picker.appendChild(more);
+  function items() { return Array.prototype.slice.call(menu.querySelectorAll('button')); }
+  function openMore() { menu.classList.add('open'); moreBtn.setAttribute('aria-expanded', 'true'); var c = menu.querySelector('[aria-checked="true"]') || items()[0]; c.focus(); }
+  function closeMore() { menu.classList.remove('open'); moreBtn.setAttribute('aria-expanded', 'false'); }
+  moreBtn.addEventListener('click', function () { menu.classList.contains('open') ? closeMore() : openMore(); });
+  menu.addEventListener('keydown', function (e) {
+    var list = items(), i = list.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMore(); moreBtn.focus(); }
+    else if (e.key === 'Tab') closeMore();
+  });
+  document.addEventListener('click', function (e) { if (!more.contains(e.target)) closeMore(); });
+
+  var pane = $('pane');
+  function setFull(on) { pane.classList.toggle('full', on); $('paneToggle').setAttribute('aria-expanded', on ? 'true' : 'false'); $('paneToggle').textContent = on ? 'Hide full prompt' : 'See full prompt'; }
+  $('paneToggle').addEventListener('click', function () { setFull(!pane.classList.contains('full')); });
+  function render() {
+    picker.querySelectorAll('button[data-agent]').forEach(function (b) {
+      var on = b.getAttribute('data-agent') === agent.id;
+      b.setAttribute(b.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', on ? 'true' : 'false');
+    });
+    /* an agent from the menu takes the More button's place, so the choice stays visible */
+    var hidden = AGENTS.indexOf(agent) >= PRIMARY;
+    moreBtn.innerHTML = ''; moreBtn.classList.toggle('has-icon', hidden);
+    if (hidden) { moreBtn.appendChild(icon(agent)); moreBtn.appendChild(document.createTextNode(agent.name)); }
+    else moreBtn.appendChild(document.createTextNode('More'));
+    moreBtn.insertAdjacentHTML('beforeend', CARET);
+    moreBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    moreBtn.setAttribute('aria-label', hidden ? agent.name + ', more agents' : 'More agents');
+
+    var conn = $('paneConnector'), after = $('after'); after.textContent = '';
+    $('paneTask').textContent = j.short;
+    clearTimeout(btnT); labelBtn();
+    var chip = $('paneAgent'); chip.textContent = ''; if (agent.icon) chip.appendChild(icon(agent)); chip.appendChild(document.createTextNode(agent.id === 'other' ? 'Your agent' : agent.name));
+    var pre = $('heroPrompt'); pre.textContent = '';
+    if (agent.kind === 'terminal') {
+      conn.hidden = true; $('paneSlot').appendChild(pane);
+      pre.appendChild(span('dim', SETUP_BEFORE)); pre.appendChild(span('cmd', SETUP_CMD)); pre.appendChild(span('dim', SETUP_AFTER)); pre.appendChild(span('ask', cap(j.task)));
+      after.appendChild(document.createTextNode('$1 free, no card. No agent yet? '));
+    } else {
+      conn.hidden = false; $('stepAsk').appendChild(pane);
+      pre.appendChild(span('ask', promptFor(j.task)));
+      var step = $('stepConnect'); step.textContent = ''; var c = agent.connect;
+      var a = el('a', 'connect'); a.href = c.href; a.target = '_blank'; a.rel = 'noopener';
+      a.appendChild(icon(agent)); a.appendChild(document.createTextNode(c.button));
+      a.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 3 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>');
+      a.addEventListener('click', function () { track('start_connect_clicked', { agent: agent.id, job: cur }); });
+      step.appendChild(a); if (c.after) step.appendChild(el('span', 'then', c.after));
+      after.appendChild(document.createTextNode('No agent yet? '));
+    }
+    /* bound here only: a data-cta attribute would also catch the generic listener below and fire twice */
+    var noagent = el('button', null, 'Start free'); noagent.type = 'button';
+    noagent.addEventListener('click', function () { start('noagent'); });
+    after.appendChild(noagent);
+  }
+  /* the visitor's own use case leads the grid */
+  var mine = document.querySelector('.use[data-job="' + cur + '"]');
+  if (mine) mine.parentNode.insertBefore(mine, mine.parentNode.firstChild);
+  /* the swipe dots follow the row on phones */
+  var grid = $('grid'), dots = $('swipe').children;
+  grid.addEventListener('scroll', function () {
+    var cards = grid.children, mid = grid.scrollLeft + grid.clientWidth / 2, best = 0;
+    for (var i = 0; i < cards.length; i++) if (Math.abs(cards[i].offsetLeft + cards[i].offsetWidth / 2 - mid) < Math.abs(cards[best].offsetLeft + cards[best].offsetWidth / 2 - mid)) best = i;
+    for (var d = 0; d < dots.length; d++) dots[d].classList.toggle('on', d === best);
+  }, { passive: true });
+  /* the chips */
+  var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  MORE.forEach(function (q) {
+    var c = document.createElement('button'); c.type = 'button'; c.className = 'chip'; c.setAttribute('data-ask', q);
+    c.innerHTML = ICON; var s = document.createElement('span'); s.textContent = q; c.appendChild(s); $('chips').appendChild(c);
+  });
+
+  /* copying */
+  function legacyCopy(text) {
+    return new Promise(function (ok, fail) {
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy') ? ok() : fail(); } catch (e) { fail(e); } finally { ta.remove(); }
+    });
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    return legacyCopy(text);
+  }
+  var toast = $('toast'), toastT;
+  function say(msg) { toast.textContent = msg; toast.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { toast.classList.remove('on'); }, 3200); }
+  var btn = $('copyBtn'), btnLabel = btn.querySelector('span'), btnT;
+  function where_() { return agent.id === 'other' ? 'your agent' : agent.name; }
+  function labelBtn() { btn.classList.remove('done'); btnLabel.textContent = 'Copy for ' + where_(); }
+  function copyPrompt(task, node, where, job) {
+    var props = { where: where, job: job || cur, page_job: cur, agent: agent.id };
+    copyText(promptFor(task)).then(function () {
+      node.classList.add('done'); setTimeout(function () { node.classList.remove('done'); }, 3200);
+      /* the button says where to paste; the bubbles and chips have no label, so a toast says it for them */
+      if (node === btn) { btnLabel.textContent = 'Copied · paste it in ' + where_(); clearTimeout(btnT); btnT = setTimeout(labelBtn, 3200); }
+      else say(agent.kind === 'terminal' ? 'Copied, setup included. Paste it into ' + (agent.id === 'other' ? 'your agent' : agent.name) + '.' : 'Copied. Paste it into ' + agent.name + ' once treg.to is connected.');
+      track('start_prompt_copied', props);
+    }).catch(function () {
+      /* no clipboard (an iframe, a locked-down browser): show and select the prompt so Ctrl/Cmd+C works */
+      setFull(true);
+      try { var r = document.createRange(); r.selectNodeContents($('heroPrompt')); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {}
+      say('Copy failed. The prompt above is selected: press Ctrl/Cmd+C.');
+      track('start_prompt_copy_failed', props);
+    });
+  }
+  btn.addEventListener('click', function () { copyPrompt(j.task, btn, 'hero'); });
+  document.querySelectorAll('[data-ask]').forEach(function (node) {
+    node.addEventListener('click', function () {
+      var card = node.closest('.use');
+      copyPrompt(node.getAttribute('data-ask'), node, node.classList.contains('chip') ? 'chip' : 'bubble', card ? card.getAttribute('data-job') : 'more');
+    });
+  });
+  render();
+
+  /* ---------- the fallback for a visitor with no agent: sign in. Signed in → the dashboard's setup. ---------- */
+  var scrim = $('signin-scrim');
+  function openSignin(where) {
+    scrim.classList.add('open'); track('start_signin_opened', { where: where, job: cur });
+    setTimeout(function () { var g = scrim.querySelector('.pill.dark'); if (g) g.focus(); }, 30);
+  }
+  function closeSignin() { scrim.classList.remove('open'); }
+  function start(where) {
+    track('start_cta_clicked', { where: where, job: cur });
+    fetch('/auth/me', { credentials: 'same-origin' })
+      .then(function (r) { if (r.ok) location.href = '/app'; else openSignin(where); })
+      .catch(function () { openSignin(where); });
+  }
+  document.querySelectorAll('[data-cta]').forEach(function (el) {
+    el.addEventListener('click', function () { start(el.getAttribute('data-cta')); });
+  });
+  $('navSignin').addEventListener('click', function () { start('nav-signin'); });
+  $('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeSignin(); closeMore(); } });
+  scrim.querySelectorAll('[data-method]').forEach(function (a) { a.addEventListener('click', function () { track('start_signin_method', { method: a.getAttribute('data-method') }); }); });
+
+  function readJson(r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || ('error ' + r.status)); return d; }); }
+  function emailStart() {
+    var em = $('em-input').value.trim(), err = $('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    track('start_signin_method', { method: 'email' });
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(readJson)
+      .then(function (d) {
+        $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
+        if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode: your code is ' + d.dev_code; }
+        else { err.style.color = ''; }
+        $('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
+    if (!code) return;
+    $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(readJson)
+      .then(function () { location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message || "That code didn't work."; $('em-btn2').textContent = 'Sign in'; });
+  }
+  $('em-btn1').addEventListener('click', emailStart);
+  $('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  $('em-btn2').addEventListener('click', emailVerify);
+  $('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+
+  track('start_viewed', { job: cur, agent: agent.id, device: touch ? 'touch' : 'desktop' });
+})();
+</script>
+<script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
+</body>
+</html>

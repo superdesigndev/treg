@@ -16,9 +16,8 @@ without one — a guessed price is worse than an honest gap, because a gap refus
 a guess spends real money (docs/context/architecture/catalog.md, Cost).
 
 The three confidence levels it assigns, and what earns them:
-  verified   — the price came from the provider's OWN live rate card (TikHub's
-               get_all_endpoints_info, DataForSEO's /appendix/user_data) or was observed being
-               billed on a real call. Re-checkable without trusting a docs page.
+  verified   — the price came from the provider's OWN live rate card (DataForSEO's
+               /appendix/user_data) or was observed being billed on a real call. Re-checkable without trusting a docs page.
   documented — transcribed from the provider's docs or pricing page during the 2026-07-28 sweep.
   inferred   — the recorded figure is a floor or the top of a published range (base-fee-plus-per-row
                endpoints, "1-9 credits", "$0.50-$5.00 per 1,000"), so it is not the whole charge.
@@ -44,33 +43,13 @@ KEY_ORDER = ("type", "value", "currency", "per", "unit", "source", "source_url",
              "confidence", "note")
 CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 
-# ---- provider-level provenance ---------------------------------------------------------------
+# Provider-level provenance.
 # `url` is the rate card the figures came from — a live rate-card ENDPOINT where the provider
 # exposes one (those are the `rate_card_api` rows), else its pricing page. `unit` is what one
 # charge covers for each cost type, so `cost_view` can divide by `per` and a reader knows whether
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
-    # --- prices from the provider's own machine-readable rate card → verified ------------------
-    "tikhub": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
-        "units": {"*": "call"},
-    },
-    "dataforseo": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.dataforseo.com/v3/appendix/user_data",
-        "units": {"*": "call", "per_result": "page"},
-    },
-    # Credit counts come from `credits_charged` in the provider's own OpenAPI response examples —
-    # first-party, machine-readable and re-fetchable, so the COUNT is verified. (What is merely
-    # inferred is the credits→USD rate, and that lives in fx.yaml with its own basis.)
-    "scrapecreators": {"source": "rate_card_api", "confidence": "verified",
-                       "url": "https://docs.scrapecreators.com/openapi.json", "units": {"*": "call"}},
-    # --- prices transcribed from docs / pricing pages → documented ----------------------------
-    # Just One API's figures are a hand-exported snapshot of the logged-in dashboard's pricing page
-    # (scripts/data/justoneapi_prices.json) — first-party, but a local file nothing can re-check.
-    "justoneapi": {"source": "rate_card_api", "confidence": "documented",
-                   "url": "https://www.justoneapi.com/", "units": {"*": "call"}},
+    # Prices transcribed from docs / pricing pages → documented.
     "brightdata": {"source": "docs", "confidence": "documented",
                    "url": "https://brightdata.com/pricing", "units": {"*": "record"}},
     "diffbot": {"source": "docs", "confidence": "documented",
@@ -102,7 +81,7 @@ PROVIDERS: dict[str, dict] = {
     "thecompaniesapi": {"source": "docs", "confidence": "documented",
                         "url": "https://www.thecompaniesapi.com/pricing",
                         "units": {"*": "call", "per_result": "record"}},
-    # --- providers whose prices live in prose only; see PRICES below --------------------------
+    # Providers whose prices live in prose only; see PRICES below.
     "majestic": {"source": "docs", "confidence": "documented",
                  "url": "https://majestic.com/plans-pricing", "units": {"*": "call"}},
     "semrush": {"source": "docs", "confidence": "documented",
@@ -115,7 +94,7 @@ PROVIDERS: dict[str, dict] = {
               "url": "https://www.spyfu.com/api", "units": {"*": "row"}},
 }
 
-# ---- per-endpoint prices lifted out of prose -------------------------------------------------
+# Per-endpoint prices lifted out of prose.
 # Every figure below is already written in that endpoint's own `cost.note` (or its file header);
 # this moves it from prose into `value`/`per`/`unit` so the server can price it. Nothing is invented.
 #
@@ -197,8 +176,7 @@ PRICES: dict[str, dict] = {
     "spyfu.google.domain.ppc_competitors": {"value": 0.20, "currency": "USD", "per": 1000, "unit": "row"},
 
     # Moz meters a ROW QUOTA, not money: `quota_rows` is the provider's own meter, so it stops
-    # pretending to be dollars. (It was `currency:` absent, which defaulted to USD and served every
-    # Moz endpoint as costing $1.00 per row.)
+    # pretending to be dollars.
     "moz.web.url.metrics": _u(1, "quota_row"),
     "moz.web.backlinks.summary": _u(2, "quota_row"),
     "moz.web.backlinks.list": _u(1, "quota_row"),
@@ -210,7 +188,7 @@ PRICES: dict[str, dict] = {
     "moz.web.global.top_pages": _u(1, "quota_row"),
     "moz.web.global.top_domains": _u(1, "quota_row"),
 
-    # --- `per` > 1: the provider charges once per N of something ----------------------------
+    # `per` > 1: the provider charges once per N of something.
     # `per` > 1 only makes sense against a `type` that counts the same thing: these four billed
     # "per N returned items" while claiming `per_success` (per successful CALL), which would have
     # priced a 50-review response as one charge. The quantity and the trigger have to agree.
@@ -222,10 +200,10 @@ PRICES: dict[str, dict] = {
     "lusha.people.search": {"per": 25, "unit": "result"},            # 1 credit per up to 25 results
     "lusha.companies.search": {"per": 25, "unit": "result"},
     "leadmagic.x.employee-finder": {"per": 1, "unit": "employee"},
-    # 1 credit per 10,000 characters of input — a real figure, it was just never in `value`
+    # 1 credit per 10,000 characters of input
     "diffbot.x.nl-process": _cr(1, "character", per=10000),
 
-    # --- named guesses: fixed where the repo has a figure, downgraded where it does not ------
+    # Named guesses: fixed where the repo has a figure, downgraded where it does not.
     # An endpoint whose recorded value is a BASE fee with a per-row half on top understates the
     # charge, so it is `inferred`, not `documented` — the note carries the rest.
     "akta.companies.news": {"confidence": "inferred"},               # 0.1 base + 0.01/article
@@ -240,8 +218,8 @@ PRICES: dict[str, dict] = {
     "diffbot.people.enrich": {"confidence": "inferred"},
     "apify.meta-ads.library.search": {"confidence": "inferred"},     # "~$5.00 … $3.40-$5.80 by tier"
     "apify.tiktok-ads.library.search": {"confidence": "inferred"},
-    # No figure at all. These were carrying a number the note itself calls unconfirmed, or a
-    # provider that publishes none. `value: null` + `confidence: unknown` is the honest pair, and
+    # No figure at all: the note itself calls the number unconfirmed, or the provider publishes
+    # none. `value: null` + `confidence: unknown` is the honest pair, and
     # it is what refuses the endpoint a platform key.
     "moz.web.index.metadata": {"value": None, "confidence": "unknown"},
 }
@@ -263,10 +241,9 @@ UNKNOWN_PRICE = {
 OBSERVED_NOTE = re.compile(r"\bOBSERVED live\b", re.I)
 
 
-# ---- cost-block rewriting --------------------------------------------------------------------
 _FLOW = re.compile(r"^(\s*)cost: (\{.*\})\s*$")
 # Some ingesters emit one anchored block and alias it from every sibling that shares the price
-# (`cost: &id001` … `cost: *id001`). The anchor must survive the rewrite or ~130 aliases dangle;
+# (`cost: &id001` … `cost: *id001`). The anchor must survive the rewrite or the aliases dangle;
 # the aliases themselves need no rewriting, since they resolve to the block that was rewritten.
 _BLOCK = re.compile(r"^(\s*)cost:(?:\s+&(\S+))?\s*$")
 _ID = re.compile(r"^\s*-\s+id:\s*(\S+)\s*$")

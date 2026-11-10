@@ -175,6 +175,7 @@ async def rotate_agent_key(
     *,
     actor_email: str,
     expected_key_id: int | None = None,
+    sso_org_id: int | None = None,
 ) -> tuple[str, ApiKey]:
     """Revoke the current agent key and create its one active replacement."""
     old = await active_agent_key(db, membership.id)
@@ -194,6 +195,7 @@ async def rotate_agent_key(
         safe_prefix=prefix,
         key_hash=key_hash,
         state=ACTIVE,
+        sso_org_id=sso_org_id,
         created_by=actor_email,
     )
     db.add(new)
@@ -210,6 +212,7 @@ async def rotate_human_key(
     old: ApiKey,
     *,
     actor_email: str,
+    sso_org_id: int | None = None,
 ) -> tuple[str, ApiKey]:
     """Atomically rotate one additional human key and return its one-time replacement secret."""
     if old.kind != ADDITIONAL_KIND:
@@ -226,6 +229,7 @@ async def rotate_human_key(
         safe_prefix=prefix,
         key_hash=key_hash,
         state=ACTIVE,
+        sso_org_id=sso_org_id,
         created_by=actor_email,
     )
     db.add(new)
@@ -337,7 +341,7 @@ async def _write_last_used(key_id: int, seen_at: datetime) -> bool:
     try:
         async with _writer_gate():
             async with background_session_maker() as db:
-                result = await db.execute(
+                await db.execute(
                     update(ApiKey).where(
                         ApiKey.id == key_id,
                         or_(

@@ -45,6 +45,7 @@ endpoints:
       confidence: verified
       note: "The configured purchased package costs $4 per 1,000 requests. Keenable documents one credit per authenticated search or fetch, including both search modes and indexed/live fetch; no evidence says rejected requests are free, so platform calls are metered per request. BYOK calls are unmetered by treg."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.keenable.ai/api-reference/search
     example_response: examples/keenable.web.search.json
 
@@ -70,5 +71,6 @@ endpoints:
     cost:
       <<: *request_cost
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.keenable.ai/api-reference/fetch
     example_response: examples/keenable.web.fetch.json

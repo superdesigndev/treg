@@ -22,6 +22,7 @@ source:
 pricing_url: https://data.crunchbase.com/docs/using-the-api  # No free API tier — the API is a paid add-on to Crunchbase Pro.
 endpoints:
   - id: crunchbase.companies.enrich
+    added: '2026-07-28'
     domain: companies
     capability: companies.enrich
     platform: companies
@@ -50,6 +51,7 @@ endpoints:
     docs_url: https://data.crunchbase.com/docs/examples-organization-api
 
   - id: crunchbase.companies.search
+    added: '2026-07-28'
     domain: companies
     capability: companies.search
     platform: companies
@@ -81,6 +83,7 @@ endpoints:
     docs_url: https://data.crunchbase.com/docs/examples-search-api
 
   - id: crunchbase.people.enrich
+    added: '2026-07-28'
     domain: contacts
     capability: people.enrich
     platform: people
@@ -108,6 +111,7 @@ endpoints:
     docs_url: https://data.crunchbase.com/docs/examples-person-api
 
   - id: crunchbase.people.search
+    added: '2026-07-28'
     domain: contacts
     capability: people.search
     platform: people
@@ -137,6 +141,7 @@ endpoints:
     docs_url: https://data.crunchbase.com/docs/examples-search-api
 
   - id: crunchbase.account.usage
+    added: '2026-07-28'
     kind: utility
     capability: account.usage
     platform: account

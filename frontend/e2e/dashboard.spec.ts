@@ -6,7 +6,7 @@ test('sign in, create team, switch pages, refresh and navigate back', async ({ p
   page.on('pageerror', error => errors.push(error.message))
   await signIn(page)
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' })
-  for (const name of ['Catalog', 'Your own tools', 'Activity', 'Team']) {
+  for (const name of ['Catalog', 'Connections', 'Your own tools', 'Activity', 'Team']) {
     await navigation.getByRole('button', { name, exact: true }).click()
     await expect(navigation.getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page')
   }
@@ -18,9 +18,9 @@ test('sign in, create team, switch pages, refresh and navigate back', async ({ p
   await expect(navigation.getByRole('button', { name: 'Team', exact: true })).toHaveAttribute('aria-current', 'page')
   await page.locator('.rd-account-menu summary').click()
   await page.locator('.rd-account-menu').getByRole('button', { name: 'Billing', exact: true }).click()
-  await expect(page).toHaveURL(/#orgs$/)
-  const referral = page.getByRole('link', { name: 'Refer a friend: Give $5, get $5', exact: true })
-  await expect(referral).toHaveText('Give $5, get $5')
+  await expect(page).toHaveURL(/#orgs\/billing$/)   // the Team page names its tab in the address
+  const referral = page.getByRole('link', { name: 'Referral: Give $5, get $5, or become an affiliate partner', exact: true })
+  await expect(referral).toHaveText('Referral')
   await referral.click()
   await expect(page).toHaveURL(/#referrals$/)
   expect(errors).toEqual([])
@@ -54,6 +54,63 @@ test('public catalog and shared deep links remain available without a session', 
   await expect(page.getByRole('heading', { name: /shared-example/ })).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Sign in' })).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('company sign-in is an alternative to the primary email code', async ({ page }) => {
+  await page.route('**/auth/sso/discover', route => route.fulfill(json({ teams: [] })))
+  await page.goto('/aeo')
+  await page.getByRole('link', { name: 'Set up treg' }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Sign in' })
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Company SSO' })).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Email' }).fill('person@example.com')
+  await dialog.getByRole('button', { name: 'Company SSO' }).click()
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeHidden()
+  await dialog.getByRole('textbox', { name: 'Email' }).press('Enter')
+  await expect(dialog.getByText('This email has no company SSO connection.')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Email sign-in code' }).click()
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeEnabled()
+  await expect(dialog.getByRole('link', { name: 'GitHub' })).toBeVisible()
+  await expect(dialog.getByRole('link', { name: 'Google' })).toBeVisible()
+})
+
+test('Astra sign-in uses the same SSO mode switch', async ({ page }) => {
+  await page.route('**/auth/me', route => route.fulfill({ status: 401, body: '{}' }))
+  await page.route('**/auth/sso/discover', route => route.fulfill(json({ teams: [] })))
+  await page.goto('/astra')
+  await page.locator('[data-setup]').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Sign in to treg' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('textbox', { name: 'Email' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Company SSO' }).click()
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeHidden()
+  await expect(dialog.getByRole('button', { name: 'Continue with SSO' })).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Email' }).fill('person@example.com')
+  await dialog.getByRole('textbox', { name: 'Email' }).press('Enter')
+  await expect(dialog.getByText('This email has no company SSO connection.')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Email sign-in code' }).click()
+  await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible()
+})
+
+test('Arena sign-in dialogs keep email code primary and submit SSO with Enter', async ({ page }) => {
+  await page.route('**/auth/sso/discover', route => route.fulfill(json({ teams: [] })))
+  let checked = 0
+  for (const path of ['/enrich-arena', '/web-arena']) {
+    const response = await page.goto(path)
+    if (response?.status() === 404) continue // Web Arena is gated in some local environments.
+    checked++
+    await page.getByRole('button', { name: /Sign up/ }).first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('button', { name: 'Email me a code' })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Company SSO' }).click()
+    await dialog.getByRole('textbox', { name: 'Email' }).fill('person@example.com')
+    await dialog.getByRole('textbox', { name: 'Email' }).press('Enter')
+    await expect(dialog.getByText('This email has no company SSO connection.')).toBeVisible()
+    await dialog.getByRole('button', { name: 'Email sign-in code' }).click()
+    await expect(dialog.getByRole('button', { name: 'Email me a code' })).toBeVisible()
+  }
+  expect(checked).toBeGreaterThan(0)
 })
 
 test('the dashboard and catalog ask for nothing that is not there', async ({ page }) => {
@@ -91,7 +148,7 @@ test('a dialog takes its first field and hands focus back, even when its code ar
     await route.continue()
   })
   await page.goto('about:blank')
-  await page.goto('/app#connections')
+  await page.goto('/app#catalog')
   const opener = page.getByRole('button', { name: 'Request a tool', exact: true })
   await opener.click()
   const dialog = page.getByRole('dialog', { name: 'Request a tool' })
@@ -128,10 +185,86 @@ test("a tool drawer's primary button is the next step to an agent using the tool
   await page.getByRole('table').getByRole('row').filter({ hasText: 'Crustdata' }).first().click()
   await expect(primary()).toHaveText('Copy for your agent')        // treg's key serves it: hand it over
   await expect(drawer.getByRole('button', { name: 'Try it' })).toHaveClass(/ghost/)
-  await page.getByRole('table').getByRole('row').filter({ hasText: 'Ocean' }).first().click()
+  await page.getByRole('table').getByRole('row').filter({ has: page.getByText('Ocean.io', { exact: true }) }).filter({ hasText: 'Enrich a company' }).click()
   await expect(primary()).toHaveText(/^Add your .+ key$/)          // only your own key can call it
   await page.goto('/catalog/google-analytics')
-  await page.locator('.pl-tool').first().click()
+  await page.locator('button.pl-job').first().click()
   await expect(primary()).toHaveText(/^Connect /)                  // an account to connect first
   await expect(drawer.locator('.td-stats')).toContainText('your account')
+})
+
+test('a provider key saved as a secret is a connection: listed on Connections, not among Secrets', async ({ page }) => {
+  await signIn(page, 'named-key')
+  await page.goto('/app#secrets')
+  await page.getByPlaceholder('name, e.g. STRIPE_KEY').fill('apollo')
+  await page.getByPlaceholder('value (encrypted server-side)').fill('not-a-real-key')
+  await page.getByRole('button', { name: 'Add secret', exact: true }).click()
+  await expect(page.getByText('Keys for catalog providers live on')).toContainText('(1 there now)')
+  await expect(page.locator('.ttable')).toHaveCount(0)
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Connections' }).click()
+  const card = page.locator('.cn-card').filter({ hasText: 'Apollo.io' })
+  await expect(card).toContainText('saved as a secret')
+  await card.getByRole('button', { name: 'Remove', exact: true }).click()
+  await card.getByRole('button', { name: 'Click again to remove', exact: true }).click()
+  await expect(page.locator('.cn-card')).toHaveCount(0)
+})
+
+test('Bring your own key lands on Connections, the provider it names in view', async ({ page }) => {
+  await signIn(page, 'byok-jump')
+  await page.goto('/catalog/companies/enrich')
+  await page.getByRole('table').getByRole('row').filter({ has: page.getByText('Ocean.io', { exact: true }) }).filter({ hasText: 'Enrich a company' }).click()
+  await page.getByRole('complementary', { name: 'Tool details' }).getByRole('button', { name: /^Add your .+ key$/ }).click()
+  await expect(page).toHaveURL(/#connections$/)
+  await expect(page.locator('.cn-prov.on')).toBeInViewport()
+})
+
+test('Activity pages the merged feed with the cursor the server returns', async ({ page }) => {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 8, 30, 12) - minutes * 60_000).toISOString().slice(0, 23)
+  const call = (i: number) => ({ source: 'call', id: 5000 - i, kind: 'http', tool_name: 'serp', method: 'GET', path: '/search',
+    status_code: 200, user_email: 'a@example.com', client: 'cli', credential_tier: 'platform', cost_charged_micro: 1000, created_at: at(i) })
+  const run = (i: number) => ({ source: 'run', id: 'l' + i, where: 'local', tool: 'gh', argv: ['pr', 'list'], exit_code: null,
+    user_email: 'a@example.com', client: 'cli', created_at: at(i + 0.5) })
+  const rows = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => from + i).flatMap(i => [call(i), run(i)])
+  const asked: string[] = []
+  await page.route(url => url.pathname === '/activity', route => {
+    const before = new URL(route.request().url()).searchParams.get('before') ?? ''
+    asked.push(before)
+    route.fulfill(json(before ? { rows: rows(50, 60), next: null } : { rows: rows(0, 50), next: 'cursor~l~49' }))
+  })
+  await signIn(page)
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Activity', exact: true }).click()
+  const all = page.getByRole('radio', { name: /^All/ })
+  await expect(all).toHaveText('All 100')
+  await page.getByRole('button', { name: 'Load older activity' }).click()
+  await expect(all).toHaveText('All 120')
+  await expect(page.getByRole('button', { name: 'Load older activity' })).toHaveCount(0)
+  expect(asked).toEqual(['', 'cursor~l~49'])
+})
+
+test('Activity offers no older page while a new filter is loading', async ({ page }) => {
+  // The old cursor belongs to the rows being replaced: an older page fetched with it would mix two
+  // filters, and would supersede the reload.
+  const at = (minutes: number) => new Date(Date.UTC(2026, 8, 30, 12) - minutes * 60_000).toISOString().slice(0, 23)
+  const row = (i: number) => ({ source: 'call', id: 5000 - i, kind: 'http', tool_name: 'serp', method: 'GET', path: '/search',
+    status_code: 200, user_email: 'a@example.com', client: 'cli', credential_tier: 'platform', cost_charged_micro: 1000, created_at: at(i) })
+  const rows = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => row(from + i))
+  let release = () => {}
+  const filtered = new Promise<void>(resolve => { release = resolve })
+  await page.route(url => url.pathname === '/activity', async route => {
+    const q = new URL(route.request().url()).searchParams
+    if (q.get('api_key_id')) { await filtered; return route.fulfill(json({ rows: rows(200, 203), next: null })) }
+    if (q.get('before')) return route.fulfill(json({ rows: rows(100, 150), next: null }))
+    return route.fulfill(json({ rows: rows(0, 100), next: 'cursor~c~4900' }))
+  })
+  await page.route(url => url.pathname.endsWith('/api-keys'), route => route.fulfill(json([
+    { id: 7, name: 'ci', identity: 'bot', assigned_type: 'agent', prefix: 'tr_x' }])))
+  await signIn(page)
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Activity', exact: true }).click()
+  const all = page.getByRole('radio', { name: /^All/ })
+  await expect(all).toHaveText('All 100')
+  await page.getByRole('button', { name: /^API key: / }).click()
+  await page.getByRole('option', { name: 'bot', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Load older activity' })).toHaveCount(0)
+  release()
+  await expect(all).toHaveText('All 3')
 })

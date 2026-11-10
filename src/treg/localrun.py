@@ -5,7 +5,7 @@ fragments) for ONE run on a member's machine. It is the single, sanctioned, audi
 "secret values are never returned" — gated per tool by `cli.enabled` (owner opt-in). OAuth secrets
 are refreshed first and release ONLY the expiring leaf (the access token); the blob
 (refresh_token / client_secret) never leaves the server. Deny patterns are checked HERE, where the
-secret lives, not on the client. See docs/CLI-RUN-PLAN.md.
+secret lives, not on the client.
 
 Profile shape (tool.cli, mirrored by the catalog `cli` blocks):
   {enabled, bin, install?, inject: [{secret_id | from_binding?, via: "env"|"argv",
@@ -21,31 +21,23 @@ from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING
 
-from .infra.upstream.injectors import _token_from_json  # light: pure JSON/token helpers, no DB
+from .infra.upstream.injectors import _token_from_json
 
-# The DB/crypto/oauth deps are used at runtime ONLY in `render_grant` (the server-side grant path — the
-# CLI client never calls it). Keeping them out of the module's top-level imports lets the CLI install
-# without the heavy `tools-registry[server]` stack. They are imported lazily inside render_grant; here
-# they're TYPE_CHECKING-only for the annotations (safe under `from __future__ import annotations`).
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
     from .models import Tool
 
-# OAuth grants may release ONLY the short-lived leaf (access token). Releasing refresh_token /
-# client_secret would hand the whole re-mintable identity to the member — never allowed.
 _OAUTH_RELEASABLE_FIELDS = ("access_token", "token")
 
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _BIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")  # a bare command name: no path sep, no spaces/shell
 VERDICTS = ("ok", "credential_invalid", "unknown_error")
-# How a CLI authenticates — drives auto-import routing (docs/CLI-AUTOIMPORT-PLAN.md):
+# How a CLI authenticates - drives auto-import routing:
 #   env / argv  → server-injectable (treg holds + injects the secret; either run tier works)
 #   config_file → local-only (the credential lives in the CLI's own config on the member's machine)
 #   device      → report-only (browser/device login, no token override — e.g. `az`)
 AUTH_MECHANISMS = ("env", "argv", "config_file", "device")
 
-# Env vars that alter how a process (or its children) loads code — injecting a secret VALUE into any of
-# these is arbitrary code execution on the member's machine, so a cli.inject may never target them.
 _DANGEROUS_ENV_EXACT = {
     "PATH", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "PYTHONEXECUTABLE", "NODE_OPTIONS",
     "BASH_ENV", "ENV", "IFS", "SHELL", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_EXTERNAL_DIFF",
@@ -132,14 +124,14 @@ def validate_cli_profile(cli: dict) -> None:
         try:
             re.compile(pat)
         except re.error as exc:
-            raise ValueError(f"cli.deny pattern {pat!r} is not a valid regex: {exc}")
+            raise ValueError(f"cli.deny pattern {pat!r} is not a valid regex: {exc}") from exc
     for e in cli.get("errors") or []:
         if not isinstance(e, dict) or not isinstance(e.get("pattern"), str):
             raise ValueError("cli.errors entries must be objects with a 'pattern'")
         try:
             re.compile(e["pattern"])
         except re.error as exc:
-            raise ValueError(f"cli.errors pattern {e['pattern']!r} is not a valid regex: {exc}")
+            raise ValueError(f"cli.errors pattern {e['pattern']!r} is not a valid regex: {exc}") from exc
         if e.get("verdict") is not None and e["verdict"] not in VERDICTS:
             raise ValueError(f"cli.errors verdict must be one of {VERDICTS}")
     inject = cli.get("inject")
@@ -216,7 +208,7 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
     The CLIENT decides HOW to hand each item to the CLI (an env var, a flag, or a private socket); the
     server only resolves + renders the value. Raises LookupError (a referenced secret is missing) or lets
     an oauth refresh error propagate — the endpoint maps both to the same statuses the /call path uses."""
-    from sqlmodel import select  # lazy: server-only deps (part of the tools-registry[server] extra)
+    from sqlmodel import select
     from . import crypto, oauth
     from .models import Secret
     inject = profile.get("inject") or []
@@ -226,10 +218,6 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
         # so `treg run` just execs the CLI. (Empty is DISTINCT from a broken profile, which is rejected
         # at write time by validate_cli_profile.)
         return {"items": [], "ttl_seconds": None}
-    # A grant may only release a secret that BELONGS to this tool — one of its HTTP bindings, a secret in
-    # the tool's own bundle (how skill/CLI tools attach theirs), or a secret OWNED by the tool's owner
-    # (e.g. a param the owner attached). Without this, a member could point an inject at ANOTHER user's
-    # secret id and extract its value (values are otherwise never returned).
     allowed_sids = {b.get("secret_id") for b in tool.bindings if b.get("secret_id") is not None}
     if tool.bundle_id is not None:
         rows = (await db.execute(select(Secret.id).where(Secret.bundle_id == tool.bundle_id))).all()

@@ -1,8 +1,10 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from scripts import catalog_added
 from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
 from treg.application.call import resolve
@@ -82,7 +84,29 @@ def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
 
     bad_settle: list[str] = []
     validator.check_cost(base | {"settle": "estimate"}, "catalog:test", bad_settle, [])
-    assert any("cost.settle currently supports only 'base', 'modifiers' or 'usage'" in error for error in bad_settle)
+    assert any("cost.settle currently supports only" in error for error in bad_settle)
+
+
+def test_terminal_presence_cost_requires_a_bounded_async_result_rule():
+    base = {
+        "type": "per_success", "value": 1, "currency": "credit", "per": 1,
+        "unit": "call", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+        "settle": "terminal_presence", "presence": {"row": "data.0", "field": "email"},
+    }
+    errors: list[str] = []
+    validator.check_cost(base, "catalog:test", errors, [])
+    assert errors == []
+
+    invalid: list[str] = []
+    validator.check_cost(base | {"presence": {"row": "data..0", "field": "email"}},
+                         "catalog:test", invalid, [])
+    assert any("presence.field JSON path" in error for error in invalid)
+
+    root_errors: list[str] = []
+    validator.check_cost(base | {"presence": {"field": "number"}},
+                         "catalog:test", root_errors, [])
+    assert root_errors == []
 
 
 def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
@@ -228,9 +252,30 @@ def test_async_descriptor_must_be_a_mapping():
     assert any("async must be a mapping" in error for error in _async_errors([]))
 
 
-def test_async_descriptor_requires_per_success_cost():
-    errors = _async_errors(_valid_async(), {"type": "per_call"})
-    assert any("cost.type per_success" in error for error in errors)
+def test_async_descriptor_requires_per_success_or_per_call_cost():
+    assert _async_errors(_valid_async(), {"type": "per_call"}) == []
+    errors = _async_errors(_valid_async(), {"type": "per_result"})
+    assert any("cost.type per_success or per_call" in error for error in errors)
+
+
+def test_async_descriptor_bounded_by_max_age_may_have_no_failure_word():
+    descriptor = _valid_async()
+    del descriptor["status"]["failure"]
+    assert any("failure (optional with max_age)" in error for error in _async_errors(descriptor))
+    descriptor.update(max_age=300, terminal_on_submission=True)
+    assert _async_errors(descriptor) == []
+
+
+@pytest.mark.parametrize(("key", "value", "message"), [
+    ("max_age", 0, "async.max_age must be a positive number"),
+    ("max_age", 86401, "async.max_age must be a positive number"),
+    ("max_age", True, "async.max_age must be a positive number"),
+    ("terminal_on_submission", False, "terminal_on_submission must be true"),
+])
+def test_async_descriptor_rejects_invalid_bounds(key, value, message):
+    descriptor = _valid_async()
+    descriptor[key] = value
+    assert any(message in error for error in _async_errors(descriptor))
 
 
 def test_async_descriptor_rejects_non_get_or_non_utility_targets():
@@ -330,20 +375,6 @@ def test_untracked_extended_async_consumers_are_explicitly_byok_only():
         "tikhub.x.youtube-web-v2-get-video-captions-result",
         "dataforseo.x.serp-ai-summary",
         "dataforseo.x.serp-screenshot",
-        "dataforseo.x.on-page-content-parsing",
-        "dataforseo.x.on-page-duplicate-content",
-        "dataforseo.x.on-page-duplicate-tags",
-        "dataforseo.x.on-page-keyword-density",
-        "dataforseo.x.on-page-links",
-        "dataforseo.x.on-page-non-indexable",
-        "dataforseo.x.on-page-pages",
-        "dataforseo.x.on-page-pages-by-resource",
-        "dataforseo.x.on-page-raw-html",
-        "dataforseo.x.on-page-redirect-chains",
-        "dataforseo.x.on-page-resources",
-        "dataforseo.x.on-page-uncrawlable-resources",
-        "dataforseo.x.on-page-waterfall",
-        "dataforseo.x.on-page-summary-id",
     }
     for endpoint_id in ids:
         endpoint = catalog.by_id[endpoint_id]
@@ -492,6 +523,7 @@ def test_validator_checks_the_endpoint_descriptor_that_replaces_the_provider_def
         "    method: POST\n"
         "    path: /generate\n"
         "    summary: Generate a video\n"
+        "    added: '2026-09-01'\n"
         "    input:\n"
         "      body:\n"
         "        model: {type: string, required: true}\n"
@@ -577,7 +609,7 @@ def test_flat_price_usage_settlement_is_accepted():
     (lambda c: c.update(usage={"path": "usage.cost", "unit": "tokens"}),
      "needs a numeric fx.yaml unit_rates_usd entry"),
     (lambda c: c.update(settle="base"), "usage is only valid with settle: usage"),
-    (lambda c: c.update(settle="later"), "supports only 'base', 'modifiers' or 'usage'"),
+    (lambda c: c.update(settle="later"), "supports only 'base', 'modifiers', 'usage', 'quantity' or 'terminal_presence'"),
 ])
 def test_flat_price_usage_settlement_rejects_bad_shapes(mutate, message):
     cost = _flat_usage_cost()
@@ -629,6 +661,26 @@ def test_reported_charge_requires_supported_units_and_path(rule):
     ))
 
 
+@pytest.mark.parametrize("rule,ok", [
+    ({"in": "query", "name": "max_cost_usd", "unit": "usd"}, True),
+    ({"in": "header", "name": "max_cost_usd", "unit": "usd"}, False),
+    ({"in": "query", "name": "max_cost_usd", "unit": "micro"}, False),
+    ({"in": "query", "name": "", "unit": "usd"}, False),
+    ({"in": "query", "name": "max-cost", "unit": "usd"}, False),
+    ({"in": "query", "name": "max_cost_usd", "unit": "usd", "extra": 1}, False),
+    (None, False),
+])
+def test_ceiling_param_shape(rule, ok):
+    errors: list[str] = []
+    validator.check_ceiling_param(rule, "test", errors, prefix="cost.ceiling_param")
+    assert bool(errors) is not ok
+    cost = dict(catalog_store.load().by_id["trykitt.people.email.find"]["cost"])
+    cost["ceiling_param"] = rule
+    errors = []
+    validator.check_cost(cost, "test", errors, [], provider="serper")
+    assert bool(errors) is not ok
+
+
 def test_reported_credit_charge_requires_a_provider_fx_rate():
     cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
     cost['reported_charge'] = {'path': 'billing.charge', 'unit': 'credit'}
@@ -652,6 +704,61 @@ def test_platform_request_requires_declared_fixed_body_value(rule, valid):
     validator.check_platform_request(rule, {'body': {
         'realtime': {'type': 'boolean', 'enum': [True]},
     }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
+    assert (not errors) is valid
+
+
+_LABEL_INPUT = {'body': {'agent': {'type': 'string'}, 'credits': {'type': 'integer'}},
+                'pathParams': {'label': {'type': 'string'}}, 'headers': {'x-agent': {'type': 'string'}}}
+
+
+@pytest.mark.parametrize('rule,valid', [
+    (['body.agent'], True),
+    (['pathParams.label', 'headers.x-agent'], True),
+    (['body.credits'], False),          # a label is text, never a number
+    (['body.missing'], False),
+    (['body.agent', 'body.agent'], False),
+    ([], False),
+    ('body.agent', False),
+])
+def test_team_label_names_declared_text_fields(rule, valid):
+    errors = []
+    validator.check_team_label(rule, _LABEL_INPUT, 'test', errors)
+    assert (not errors) is valid
+
+
+@pytest.mark.parametrize('rule,valid', [
+    (['body.notify.email'], True),
+    (['body.notify'], False),            # an object, not an address
+    (['pathParams.label'], False),
+    (['body.nope'], False),
+    ([], False),
+])
+def test_caller_email_names_declared_text_fields(rule, valid):
+    errors = []
+    validator.check_caller_email(rule, {**_LABEL_INPUT, 'body': {**_LABEL_INPUT['body'], 'notify': {
+        'type': 'object', 'properties': {'email': {'type': 'string'}}}}}, 'test', errors)
+    assert (not errors) is valid
+
+
+_QTY = {'type': 'per_success', 'value': 1, 'currency': 'credit', 'per': 1, 'unit': 'credit',
+        'quantity': {'field': 'body.credits', 'max': 100000}, 'settle': 'quantity'}
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True),
+    ({'quantity': {'field': 'body.agent', 'max': 10}}, False),        # not an integer field
+    ({'quantity': {'field': 'body.credits'}}, False),                  # no maximum
+    ({'quantity': {'field': 'body.credits', 'max': 0}}, False),
+    ({'settle': None}, False),                                         # must settle at what was bought
+    ({'type': 'per_call'}, False),
+    ({'quantity': {'field': 'body.credits', 'max': 10, 'applied': 'added'}}, True),
+    ({'quantity': {'field': 'body.credits', 'max': 10, 'applied': 5}}, False),
+    ({'reported_charge': {'path': 'cost', 'unit': 'credit'}}, False),  # a report must not change it
+])
+def test_a_quantity_price_is_bounded_and_settles_at_what_was_bought(patch, valid):
+    cost = {k: v for k, v in {**_QTY, **patch}.items() if v is not None}
+    errors = []
+    validator.check_cost_quantity(cost, _LABEL_INPUT, 'test', errors)
     assert (not errors) is valid
 
 
@@ -684,6 +791,43 @@ def test_tavily_rates_require_complete_positive_finite_endpoint_tables():
         assert errors
 
 
+def test_octen_rate_table_matches_displayed_base_and_requires_every_meter():
+    base = {"currency": "USD", "value": 5, "per": 1000,
+            "octen_rates": {"call": 0.005, "full_content_extra": 0.0005}}
+    errors = []
+    validator.check_octen_rates("octen.web.search", base, "test", errors)
+    assert errors == []
+    for cost in (base | {"octen_rates": {"call": 0.005}},
+                 base | {"octen_rates": {"call": 0.005, "full_content_extra": -0.0005}},
+                 base | {"value": 1}):
+        errors = []
+        validator.check_octen_rates("octen.web.search", cost, "test", errors)
+        assert errors
+
+
+def test_enrichlayer_result_rule_requires_bounded_declared_credit_price():
+    schema = {"queryParams": {"page_size": {"type": "string"},
+                              "use_cache": {"type": "string"}}}
+    base = {"type": "per_result", "currency": "credit", "value": 3, "per": 1,
+            "enrichlayer": {"field": "results", "max_page": 10,
+                            "extra_per_result": {"use_cache": {"if-recent": 2}}}}
+    errors = []
+    validator.check_enrichlayer_rule(base, schema, "test", errors)
+    assert errors == []
+    for broken in (
+        {**base, "enrichlayer": {"field": "results", "max_page": 0}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 11}},
+        {**base, "enrichlayer": {"field": "wrong", "max_page": 10}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 10,
+                                  "extra_per_result": {"missing": {"on": 2}}}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 10,
+                                  "extra_per_result": {"use_cache": {"if-recent": -1}}}},
+    ):
+        errors = []
+        validator.check_enrichlayer_rule(broken, schema, "test", errors)
+        assert errors
+
+
 # ---- ContactOut ----
 
 
@@ -693,7 +837,8 @@ def test_contactout_person_routes_cannot_recapture_pii():
     endpoints = yaml.safe_load(path.read_text())["endpoints"]
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
-    structural = {"contactout.people.contact.work", "contactout.people.contact.phone"}
+    structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
+                  "contactout.people.contact.personal"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue
@@ -757,6 +902,26 @@ def test_strict_query_contract_validation(patch, valid):
     assert bool(errors) is not valid
 
 
+def test_strict_query_accepts_a_declared_path_parameter():
+    ep = {'strict_query': True, 'method': 'GET', 'path': '/jobs/{id}',
+          'input': {'pathParams': {'id': {'type': 'string', 'required': True}}}}
+    errors = []
+    validator.check_strict_query(ep, 'example', errors)
+    assert not errors
+
+
+def test_body_allowlist_object_item_presence_rules():
+    ep = {'body_allowlist': True, 'method': 'POST',
+          'input': {'body': {'data': {'type': 'array[object]',
+                                      'item_required_any': ['email', 'linkedin']}}}}
+    errors = []
+    validator.check_body_allowlist(ep, 'example', errors)
+    assert not errors
+    ep['input']['body']['data']['item_required_any'] = []
+    validator.check_body_allowlist(ep, 'example', errors)
+    assert any('item_required_any' in error for error in errors)
+
+
 @pytest.mark.parametrize('patch,valid', [
     ({}, True),
     ({'strict_body': 'yes'}, False),
@@ -794,6 +959,11 @@ def test_body_allowlist_contract_validation(patch, valid):
     ({'scope': 'own_account'}, False),
     ({'authorization_method': 'oauth'}, False),
     ({'async': {'poll': {}}}, False),
+    ({'cost': None, 'price': {'value': '0'}}, True),
+    ({'cost': None, 'price': {'value': '0.0'}}, True),
+    ({'cost': None, 'price': {'value': '0.00'}}, True),
+    ({'cost': None, 'price': {'value': '0.02'}}, False),
+    ({'cost': None, 'price': {'value': 'free'}}, False),
 ])
 def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
     ep = {
@@ -807,6 +977,14 @@ def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, va
     errors = []
     validator.check_platform_auth(ep | patch, 'example', errors)
     assert (not errors) is valid
+
+
+def test_anonymous_platform_auth_refuses_a_priced_v2_row_naming_the_free_price():
+    ep = {'id': 'example.public.values', 'platform_auth': 'anonymous', 'method': 'GET',
+          'scope': 'any_account', 'price': {'value': '0.02'}, 'verified': '2026-09-15'}
+    errors = []
+    validator.check_platform_auth(ep, 'example', errors)
+    assert errors == ["example: platform_auth anonymous requires cost.type free (in v2, price.value '0')"]
 
 
 def test_missing_platform_auth_normalizes_as_absent():
@@ -951,3 +1129,398 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
     errors: list[str] = []
     validator.check_spooled_response(ep, None, "x", errors)
     assert errors == []
+
+
+def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
+    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
+    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
+    strings."""
+    import yaml
+    from treg.domain.catalog import store
+    from treg.domain.catalog.schema import files
+
+    class Pure(yaml.SafeLoader):
+        pass
+    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
+    if not getattr(yaml, "__with_libyaml__", False):
+        pytest.skip("libyaml not installed")
+    assert issubclass(files._Loader, yaml.CSafeLoader)
+    for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
+    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
+
+
+def _per_result_cost(**extra):
+    return {
+        "type": "per_result", "value": 1, "currency": "USD", "per": 1, "unit": "keyword",
+        "source": "docs", "source_url": "https://example.com/pricing", "checked": "2026-10-28",
+        "confidence": "documented",
+        "reserve": {"rows": {"param": "queryParams.limit",
+                             "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    } | extra
+
+
+_LIMIT_INPUT = {"queryParams": {"limit": {"type": "integer", "required": False}}}
+
+
+def _cost_errors(cost, example=None):
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], _LIMIT_INPUT)
+    if isinstance(cost.get("settle"), dict):
+        validator.check_cost_settle_count(cost, example, "x", errors)
+    return errors
+
+
+def test_cost_reserve_accepts_rows_and_entities():
+    assert _cost_errors(_per_result_cost()) == []
+    assert _cost_errors(_per_result_cost(reserve={"entities": {}})) == []
+
+
+@pytest.mark.parametrize("reserve", [
+    {"rows": {"param": "queryParams.size", "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100, "source": "guess"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 2000, "source": "docs"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100, "source": "docs"}}},
+    {"rows": {"param": "limit", "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    {"entities": {"param": "body.keywords"}},
+    {"rows": {}, "entities": {}},
+])
+def test_cost_reserve_rejects_each_invalid_shape(reserve):
+    assert any("cost.reserve" in e for e in _cost_errors(_per_result_cost(reserve=reserve)))
+
+
+def test_cost_reserve_requires_a_per_result_price():
+    errors = _cost_errors(_per_result_cost(type="per_call"))
+    assert any("cost.reserve requires a per_result price" in e for e in errors)
+
+
+def test_settle_count_needs_a_rows_hold_one_row_per_price_and_a_list_in_the_example():
+    example = {"keywords": [{"keyword": "a"}], "total": 1}
+    counted = {"count": {"path": "keywords"}}
+    assert _cost_errors(_per_result_cost(settle=counted), example) == []
+    for cost, message in (
+        (_per_result_cost(settle=counted, reserve=None), "requires cost.reserve"),
+        (_per_result_cost(settle=counted, per=10), "requires per: 1"),
+        (_per_result_cost(settle=counted, reported_charge={"path": "cost", "unit": "usd"}),
+         "without cost.settle"),
+        (_per_result_cost(settle={"count": {"path": "total"}}), "is not a list in the example_response"),
+        (_per_result_cost(settle={"count": {"path": "keywords", "where": "x"}}), "requires {count"),
+        (_per_result_cost(settle={"count": {"path": "keywords"}, "reported": {}}), "requires {count"),
+    ):
+        assert any(message in e for e in _cost_errors(cost, example)), message
+
+
+def _entity_row_catalog(tmp_path, endpoint_id: str, reserve: str = "") -> None:
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {google: Google}\ncapabilities: {google.keywords.ideas: Ideas}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\n"
+        "source: {docs: https://example.com/docs}\n"
+        "endpoints:\n"
+        f"  - id: {endpoint_id}\n"
+        "    capability: google.keywords.ideas\n"
+        "    platform: google\n"
+        "    method: GET\n"
+        "    path: /ideas\n"
+        "    summary: Keyword ideas\n"
+        "    added: '2026-10-28'\n"
+        "    input:\n"
+        "      queryParams:\n"
+        "        limit: {type: integer, required: false}\n"
+        "    cost:\n"
+        "      type: per_result\n"
+        "      value: 0.001\n"
+        "      currency: USD\n"
+        "      unit: keyword\n"
+        "      source: docs\n"
+        "      source_url: https://example.com/pricing\n"
+        "      checked: '2026-10-28'\n"
+        "      confidence: documented\n" + reserve)
+
+
+def test_an_entity_unit_per_result_row_must_declare_how_it_reserves(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas")
+    assert validator.main(["tikhub"]) == 1
+    assert "needs cost.reserve" in capsys.readouterr().out
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 0
+
+
+def test_the_undeclared_reserve_list_only_shrinks(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    monkeypatch.setattr(validator, "UNDECLARED_RESERVE", frozenset({"tikhub.google.keywords.ideas"}))
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas")
+    assert validator.main(["tikhub"]) == 0
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 1
+    assert "remove from UNDECLARED_RESERVE" in capsys.readouterr().out
+
+    monkeypatch.setattr(validator, "UNDECLARED_RESERVE", frozenset({"tikhub.retired.row"}))
+    assert validator.main([]) == 1
+    assert "in UNDECLARED_RESERVE but not in the catalog" in capsys.readouterr().out
+
+
+def test_the_validator_reads_the_settle_count_path_against_the_example(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "examples").mkdir()
+    (tmp_path / "examples" / "ideas.json").write_text('{"keywords": [{"keyword": "a"}], "total": 1}')
+    rows = ("      reserve: {rows: {param: queryParams.limit, default: {value: 100, source: docs}, max: 1000}}\n"
+            "      settle: {count: {path: %s}}\n"
+            "    example_response: examples/ideas.json\n")
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "keywords")
+    assert validator.main(["tikhub"]) == 0
+    capsys.readouterr()
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "total")
+    assert validator.main(["tikhub"]) == 1
+    assert "is not a list in the example_response" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("block, ok", [
+    ({"jq": {"type": "string"}}, True),
+    ({}, False),
+    ({"jq": "string"}, False),
+    ({"bad-name": {"type": "string"}}, False),
+    ({"jq": {"type": "string", "required": True}}, False),
+])
+def test_provider_query_params_shape(block, ok):
+    errors: list[str] = []
+    validator.check_provider_query_params(block, "test", errors)
+    assert (not errors) is ok, errors
+
+
+def test_bills_miss_is_true_and_only_on_a_per_success_or_per_result_price():
+    base = {
+        "type": "per_success", "value": 6, "currency": "credit", "per": 1,
+        "unit": "result", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+    }
+    ok: list[str] = []
+    validator.check_cost(base | {"bills_miss": True}, "catalog:test", ok, [])
+    validator.check_cost(base | {"type": "per_result", "bills_miss": True}, "catalog:test", ok, [])
+    assert ok == []
+    for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
+                base | {"type": "per_call", "bills_miss": True},
+                base | {"type": "quota_rows", "bills_miss": True}):
+        errors: list[str] = []
+        validator.check_cost(bad, "catalog:test", errors, [])
+        assert any("bills_miss" in e for e in errors), bad
+
+
+def test_a_v2_row_ships_priced_on_core_with_its_miss_on_the_row(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n")
+    assert validator.main(["tikhub"]) == 0
+
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    bill: {miss: charged}\n"
+                                          "    ceiling_param: {in: query, name: max_usd, unit: usd}\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  tikhub.google.keywords.ideas: {accepts: [[q]], out: {a: b}, miss: 'a == []'}\n")
+    assert validator.main(["tikhub"]) == 1
+    out = capsys.readouterr().out
+    assert "a core row needs a price" in out and "remove the adapter's miss" in out
+    assert "ceiling_param is read from the file header" in out
+
+def _v2_cost_errors(endpoint_id: str, **keys) -> list[str]:
+    from treg.domain.catalog.schema import parse_row
+    provider = endpoint_id.split(".")[0]
+    raw = next(ep for ep in validator.schema.read_yaml(validator.CATALOG / f"{provider}.yaml")["endpoints"]
+               if ep["id"] == endpoint_id)
+    ep = {**raw, **keys}
+    errors: list[str] = []
+    validator.check_v2_cost(parse_row(ep, "test"), ep, provider, "test", errors)
+    return errors
+
+
+GEMINI = "google-ai.image-gen.gemini-3-1-flash-image"
+
+
+def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
+    assert _v2_cost_errors(GEMINI) == [] and _v2_cost_errors("findymail.search.domain") == []
+
+
+@pytest.mark.parametrize("endpoint_id,keys,message", [
+    ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
+     "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
+     "price.currency unit (unit page) has no fx.yaml rate"),
+    ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
+     "reserve.rows.param 'body.limit' must name a declared integer"),
+    ("findymail.search.domain", {"reserve": {"entities": {"from": "body.domains"}}},
+     "reserve.entities.from 'body.domains' must name a declared input field"),
+    (GEMINI, {"settle": {"usage": {"path": "response.usageMetadata.totalTokenCount", "unit": "tokens"}}},
+     "settle.usage.unit 'tokens' is not usd, credit"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "equals", "value": "512"}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not declared in input"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "in", "value": ["512"]}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not a declared input field"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imageSize", "op": "equals", "value": "512"}],
+         "value": "0.05", "times": "body.contents"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "times field 'body.contents' must be numeric"),
+])
+def test_the_v2_cost_checks_refuse_a_unit_without_a_rate_and_a_path_to_no_declared_field(endpoint_id, keys, message):
+    assert any(message in error for error in _v2_cost_errors(endpoint_id, **keys))
+
+
+def test_a_price_may_name_a_credit_rate_declared_unknown_but_never_a_missing_one():
+    provenance = {"source": "docs", "source_url": "https://docs.coingecko.com/", "checked": "2026-08-15",
+                  "confidence": "documented"}
+    assert _v2_cost_errors("coingecko.simple.price", provenance=provenance) == []
+    reported = {"reported": {"path": "response.credits", "unit": "credit"}}
+    assert any("settle.reported.unit 'credit'" in error
+               for error in _v2_cost_errors("coingecko.simple.price", provenance=provenance, settle=reported))
+    assert any("price.currency credit has no fx.yaml rate for 'google-ai'" in error
+               for error in _v2_cost_errors(GEMINI, price={"value": "1", "currency": "credit"}))
+
+
+
+def _text_warnings(**row):
+    warnings: list[str] = []
+    validator.check_row_text({"id": "example.one", **row}, "example.yaml:example.one", warnings,
+                             validator.reflect_entries())
+    return warnings
+
+
+def test_tokens_count_word_runs_and_each_cjk_character():
+    assert validator.tokens("Find a company's work emails - name, title") == 8
+    assert validator.tokens("抖音 profile by sec_uid") == 6
+
+
+@pytest.mark.parametrize("row", [
+    {"summary": "Find a company's work emails by domain - address, name, title and confidence"},
+    {"summary": " ".join(["word"] * 50), "note": " ".join(["word"] * 75)},
+    {"summary": "Search posts", "note": "When the account is private, the answer is empty.",
+     "input": {"queryParams": {"q": {"type": "string", "note": "a hashtag without #"}}},
+     "cost": {"type": "per_call", "note": "charged on every 2xx"}},
+    {"summary": "Mayan calendar dates for a day, in a mayday format"},
+])
+def test_row_text_passes_a_row_that_says_what_the_tool_does(row):
+    assert _text_warnings(**row) == []
+
+
+@pytest.mark.parametrize("row, message", [
+    ({"summary": " ".join(["word"] * 51)}, "summary is 51 tokens, over 50"),
+    ({"summary": "Search posts", "note": " ".join(["word"] * 76)}, "note is 76 tokens, over 75"),
+    ({"summary": "Search posts; results May lag"}, "summary says 'May' (may): a hedge"),
+    ({"summary": "Search posts", "note": "It no\n  longer returns views."},
+     "note says 'no\\n  longer' (no longer): argues with an earlier text"),
+    ({"summary": "Search posts", "note": "Billed per_call so a miss is paid."}, "note says 'per_call so' (per_call so)"),
+    ({"summary": "Search posts. Live 2026-09-08 it returned ten."}, "summary says '2026-09-08'"),
+    ({"summary": "Search posts", "note": "Across 40 calls the answer was stale."}, "note says '40 calls'"),
+    ({"summary": "Search posts", "input": {"queryParams": {"q": {"type": "string", "note": "often a hashtag"}}}},
+     "input.queryParams.q.note says 'often'"),
+    ({"summary": "Search posts", "input": {"body": {"type": "object", "properties": {
+        "filter": {"type": "object", "properties": {"tag": {"type": "string", "note": "usually empty"}}}}}}},
+     "input.body.filter.tag.note says 'usually'"),
+    ({"summary": "Search posts", "input": {"note": "one of q | tag, probed weekly"}}, "input.note says 'probed'"),
+    ({"summary": "Search posts", "cost": {"type": "per_call", "note": "a retry might be charged"}},
+     "cost.note says 'might'"),
+    ({"summary": "Search posts", "price": {"value": "0.01", "note": "typically one credit"}},
+     "price.note says 'typically'"),
+])
+def test_row_text_warns_once_per_match_and_names_the_entry(row, message):
+    warnings = _text_warnings(**row)
+    assert len(warnings) == 1 and message in warnings[0], warnings
+
+
+def test_the_reflection_list_reads_phrases_regexes_reasons_and_comments(tmp_path):
+    words = tmp_path / "words.txt"
+    words.write_text("# a comment\n\nso that  # maintainer reasoning\nre:\\bv\\d+\\b\nobserved\n")
+    entries = validator.reflect_entries(words)
+    assert [(entry, reason) for entry, _, reason in entries] == [
+        ("so that", "maintainer reasoning"), (r"re:\bv\d+\b", ""), ("observed", "")]
+    assert entries[0][1].search("set so  that paging works") and not entries[0][1].search("also thatch")
+    assert entries[1][1].search("moved to V2")
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args],
+                   cwd=cwd, check=True, capture_output=True)
+
+
+def test_the_base_names_rows_added_or_changed_and_rows_respelt(tmp_path, monkeypatch):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "example.yaml").write_text(
+        "provider: example\nendpoints:\n- id: example.old\n  summary: Old\n"
+        "- id: example.moved\n  summary: Moved\n- id: example.edited\n  summary: Edited\n")
+    (catalog / "other.yaml").write_text("provider: other\nendpoints: []\n")
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    monkeypatch.setattr(catalog_added, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+
+    (catalog / "example.yaml").write_text(
+        "provider: example\nendpoints:\n- id: example.old\n  summary: Old\n"
+        "- id: example.edited\n  summary: Edited\n  added: '2026-10-01'\n- id: example.new\n  summary: New\n")
+    (catalog / "other.yaml").write_text("provider: other\nendpoints:\n- id: example.moved\n  summary: Moved\n")
+    assert validator.compare_with_base("main") == ({"example.edited", "example.new"}, [])
+
+    (catalog / "other.yaml").write_text(
+        "provider: other\nendpoints:\n- id: example.moved\n  summary: Moved\n  price: {value: '0.01'}\n")
+    changed, respelt = validator.compare_with_base("main")
+    assert changed == {"example.edited", "example.new", "example.moved"}
+    assert respelt == ["example.moved: written in the legacy spelling on main, now v2"]
+
+
+def test_validator_with_a_base_judges_the_text_of_touched_rows_only(tmp_path, monkeypatch, capsys):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\n"
+                                               "capabilities: {tiktok.user.profile: Profile}\n")
+    (catalog / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    row = ("provider: tikhub\nsource: {docs: https://example.com/docs}\nendpoints:\n"
+           "  - id: tikhub.tiktok.user.profile\n    capability: tiktok.user.profile\n"
+           "    platform: tiktok\n    method: GET\n    path: /profile\n"
+           "    summary: Public TikTok profile by username, observed weekly\n    added: '2026-09-01'\n"
+           "    cost: {type: free, value: 0, currency: USD, unit: call}\n")
+    (catalog / "tikhub.yaml").write_text(row)
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    monkeypatch.setattr(catalog_added, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+    warning = "WARN tikhub.yaml:tikhub.tiktok.user.profile: summary says 'observed' (observed)"
+
+    assert validator.main(["tikhub"]) == 0
+    assert any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+    assert validator.main(["--base", "main", "tikhub"]) == 0
+    assert not any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+
+    (catalog / "tikhub.yaml").write_text(row.replace("path: /profile", "path: /v2/profile"))
+    assert validator.main(["--base", "main", "tikhub"]) == 0
+    assert any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_respelt_row_fails_unless_the_migration_label_allows_it(tmp_path, monkeypatch, capsys):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\ncapabilities: {}\n")
+    (catalog / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (catalog / "tikhub.extended.yaml").write_text(
+        "provider: tikhub\nsource: {spec_urls: [https://example.com/openapi.json]}\nendpoints:\n"
+        "  - id: tikhub.x.profile\n    platform: tiktok\n    method: GET\n    path: /profile\n"
+        "    summary: Public TikTok profile\n    added: '2026-09-01'\n")
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+    line = "example.one: written in the legacy spelling on main, now v2"
+    monkeypatch.setattr(validator, "compare_with_base", lambda base: (set(), [line]))
+
+    assert validator.main(["--base", "main", "tikhub"]) == 1
+    assert f"{line}; keep the row's spelling, or label a migration batch `catalog-migration`" \
+        in capsys.readouterr().out.splitlines()
+    assert validator.main(["--base", "main", "--allow-respelling", "tikhub"]) == 0
+    assert f"WARN {line} (catalog-migration)" in capsys.readouterr().out.splitlines()

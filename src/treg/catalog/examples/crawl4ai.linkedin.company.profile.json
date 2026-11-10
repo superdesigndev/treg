@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 1 null fields across 1 items",
+      "module: linkedin-company: microsoft · Microsoft · 29265767 followers"
+    ]
+  },
+  "recipe": "linkedin-company",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 176,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "about": "Every company has a mission. What's ours? To empower every person and every organization to achieve more. We believe technology can and should be a force for good and that meaningful innovation contributes to a brighter world in the future and today. Our culture doesn’t just encourage curiosity; it …",
+      "followers": 29265767,
+      "founded": null,
+      "headquarters": "Redmond, Washington",
+      "industry": "Software Development",
+      "name": "Microsoft",
+      "size": "10,001+ employees",
+      "tagline": null,
+      "url": "https://www.linkedin.com/company/microsoft",
+      "website": "https://news.microsoft.com/"
+    }
+  ]
+}

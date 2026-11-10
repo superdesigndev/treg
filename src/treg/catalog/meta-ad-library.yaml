@@ -58,6 +58,7 @@ limits: "standard Graph API rate limits per app"
 pricing_url: https://www.facebook.com/ads/library/api  # No charge; access is gated on identity verification, not payment.
 endpoints:
   - id: meta-ad-library.meta-ads.library.search
+    added: '2026-07-28'
     capability: meta-ads.library.search
     platform: meta-ads
     scope: any_account
@@ -87,6 +88,7 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/graph-api/reference/ads_archive/
 
   - id: meta-ad-library.meta-ads.library.advertiser
+    added: '2026-07-28'
     capability: meta-ads.library.advertiser
     platform: meta-ads
     scope: any_account
@@ -109,6 +111,7 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/graph-api/reference/ads_archive/
 
   - id: meta-ad-library.meta-ads.library.political
+    added: '2026-07-28'
     capability: meta-ads.library.political
     platform: meta-ads
     scope: any_account
@@ -132,6 +135,7 @@ endpoints:
     docs_url: https://www.facebook.com/ads/library/api/
 
   - id: meta-ad-library.meta-ads.library.eu_reach
+    added: '2026-07-28'
     capability: meta-ads.library.eu_reach
     platform: meta-ads
     scope: any_account

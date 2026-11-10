@@ -16,7 +16,13 @@ Lessons baked in:
 - Whisper normalises "gonna" -> "going to"; captions follow the transcript, not the script.
 - Never chunk by count alone: "you step by" / "lucky but do" read badly. Hand phrases win.
 """
-import argparse, json, os, re, subprocess, sys, tempfile, urllib.request
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 720, 1280; MAXW = 580; HEADER_Y = 0.12; CAPTION_Y = 0.78
@@ -28,7 +34,7 @@ def bold(sz):
         try:
             f = ImageFont.truetype(FONT, sz, index=idx)
             if "Bold" in f.getname()[1]: return f
-        except Exception: pass
+        except OSError: pass
     return ImageFont.truetype(FONT, sz)
 
 def text_img(txt, sz, stroke):
@@ -66,7 +72,8 @@ def whisper_words(video):
                         "-F", "timestamp_granularities[]=word", "-F", "language=en"], capture_output=True, text=True)
     return json.loads(r.stdout)
 
-norm = lambda s: re.sub(r"[^a-z0-9']", "", s.lower())
+def norm(s):
+    return re.sub(r"[^a-z0-9']", "", s.lower())
 
 def chunk_by_phrases(words, phrases):
     """Match each phrase to the transcript by letters only, so 'full-time' == 'full' + 'time'."""

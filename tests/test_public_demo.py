@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
-import treg.api as api_mod
 from treg.domain.governance import publicdemo as publicdemo_policy
+from conftest import accept_with_code
 
 
 def _h(token: str) -> dict:
@@ -43,7 +43,7 @@ async def test_mint_is_owner_only(clients: AsyncClient):
     # a joined member may not publish the org's credential
     code = (await clients.post(f"/orgs/{org_id}/invites",
                                json={"email": "m@x.dev", "role": "member"})).json()["code"]
-    mtok = (await clients.post("/invites/accept", json={"code": code, "email": "m@x.dev"})).json()["token"]
+    mtok = (await accept_with_code(clients, json={"code": code, "email": "m@x.dev"})).json()["token"]
     r = await clients.post(f"/orgs/{org_id}/public-token", headers=_h(mtok))
     assert r.status_code == 403
     assert (await clients.post(f"/orgs/{org_id}/public-token")).status_code == 200

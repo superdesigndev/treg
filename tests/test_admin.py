@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.config import get_settings
@@ -39,11 +39,11 @@ async def c(monkeypatch):
 
 async def _seed(c: AsyncClient):
     """Two orgs owned by two users; Org One has a tool. Returns (user1, org1, user2, org2) responses."""
-    u1 = (await c.post("/users", json={"email": "a@x.dev"})).json()
+    u1 = (await verified_signup(c, json={"email": "a@x.dev"})).json()
     o1 = (await c.post("/orgs", headers=_h(u1["token"]), json={"name": "Org One"})).json()
     sid = (await c.post("/secrets", headers=_h(o1["token"]), json={"name": "k", "value": "V"})).json()["id"]
     await c.post("/tools", headers=_h(o1["token"]), json={"name": "echo", "base_url": "http://upstream", "secret_id": sid})
-    u2 = (await c.post("/users", json={"email": "b@x.dev"})).json()
+    u2 = (await verified_signup(c, json={"email": "b@x.dev"})).json()
     o2 = (await c.post("/orgs", headers=_h(u2["token"]), json={"name": "Org Two"})).json()
     return u1, o1, u2, o2
 
@@ -241,3 +241,149 @@ async def test_admin_credit_org_missing_ref_or_reason_is_400(c):
     })
     assert r.status_code == 400
     assert "reason" in r.json()["detail"]
+
+
+async def test_manual_grant_uses_configured_database_without_cloud_credentials(c, monkeypatch):
+    """The standalone tool still grants once after removing hosted connection helpers."""
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    path = Path(__file__).parents[1] / "scripts/manual_grant.py"
+    spec = importlib.util.spec_from_file_location("manual_grant_test", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    monkeypatch.delenv("RENDER_API_KEY", raising=False)
+    _, org, *_ = await _seed(c)
+    args = SimpleNamespace(email="a@x.dev", org_id=org["org_id"], amount_usd="1.25",
+                           ref="maintenance-test", reason="test", by="test", confirm=False)
+    assert await script.run(args) == 0
+    args.confirm = True
+    assert await script.run(args) == 0
+    assert await script.run(args) == 1
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.org_id == org["org_id"], LedgerEntry.kind == "grant",
+        ))).scalars().all()
+        credits = [entry for entry in entries if entry.meta.get("ref") == "maintenance-test"]
+        assert len(credits) == 1
+        assert credits[0].amount_micro == 1_250_000
+
+
+async def test_stats_count_calls_from_the_day_table_not_the_call_table(c):
+    """It loaded every call row to count them, which timed out at production size and answered
+    502. Windowed call numbers now come from `endpointdaystat`."""
+    from datetime import datetime, timedelta, timezone
+    from treg.infra.db import session_maker
+    from treg.models import EndpointDayStat
+
+    await _seed(c)
+    today = datetime.now(timezone.utc).date()
+    async with session_maker() as db:
+        for days_ago, n, ok in ((1, 100, 90), (10, 50, 40), (45, 1000, 0)):  # the last is outside 30 d
+            db.add(EndpointDayStat(endpoint_id="e.x", day=(today - timedelta(days=days_ago)).isoformat(),
+                                   n=n, ok=ok))
+        await db.commit()
+    calls = (await c.get("/admin/stats", headers=_a())).json()["calls"]
+    assert calls["last_7d"] == 100 and calls["last_30d"] == 150
+    assert calls["success_rate"] == round(130 / 150, 3)
+
+
+async def test_admin_daily_splits_one_providers_calls_and_answers_per_job(c):
+    """Per UTC day, newest first: all provider calls (routed parents left out), one provider's calls,
+    and per job the answered calls of every provider and of that provider."""
+    from datetime import datetime, timedelta, timezone
+    from treg.infra.db import session_maker
+    from treg.models import EndpointDayStat
+
+    await _seed(c)
+    today = datetime.now(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    async with session_maker() as db:
+        for ep, n, ok in (("crawl4ai.web.scrape", 10, 8), ("tinyfish.web.fetch", 30, 24), ("treg.web.extract", 40, 32)):
+            db.add(EndpointDayStat(endpoint_id=ep, day=yesterday, n=n, ok=ok))
+        db.add(EndpointDayStat(endpoint_id="crawl4ai.web.scrape", day=(today - timedelta(days=20)).isoformat(), n=5, ok=5))
+        await db.commit()
+    body = (await c.get("/admin/daily?days=7&provider=crawl4ai&jobs=web.extract", headers=_a())).json()
+    assert [d["day"] for d in body["days"]] == [yesterday]      # the 20-day-old row is outside the window
+    day = body["days"][0]
+    assert day["calls"] == 40 and day["provider_calls"] == 10    # treg.* parents are not provider calls
+    assert day["jobs"]["web.extract"] == {"answered": 32, "provider_answered": 8}
+
+
+async def test_admin_calls_reads_new_rows_after_a_cursor_by_provider(c):
+    """A live poller reads only what is new: `since_id` returns rows after it oldest first, with
+    the provider, charge and timing; `provider` alone is refused so the read stays a key range."""
+    from treg.models import CallRecord
+    async with session_maker() as s:
+        for i, (prov, ok) in enumerate((("crawl4ai", 200), ("firecrawl", 200), ("crawl4ai", 502), ("crawl4ai", 200))):
+            s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name=f"{prov}.web.scrape", method="POST",
+                             path="/call/x", status_code=ok, endpoint_id=f"{prov}.web.scrape", provider=prov,
+                             credential_tier="platform", cost_charged_micro=250 * (i + 1), duration_ms=100 + i,
+                             upstream_ms=90 + i, call_ref=f"ref{i}:r0",
+                             error_response='[502] {"ok": false, "reason": "no-answer:dns-failed"}' if ok == 502 else None))
+        await s.commit()
+    first = (await c.get("/admin/calls?limit=1", headers=_a())).json()
+    assert len(first) == 1 and first[0]["provider"] == "crawl4ai" and first[0]["charged_micro"] == 1000
+    cursor = first[0]["id"] - 4
+    rows = (await c.get(f"/admin/calls?since_id={cursor}&provider=crawl4ai", headers=_a())).json()
+    assert [r["status"] for r in rows] == [200, 502, 200]
+    assert [r["id"] for r in rows] == sorted(r["id"] for r in rows)
+    assert rows[0]["duration_ms"] == 100 and rows[0]["upstream_ms"] == 90 and rows[0]["tier"] == "platform"
+    assert [r["error_reason"] for r in rows] == [None, "no-answer:dns-failed", None]
+    assert (await c.get("/admin/calls?provider=crawl4ai", headers=_a())).status_code == 422
+
+
+async def test_admin_share_counts_requests_per_job_and_answers_per_provider(c):
+    """A routed call counts once as a request, and its successful attempt credits the provider that
+    answered; a direct call credits its own provider; a failed attempt, a 200 its adapter judged
+    empty, an attempt the job moved on from, and any attempt of a failed job credit nobody."""
+    from treg.models import CallRecord
+    async with session_maker() as s:
+        def add(ep, prov, status, ref):
+            s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name=ep, method="POST", path="/call/x",
+                             status_code=status, endpoint_id=ep, provider=prov, call_ref=ref))
+        add("treg.web.extract", "treg", 200, "p1")
+        add("crawl4ai.web.scrape", "crawl4ai", 502, "p1:r0")
+        add("tinyfish.web.fetch", "tinyfish", 200, "p1:r1")
+        add("treg.web.extract", "treg", 200, "p2")
+        add("crawl4ai.web.scrape", "crawl4ai", 200, "p2:r0")
+        add("crawl4ai.web.scrape", "crawl4ai", 200, "d1")
+        add("treg.web.extract", "treg", 200, "p3")
+        s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="tinyfish.web.fetch", method="POST",
+                         path="/call/x", status_code=200, endpoint_id="tinyfish.web.fetch", provider="tinyfish",
+                         call_ref="p3:r0", hit=False))   # a 200 its adapter judged empty: not an answer
+        add("crawl4ai.web.scrape", "crawl4ai", 200, "p3:r1")
+        add("treg.web.extract", "treg", 502, "p4")
+        add("tinyfish.web.fetch", "tinyfish", 200, "p4:r0")     # no verdict, but the job failed: not served
+        add("treg.web.extract", "treg", 200, "p5")
+        add("tinyfish.web.fetch", "tinyfish", 200, "p5:r0")     # no verdict, and the job moved on from it
+        add("crawl4ai.web.scrape", "crawl4ai", 200, "p5:r1")
+        await s.commit()
+    body = (await c.get("/admin/share?minutes=60", headers=_a())).json()
+    job = next(j for j in body["jobs"] if j["capability"] == "web.extract")
+    assert job["requests"] == 6 and job["answered"] == 5
+    assert job["by_provider"] == {"crawl4ai": 4, "tinyfish": 1}
+
+
+async def test_admin_share_counts_teams_so_one_heavy_team_is_one_vote(c):
+    """`teams`: one team with nine direct crawl4ai answers and one team with one routed tinyfish
+    answer are one vote each: team-weighted 50/50, while volume says 90/10."""
+    from treg.models import CallRecord
+    async with session_maker() as s:
+        for i in range(9):
+            s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="crawl4ai.web.scrape", method="POST",
+                             path="/call/x", status_code=200, endpoint_id="crawl4ai.web.scrape",
+                             provider="crawl4ai", call_ref=f"h{i}"))
+        s.add(CallRecord(org_id=2, user_email="v@example.com", tool_name="treg.web.extract", method="POST",
+                         path="/call/x", status_code=200, endpoint_id="treg.web.extract", provider="treg", call_ref="q1"))
+        s.add(CallRecord(org_id=2, user_email="v@example.com", tool_name="tinyfish.web.fetch", method="POST",
+                         path="/call/x", status_code=200, endpoint_id="tinyfish.web.fetch", provider="tinyfish",
+                         call_ref="q1:r0"))
+        await s.commit()
+    body = (await c.get("/admin/share?minutes=60", headers=_a())).json()
+    teams = next(j for j in body["jobs"] if j["capability"] == "web.extract")["teams"]
+    assert teams["total"] == 2 and teams["by_provider"] == {"crawl4ai": 1, "tinyfish": 1}
+    assert teams["weighted"] == {"crawl4ai": 0.5, "tinyfish": 0.5}
+    assert teams["direct"] == {"total": 1, "by_provider": {"crawl4ai": 1}}
+    assert teams["routed"] == {"total": 1, "by_provider": {"tinyfish": 1}}

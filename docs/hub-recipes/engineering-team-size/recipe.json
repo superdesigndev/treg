@@ -1,6 +1,6 @@
 {
   "name": "engineering-team-size",
-  "summary": "Estimate a company's engineering headcount from its domain: a free identity resolution, then CrustData's role headcount, then PDL's R&D class as a fallback, with a confidence verdict.",
+  "summary": "Estimate a company's engineering headcount from its domain: company enrichment for identity, then CrustData's role headcount, then PDL's R&D class as a fallback, with a confidence verdict.",
   "inputs": {
     "domain": {
       "type": "string",
@@ -14,7 +14,6 @@
     }
   },
   "uses": [
-    "pdl.x.company-clean",
     "crustdata.companies.enrich",
     "pdl.companies.enrich"
   ],

@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "yelp-business",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 158,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "address": {
+        "city": null,
+        "country": null,
+        "state": null,
+        "street": null,
+        "zip": null
+      },
+      "alias": "the-house-san-francisco",
+      "business_id": "ZoZjbOYR-apY8XvommlNUA",
+      "categories": [],
+      "description": null,
+      "is_closed": null,
+      "latitude": null,
+      "longitude": null,
+      "name": "The House",
+      "neighborhoods": [],
+      "phone": null,
+      "photos": [],
+      "price_range": null,
+      "rating": null,
+      "review_count": 4888,
+      "url": "https://www.yelp.com/biz/the-house-san-francisco",
+      "website": null
+    }
+  ]
+}

@@ -1,11 +1,17 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { examples, oauthGroups } from './data'
+import { examples, listedOauthGroups } from './data'
 
 export default defineComponent({
-  props: { copied: String, headingId: String },
+  // `providers` is the /oauth/providers listing; a provider it leaves out shows no chip.
+  props: { copied: String, headingId: String, providers: Array },
   emits: ['example', 'provider'],
-  computed: { examples: () => examples, oauthGroups: () => oauthGroups },
+  computed: {
+    examples: () => examples,
+    oauthGroups(): ReturnType<typeof listedOauthGroups> {
+      return listedOauthGroups(this.providers as { service: string }[] | undefined)
+    },
+  },
 })
 </script>
 

@@ -62,6 +62,7 @@ async def assigned(
 async def register(
     db: AsyncSession, *, org_id: int, provider: str, resource_kind: str,
     upstream_id: str, display_name: str, created_by: str, source_call_id: str,
+    key_slot: str | None = None,
 ) -> ProviderResource:
     existing = (await db.execute(select(ProviderResource).where(
         ProviderResource.provider == provider,
@@ -86,6 +87,7 @@ async def register(
         created_by=created_by,
         source_call_id=source_call_id,
         status=ACTIVE,
+        key_slot=key_slot,
     )
     db.add(row)
     await db.flush()

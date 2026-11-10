@@ -25,7 +25,7 @@ treg catalog get <endpoint_id>                                  # price + measur
 | `F-07` | 5xx, timeouts and network errors are never billed; `Idempotency-Key` prevents paying twice for a retry | `llms.txt` | 2026-08-17 |
 | `F-08` | Sign-in doors: GitHub, Google, email one-time code. No card required to create a team or spend the grant | treg.to sign-in modal; `ledger.grant` fires at org creation | 2026-08-17 |
 | `F-09` | Installer registers the MCP server into Claude Code, Cursor and opencode; other MCP clients connect via OAuth; anything that runs a shell can use the CLI | `llms.txt` | 2026-08-17 |
-| `F-10` | 100% open source, AGPL — github.com/superdesigndev/treg | treg.to footer | 2026-08-17 |
+| `F-10` | 100% open source, Apache 2.0 — github.com/superdesigndev/treg | `LICENSE`; treg.to footer | 2026-10-22 |
 | `F-11` | Price is visible before the call (`catalog get` / `estimated_cost_usd`) | `llms.txt` | 2026-08-17 |
 | `F-12` | Out of balance returns HTTP 402 with `balance_micro`, `estimated_cost_micro` and a top-up URL | `llms.txt` | 2026-08-17 |
 | `F-13` | A team can pin a capability to one provider: `treg org pin <capability> --provider <p>` | `llms.txt` CLI reference | 2026-08-17 |
@@ -109,14 +109,14 @@ LeadMagic $0.025 · Lusha $0.2496 · Coresignal $0.392.
 | Coresignal | free (ids only; the cost lands on collect) | — (1) | — |
 | Hunter Discover | free | 100% (24) | 1.7 s |
 | The Companies API | $0.0019 / company returned; free with `simplified=true` | 100% (338) | 0.3 s |
-| Lusha | $0.004992 / up to 25 results | — (0) | — |
+| Lusha | $0.1248 / up to 25 results | — (0) | — |
 | LeadMagic | $0.025 / company returned | 70% (10) | 3.2 s |
 | Apollo | $0.026 / page returned | — (0) | — |
 | Diffbot | $0.0299 / record returned | 100% (5) | 0.7 s |
-| PDL | $0.38 / record returned | — (0) | — |
+| PDL | $0.10 / record returned | — (0) | — |
 | Crunchbase | own key only, no per-call price | — (2) | — |
 
-**200× spread for the same job, and the cheapest is free.** This table is the single most defensible
+**50× spread for the same job, and the cheapest is free.** This table is the single most defensible
 asset in this whole cluster.
 
 ### Company signals and funding (`F-51`)
@@ -139,7 +139,7 @@ ScrapeCreators LinkedIn company page $0.00188.
 | TikTok ad library | Apify | $0.003 / result | — | — |
 | TikTok ad library | tikhub | $0.001 | none of 7 recorded successful — returns 405 on its documented shape | — |
 | LinkedIn ads search | ScrapeCreators | $0.00188 | — | — |
-| LinkedIn ads search | tikhub | $0.004 | — | — |
+| LinkedIn ads search | HarvestAPI | $0.0016 | — | — |
 
 ### Social platforms — endpoints per platform, `GET /catalog/platforms` (`F-70`)
 
@@ -159,41 +159,9 @@ E-commerce 81 · Reviews & Apps 55 · Market data 40 · Community 16 · Develope
 
 ---
 
-## Production telemetry — 30 days to 2026-08-17 (`F-90`)
+## Public endpoint observations
 
-Swept from the live registry's public endpoint view, which attaches cross-tenant `observed` stats. Source:
-the "What Agents Call treg For" artifact. **24,921 catalog calls across every team.**
-
-**Publishable vs internal — read this before using anything here.**
-
-- ✅ **Per-endpoint `calls served`, `ok` rate and `p50`** are fine to publish. `catalog_get` already shows
-  these cross-tenant numbers to any user, so they are public information, and they are the strongest
-  reliability evidence we have.
-- ❌ **The aggregates are internal**: total platform volume (24,921), the 82%-of-catalog-dark figure, the
-  provider revenue split, the never-used counts. Those describe our business, not a caller's experience.
-  Keep them in this file and out of the pages.
-
-### Where the traffic actually goes (`F-91` — internal, for targeting only)
-
-| Job | Calls | Share |
-|---|---|---|
-| Google SERP (maps + organic + news + trends) | 7,559 | 30.3% |
-| X / Twitter | 4,351 | 17.5% |
-| People enrichment | 3,657 | 14.7% |
-| TikTok | 1,849 | 7.4% |
-| Company data | 1,164 | 4.7% |
-| LinkedIn | 1,077 | 4.3% |
-| Instagram | 1,060 | 4.3% |
-| Web scraping | 961 | 3.9% |
-| Reddit | 886 | 3.6% |
-| AI answer engines | 376 | 1.5% |
-| **Meta ad library** | **303** | **1.2%** |
-| YouTube | 162 | 0.7% |
-
-Two findings that change page targeting:
-- **Keyword research is not what people do.** No keyword endpoint appears in the top 20. Serpstat totals
-  334 calls (1.3%). The real "SEO" job is **scraping result pages** — Maps alone is 2,646.
-- **Local/Maps is the biggest uncovered job**, and no page in this cluster addresses it.
+These historical per-endpoint figures were exposed by the public catalog. Refresh before reuse.
 
 ### Measured endpoint stats — use these, they beat the old sample sizes (`F-92`)
 
@@ -237,7 +205,7 @@ Two findings that change page targeting:
 
 ### The caveat that limits all of the above
 
-The stats pool every org deliberately: **there is no per-tenant breakdown, so 24,921 calls could be forty
+The stats pool every org deliberately: **there is no per-tenant breakdown, so the observed calls could be forty
 teams or four.** Our own `superdesign` org contributes under 40 of them, so the demand is genuinely
 external — but its concentration is unknown. Treat this as directional for targeting, not as proof of a
 market. The team count needs `TREG_ADMIN_TOKEN` and one `/admin/*` call.

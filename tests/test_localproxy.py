@@ -7,8 +7,6 @@ before interception exists (P2):
 - a connection to a host we do not intercept is copied **byte for byte** and no certificate is ever
   generated for it;
 - the trust bundle we hand the agent is the system roots **plus** ours, never ours alone.
-
-See docs/LOCAL-PROXY-PLAN.md §Testing.
 """
 
 from __future__ import annotations

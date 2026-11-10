@@ -26,6 +26,7 @@ endpoints:
   # prose below; `columns` is the known comma-separated exception, to ship separately with a live
   # contract-level verification.
   - id: pinterest-ads.accounts
+    added: '2026-07-28'
     capability: pinterest-ads.accounts
     platform: pinterest-ads
     scope: own_account
@@ -43,6 +44,7 @@ endpoints:
     docs_url: https://developers.pinterest.com/docs/api/v5/ad_accounts-list/
 
   - id: pinterest-ads.query
+    added: '2026-07-28'
     capability: pinterest-ads.query
     platform: pinterest-ads
     scope: own_account
@@ -67,6 +69,7 @@ endpoints:
     docs_url: https://developers.pinterest.com/docs/api/v5/ad_account-analytics/
 
   - id: pinterest-ads.campaigns
+    added: '2026-07-28'
     capability: pinterest-ads.campaigns
     platform: pinterest-ads
     scope: own_account
@@ -88,6 +91,7 @@ endpoints:
     docs_url: https://developers.pinterest.com/docs/api/v5/campaigns-list/
 
   - id: pinterest-ads.campaign.analytics
+    added: '2026-07-28'
     capability: pinterest-ads.campaign.analytics
     platform: pinterest-ads
     scope: own_account
@@ -111,6 +115,7 @@ endpoints:
     docs_url: https://developers.pinterest.com/docs/api/v5/campaigns-analytics/
 
   - id: pinterest-ads.adgroups
+    added: '2026-07-28'
     capability: pinterest-ads.adgroups
     platform: pinterest-ads
     scope: own_account
@@ -132,6 +137,7 @@ endpoints:
     docs_url: https://developers.pinterest.com/docs/api/v5/ad_groups-list/
 
   - id: pinterest-ads.ads
+    added: '2026-07-28'
     capability: pinterest-ads.ads
     platform: pinterest-ads
     scope: own_account

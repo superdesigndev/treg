@@ -32,8 +32,8 @@ AGGREGATOR_ORDER = ("orthogonal", "monid")
 SEED_PATH = Path(__file__).with_name("overflow_seed.json")
 
 # Orthogonal charges a fixed fee per request for these search routes while our direct account
-# pays per row: Influencers Club discovery $0.03 (/details, 2026-09-08); Icypeas find-people $0.01,
-# charged 1 cent live for 50 and for 200 leads (2026-09-28). Admission is the absolute ceiling
+# pays per row: Influencers Club discovery $0.03 (/details); Icypeas find-people $0.01, charged
+# 1 cent live for 50 and for 200 leads. Admission is the absolute ceiling
 # below, never a ratio against the request's estimate. Keep this exception confined to the
 # verified contracts; other per-result/per-call mismatches still require their own evidence.
 # endpoint_id -> (provider, agg_slug, our path, aggregator path)
@@ -56,7 +56,7 @@ def request_priced(route: OverflowRoute) -> bool:
                 and route.agg_unit == "call")
 
 
-# The vendor path-prefix normalizations the mapping run observed (plan §4.3): the aggregator writes
+# The vendor path-prefix normalizations the mapping run observed: the aggregator writes
 # the base path into the endpoint path where our catalog keeps it on the provider's base URL.
 _PREFIXES = ("/v2", "/api", "/v5", "/v1", "/v3")
 
@@ -261,8 +261,6 @@ def route_for(routes: list[OverflowRoute], endpoint_id: str) -> list[OverflowRou
     """Enabled routes for an endpoint in aggregator order — Orthogonal first (plan decision).
 
     No per-request price check here. A fixed-fee discovery route already passed its absolute
-    ceiling in `eligible`; comparing the flat $0.03 against a one-creator estimate ($0.006) used
-    to refuse the smallest requests with a typed 503 telling the caller to bring their own key
-    (2026-09-17). Three cents, disclosed, beats a refusal."""
+    ceiling in `eligible`. Three cents, disclosed, beats a refusal."""
     mine = [r for r in routes if r.endpoint_id == endpoint_id and r.enabled]
     return sorted(mine, key=lambda r: AGGREGATOR_ORDER.index(r.aggregator) if r.aggregator in AGGREGATOR_ORDER else 99)

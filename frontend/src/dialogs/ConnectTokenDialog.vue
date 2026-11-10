@@ -6,8 +6,8 @@ export default { setup: useDashboard }
 <template>
 <div  class="scrim" role="dialog" aria-labelledby="connect-token-dialog-title" aria-modal="true" v-dialog="() => { tokenAsk=null }" @click.self="tokenAsk=null">
       <div class="modal" style="padding:16px">
-        <h3 id="connect-token-dialog-title" style="margin:0 0 6px"><span class="plogo-tile"><img class="plogo" :src="'/logos/'+tokenAsk.provider.service+'.svg'" alt="" aria-hidden="true" @error="$event.target.style.visibility='hidden'"></span>Connect {{tokenAsk.provider.display_name}}</h3>
-        <p class="sub" style="margin:0 0 12px">You bring your own {{tokenAsk.provider.auth_kind==='key'?'API key':'bot'}}, so it stays yours — treg
+        <h3 id="connect-token-dialog-title" style="margin:0 0 6px"><span class="plogo-tile"><img class="plogo" :src="'/logos/'+tokenAsk.provider.service+'.svg'" alt="" aria-hidden="true" @error="$event.target.style.visibility='hidden'"></span>{{tokenAsk.conn ? 'Replace your '+tokenAsk.provider.display_name+' key' : 'Connect '+tokenAsk.provider.display_name}}</h3>
+        <p class="sub" style="margin:0 0 12px">You bring your own {{(tokenAsk.provider.token_label||'API key').toLowerCase().startsWith('bot') ? 'bot' : 'key'}}, so it stays yours — treg
           holds it server-side and injects it on every call.</p>
         <a v-if="tokenAsk.provider.setup_url" class="btn sm primary" :href="tokenAsk.provider.setup_url"
            target="_blank" rel="noopener">{{tokenAsk.provider.setup_action_label||'Create the app'}}</a>

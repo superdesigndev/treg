@@ -155,7 +155,7 @@
     data:()=>({benchmark:(location.pathname||'').endsWith('/people-search-bench'),benchCategories:[],benchCategory:'',benchLoading:false,benchError:'',leaderboard:(location.pathname||'').endsWith('/leaderboard'),setupStep:1,setupTeamName:'',setupExampleCopied:'',setupAgentId:'claude-code',setupToken:null,setupShowToken:false,setupCopied:false,setupError:'',setupLoading:false,setupSequence:0,tasks:[],taskId:'people.email.find',variant:0,inputs:{},extraInputs:[],showAllEntries:false,selectedEntry:null,selectedVendor:'',resultFilter:'all',mode:'waterfall',autoVerify:true,verificationHintHidden:false,verificationQuotes:{},verificationPending:{},
       user:null,teams:[],team:'',balance:null,meta:{},intercomStarted:false,intercomIdentity:'',busy:false,error:'',run:null,quote:null,history:[],customServices:false,services:[],
       insights:null,insightsState:'idle',insightsTimer:null,statsView:'rate',chartFocus:null,metricTooltip:null,requestDone:false,requestBusy:false,vendorPromptCopied:false,vendorPromptError:'',requestError:'',requestQuery:'',requestForm:{capability:'',note:'',contact:''},
-      manualQuotes:{},manualPending:{},reporting:'',reportDrafts:{},pricing:false,quoteTimer:null,quoteSequence:0,pricedKey:'',expandedResults:[],email:'',code:'',emailStep:'email',devCode:'',authBusy:false,authError:'',
+      manualQuotes:{},manualPending:{},reporting:'',reportDrafts:{},pricing:false,quoteTimer:null,quoteSequence:0,pricedKey:'',expandedResults:[],email:'',code:'',emailStep:'email',authMode:'email',ssoTeams:[],devCode:'',authBusy:false,authError:'',
       newTeamName:'',pendingSubmit:false,pollTimer:null,pollFailures:0,scrollOnComplete:'',runTeam:'',booted:false,draftRestored:false,historySequence:0,historyLoading:false,historyHasMore:false,linkedRunPending:false,urlPopHandler:null}),
     watch:{
       'run.id'(){this.selectedVendor='';},
@@ -573,9 +573,11 @@
         try{await navigator.clipboard.writeText(text);if(sequence!==this.setupSequence)return;this.setupCopied=!exampleKey;this.setupExampleCopied=exampleKey;setTimeout(()=>{if(sequence===this.setupSequence){this.setupCopied=false;this.setupExampleCopied='';}},1400);}
         catch{if(sequence===this.setupSequence)this.setupError='Could not copy. Select the setup text and copy it manually.';}
       },
-      async openLogin(pending){this.track('arena_signup_opened');this.pendingSubmit=pending;this.authError='';this.emailStep='email';this.code='';this.devCode='';this.saveDraft(pending);await this.$nextTick();this.$refs.loginDialog.showModal();},
+      async openLogin(pending){this.track('arena_signup_opened');this.pendingSubmit=pending;this.authError='';this.emailStep='email';this.authMode='email';this.ssoTeams=[];this.code='';this.devCode='';this.saveDraft(pending);await this.$nextTick();this.$refs.loginDialog.showModal();},
       closeLogin(){remove(SIGNUP_SETUP);this.pendingSubmit=false;this.saveDraft(false);this.$refs.loginDialog.close();},
       socialLogin(provider){this.saveDraft(this.pendingSubmit);write(SIGNUP_SETUP,{at:Date.now()});const target=(location.pathname||'/enrich-arena')+(location.search||'');location.assign('/auth/'+provider+'?return_to='+encodeURIComponent(target));},
+      startSSO(slug){this.saveDraft(this.pendingSubmit);write(SIGNUP_SETUP,{at:Date.now()});const target=(location.pathname||'/enrich-arena')+(location.search||'');location.assign('/auth/sso/'+encodeURIComponent(slug)+'/start?return_to='+encodeURIComponent(target));},
+      async continueSSO(){this.authBusy=true;this.authError='';this.ssoTeams=[];try{const result=await this.api('/auth/sso/discover',{method:'POST',body:JSON.stringify({email:this.email.trim()})},'');const teams=result.teams||[];if(teams.length===1)this.startSSO(teams[0].slug);else if(teams.length)this.ssoTeams=teams;else this.authError='This email has no company SSO connection. Use another sign-in method or ask your IT admin for your company link.';}catch(e){this.authError=e.message;}finally{this.authBusy=false;}},
       async finishSignup(){remove(SIGNUP_SETUP);this.pendingSubmit=false;this.saveDraft(false);await this.openSetup();},
       async resumeSignupSetup(){
         const pending=read(SIGNUP_SETUP);
@@ -584,7 +586,7 @@
         if(!this.user)return false;
         await this.finishSignup();return true;
       },
-      async sendCode(){this.authBusy=true;this.authError='';try{const r=await this.api('/auth/email/start',{method:'POST',body:JSON.stringify({email:this.email})},'');this.emailStep='code';this.devCode=r.dev_code||'';}catch(e){this.authError=e.message;}finally{this.authBusy=false;}},
+      async sendCode(){this.authBusy=true;this.authError='';try{const captcha_token=window.tregCaptcha?await window.tregCaptcha.token('email_start'):'';const r=await this.api('/auth/email/start',{method:'POST',body:JSON.stringify({email:this.email,captcha_token})},'');this.emailStep='code';this.devCode=r.dev_code||'';}catch(e){this.authError=e.message;}finally{this.authBusy=false;}},
       async verifyEmail(){this.authBusy=true;this.authError='';try{await this.api('/auth/email/verify',{method:'POST',body:JSON.stringify({email:this.email,code:this.code})},'');this.$refs.loginDialog.close();await this.loadIdentity();await this.restoreLinkedRun();await this.finishSignup();}catch(e){this.authError=e.message;this.error=e.message;}finally{this.authBusy=false;}},
       async createTeam(){this.authBusy=true;this.authError='';try{await this.api('/orgs',{method:'POST',body:JSON.stringify({name:this.newTeamName})},'');this.$refs.teamDialog.close();await this.loadIdentity();await this.prepare();}catch(e){this.authError=e.message;}finally{this.authBusy=false;}},
       inputError(){

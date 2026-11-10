@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import json
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hmac
@@ -12,13 +14,16 @@ import secrets as _secrets
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import func
+from cryptography.fernet import InvalidToken
+from sqlalchemy import delete, func, tuple_, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import audit, crypto, email as email_sender, ratestore
 from ..application.onboard import demo as demo_seed
 from ..infra import db as database
+from ..infra import turnstile
 from ..config import get_settings
 from ..domain.identity import session as sess
 from ..domain.identity import mcp_oauth
@@ -28,6 +33,7 @@ from ..domain.identity.access import (
     _membership_by_token,
     _norm_email,
     _resolve_org,
+    sso_team_allowed,
     _user_from_identity_token,
     _user_from_session,
 )
@@ -38,7 +44,7 @@ from ..domain.identity.mcp_oauth import (
     _refresh_is_live,
     _revoke_refresh_family,
 )
-from ..models import Invite, Membership, OAuthClient, OAuthCode, OAuthRefresh, Org, Tool, User
+from ..models import Ephemeral, Invite, Membership, OAuthClient, OAuthCode, OAuthRefresh, Org, Tool, User
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import signup
@@ -51,32 +57,40 @@ OTP_START_NS = "otp_start"
 OTP_START_WINDOW_S = 900      # 15 minutes
 OTP_START_MAX_PER_EMAIL = 5   # code requests for one inbox per window (caps bombing a single victim)
 OTP_START_MAX_PER_IP = 30     # code requests from one IP per window (looser — offices/NAT share an IP)
+TURNSTILE_ACTION = "email_start"  # must match the action the sign-in forms pass to captcha.js
+SOCIAL_TURNSTILE_ACTION = "social_start"  # must match the action the social check page passes
+SOCIAL_CHECK_NS = "social_check"
+SOCIAL_CHECK_RATE_NS = "social_check_rate"
+SOCIAL_CHECK_MAX_PER_IP = 30  # siteverify calls from one IP per window; past it the token is ignored
 AUTH_CODE_TTL_S = 300   # a code is redeemed within seconds; five minutes is generous, not a window
 
 
-# In-memory handshake state for `treg login` (single-instance; short-lived, fine to lose on restart).
-# Both carry a created-at so abandoned handshakes (unauthenticated, attacker-chosen keys) are swept
-# rather than accumulating forever — the results map holds live identity tokens, so it must not leak.
-_cli_states: dict[str, tuple[str, datetime]] = {}   # oauth state -> (login_id, created_at)
-_cli_results: dict[str, tuple[dict, datetime]] = {}  # login_id -> (result, created_at) — a completed login
-# login_id -> (pairing_code, attempts_left, created_at). Created by POST /auth/cli/start; the browser must
-# echo the code back at approve time (validated server-side) before a token is issued. This is the phishing
-# guard: a login the user didn't start has no matching code, and the poll endpoint carries no code to
-# brute-force. The code is shown ONLY in the terminal, never in the /login URL.
-_cli_pending: dict[str, tuple[str, int, datetime]] = {}
+# Shared auth state, including the social-login return path, lives in the existing Ephemeral table.
+# Keys hash the poll/state capabilities; codes and result credentials are encrypted at rest.
+CLI_LOGIN_NS = "cli_login"
+CLI_OAUTH_NS = "cli_oauth"
+CLI_GC_BATCH_SIZE = 100
 HANDSHAKE_TTL = 600                  # seconds an abandoned login handshake lingers before eviction
 CLI_APPROVE_MAX_TRIES = 8           # wrong pairing-code attempts before a pending login is discarded
 _PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # unambiguous (no O/0/I/1); matches the CLI's charset
 
 
-def _prune_handshakes() -> None:
-    cutoff = _utcnow_naive() - timedelta(seconds=HANDSHAKE_TTL)
-    for k in [k for k, (_, t) in _cli_states.items() if t < cutoff]:
-        _cli_states.pop(k, None)
-    for k in [k for k, (_, t) in _cli_results.items() if t < cutoff]:
-        _cli_results.pop(k, None)
-    for k in [k for k, (_, _, t) in _cli_pending.items() if t < cutoff]:
-        _cli_pending.pop(k, None)
+async def _prune_handshakes() -> None:
+    """Remove one bounded batch on CLI start, in a separate transaction."""
+    async with _cli_store_session() as db:
+        expired = (select(Ephemeral.ns, Ephemeral.k).where(
+            Ephemeral.ns.in_((CLI_LOGIN_NS, CLI_OAUTH_NS)),
+            Ephemeral.expires_at <= _utcnow_naive(),
+        ).order_by(Ephemeral.expires_at).limit(CLI_GC_BATCH_SIZE)
+                   .with_for_update(skip_locked=True).cte("expired_cli_handshakes")
+                   .prefix_with("MATERIALIZED", dialect="postgresql"))
+        # Fix the candidate set once: a nested-loop DELETE may otherwise re-evaluate a limited
+        # SKIP LOCKED subquery after each deletion and exceed the batch size.
+        await db.execute(delete(Ephemeral).where(
+            tuple_(Ephemeral.ns, Ephemeral.k).in_(select(expired.c.ns, expired.c.k)),
+            Ephemeral.expires_at <= _utcnow_naive(),
+        ).execution_options(synchronize_session=False))
+        await db.commit()
 
 
 class EmailAuthError(Exception):
@@ -93,6 +107,20 @@ class CliPairingError(Exception):
     def __init__(self, kind: str):
         self.kind = kind
         super().__init__(kind)
+
+
+@asynccontextmanager
+async def _cli_store_session() -> AsyncIterator[AsyncSession]:
+    """Fail closed without logging SQL parameters, credentials or connection details.
+
+    Cancellation propagates and the session rolls back. A lost commit acknowledgement may have
+    consumed a result; never republish it or fall back to a process-local copy.
+    """
+    try:
+        async with database.session_maker() as db:
+            yield db
+    except (SQLAlchemyError, OSError, InvalidToken):
+        raise CliPairingError("unavailable") from None
 
 
 class SocialLoginError(Exception):
@@ -156,6 +184,12 @@ class SocialLoginProof:
 
 
 @dataclass(frozen=True)
+class SocialCheckPending:
+    """A provider proved an address with no verified user yet; the browser check decides its credit."""
+    nonce: str
+
+
+@dataclass(frozen=True)
 class RevokedIdentityTokens:
     token: str
     email: str
@@ -171,6 +205,7 @@ class CurrentIdentity:
     org_id: int | None = None
     org: str | None = None
     role: str | None = None
+    avatar_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,7 +238,41 @@ class OAuthAuthorizationView:
     teams: list[dict]
 
 
-async def start_email_login(email: str, client_ip: str) -> dict:
+async def _check_browser(
+    captcha_token: str, client_ip: str, client: str = "browser", *,
+    action: str = TURNSTILE_ACTION, refuse: bool = True,
+) -> tuple[str, bool]:
+    """Classify the Turnstile token and decide (outcome, promo_eligible) for this request.
+
+    Off: no outcome, nothing changes. `observe` only records. `enforce` refuses a missing or
+    invalid token, and lets an unanswered check through without signup credit, so a Cloudflare
+    outage costs a new account its credit rather than costing everyone their sign-in. A browser
+    that could not get a token says why (`turnstile.client_reason`), which only picks the message.
+    With `refuse=False` (a provider already proved the identity) nothing is refused; any outcome
+    but `pass` only withholds credit.
+    """
+    if not turnstile.enabled():
+        return "", True
+    outcome = await turnstile.verify(captcha_token, action=action, remote_ip=client_ip)
+    reason = turnstile.client_reason(captcha_token)
+    mode = get_settings().turnstile_mode
+    logging.getLogger("treg").info(
+        "event=turnstile_%s outcome=%s reason=%s client=%s mode=%s",
+        action, outcome, reason or "-", client, mode)
+    if mode != "enforce":
+        return outcome, True
+    if not refuse:
+        return outcome, outcome == turnstile.PASS
+    if outcome == turnstile.MISSING and reason in ("blocked", "pending"):
+        raise EmailAuthError(f"captcha_{reason}")
+    if outcome in (turnstile.MISSING, turnstile.INVALID):
+        raise EmailAuthError("captcha_failed")
+    return outcome, outcome == turnstile.PASS
+
+
+async def start_email_login(
+    email: str, client_ip: str, *, captcha_token: str = "", client: str = "browser",
+) -> dict:
     """Issue and deliver an email OTP, committing its rate and one-time state atomically."""
     email = _norm_email(email)
     if email.endswith("@" + demo_seed.DEMO_DOMAIN):
@@ -213,22 +282,30 @@ async def start_email_login(email: str, client_ip: str) -> dict:
     if signup.blocked_email(email, "otp_start"):  # refuse early: no code, no mail, no rate window
         raise EmailAuthError("blocked_domain")
 
+    # The rate window comes first and counts refused requests too, so junk tokens cannot drive
+    # unbounded siteverify calls; it commits before the check so no connection waits on Cloudflare.
     async with database.session_maker() as db:
         await ratestore.sweep(db, OTP_START_NS)
-        if not await ratestore.rate_check(
+        allowed = await ratestore.rate_check(
             db, OTP_START_NS,
             [(f"e:{email}", OTP_START_MAX_PER_EMAIL), (f"i:{client_ip}", OTP_START_MAX_PER_IP)],
             OTP_START_WINDOW_S,
-        ):
-            await db.commit()
-            raise EmailAuthError("rate_limited")
-        # A designated account has no inbox: its configured code hash is issued instead, so the
-        # verify path, attempt count and TTL are exactly those of an emailed code.
-        fixed_hash = get_settings().fixed_login_code_hashes.get(email)
+        )
+        await db.commit()
+    if not allowed:
+        raise EmailAuthError("rate_limited")
+    # A designated account has no inbox: its configured code hash is issued instead, so the
+    # verify path, attempt count and TTL are exactly those of an emailed code. Nothing is mailed
+    # and its credit was settled long ago, so it skips the browser check (reviewers may script it).
+    fixed_hash = get_settings().fixed_login_code_hashes.get(email)
+    captcha, promo_eligible = ("", True) if fixed_hash else await _check_browser(captcha_token, client_ip, client)
+
+    async with database.session_maker() as db:
         code = f"{_secrets.randbelow(1_000_000):06d}"
         await ratestore.kv_put(
             db, OTP_NS, email,
-            {"hash": fixed_hash or crypto.hash_token(code), "attempts": MAX_OTP_ATTEMPTS},
+            {"hash": fixed_hash or crypto.hash_token(code), "attempts": MAX_OTP_ATTEMPTS,
+             "captcha": captcha, "promo": promo_eligible},
             EMAIL_CODE_TTL,
         )
         await db.commit()
@@ -244,7 +321,9 @@ async def start_email_login(email: str, client_ip: str) -> dict:
     return result
 
 
-async def verify_email_login(email: str, code: str, *, entry_surface: str = "") -> VerifiedEmail:
+async def verify_email_login(
+    email: str, code: str, *, entry_surface: str = "", client: str = "browser",
+) -> VerifiedEmail:
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
     async with database.session_maker() as db:
@@ -262,8 +341,11 @@ async def verify_email_login(email: str, code: str, *, entry_surface: str = "") 
             raise EmailAuthError("invalid_code")
         await ratestore.kv_pop(db, OTP_NS, email)
         created: set[int] = set()
+        proven: set[int] = set()
         try:
-            user = await signup.find_or_create_user(db, email, door="otp_verify", created=created, verified=True)
+            user = await signup.find_or_create_user(
+                db, email, door="otp_verify", created=created, verified=True,
+                promo_eligible=entry.get("promo", True), proven=proven)
         except signup.MachineIdentityError as exc:
             raise EmailAuthError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # a code minted before the domain was listed
@@ -271,7 +353,16 @@ async def verify_email_login(email: str, code: str, *, entry_surface: str = "") 
         if user.suspended:
             raise EmailAuthError("suspended")
         await db.commit()
-        signup.track_signup(user, created, "email", entry_surface)
+        if proven:
+            await signup.grant_signup_promo_on_proof(user.id)
+        if entry.get("captcha"):
+            # Paired with event=turnstile_email_start: per outcome, how many code requests were
+            # redeemed, i.e. how many people enforce would have refused. Existing users included.
+            logging.getLogger("treg").info(
+                "event=turnstile_email_verify outcome=%s new_user=%s client=%s",
+                entry["captcha"], user.id in created, client)
+        signup.track_signup(user, created, "email", entry_surface, captcha=entry.get("captcha", ""),
+                            client=client)
         token = sess.make_identity(
             user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
             scope=sess.BOOTSTRAP_SCOPE,
@@ -288,21 +379,42 @@ def _norm_pair_code(code: str | None) -> str:
 
 async def start_cli_login() -> dict:
     """Mint and retain the server side of a CLI pairing handshake."""
-    _prune_handshakes()
     login_id = _secrets.token_urlsafe(18)
     code = "".join(_secrets.choice(_PAIR_ALPHABET) for _ in range(4))
-    _cli_pending[login_id] = (code, CLI_APPROVE_MAX_TRIES, _utcnow_naive())
+    await _prune_handshakes()
+    async with _cli_store_session() as db:
+        db.add(Ephemeral(
+            ns=CLI_LOGIN_NS, k=crypto.hash_token(login_id),
+            v={"code": crypto.encrypt(code), "attempts": CLI_APPROVE_MAX_TRIES},
+            expires_at=_utcnow_naive() + timedelta(seconds=HANDSHAKE_TTL),
+        ))
+        await db.commit()
     return {"login_id": login_id, "code": code}
 
 
 async def poll_cli_login(login_id: str) -> dict:
     """Return a completed handshake exactly once, otherwise report it pending."""
-    _prune_handshakes()  # sweep abandoned results (they hold live tokens) so the map can't leak
-    entry = _cli_results.pop(login_id, None)
-    return entry[0] if entry is not None else {"status": "pending"}
+    async with _cli_store_session() as db:
+        key = crypto.hash_token(login_id)
+        pending = await db.get(Ephemeral, (CLI_LOGIN_NS, key))
+        if pending is None or (pending.expires_at > _utcnow_naive() and "result" not in pending.v):
+            return {"status": "pending"}  # no writes or commit for the ordinary waiting poll
+        # DELETE RETURNING arbitrates competing consumers in the database. A pending entry must
+        # survive polling, and no credential leaves this function before deletion is committed.
+        entry = (await db.execute(delete(Ephemeral).where(
+            Ephemeral.ns == CLI_LOGIN_NS, Ephemeral.k == key,
+            (Ephemeral.v["result"].as_string().is_not(None))
+            | (Ephemeral.expires_at <= _utcnow_naive()),
+        ).returning(Ephemeral.v, Ephemeral.expires_at)
+          .execution_options(synchronize_session=False))).one_or_none()
+        result = {"status": "pending"}
+        if entry is not None and entry.expires_at > _utcnow_naive() and "result" in entry.v:
+            result = json.loads(crypto.decrypt(entry.v["result"]))
+        await db.commit()
+        return result
 
 
-async def _orgs_brief(user: User, db: AsyncSession) -> list[dict]:
+async def _orgs_brief(user: User, db: AsyncSession, sso_org_id: int | None = None) -> list[dict]:
     """The user's teams for the /login picker: slug, name, role, tool_count, personal. Sorted so the
     team a CLI login should default to sits first (a real team over the personal org, then most tools).
     `personal` mirrors the dashboard's rule: the auto-created org named after the user's email."""
@@ -318,7 +430,7 @@ async def _orgs_brief(user: User, db: AsyncSession) -> list[dict]:
     out = []
     for m in memberships:
         o = orgs.get(m.org_id)
-        if o is None:
+        if o is None or not await sso_team_allowed(db, m, sso_org_id):
             continue
         out.append({"slug": o.slug, "name": o.name, "role": m.role,
                     "tool_count": counts.get(o.id, 0), "personal": o.name == user.email})
@@ -331,30 +443,44 @@ async def cli_orgs(session_cookie: str) -> dict:
         user = await _user_from_session(session_cookie, db)
         if user is None:
             return {"email": None, "orgs": []}
-        return {"email": user.email, "orgs": await _orgs_brief(user, db)}
+        sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
+        orgs = await _orgs_brief(user, db, sso_org_id)
+        return {"email": user.email, "orgs": orgs}
 
 
 async def approve_cli_login(
     session_cookie: str, login_id: str, code: str | None, requested_org: str | None,
 ) -> dict:
-    async with database.session_maker() as db:
+    async with _cli_store_session() as db:
         user = await _user_from_session(session_cookie, db)
         if user is None:
             raise CliPairingError("no_session")
+        sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
+        if sso_org_id is not None:
+            requested = await _resolve_org(requested_org or "", db)
+            if requested is None or requested.id != sso_org_id:
+                raise CliPairingError("not_member")
         # The pairing code proves the approver is the same person who ran `treg login` (the code is
         # shown only in that terminal). Validate it after session resolution and before org lookup so
         # a phished login link cannot complete and the poll endpoint stays codeless.
-        pending = _cli_pending.get(login_id)
-        if pending is None:
+        # Like identity.lock_user: UPDATE serializes on PostgreSQL and SQLite (where FOR UPDATE
+        # is ignored). Keep the lock through attempts, org/key lookup and result publication.
+        pending = (await db.execute(update(Ephemeral).where(
+            Ephemeral.ns == CLI_LOGIN_NS, Ephemeral.k == crypto.hash_token(login_id),
+        ).values(k=Ephemeral.k).returning(Ephemeral)
+          .execution_options(synchronize_session=False))).scalar_one_or_none()
+        if pending is None or pending.expires_at <= _utcnow_naive() or "code" not in pending.v:
             raise CliPairingError("expired")
-        expected, tries_left, started_at = pending
+        expected = crypto.decrypt(pending.v["code"])
+        tries_left = pending.v["attempts"]
         typed = _norm_pair_code(code)
         if not typed or not hmac.compare_digest(expected.encode(), typed.encode()):
             if tries_left <= 1:  # discard first when the final permitted miss is consumed
-                _cli_pending.pop(login_id, None)
-                raise CliPairingError("too_many_wrong_codes")
-            _cli_pending[login_id] = (expected, tries_left - 1, started_at)
-            raise CliPairingError("wrong_code")
+                await db.delete(pending)
+            else:
+                pending.v = {**pending.v, "attempts": tries_left - 1}
+            await db.commit()  # the refusal must retain the globally consumed attempt
+            raise CliPairingError("too_many_wrong_codes" if tries_left <= 1 else "wrong_code")
         active_org: str | None = None
         default = None
         if requested_org:
@@ -365,19 +491,26 @@ async def approve_cli_login(
             ))).scalar_one_or_none() if org else None
             if org is None or membership is None:
                 raise CliPairingError("not_member")
+            if not await sso_team_allowed(db, membership, sso_org_id):
+                raise CliPairingError("sign_in_through_sso")
             active_org = org.slug
             default = await managed_keys.ensure_default_key(db, membership, user)
-            await db.commit()
-        _cli_pending.pop(login_id, None)  # code matched, so consume the pending login before publishing
         result = {"token": sess.make_identity(
             user.id, user.token_version, org=active_org,
             ttl=None if active_org else sess.BOOTSTRAP_TTL_SECONDS,
             key_generation=default.default_generation if default else None,
             scope=sess.TEAM_SCOPE if active_org else sess.BOOTSTRAP_SCOPE,
+            sso_org_id=sso_org_id,
         ), "email": user.email}
         if active_org:
             result["active_org"] = active_org
-        _cli_results[login_id] = (result, _utcnow_naive())
+        # An org/key lookup can outlast the handshake. Refuse without consuming or publishing it;
+        # rolling back also undoes any Default-key creation in this transaction.
+        if pending.expires_at <= _utcnow_naive():
+            raise CliPairingError("expired")
+        pending.v = {"result": crypto.encrypt(json.dumps(result))}
+        pending.expires_at = _utcnow_naive() + timedelta(seconds=HANDSHAKE_TTL)
+        await db.commit()
         return {"ok": True, "email": user.email, "active_org": active_org}
 
 
@@ -389,8 +522,13 @@ async def cli_session_email(session_cookie: str) -> str | None:
 
 async def issue_cli_token(
     *, user_id: int, email: str, token_version: int, org_ref: str,
+    sso_org_id: int | None = None,
 ) -> dict:
     async with database.session_maker() as db:
+        if sso_org_id is not None:
+            scoped_org = await _resolve_org(org_ref, db)
+            if scoped_org is None or scoped_org.id != sso_org_id:
+                raise IdentityLookupError("sign in separately for this team")
         org_slug = None
         if org_ref:
             org = await _resolve_org(org_ref, db)
@@ -400,6 +538,8 @@ async def issue_cli_token(
                     Membership.org_id == org.id,
                 ))).scalar_one_or_none()
                 if membership is not None:
+                    if not await sso_team_allowed(db, membership, sso_org_id):
+                        raise IdentityLookupError("sign in through this team's SSO")
                     org_slug = org.slug
                     user = await db.get(User, user_id)
                     default = await managed_keys.ensure_default_key(db, membership, user) if user else None
@@ -416,6 +556,7 @@ async def issue_cli_token(
                 ttl=None if org_slug else sess.BOOTSTRAP_TTL_SECONDS,
                 key_generation=default.default_generation if default else None,
                 scope=sess.TEAM_SCOPE if org_slug else sess.BOOTSTRAP_SCOPE,
+                sso_org_id=sso_org_id,
             ),
             "email": email,
             "org": org_slug,
@@ -424,7 +565,7 @@ async def issue_cli_token(
         }
 
 
-async def revoke_identity_tokens(user_id: int) -> RevokedIdentityTokens:
+async def revoke_identity_tokens(user_id: int, *, sso_org_id: int | None = None) -> RevokedIdentityTokens:
     async with database.session_maker() as db:
         user = await db.get(User, user_id)
         if user is None:
@@ -434,48 +575,129 @@ async def revoke_identity_tokens(user_id: int) -> RevokedIdentityTokens:
         return RevokedIdentityTokens(
             token=sess.make_identity(
                 user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
-                scope=sess.BOOTSTRAP_SCOPE,
+                scope=sess.BOOTSTRAP_SCOPE, sso_org_id=sso_org_id,
             ),
             email=user.email,
-            session_cookie=sess.make_session(user.id, token_version=user.token_version),
+            session_cookie=sess.make_session(user.id, token_version=user.token_version,
+                                             sso_org_id=sso_org_id),
         )
 
 
-def start_github_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
+async def _remember_cli_state(state: str, cli: str) -> None:
+    async with _cli_store_session() as db:
+        db.add(Ephemeral(
+            ns=CLI_OAUTH_NS, k=crypto.hash_token(state), v={"login_id": crypto.encrypt(cli)},
+            expires_at=_utcnow_naive() + timedelta(seconds=HANDSHAKE_TTL),
+        ))
+        await db.commit()
+
+
+async def _consume_cli_state(state: str) -> tuple[str, datetime] | None:
+    async with _cli_store_session() as db:
+        entry = (await db.execute(delete(Ephemeral).where(
+            Ephemeral.ns == CLI_OAUTH_NS, Ephemeral.k == crypto.hash_token(state),
+        ).returning(Ephemeral.v, Ephemeral.expires_at)
+          .execution_options(synchronize_session=False))).one_or_none()
+        result = None
+        if entry is not None and entry.expires_at > _utcnow_naive():
+            result = (crypto.decrypt(entry.v["login_id"]), entry.expires_at)
+        await db.commit()
+        return result
+
+
+async def start_github_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
     s = get_settings()
     if not s.github_client_id:
         raise SocialLoginError("github_not_configured")
     redirect = f"{callback_base()}/auth/github/callback"
     state = crypto.new_token()
     if cli:  # this is a `treg login` handshake, not a browser session
-        _prune_handshakes()  # evict abandoned handshakes so this map can't grow unbounded
-        _cli_states[state] = (cli, _utcnow_naive())
+        await _remember_cli_state(state, cli)
     url = (f"{s.github_authorize_url}?client_id={s.github_client_id}"
            f"&redirect_uri={quote(redirect, safe='')}&scope={quote('read:user user:email')}&state={state}")
     return SocialLoginStart(state=state, url=url)
 
 
-def start_google_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
+async def start_google_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
     s = get_settings()
     if not s.google_client_id:
         raise SocialLoginError("google_not_configured")
     redirect = f"{callback_base()}/auth/google/callback"
     state = crypto.new_token()
     if cli:  # a `treg login` handshake, not a browser session
-        _prune_handshakes()
-        _cli_states[state] = (cli, _utcnow_naive())
+        await _remember_cli_state(state, cli)
     url = (f"{s.google_authorize_url}?client_id={s.google_client_id}"
            f"&redirect_uri={quote(redirect, safe='')}&response_type=code"
            f"&scope={quote('openid email profile')}&state={state}&prompt=select_account")
     return SocialLoginStart(state=state, url=url)
 
 
-async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "") -> SocialLoginProof:
+async def _social_identity_proven(
+    email: str, state: str, door: str, entry_surface: str, account_created_at: str = "",
+) -> SocialLoginProof | SocialCheckPending:
+    """Sign in a verified user now. An address no verified user holds yet waits for the browser
+    check, because its first proof is where signup credit is decided."""
+    if turnstile.enabled() and get_settings().turnstile_social:
+        async with database.session_maker() as db:
+            verified = (await db.execute(select(User.email_verified_at).where(
+                User.email == _norm_email(email)))).scalar_one_or_none()
+            if verified is None:
+                nonce = crypto.new_token()
+                await ratestore.sweep(db, SOCIAL_CHECK_NS)
+                await ratestore.kv_put(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce), {
+                    "door": door,
+                    "login": crypto.encrypt(json.dumps({
+                        "email": email, "state": state, "entry_surface": entry_surface,
+                        "account_created_at": account_created_at,
+                    })),
+                }, HANDSHAKE_TTL)
+                await db.commit()
+                return SocialCheckPending(nonce=nonce)
+            await db.commit()
+    return await _provision_social_user(email, state, door, entry_surface,
+                                        account_created_at=account_created_at)
+
+
+async def social_check_door(nonce: str) -> str | None:
+    """The provider of a login waiting for its browser check, or None when there is none."""
+    if not nonce:
+        return None
+    async with database.session_maker() as db:
+        kept = await ratestore.kv_get(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce))
+        await db.commit()
+    return kept["door"] if kept else None
+
+
+async def finish_social_check(nonce: str, captcha_token: str, client_ip: str) -> SocialLoginProof:
+    """Classify the check once and sign the waiting login in; in enforce only a `pass` keeps the
+    signup credit. A per-IP window bounds siteverify calls: past it the token is not sent."""
+    async with database.session_maker() as db:
+        kept = await ratestore.kv_take(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce)) if nonce else None
+        allowed = await ratestore.rate_check(
+            db, SOCIAL_CHECK_RATE_NS, [(f"i:{client_ip}", SOCIAL_CHECK_MAX_PER_IP)], OTP_START_WINDOW_S)
+        await db.commit()
+    if kept is None:
+        raise SocialLoginError("check_expired")
+    login = json.loads(crypto.decrypt(kept["login"]))
+    captcha, promo_eligible = await _check_browser(
+        captcha_token if allowed else "", client_ip, kept["door"],
+        action=SOCIAL_TURNSTILE_ACTION, refuse=False)
+    return await _provision_social_user(
+        login["email"], login["state"], kept["door"], login["entry_surface"],
+        account_created_at=login["account_created_at"], captcha=captcha, promo_eligible=promo_eligible)
+
+
+async def _provision_social_user(
+    email: str, state: str, door: str, entry_surface: str = "", *,
+    account_created_at: str = "", captcha: str = "", promo_eligible: bool = True,
+) -> SocialLoginProof:
     created: set[int] = set()
+    proven: set[int] = set()
     async with database.session_maker() as db:
         try:
             user = await signup.find_or_create_user(
-                db, email, door=door, created=created, verified=True,
+                db, email, door=door, created=created, verified=True, proven=proven,
+                promo_eligible=promo_eligible,
             )  # first login creates only the user
         except signup.MachineIdentityError as exc:
             raise SocialLoginError("machine_identity") from exc
@@ -484,15 +706,34 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
         if user.suspended:  # a banned account may prove its email but must not receive a live session
             raise SocialLoginError("suspended")
         await db.commit()
-        signup.track_signup(user, created, door, entry_surface)
-        # Browser session OR `treg login` handshake — both go through the /login team picker now.
-        return SocialLoginProof(user=user, cli_state=_cli_states.pop(state, None))
+        if proven:
+            await signup.grant_signup_promo_on_proof(user.id)
+        # Browser session OR `treg login` handshake - both go through the /login team picker.
+        cli_state = await _consume_cli_state(state)
+        if user.id in proven:
+            logging.getLogger("treg").info(
+                "event=social_signup door=%s captcha=%s promo=%s account_age_days=%s",
+                door, captcha or "-", promo_eligible, _age_days(account_created_at))
+        signup.track_signup(user, created, door, entry_surface, captcha=captcha,
+                            client="cli_browser" if cli_state is not None else "browser")
+        return SocialLoginProof(user=user, cli_state=cli_state)
+
+
+def _age_days(created_at: str) -> str:
+    """Whole days since a provider's ISO-8601 account creation time, or `-` when it gave none."""
+    try:
+        born = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return "-"
+    if born.tzinfo is None:
+        return "-"
+    return str((datetime.now(timezone.utc) - born).days)
 
 
 async def complete_github_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
     callback_base: Callable[[], str], *, entry_surface: str = "",
-) -> SocialLoginProof:
+) -> SocialLoginProof | SocialCheckPending:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
@@ -518,16 +759,17 @@ async def complete_github_login(
             raise SocialLoginError("github_no_verified_email")
     except SocialLoginError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "github", entry_surface)
+    return await _social_identity_proven(email, state, "github", entry_surface,
+                                         str(prof.get("created_at") or ""))
 
 
 async def complete_google_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
     callback_base: Callable[[], str], *, entry_surface: str = "",
-) -> SocialLoginProof:
+) -> SocialLoginProof | SocialCheckPending:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
@@ -555,10 +797,10 @@ async def complete_google_login(
             raise SocialLoginError("google_unverified_email")
     except SocialLoginError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"[auth] google callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "google", entry_surface)
+    return await _social_identity_proven(email, state, "google", entry_surface)
 
 
 async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIdentity:
@@ -599,16 +841,17 @@ async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIde
         org_slug = None
         role = None
         if membership is not None:
-            # The org this token IS. A machine identity cannot call GET /orgs — `require_identity`
+            # The org this token IS. A machine identity cannot call GET /orgs - `require_identity`
             # refuses it on purpose, since `create_org` hangs off that dependency and an agent could
             # otherwise mint an org it owns. But it still has to learn its OWN org id to reach any
-            # /orgs/{id}/... route, and being unable to told `treg balance` there was "no active org".
+            # /orgs/{id}/... route.
             org = await db.get(Org, membership.org_id)
             org_id = membership.org_id
             org_slug = org.slug if org else None
             role = membership.role
         return CurrentIdentity(
             email=user.email,
+            avatar_key=user.avatar_key,
             is_superadmin=user.is_superadmin,
             onboarded=user.onboarded,
             github=bool(get_settings().github_client_id),
@@ -671,9 +914,10 @@ async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
         invite = await _live_invite_by_email_token(db, email_token)
         if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
             raise InviteSigninError("expired")
+        proven: set[int] = set()
         try:
             user = await signup.find_or_create_user(
-                db, invite.email, door="invite_link", verified=True,
+                db, invite.email, door="invite_link", verified=True, proven=proven,
             )  # only the inbox-only link proves the email
         except signup.MachineIdentityError as exc:
             raise InviteSigninError("machine_identity") from exc
@@ -684,8 +928,10 @@ async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
         invite.email_token_hash = None  # consume: one sign-in per emailed link
         db.add(invite)
         await db.commit()
+        if proven:
+            await signup.grant_signup_promo_on_proof(user.id)
         # A share-born invite lands on the shared page itself (the SPA auto-accepts + switches org);
-        # a plain invite lands on the dashboard with the accept banner, as before. `landing` was
+        # a plain invite lands on the dashboard with the accept banner. `landing` was
         # allowlist-validated at create time, so this can never redirect off-app.
         destination = (
             f"{invite.landing}?invite_org={invite.org_id}"
@@ -725,6 +971,20 @@ async def register_oauth_client(
         }
 
 
+def _sheets_client() -> OAuthClient | None:
+    """"treg for Sheets", the first-party public client of the Google Sheets add-on. Not a table row:
+    its redirect URIs come from `sheets_redirect_uris`, so a new Apps Script id is a setting. It
+    exists only while `/table/` is on and at least one redirect URI is set."""
+    s = get_settings()
+    uris = [u.strip() for u in s.sheets_redirect_uris.split(",") if u.strip()]
+    uris = [u for u in uris if mcp_oauth.valid_redirect_uri(u)]
+    if not s.table_enabled or not uris:
+        return None
+    return OAuthClient(client_id=mcp_oauth.SHEETS_CLIENT_ID, kind="first_party",
+                       client_name="treg for Sheets", client_uri="", logo_uri="",
+                       redirect_uris=uris, scope=mcp_oauth.SHEETS_SCOPE)
+
+
 async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient | None:
     """One client row, whichever door it came through.
 
@@ -732,6 +992,8 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
     on first sight, cached as a row, and refreshed when stale — documents change, and a cache that
     never expires would pin a client to redirect URIs it has since retired.
     """
+    if client_id == mcp_oauth.SHEETS_CLIENT_ID:
+        return _sheets_client()
     row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
            ).scalar_one_or_none()
     fresh_enough = row is not None and (
@@ -793,6 +1055,23 @@ def _effective_mcp_resource(resource: str, scope: str) -> str:
     return mcp_oauth.mcp_resource_url(version)
 
 
+def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
+    """The resource a grant is for, checked against the client: "treg for Sheets" gets the `/table`
+    resource and nothing else, and no other client may ask for it. A Sheets token names a person
+    with several teams, so it must never be minted for a client the owner has not reviewed."""
+    if client.client_id == mcp_oauth.SHEETS_CLIENT_ID:
+        if resource and not mcp_oauth.is_sheets_resource(resource):
+            raise _redirect_refusal("invalid_target",
+                                    f"treg for Sheets issues tokens for {mcp_oauth.sheets_resource_url()} only")
+        return mcp_oauth.sheets_resource_url()
+    if mcp_oauth.is_sheets_resource(resource):
+        raise _redirect_refusal("invalid_target", "this resource is only for treg for Sheets")
+    effective = _effective_mcp_resource(resource, scope)
+    if (bad_target := _wrong_resource(effective)) is not None:
+        raise _redirect_refusal("invalid_target", bad_target)
+    return effective
+
+
 def _same_mcp_resource(a: str, b: str) -> bool:
     """Whether two `resource` values name this same MCP server. Exact match, slash-variant match,
     or BOTH normalize into the canonical+legacy audience set — the domain move renamed the
@@ -850,25 +1129,22 @@ async def prepare_oauth_authorization(
             raise _redirect_refusal(
                 "invalid_request", "PKCE with code_challenge_method=S256 is required",
             )
-        effective_resource = _effective_mcp_resource(resource, scope)
-        if (bad_target := _wrong_resource(effective_resource)) is not None:
-            raise _redirect_refusal("invalid_target", bad_target)
+        _client_resource(client, resource, scope)
 
         user = await _user_from_session(session_cookie, db)
         if user is None:
             return None
 
+        sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
         memberships = (await db.execute(
             select(Membership).where(Membership.user_id == user.id))).scalars().all()
         teams = []
         for membership in memberships:
             org = await db.get(Org, membership.org_id)
-            if org is not None and not org.suspended:
+            if org is not None and not org.suspended and await sso_team_allowed(db, membership, sso_org_id):
                 # The BALANCE belongs on this list. Choosing a team here decides which balance the
                 # client spends for the life of the grant, and a list of slugs makes the one question
-                # that matters — "which of these can actually pay?" — invisible at the moment of
-                # choosing. Unclecode picked a $0.00 team on the first real ChatGPT connect and the call
-                # was refused; nothing on the page could have told him.
+                # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
                               "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
         if not teams:
@@ -897,9 +1173,7 @@ async def approve_oauth_authorization(
         if decision != "allow":
             # Cancel is a real answer and the client is entitled to hear it, rather than hang.
             raise _redirect_refusal("access_denied", "the user declined")
-        effective_resource = _effective_mcp_resource(resource, scope)
-        if (bad_target := _wrong_resource(effective_resource)) is not None:
-            raise _redirect_refusal("invalid_target", bad_target)
+        effective_resource = _client_resource(client, resource, scope)
         if not code_challenge or code_challenge_method != "S256":
             raise _redirect_refusal(
                 "invalid_request", "PKCE with code_challenge_method=S256 is required",
@@ -908,17 +1182,31 @@ async def approve_oauth_authorization(
         user = await _user_from_session(session_cookie, db)
         if user is None:
             raise OAuthServerError("access_denied", "not signed in", status=401)
+        sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
+        if client.client_id == mcp_oauth.SHEETS_CLIENT_ID and not org_id:
+            # A Sheets grant names no team at consent: each request picks one with X-Treg-Org. The
+            # token still carries a DEFAULT team, the person's first, for a request that names none.
+            candidates = (await db.execute(select(Membership).where(Membership.user_id == user.id)
+                                           .order_by(Membership.id))).scalars().all()
+            org_id = 0
+            for candidate in candidates:
+                if await sso_team_allowed(db, candidate, sso_org_id):
+                    org_id = candidate.org_id
+                    break
         # The chosen team must be one this user actually belongs to — the field is client-supplied.
         membership = (await db.execute(select(Membership).where(
             Membership.user_id == user.id, Membership.org_id == org_id))).scalar_one_or_none()
         if membership is None:
             raise _redirect_refusal("access_denied", "choose a team you are a member of")
+        if not await sso_team_allowed(db, membership, sso_org_id):
+            raise _redirect_refusal("access_denied", "sign in through this team's SSO")
 
         code = OAuthCode(
             code=_secrets.token_urlsafe(32), client_id=client.client_id, user_id=user.id, org_id=org_id,
             redirect_uri=redirect_uri, code_challenge=code_challenge,
             resource=effective_resource,
             scope=scope,
+            sso_org_id=sso_org_id,
             expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
             + timedelta(seconds=AUTH_CODE_TTL_S))
         db.add(code)
@@ -980,12 +1268,24 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
                 "invalid_grant", "the team on this grant is no longer available",
             )
         # STILL a member? The grant is the user's consent to spend a TEAM's balance, and leaving (or
-        # being removed from) that team ends the standing they consented with. Without this a grant
-        # kept minting tokens forever: every downstream call was refused by `require_member`, so the
-        # damage was bounded, but the grant lay dormant and sprang back to life — with no new consent —
-        # the day the membership was restored.
+        # being removed from) that team ends the standing they consented with. Otherwise a dormant
+        # grant would spring back to life - with no new consent - the day the membership was restored.
         still_in = (await db.execute(select(Membership).where(
             Membership.user_id == row.user_id, Membership.org_id == live_org_id))).scalar_one_or_none()
+        grant = await _ensure_grant(row.family_id, db)
+        sso_org_id = grant.sso_org_id if grant is not None else None
+        if still_in is None and mcp_oauth.is_sheets_resource(row.resource):
+            # A Sheets grant is the person's, across their teams: losing the DEFAULT team moves the
+            # default to another team this sign-in may use.
+            candidates = (await db.execute(select(Membership).where(Membership.user_id == row.user_id)
+                                           .order_by(Membership.id))).scalars().all()
+            for candidate in candidates:
+                if await sso_team_allowed(db, candidate, sso_org_id):
+                    still_in = candidate
+                    break
+            if still_in is not None:
+                live_org_id = still_in.org_id
+                org = await db.get(Org, live_org_id)
         if still_in is None:
             await _revoke_refresh_family(row.family_id, "membership ended", db)
             await db.commit()
@@ -993,6 +1293,10 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
                 "invalid_grant",
                 "the account behind this grant is no longer a member of its team — sign in again",
             )
+        if not await sso_team_allowed(db, still_in, sso_org_id):
+            await _revoke_refresh_family(row.family_id, "SSO policy", db)
+            await db.commit()
+            raise OAuthServerError("invalid_grant", "sign in through this team's SSO again")
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         row.retired_at, row.retired_reason = now, "rotated"
@@ -1003,7 +1307,7 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
         access = mcp_oauth.make_access_token(
             user_id=row.user_id, org_id=live_org_id, scope=row.scope,
             audience=mcp_oauth.normalize_resource(row.resource),  # heal pre-normalization spellings
-            token_version=user.token_version)
+            token_version=user.token_version, sso_org_id=sso_org_id)
         await db.commit()
         return {"access_token": access, "token_type": "Bearer",
                 "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope,
@@ -1056,14 +1360,18 @@ async def exchange_oauth_token(
             raise OAuthServerError(
                 "invalid_grant", "the account behind this grant is no longer active",
             )
+        member = (await db.execute(select(Membership).where(
+            Membership.user_id == row.user_id, Membership.org_id == row.org_id))).scalar_one_or_none()
+        if member is None or not await sso_team_allowed(db, member, row.sso_org_id):
+            raise OAuthServerError("invalid_grant", "sign in through this team's SSO again")
 
         token = mcp_oauth.make_access_token(
             user_id=row.user_id, org_id=row.org_id, scope=row.scope,
             audience=mcp_oauth.normalize_resource(row.resource),  # heal pre-normalization spellings
-            token_version=user.token_version)
+            token_version=user.token_version, sso_org_id=row.sso_org_id)
         refresh = await _issue_refresh(family_id=_secrets.token_urlsafe(16), client_id=row.client_id,
                                        user_id=row.user_id, org_id=row.org_id, resource=row.resource,
-                                       scope=row.scope, db=db)
+                                       scope=row.scope, db=db, sso_org_id=row.sso_org_id)
         await db.commit()
         return {"access_token": token, "token_type": "Bearer",
                 "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope,
@@ -1101,14 +1409,15 @@ async def list_oauth_grants(user_id: int) -> list[dict]:
                 OAuthClient.client_id == row.client_id))).scalar_one_or_none()
             out.append({
                 "grant": row.family_id,
-                "client": (client.client_name if client else "") or row.client_id,
+                "client": (client.client_name if client else "")
+                          or ("treg for Sheets" if row.client_id == mcp_oauth.SHEETS_CLIENT_ID else row.client_id),
                 "team": org.slug if org else None,
                 "team_name": org.name if org else None,
                 "granted": grant.granted_at.isoformat(timespec="seconds") if grant else None,
             })
-        # GET normally reads only, but repairing a family created by an old rolling-deploy instance is
-        # a durable compatibility backfill. Without this commit the response looks healed once while
-        # the inserted authority row is rolled back when the request session closes.
+        # GET normally reads only, but repairing a family created by an older instance is a durable
+        # compatibility backfill. Without this commit the response looks healed once while the
+        # inserted authority row is rolled back when the request session closes.
         await db.commit()
         return out
 
@@ -1137,6 +1446,8 @@ async def move_oauth_grant(*, user_id: int, family_id: str, team: str) -> dict:
         grant = await _ensure_grant(family_id, db)
         if grant is None:  # the live-row check above makes this defensive, not a normal outcome
             raise OAuthGrantError(f"no live grant {family_id!r} on this account")
+        if not await sso_team_allowed(db, member, grant.sso_org_id):
+            raise OAuthGrantError("sign in through this team's SSO before moving this grant")
         grant.current_org_id = org.id
         db.add(grant)
         await db.commit()

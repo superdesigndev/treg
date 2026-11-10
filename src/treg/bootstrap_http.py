@@ -10,7 +10,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.datastructures import MutableHeaders
 
-from .config import LEGACY_PUBLIC_HOSTS, PUBLIC_HOST_ALIASES, get_settings
+from . import client_notice
+from .config import LEGACY_PUBLIC_HOSTS, get_settings
 from .domain.identity import session as sess
 
 
@@ -96,6 +97,72 @@ class _SecurityHeadersMiddleware:
         return await self.app(scope, receive, send_with_security_headers)
 
 
+class _ClientNoticeMiddleware:
+    """Answers a CLI that sends `X-Treg-Client-Version` with `X-Treg-Client-Notice` when the
+    operator's `cli_latest_version` or `cli_min_version` says it is behind (client_notice.py)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        settings = get_settings()
+        if not (settings.cli_latest_version or settings.cli_min_version):
+            return await self.app(scope, receive, send)
+        version = next((v.decode("latin-1") for k, v in scope.get("headers", [])
+                        if k == b"x-treg-client-version"), "")
+        text = client_notice.notice(version, latest=settings.cli_latest_version,
+                                    minimum=settings.cli_min_version)
+        if not text:
+            return await self.app(scope, receive, send)
+
+        async def send_with_notice(message):
+            if message["type"] == "http.response.start":
+                message = dict(message, headers=list(message.get("headers", [])))
+                MutableHeaders(scope=message)[client_notice.NOTICE_HEADER] = text
+            await send(message)
+
+        return await self.app(scope, receive, send_with_notice)
+
+
+class _DevTitleMiddleware:
+    """On a local dev server, every page's `<title>` starts with "[dev] ", so its browser tab is told
+    apart from treg.to's at a glance. Registered only when `Settings.local_dev` holds; it buffers an
+    HTML response to rewrite it, and leaves every other response alone."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        start: dict | None = None
+        body: list[bytes] = []
+
+        async def send_marked(message):
+            nonlocal start
+            if message["type"] == "http.response.start":
+                ctype = MutableHeaders(scope=message).get("content-type", "")
+                if not ctype.startswith("text/html"):
+                    return await send(message)
+                start = message
+                return None
+            if start is None:
+                return await send(message)
+            body.append(message.get("body", b""))
+            if message.get("more_body"):
+                return None
+            html = b"".join(body).replace(b"<title>", b"<title>[dev] ", 1)
+            headers = MutableHeaders(scope=dict(start, headers=list(start.get("headers", []))))
+            if "content-length" in headers:
+                headers["content-length"] = str(len(html))
+            await send(dict(start, headers=headers.raw))
+            await send({"type": "http.response.body", "body": html})
+
+        return await self.app(scope, receive, send_marked)
+
+
 _BODY_ENC_HEADER = b"x-treg-body-encoding"
 
 
@@ -174,8 +241,6 @@ class _BodyDecodeMiddleware:
         return await self.app(new_scope, receive_decoded, send)
 
 
-# The qualified names are a frozen composition-snapshot and import compatibility surface. Retire
-# when the Stage 4 close-out deliberately refreshes the composition snapshot to the truthful module paths.
 for _middleware in (
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,

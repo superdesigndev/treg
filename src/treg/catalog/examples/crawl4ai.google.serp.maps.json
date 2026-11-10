@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "google-maps-places",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 189,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "address": "318 8th Ave, New York, NY 10001",
+      "categories": [
+        "Coffee shop",
+        "Breakfast restaurant"
+      ],
+      "category": "Coffee shop",
+      "cid": "10706967574233659756",
+      "hours": {
+        "Friday": "7 AM–7 PM",
+        "Monday": "7 AM–7 PM",
+        "Saturday": "7 AM–5 PM",
+        "Sunday": "7 AM–5 PM",
+        "Thursday": "7 AM–7 PM",
+        "Tuesday": "7 AM–7 PM",
+        "Wednesday": "7 AM–7 PM"
+      },
+      "latitude": 40.7470077,
+      "longitude": -73.9970077,
+      "name": "Bean & Bean Chelsea",
+      "phone": "[phone]",
+      "place_id": "ChIJSzbFnLpZwokRbLnS40fKlpQ",
+      "position": 1,
+      "rating": 4.2,
+      "review_count": 781,
+      "url": "https://www.google.com/maps/place/?q=place_id:ChIJSzbFnLpZwokRbLnS40fKlpQ",
+      "website": "https://www.beannbeancoffee.com/"
+    },
+    {
+      "address": "286 8th Ave, New York, NY 10001",
+      "categories": [
+        "Coffee shop",
+        "Bagel shop"
+      ],
+      "category": "Coffee shop",
+      "cid": "16542063993521563593",
+      "hours": {
+        "Friday": "6:30 AM–3 PM",
+        "Monday": "6:30 AM–3 PM",
+        "Saturday": "7 AM–3 PM",
+        "Sunday": "7 AM–3 PM",
+        "Thursday": "6:30 AM–3 PM",
+        "Tuesday": "6:30 AM–3 PM",
+        "Wednesday": "6:30 AM–3 PM"
+      },
+      "latitude": 40.7461674,
+      "longitude": -73.99764069999999,
+      "name": "Brooklyn Bagel & Coffee Company",
+      "phone": "[phone]",
+      "place_id": "ChIJeVx9irpZwokRyeeh-Y43keU",
+      "position": 2,
+      "rating": 4.6,
+      "review_count": 3939,
+      "url": "https://www.google.com/maps/place/?q=place_id:ChIJeVx9irpZwokRyeeh-Y43keU",
+      "website": "https://bkbagel.com/"
+    }
+  ]
+}

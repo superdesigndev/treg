@@ -1,7 +1,6 @@
 import { storageSet, storageRemove } from './storage.js'
 
 export default {
-// ---- Phase 2a: org lifecycle (writes; all endpoints already exist) ----
     async joinByCode(){ const code=(this.joinCode||'').trim(); if(!code){ this.joinErr='Enter the invite code.'; return; } this.joinBusy=true; this.joinErr='';
       try{ const r=await this.api('/invites/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code, email:this.me})});
         this.showJoin=false; this.joinCode=''; await this.loadAll(); this.switchOrg({slug:r.org}); }
@@ -15,10 +14,10 @@ async createOrg(){ const name=(this.newOrgName||'').trim(); if(!name){ this.orgE
         this.newOrg=false; this.newOrgName=''; await this.loadAll(); this.switchOrg({slug:o.org}); }
       catch(e){ this.orgErr='Could not create: '+(e.detail||e.status); } finally{ this.orgBusy=false; } },
 async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgInvites=[]; this.lastInvite=null;
-      if(!this.canAdmin && !['keys','danger'].includes(this.orgTab)) this.orgTab='keys';
+      if(!this.canAdmin && !['keys','danger','sso'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
       if(!this.activeOrgId) return; const id=this.activeOrgId, live=this.ticket('orgAdmin');
-      const keys=this.loadApiKeys();
+      const keys=this.loadApiKeys(); this.loadApiKeySpend();
       if(!this.canAdmin){ await keys; return; }
       this.agentErr=''; this.confirmAgent=null;
       const get=path=>this.api('/orgs/'+id+path);
@@ -26,7 +25,7 @@ async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgI
       // the same roster (an agent IS a membership). The optional ones fall back to empty.
       try{ const [members, invites, projects, deny, cliDeny, agents, observed]=await Promise.all([
              get('/members'), get('/invites'), get('/projects'), get('/deny'),
-             get('/policy/cli-deny').catch(()=>[]), get('/agents').catch(()=>[]), get('/agents/observed').catch(()=>[]), keys]);
+             get('/policy/cli-deny').catch(()=>[]), get('/agents').catch(()=>[]), this.reportApi('/orgs/'+id+'/agents/observed').catch(()=>[]), keys]);
            if(!live()) return;
            this.orgMembers=members; this.orgMembersLoaded=true; this.orgInvites=invites;
            this.projects=projects; this.denyRules=deny; this.cliDeny=cliDeny; this.agents=agents;

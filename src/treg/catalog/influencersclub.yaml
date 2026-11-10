@@ -51,27 +51,28 @@ endpoints:
     input:
       body:
         platform: {type: string, required: true, note: "one of instagram | youtube | tiktok | twitter | twitch | onlyfans — the filter set changes with it", example: "instagram"}
-        paging: {type: object, required: true, note: "{limit, page}; page is 0-indexed. THIS IS THE PRICE DIAL — 0.01 credit per creator returned", example: {limit: 10, page: 0}}
-        filters: {type: object, required: true, note: "platform-specific filter object (send {} to rely on nlp_search alone). Instagram keys include location, profile_language, keywords_in_bio, hashtags, keywords_in_captions, number_of_followers {min,max}, engagement_percent {min,max}, average_likes, follower_growth, last_post, is_verified, brands, audience {age, gender, location, interests}, has_done_brand_deals, promotes_affiliate_links, exclude_handles, exclude_list. TRAPS learned live (2026-08-27): `location` is COUNTRY-level and must be a dictionary value ([\"Brazil\"]) — a city string ('Belo Horizonte, MG') is accepted and silently matches nothing; `profile_language` is a LIST of ISO codes from creators.filters.values ([\"pt\"], not \"portuguese\" → 400); a required brand goes in `brands: [\"nitto\"]` (lowercase), NOT keywords_in_bio (\"Nitto tires\" in a bio matches nothing); keywords_in_bio wants short single words in the creators' own language (\"cabelo\", not \"queda de cabelo\")", example: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}}
+        paging: {type: object, required: true, note: "{limit, page}; page is 0-indexed. THIS IS THE PRICE DIAL — billed per creator returned", example: {limit: 10, page: 0}}
+        filters: {type: object, required: true, note: "platform-specific filter object (send {} to rely on nlp_search alone). Instagram keys include location, profile_language, keywords_in_bio, hashtags, keywords_in_captions, number_of_followers {min,max}, engagement_percent {min,max}, average_likes, follower_growth, last_post, is_verified, brands, audience {age, gender, location, interests}, has_done_brand_deals, promotes_affiliate_links, exclude_handles, exclude_list. TRAPS learned live (2026-08-27): `location` is COUNTRY-level and must be a dictionary value ([\"Brazil\"]) — a city string ('Belo Horizonte, MG') is accepted and silently matches nothing; `profile_language` is a LIST of ISO codes from creators.filters.values ([\"pt\"], not \"portuguese\" → 400); a required brand goes in `brands: [\"nitto\"]` (lowercase), NOT keywords_in_bio (\"Nitto tires\" in a bio matches nothing); keywords_in_bio wants short single words in the creators' own language (\"cabelo\", not \"queda de cabelo\"). On platform tiktok (live 2026-10-04): location, profile_language, number_of_followers and keywords_in_bio filter; keywords_in_captions is silently IGNORED (any value returns the unfiltered total) and hashtags matches loosely — put topic words in keywords_in_bio", example: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}}
         nlp_search: {type: string, required: false, note: "a plain-language brief ('fitness creators in New York with over 100k followers') that the API maps onto filters; combinable with explicit filters. The response adds applied_filters and an nlp_search block explaining what was inferred or dropped. An uninterpretable brief 400s and costs nothing. It DROPS constraints it cannot map (a 'Brazilian hair-loss creators' brief came back without the country or topic) — put every hard limit in `filters` and use nlp_search only for the soft part", example: "astronomy and space creators with over 100k followers"}
         sort: {type: object, required: false, note: "{sort_by: relevancy | engagement_rate | number_of_followers | growth_rate, sort_order: asc | desc}", example: {sort_by: number_of_followers, sort_order: desc}}
       queryParams:
-        return_filter_values: {type: boolean, required: false, note: "PREMIUM: adds a matched_filters object per creator showing which of your filter values it matched — triples the price to 0.03 per creator", example: false}
+        return_filter_values: {type: boolean, required: false, note: "PREMIUM: adds a matched_filters object per creator showing which of your filter values it matched", example: false}
       note: "returns {total, limit, accounts: [{user_id, profile: {full_name, username, picture, followers, engagement_percent, …}}]}. Instagram creators over 10k followers also carry audience demographics. Every request that returns creators is billed, even an identical repeat — page deliberately, and keep `limit` small while you tune filters (a 0-creator page costs 0). This is the STRUCTURED shape of creator discovery (exact follower/engagement/location/language filters, audience data); the SEMANTIC shape is exa.creators.search (describe the creators, pinned to the platform's domain). For a brief with both hard limits and a fuzzy niche, run both and merge on username — on the LessieAI people-search-bench influencer track (2026-08-27) the union scored 55 vs 38 for this route alone."
     test_request:
       body: {platform: "instagram", filters: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}, sort: {sort_by: "number_of_followers", sort_order: "desc"}, paging: {limit: 2, page: 0}}
     cost:
       type: per_result
-      value: 0.01
-      currency: credit
+      value: 0.03
+      currency: USD
       per: 1
       unit: result
-      source: observed
-      source_url: https://docs.influencers.club/guides/usage-limits
-      checked: '2026-08-21'
+      source: docs
+      source_url: https://influencers.club/pricing/
+      checked: '2026-10-28'
       confidence: verified
-      note: "0.01 credit per creator returned, 0 creators = 0 credits. OBSERVED 2026-08-21: limit=2 moved the meter 10.00 -> 9.98. return_filter_values=true is documented at 0.03 per creator (not observed)"
+      note: "per creator returned; a page with no creators is free. Priced on the plan's discovery allowance (10 creators per credit)"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.search.json
     docs_url: https://docs.influencers.club/openapi/discovery-api/public_v1_discovery_create
 
@@ -89,23 +90,24 @@ endpoints:
         platform: {type: string, required: true, note: "instagram | youtube | tiktok | twitter | twitch | onlyfans", example: "instagram"}
         filter_key: {type: string, required: true, note: "how you identify the reference creator: username | url | id", example: "username"}
         filter_value: {type: string, required: true, note: "the reference creator's handle, profile URL or id", example: "nasa"}
-        paging: {type: object, required: true, note: "{limit, page}, page 0-indexed — the price dial, 0.01 credit per creator returned", example: {limit: 10, page: 0}}
+        paging: {type: object, required: true, note: "{limit, page}, page 0-indexed — the price dial, billed per creator returned", example: {limit: 10, page: 0}}
         filters: {type: object, required: false, note: "the same platform-specific filter object as the search route, to narrow the lookalikes (e.g. a follower range or location)"}
       note: "same {total, limit, accounts: [...]} shape as the search route. Results count against the same per-billing-period discovery cap"
     test_request:
       body: {platform: "instagram", filter_key: "username", filter_value: "nasa", paging: {page: 0, limit: 2}}
     cost:
       type: per_result
-      value: 0.01
-      currency: credit
+      value: 0.03
+      currency: USD
       per: 1
       unit: result
-      source: observed
-      source_url: https://docs.influencers.club/guides/usage-limits
-      checked: '2026-08-21'
+      source: docs
+      source_url: https://influencers.club/pricing/
+      checked: '2026-10-28'
       confidence: verified
-      note: "0.01 credit per creator returned; nothing when none are. OBSERVED 2026-08-21: limit=2 moved the meter 9.98 -> 9.96"
+      note: "per creator returned; a page with no creators is free. Priced on the plan's discovery allowance (10 creators per credit)"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.similar.json
     docs_url: https://docs.influencers.club/openapi/similar-creators/public_v1_discovery_creators_similar_create
 
@@ -137,6 +139,7 @@ endpoints:
       confidence: verified
       note: "1 credit per request regardless of creator count. OBSERVED 2026-08-21: credits_cost 1.0 in the body, meter 8.25 -> 7.25"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.audience.overlap.json
     docs_url: https://docs.influencers.club/openapi/audience-overlap/public_v1_creators_audience_overlap_create
 
@@ -164,6 +167,7 @@ endpoints:
       queryParams: {search: "London", limit: 3}
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.influencers.club/guides/usage-limits, checked: '2026-08-21', confidence: verified, note: "documented 0 credits and OBSERVED 2026-08-21 — meter unchanged"}
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.filters.locations.json
     docs_url: https://docs.influencers.club/openapi/dictionary/public_v1_discovery_classifier_locations_retrieve
 
@@ -183,6 +187,7 @@ endpoints:
       queryParams: {}
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.influencers.club/guides/usage-limits, checked: '2026-08-21', confidence: verified, note: "documented 0 credits and OBSERVED 2026-08-21 — meter unchanged"}
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.filters.languages.json
     docs_url: https://docs.influencers.club/openapi/dictionary/public_v1_discovery_classifier_languages_list
 
@@ -202,6 +207,7 @@ endpoints:
       queryParams: {}
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.influencers.club/guides/usage-limits, checked: '2026-08-21', confidence: verified, note: "documented 0 credits and OBSERVED 2026-08-21 — meter unchanged"}
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.filters.audience_interests.json
     docs_url: https://docs.influencers.club/openapi/dictionary/public_v1_discovery_classifier_audience_interests_list
 
@@ -237,6 +243,7 @@ endpoints:
       confidence: verified
       note: "0.03 credit per successful request; a creator_not_found miss is free. OBSERVED 2026-08-21 — and note the cold-call 504 on this route WAS charged 0.03 (see the file header)"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.enrich.raw.json
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-raw/public_v1_creators_enrich_handle_raw_create
 
@@ -272,6 +279,7 @@ endpoints:
       confidence: verified
       note: "0.2 credit per successful request. OBSERVED 2026-08-21: meter 9.75 -> 9.55"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.enrich.profile.json
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-profile/public_v1_creators_enrich_handle_profile_create
 
@@ -307,6 +315,7 @@ endpoints:
       confidence: verified
       note: "0.8 credit per successful request. OBSERVED 2026-08-21: meter 9.05 -> 8.25"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.enrich.analytics.json
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-analytics/public_v1_creators_enrich_handle_analytics_create
 
@@ -344,10 +353,12 @@ endpoints:
       confidence: verified
       note: "1 credit per successful request. OBSERVED 2026-08-21: meter 7.25 -> 6.25; the cold-call 504 that preceded it was NOT charged"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.enrich.full.json
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-full/public_v1_creators_enrich_handle_full_create
 
   - id: influencersclub.creators.enrich.email
+    added: '2026-08-21'
     cache:
       # `result.picture` is a rotating CDN URL: every change the archive observed on this endpoint
       # in its first month was that field alone
@@ -406,6 +417,7 @@ endpoints:
       confidence: verified
       note: "0.5 credit per successful request. OBSERVED 2026-08-21: meter 9.55 -> 9.05"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.socials.json
     docs_url: https://docs.influencers.club/openapi/connected-socials/public_v1_creators_socials_create
 
@@ -440,6 +452,7 @@ endpoints:
       confidence: verified
       note: "0.03 credit per successful request (a page, whatever its size); a creator_not_found miss was free. OBSERVED 2026-08-21: meter 9.84 -> 9.81; cold-call 504s on this route were also charged"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.posts.json
     docs_url: https://docs.influencers.club/openapi/creator-posts/public_v1_creators_content_posts_create
 
@@ -473,6 +486,7 @@ endpoints:
       confidence: verified
       note: "0.03 credit per successful request. OBSERVED 2026-08-21: meter 9.81 -> 9.78"
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.creators.post.details.json
     docs_url: https://docs.influencers.club/openapi/post-details/public_v1_creators_content_details_create
 
@@ -493,6 +507,7 @@ endpoints:
       queryParams: {}
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.influencers.club/guides/usage-limits, checked: '2026-08-21', confidence: verified, note: "documented 0 credits and OBSERVED 2026-08-21 across a dozen reads"}
     verified: '2026-08-21'
+    added: '2026-08-21'
     example_response: examples/influencersclub.account.usage.json
     docs_url: https://docs.influencers.club/openapi/account-credits-and-usage/account_credits_usage_retrieve
 

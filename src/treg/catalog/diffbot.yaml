@@ -75,6 +75,7 @@ endpoints:
       confidence: verified
       note: 25 credits per enhanced record, or 100 credits with refresh=true. `size` multiplies this. On the $299/mo 250k-credit plan that is roughly $0.03 per record. OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The meter counts ENTITIES RETURNED, not calls, so a lookup answering with one record costs 25 and a multi-record response scales; every observed call returned exactly one.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.companies.enrich.json
     docs_url: https://docs.diffbot.com/reference/enhanceget
 
@@ -118,6 +119,7 @@ endpoints:
       confidence: verified
       note: 25 credits per enhanced record, or 100 with refresh=true — same rate as company enrichment. OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The meter counts ENTITIES RETURNED, not calls, so a lookup answering with one record costs 25 and a multi-record response scales; every observed call returned exactly one.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.people.enrich.json
     docs_url: https://docs.diffbot.com/reference/enhanceget
 
@@ -155,6 +157,7 @@ endpoints:
       confidence: verified
       note: 25 credits per entity record returned (100 per facet-query result), so `size` is the price. Billed per result, not per query. OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The meter counts ENTITIES RETURNED, not calls, so a lookup answering with one record costs 25 and a multi-record response scales; every observed call returned exactly one.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.companies.search.json
     docs_url: https://docs.diffbot.com/docs/tutorial-quickstart-with-knowledge-graph-search
 
@@ -190,6 +193,7 @@ endpoints:
       confidence: verified
       note: 25 credits per entity record returned (100 per facet-query result); `size` is the price. OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The meter counts ENTITIES RETURNED, not calls, so a lookup answering with one record costs 25 and a multi-record response scales; every observed call returned exactly one.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.people.search.json
     docs_url: https://docs.diffbot.com/docs/tutorial-quickstart-with-knowledge-graph-search
 
@@ -229,5 +233,28 @@ endpoints:
       confidence: verified
       note: 25 credits per record in the batch (100 with refresh) — the same rate as a single /enhance call, so batching saves round trips, not credits. OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The meter counts ENTITIES RETURNED, not calls, so a lookup answering with one record costs 25 and a multi-record response scales; every observed call returned exactly one.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.companies.bulk_enrich.json
     docs_url: https://docs.diffbot.com/reference/introduction-to-enhance-api
+
+  - id: diffbot.x.web-search
+    capability: web.search
+    platform: web
+    host: llm.diffbot.com
+    method: GET
+    path: /api/v1/web_search/
+    name: "Web search shaped for an LLM context window"
+    summary: "Search the web and return results shaped for feeding into an LLM context window"
+    input:
+      queryParams:
+        text: {type: string, required: true, note: "the search query"}
+        size: {type: integer, required: false, note: "number of results to return", example: 10}
+        maxTokens: {type: integer, required: false, note: "caps the search response to this token budget; highlight chunks are reduced equitably"}
+      note: "llm.diffbot.com requires Bearer authorization instead of Diffbot's usual query token; the approved catalog target applies that profile"
+    test_request:
+      queryParams: {text: "knowledge graph AI", size: 3}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://www.diffbot.com/pricing", checked: '2026-10-02', confidence: documented, note: "One Diffbot credit per web search."}
+    verified: 2026-07-28
+    added: '2026-07-28'
+    example_response: examples/diffbot.x.web-search.json
+    docs_url: https://docs.diffbot.com/reference/web-search-get

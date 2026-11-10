@@ -362,7 +362,7 @@ GEMINI_REQUEST = {'contents': [{'parts': [{'text': 'synthetic prompt'}]}],
 
 
 @pytest.fixture
-def gemini(wire, monkeypatch):
+async def gemini(wire, monkeypatch):
     from treg.application.call import settle
     client, state = wire
     monkeypatch.setenv('TREG_PLATFORM_KEY_GOOGLE_AI', 'synthetic-key')
@@ -371,6 +371,12 @@ def gemini(wire, monkeypatch):
     monkeypatch.setattr(get_settings(), 'archive_mode', 'shadow')
     state.update(type='application/json', body=GEMINI_BODY)
     yield client, state
+    # The /call relay closes the spool in a background task after the last byte, so the client
+    # can hold the whole body a moment before the budget returns. Wait for that close, bounded.
+    for _ in range(200):
+        if settle._spool_in_use == 0:
+            break
+        await asyncio.sleep(0.01)
     assert settle._spool_in_use == 0  # every spool returned its disk budget
 
 

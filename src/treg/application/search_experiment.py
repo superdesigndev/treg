@@ -17,12 +17,17 @@ Three modes, one setting (`search_experiment`):
 - `interleave` — most callers see a team-draft merge of the two pages (`domain.catalog.interleave`);
                two small holdouts see a pure page each so the absolute effect and the latency cost
                can be read as well as the paired preference.
+- `v2`       — most callers see the job-first answer (`application.catalog_search`, the engine behind
+               /catalog/find); the same two holdouts see the pure baseline and the pure v1 judged
+               page, so v2 is read against what it replaces and against the shipped ranker.
 
-Arms are dealt per CALLER (a hash of the bearer token, salted), so one agent's session is
-consistent and its re-queries are measurable. Whatever happens here, the caller gets a page: a judge
-that times out, errors or is unconfigured abstains and the baseline is served — the experiment can
-degrade search latency by at most `typesafe_timeout_s`, never its availability. The HTTP search
-route is not in the experiment: it is anonymous, so there is no later call to credit.
+Arms are dealt per CALLER - the team and sign-in email where the search resolved them, else a hash
+of the bearer token, salted either way - so one agent's session is consistent and its re-queries are
+measurable, and a caller whose token rotates (an OAuth grant) keeps its arm. Whatever happens here,
+the caller gets a page: a judge that times out, errors or is unconfigured abstains and the baseline
+is served — the experiment can degrade search latency by at most `typesafe_timeout_s`, never its
+availability. The HTTP search route is not in the experiment: it is anonymous, so there is no later
+call to credit.
 """
 from __future__ import annotations
 
@@ -35,8 +40,8 @@ from ..domain.catalog import interleave
 from ..domain.catalog import store as catalog_store
 from ..infra import judge as judge_infra
 
-MODES = ("off", "shadow", "interleave")
-ARM_SHADOW, ARM_BASELINE, ARM_JUDGED, ARM_INTERLEAVE = "shadow", "baseline", "judged", "interleave"
+MODES = ("off", "shadow", "interleave", "v2")
+ARM_SHADOW, ARM_BASELINE, ARM_JUDGED, ARM_INTERLEAVE, ARM_V2 = "shadow", "baseline", "judged", "interleave", "v2"
 
 # Rows the judge put in its top bucket carry their lexical score plus this, so a plain score-desc
 # sort (which is what `store.rerank` does first) keeps the buckets apart and the lexical order —
@@ -63,19 +68,30 @@ def caller_key(token: str) -> str | None:
     return hashlib.sha256(token.encode()).hexdigest()[:16] if token else None
 
 
+def identity_key(org_id: int | None, email: str | None) -> str | None:
+    """The caller's handle by WHO they are, where the search resolved it (else the arm is dealt by
+    `caller_key`): an OAuth grant's token rotates hourly, and a caller dealt by token would change
+    arms with it."""
+    if org_id is None or not email:
+        return None
+    return hashlib.sha256(f"{org_id}\x1f{email.strip().lower()}".encode()).hexdigest()[:16]
+
+
 def arm_for(key: str | None) -> str:
-    """`baseline` / `judged` for the two holdouts, `interleave` for everyone else; a caller without a
-    key (no token reached us) is interleaved — there is no later call to credit either way."""
-    if key is None:
-        return ARM_INTERLEAVE
+    """`baseline` / `judged` for the two holdouts, the mode's majority arm (`interleave`, or `v2`
+    in v2 mode) for everyone else; a caller without a key (no token reached us) is in the majority
+    arm — there is no later call to credit either way."""
     s = get_settings()
+    majority = ARM_V2 if str(s.search_experiment).strip().lower() == "v2" else ARM_INTERLEAVE
+    if key is None:
+        return majority
     bucket = int(hashlib.sha256(f"{s.search_experiment_salt}\x1f{key}".encode()).hexdigest()[:8], 16) % 100
     holdout = max(0, min(int(s.search_experiment_holdout_percent), 50))
     if bucket < holdout:
         return ARM_BASELINE
     if bucket < 2 * holdout:
         return ARM_JUDGED
-    return ARM_INTERLEAVE
+    return majority
 
 
 @dataclass
@@ -136,7 +152,7 @@ async def run(query: str, cat: catalog_store.Catalog, *, baseline: Rows, baselin
         mode=current, arm=arm,
         baseline_ids=base_ids,
         judged=[[eid, round(probs[eid], 3)] for eid in judged_ids if eid in probs] if judged_ids is not None else None,
-        shown=[[ep["id"], owners.get(ep["id"], arm)] for ep, _ in shown],
+        shown=[[ep["id"], owners.get(ep["id"], arm), ep.get("capability")] for ep, _ in shown],
         baseline_total=int(baseline_total), differs=bool(differs),
         judge_ms=verdict.ms, judge_tokens_in=verdict.tokens_in, judge_tokens_out=verdict.tokens_out,
         judge_error=verdict.error,

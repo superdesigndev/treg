@@ -57,6 +57,7 @@ endpoints:
     note: Discover does not consume search or verification credits
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-companies.json
   observed_time: 2.11
 - id: hunter.x.discover-people
@@ -93,6 +94,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-people.json
   observed_time: 1.25
 - id: hunter.x.discover-views-list
@@ -114,9 +116,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-views-list.json
   observed_time: 1.21
 - id: hunter.x.discover-views-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -138,6 +142,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -163,6 +168,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -218,6 +224,7 @@ endpoints:
     note: does not consume credits
   docs_url: https://hunter.io/api-documentation/v2#domain-finder
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.domain-finder.json
   observed_time: 5.83
 - id: hunter.x.email-count
@@ -252,9 +259,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#email-count
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.email-count.json
   observed_time: 0.02
 - id: hunter.x.multi-domain-search
+  added: '2026-07-28'
   tier: extended
   platform: people
   method: POST
@@ -352,6 +361,7 @@ endpoints:
   example_response: examples/hunter.x.multi-domain-search.json
   capability: people.search
 - id: hunter.x.multi-domain-search-reveal
+  added: '2026-07-28'
   tier: extended
   platform: people
   method: POST
@@ -415,6 +425,7 @@ endpoints:
     means: "no record for that email — an expected outcome (and free, per the cost note), not an API failure; do not retry"
   docs_url: https://hunter.io/api-documentation/v2#email-enrichment
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.combined-find.json
   observed_time: 1.46
   capability: people.enrich
@@ -458,9 +469,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.leads-list.json
   observed_time: 1.03
 - id: hunter.x.leads-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -481,6 +494,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -542,6 +556,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -576,6 +591,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -623,9 +639,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.leads-lists-list.json
   observed_time: 0.51
 - id: hunter.x.leads-lists-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -646,6 +664,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -671,6 +690,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -699,6 +719,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -719,6 +740,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.custom-attributes-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -744,6 +766,7 @@ endpoints:
     family below is kept only because Hunter''s help article still documents it; treat all four as
     retired until Hunter republishes a working path.'
 - id: hunter.x.custom-attributes-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -766,6 +789,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -791,6 +815,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -838,9 +863,11 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.campaigns-list.json
   observed_time: 2.46
 - id: hunter.x.campaigns-recipients-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -861,6 +888,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-recipients-add
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -892,6 +920,7 @@ endpoints:
     note: no search/verification credit charged; consumes the account's sending quota instead
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-recipients-remove
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people

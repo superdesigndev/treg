@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "step today: 9 null fields across 43 items"
+    ]
+  },
+  "recipe": "producthunt-today",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 194,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "name": "ReSO AI",
+      "tagline": "Get discovered & recommended when customers ask AI",
+      "topic": "SEO",
+      "url": "https://www.producthunt.com/products/reso",
+      "votes": 391
+    },
+    {
+      "name": "Onepin",
+      "tagline": "AI voiceover with every name, price and date said right",
+      "topic": "Developer Tools",
+      "url": "https://www.producthunt.com/products/onepin",
+      "votes": 388
+    }
+  ]
+}

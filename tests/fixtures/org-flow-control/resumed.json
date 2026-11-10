@@ -1,0 +1,1 @@
+{"org_id":42,"version":3,"config":{"schema_version":1,"pause_until":null,"rate_limit":{"rps":0.5,"burst":5},"concurrency_limit":{"max_in_flight":2}}}

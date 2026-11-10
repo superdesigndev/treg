@@ -61,7 +61,7 @@ async def test_rate_check_sliding_window_all_or_nothing():
     await _fresh_db()
     async with session_maker() as db:
         # cap of 3 for the key; the 4th within the window is refused
-        for i in range(3):
+        for _ in range(3):
             assert await ratestore.rate_check(db, "otp_start", [("e:x", 3)], window_s=900) is True
             await db.commit()
         assert await ratestore.rate_check(db, "otp_start", [("e:x", 3)], window_s=900) is False
@@ -120,3 +120,18 @@ async def test_kv_put_overwrites_a_row_written_by_another_session():
         await db.commit()
     async with session_maker() as db:
         assert (await ratestore.kv_get(db, "ns", "k")) == {"n": 2}
+
+
+async def test_kv_take_returns_a_live_value_once():
+    await _fresh_db()
+    async with session_maker() as db:
+        await ratestore.kv_put(db, "code", "live", {"x": 1}, ttl_s=600)
+        await ratestore.kv_put(db, "code", "old", {"x": 2}, ttl_s=-1)
+        await db.commit()
+    async with session_maker() as db:
+        assert await ratestore.kv_take(db, "code", "live") == {"x": 1}
+        assert await ratestore.kv_take(db, "code", "live") is None
+        assert await ratestore.kv_take(db, "code", "old") is None  # expired: removed, not returned
+        await db.commit()
+    async with session_maker() as db:
+        assert await ratestore.kv_get(db, "code", "old") is None

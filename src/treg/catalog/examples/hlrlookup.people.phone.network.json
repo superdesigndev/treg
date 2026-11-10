@@ -1,0 +1,45 @@
+{
+  "results": [
+    {
+      "error": "NONE",
+      "uuid": "00000000-0000-4000-8000-000000000000",
+      "request_parameters": {
+        "telephone_number": "447540822872",
+        "input_format": "",
+        "output_format": "",
+        "save_to_cache": "PRIVATE",
+        "cache_days_global": 0,
+        "cache_days_private": 0,
+        "get_ported_date": "NO",
+        "get_landline_status": "NO",
+        "usa_status": "NO"
+      },
+      "credits_spent": 0.5,
+      "detected_telephone_number": "447540822872",
+      "formatted_telephone_number": "",
+      "original_network": "AVAILABLE",
+      "original_network_details": {
+        "name": "Telefonica UK Limited",
+        "mccmnc": "23410",
+        "country_name": "United Kingdom",
+        "country_iso3": "GBR",
+        "area": "United Kingdom",
+        "country_prefix": "44"
+      },
+      "timestamp": "2026-10-07T19:51:22Z",
+      "telephone_number_type": "MOBILE",
+      "live_status": "NOT_AVAILABLE_NETWORK_ONLY",
+      "current_network": "AVAILABLE",
+      "current_network_details": {
+        "name": "EE Limited",
+        "mccmnc": "23430",
+        "country_name": "United Kingdom",
+        "country_iso3": "GBR",
+        "country_prefix": "44"
+      },
+      "is_ported": "YES",
+      "sms_email": "",
+      "mms_email": ""
+    }
+  ]
+}

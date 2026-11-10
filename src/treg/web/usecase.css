@@ -141,6 +141,12 @@ table.compare td:nth-child(3){color:var(--ink)}
   text-transform:uppercase;color:#8a8a86}
 .promptbox pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.65;
   color:var(--inverse-ink);white-space:pre-wrap;word-break:break-word}
+/* hand-written agent-page sections (`guide` in agent_pages.AGENTS): commands and prompts */
+.guide pre{margin:18px 0;border-radius:var(--r);background:var(--inverse);padding:16px 18px;
+  font-family:var(--mono);font-size:13px;line-height:1.65;color:var(--inverse-ink);
+  white-space:pre-wrap;word-break:break-word}
+.guide pre code{background:none;padding:0;font-size:inherit;color:inherit}
+.guide ul{padding-left:20px}.guide li{margin:8px 0}
 .copybtn{margin-left:auto;flex:none;border:1px solid #ffffff33;background:transparent;
   color:#d9d9d6;font-family:var(--sans);font-weight:500;font-size:11.5px;letter-spacing:.04em;
   border-radius:7px;padding:6px 13px;cursor:pointer;transition:color .12s,border-color .12s}

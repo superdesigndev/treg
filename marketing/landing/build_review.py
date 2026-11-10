@@ -11,7 +11,10 @@ Fonts differ from production by necessity: the artifact host blocks font CDNs, s
 falls back through treg's own stack (Georgia / system-ui / ui-monospace) instead of
 Geist Pixel / Inter / DM Mono. Everything else is identical.
 """
-import re, sys, pathlib, html
+import re
+import sys
+import pathlib
+import html
 import build_html as B
 from build_preview import inline_logos
 
@@ -91,7 +94,6 @@ def build(dest):
         pid, slug, fm, content = page_parts(p)
         label = dict(TAB)[pid]
         status = fm.get("status", "")
-        blocked = "blocked" in status or "hold" in status or "unproven" in status
         flag = ""
         if pid == "p5":
             flag = ('<div class="flag"><b>Blocked:</b> must not claim hiring or activity signals — '

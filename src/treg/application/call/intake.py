@@ -17,12 +17,12 @@ from .idempotency import (
     _idempotency_key,
     _replay_idempotent,
     _request_fingerprint,
+    resolve_archived_replay,
     _scoped_idempotency_key,
 )
 from .types import IdempotencyFailed, IdempotentReplay, IntakeFailed
 
 
-# ---- caller tags (X-Treg-Meta) -----------------------------------------------------------------
 # A builder reselling treg through one token stamps their OWN ids on each call —
 # `X-Treg-Meta: customer=cust_8123, workspace=ws_9` — so they can attribute, budget and invoice their
 # users. Deliberately a HEADER and not a tool argument: a model asked to pass an id drops it somewhere
@@ -126,7 +126,7 @@ class IntakeResult:
     idempotency_key: str
     fingerprint: str
     replay: IdempotentReplay | None
-    claim: tuple[int, str] | None
+    claim: tuple[int, str, str] | None
 
 
 async def prepare_call_intake(
@@ -139,6 +139,7 @@ async def prepare_call_intake(
     read_body: Callable[[], Awaitable[bytes]],
     caller: Caller,
     enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[None]],
+    call_ref: str,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
@@ -148,8 +149,7 @@ async def prepare_call_intake(
         await db.commit()
 
     # A retry the caller has labelled: answer it from what we already returned, before resolving
-    # anything or reaching a provider. Nothing happens without the header, so a caller who sends none
-    # sees exactly today's behaviour.
+    # anything or reaching a provider. Nothing happens without the header.
     # Scoped by the primary tag: two of a builder's users WILL both send `retry-1`, and without
     # this the second would be served the first's stored response.
     key = _scoped_idempotency_key(
@@ -161,15 +161,17 @@ async def prepare_call_intake(
     fingerprint = _request_fingerprint(method, rest, body, raw_query)
     async with session_maker() as db:
         replay = await _replay_idempotent(key, fingerprint, caller, db)
-        if replay is not None:
-            return IntakeResult(key, fingerprint, replay, None)
-        # Claim it now, before anything reaches a provider. Two retries can arrive together and both
-        # miss the lookup above; the unique constraint is what makes the loser wait instead of making
-        # a second upstream call. A check-then-act in Python would leave exactly the window this
-        # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-        if not await _claim_idempotent(key, fingerprint, rest, caller, db):
-            raise IdempotencyFailed(
-                "idempotency_in_progress", status_code=409,
-                detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
-                        "is already in progress — retry shortly"))
-    return IntakeResult(key, fingerprint, None, (caller.membership.id, key))
+        if replay is None:
+            # Claim it now, before anything reaches a provider. Two retries can arrive together and both
+            # miss the lookup above; the unique constraint is what makes the loser wait instead of making
+            # a second upstream call. A check-then-act in Python would leave exactly the window this
+            # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
+            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
+                raise IdempotencyFailed(
+                    "idempotency_in_progress", status_code=409,
+                    detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
+                            "is already in progress — retry shortly"))
+    if replay is not None:
+        # Outside the session on purpose: a trimmed row's bytes may come from object storage.
+        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None)
+    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref))

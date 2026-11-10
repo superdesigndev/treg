@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-from treg.infra.catalog_observations import CachedEndpointObservationReader
+from treg.infra.catalog_observations import (
+    CachedEndpointObservationReader, EndpointObservationUnavailable,
+)
 
 
 class _Source:
@@ -92,15 +94,96 @@ async def test_refresh_failure_keeps_stale_data_and_backs_off(caplog):
     assert stale["endpoint.a"]["ok_rate"] == 1.0
     assert reader.counts.refresh_failure == 1
 
-    # Still stale and still successful for the caller; the five-second backoff prevents a query
+    # Still stale and still successful for the caller; the one-minute minimum prevents a query
     # storm against an already-failing database.
     again = await reader.get_many(["endpoint.a"])
     assert again["endpoint.a"]["ok_rate"] == 1.0
     assert reader.counts.refresh == 2
 
+    now[0] = 12
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert reader.counts.refresh == 2, "even a shorter configured retry cannot bypass the minimum"
+
     now[0] = 31
     assert await reader.get_many(["endpoint.a"]) == {}, \
         "older than the 30-minute-equivalent stale TTL degrades to no reliability data"
+    await reader.aclose()
+
+
+async def test_partial_refresh_keeps_unavailable_entry_age_and_caches_completed_endpoints():
+    now = [0.0]
+    source = _Source()
+    reader = CachedEndpointObservationReader(source, clock=lambda: now[0])
+    await reader.get_many(["endpoint.async", "endpoint.sync"])
+    await reader.wait_for_idle()
+
+    now[0] = 301
+    completed = {
+        "endpoint.sync": {"samples": 20, "ok_rate": 0.8},
+        "endpoint.quiet": {"samples": 0, "ok_rate": None},
+    }
+    source.failure = EndpointObservationUnavailable(completed)
+    stale = await reader.get_many(["endpoint.async", "endpoint.sync", "endpoint.quiet"])
+    assert stale["endpoint.async"]["ok_rate"] == 1.0
+    await reader.wait_for_idle()
+    got = await reader.get_many(["endpoint.async", "endpoint.sync", "endpoint.quiet"])
+    assert got["endpoint.sync"] == completed["endpoint.sync"]
+    assert got["endpoint.quiet"]["samples"] == 0
+    assert got["endpoint.async"]["ok_rate"] == 1.0
+
+    # Several successful partial refreshes must not keep the unavailable async result alive.
+    for at in (602, 903, 1204, 1505):
+        now[0] = at
+        await reader.get_many(["endpoint.async", "endpoint.sync"])
+        await reader.wait_for_idle()
+    now[0] = 1801
+    expired = await reader.get_many(["endpoint.async", "endpoint.sync"])
+    assert "endpoint.async" not in expired
+    assert expired["endpoint.sync"] == completed["endpoint.sync"]
+    await reader.wait_for_idle()
+    assert "endpoint.async" not in await reader.get_many(["endpoint.async"])
+
+    # Once repaired, the missing endpoint can publish again without erasing complete peers.
+    source.failure = None
+    source.value = 0.6
+    original = source.get_many
+
+    async def repaired(endpoint_ids):
+        values = await original(endpoint_ids)
+        return {endpoint_id: completed.get(endpoint_id, value)
+                for endpoint_id, value in values.items()}
+
+    source.get_many = repaired
+    now[0] = 1862
+    await reader.get_many(["endpoint.async", "endpoint.sync"])
+    await reader.wait_for_idle()
+    recovered = await reader.get_many(["endpoint.async", "endpoint.sync"])
+    assert recovered["endpoint.async"]["ok_rate"] == 0.6
+    assert recovered["endpoint.sync"] == completed["endpoint.sync"]
+    await reader.aclose()
+
+
+async def test_cold_unavailable_fold_is_not_cached_as_an_empty_success():
+    now = [0.0]
+    source = _Source()
+    source.failure = EndpointObservationUnavailable()
+    reader = CachedEndpointObservationReader(source, clock=lambda: now[0])
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert await reader.get_many(["endpoint.a"]) == {}
+    assert reader.counts.fresh == 0
+    now[0] = 59
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert len(source.calls) == 1
+
+    now[0] = 60
+    source.failure = None
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert len(source.calls) == 2
+    assert (await reader.get_many(["endpoint.a"]))["endpoint.a"]["samples"] == 5
     await reader.aclose()
 
 

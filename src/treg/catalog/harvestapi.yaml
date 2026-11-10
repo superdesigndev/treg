@@ -66,6 +66,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.profile.json
 - id: harvestapi.linkedin.user.profile.main
   capability: linkedin.user.profile
@@ -126,6 +127,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.profile.main.json
 - id: harvestapi.linkedin.user.profile.email
   capability: people.email.find
@@ -186,6 +188,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.profile.email.json
 - id: harvestapi.linkedin.company.profile
   capability: linkedin.company.profile
@@ -235,6 +238,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.company.profile.json
 - id: harvestapi.linkedin.company.search
   capability: linkedin.search.companies
@@ -300,6 +304,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.company.search.json
 - id: harvestapi.linkedin.profile.search
   capability: linkedin.search.people
@@ -398,6 +403,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.profile.search.json
 - id: harvestapi.linkedin.service.search
   capability: linkedin.search.services
@@ -454,6 +460,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.service.search.json
 - id: harvestapi.linkedin.leads.search
   capability: people.search
@@ -623,6 +630,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.leads.search.json
 - id: harvestapi.linkedin.search.jobs
   capability: linkedin.search.jobs
@@ -729,6 +737,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.search.jobs.json
 - id: harvestapi.linkedin.job.get
   capability: linkedin.job.detail
@@ -774,6 +783,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.job.get.json
 - id: harvestapi.linkedin.group.search
   capability: linkedin.search.groups
@@ -821,6 +831,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.group.search.json
 - id: harvestapi.linkedin.group.get
   capability: linkedin.group.detail
@@ -866,6 +877,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.group.get.json
 - id: harvestapi.linkedin.geo.search
   capability: linkedin.search.locations
@@ -904,6 +916,7 @@ endpoints:
       for every Harvest plan.
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.geo.search.json
 - id: harvestapi.linkedin.ads.search
   capability: linkedin.search.ads
@@ -971,6 +984,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.ads.search.json
 - id: harvestapi.linkedin.ads.get
   capability: linkedin.ad.detail
@@ -1016,6 +1030,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.ads.get.json
 - id: harvestapi.linkedin.company.posts
   capability: linkedin.company.posts
@@ -1088,6 +1103,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.company.posts.json
 - id: harvestapi.linkedin.user.posts
   capability: linkedin.user.posts
@@ -1161,6 +1177,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.posts.json
 - id: harvestapi.linkedin.user.comments
   capability: linkedin.user.comments
@@ -1221,6 +1238,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.comments.json
 - id: harvestapi.linkedin.user.reactions
   capability: linkedin.user.reactions
@@ -1277,6 +1295,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.user.reactions.json
 - id: harvestapi.linkedin.post.search
   capability: linkedin.search.posts
@@ -1400,6 +1419,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.post.search.json
 - id: harvestapi.linkedin.post.get
   capability: linkedin.post.detail
@@ -1441,6 +1461,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.post.get.json
 - id: harvestapi.linkedin.post.comments
   capability: linkedin.post.comments
@@ -1496,6 +1517,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.post.comments.json
 - id: harvestapi.linkedin.post.reactions
   capability: linkedin.post.reactions
@@ -1543,6 +1565,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.post.reactions.json
 - id: harvestapi.linkedin.post.comment_replies
   capability: linkedin.comment.replies
@@ -1588,6 +1611,7 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.post.comment_replies.json
 - id: harvestapi.linkedin.comment.reactions
   capability: linkedin.comment.reactions
@@ -1633,4 +1657,5 @@ endpoints:
       unit: usd
   docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
   verified: '2026-09-10'
+  added: '2026-09-14'
   example_response: examples/harvestapi.linkedin.comment.reactions.json

@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...caller_metadata import TAG_DEFAULT, _MAX_BUDGET_DIMS, _META_KEY_RE
+from ...caller_metadata import _MAX_BUDGET_DIMS, _META_KEY_RE
 from ...config import get_settings
 from ...models import Org, TagBudget
 from ..identity.access import Caller
@@ -16,7 +16,7 @@ from ..identity.access import Caller
 _META_MAX_KEYS = 5
 _META_MAX_VALUE = 128
 # Tag VALUES become storage keys (the idempotency scope, a TagBudget row, a TagSpend row), so the
-# charset is an allowlist rather than a length check. See the collision note in `_parse_call_meta`.
+# charset is an allowlist rather than a length check.
 _META_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,%d}$" % _META_MAX_VALUE)
 # The dimension that scopes idempotency and defaults reports, for a team that never declared one.
 DEFAULT_PRIMARY_DIM = "customer"
@@ -65,12 +65,6 @@ def _validate_tag_pair(key: str, value: str, *, where: str = "tag") -> tuple[str
             f"{where} value for {key!r} looks like an email — use an opaque id: these tags are "
             f"written to an append-only ledger and cannot be deleted afterwards"))
     if not _META_VALUE_RE.match(value):
-        # An ALLOWLIST, not a blocklist, and the reason is `_scoped_idempotency_key`: the primary
-        # value is joined to the caller's Idempotency-Key with \x1f, so a value permitted to
-        # contain that separator lets `customer="A", key="B\x1fC"` collide with
-        # `customer="A\x1fB", key="C"` — one of a builder's users reading another's cached
-        # response. Do not narrow this to "reject \x1f": the header parser is not a security
-        # boundary we control, and the next separator would reopen it.
         raise BudgetPolicyError(422, (
             f"{where} value for {key!r} may only contain letters, digits and . _ - : "
             f"(these ids are used as storage keys)"))

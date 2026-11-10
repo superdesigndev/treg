@@ -32,24 +32,46 @@ API, ADMIN, BACKGROUND = "session_maker", "admin_session_maker", "background_ses
 EXPECTED_MAKERS: dict[str, set[str]] = {
     # Request path.
     "api.py": {API}, "mcp.py": {API}, "routers/resources.py": {API},
+    # The CLI's judged search: the caller and the hub's reader in short sessions, closed before the judge.
+    "routers/catalog.py": {API},
+    # A view's reads of its caller: a short session opened after the route's own answer is complete.
+    "routers/view.py": {API},
     "application/auth.py": {API}, "application/billing.py": {API}, "application/connect.py": {API},
+    # SSO reads/writes close before WorkOS and Stripe requests; the callback and webhook use
+    # short API-pool transactions on the request path.
+    "application/enterprise_sso.py": {API},
+    "routers/enterprise_sso.py": {API},
     "application/asynctasks.py": {API},
     # Organization resource CRUD uses short API-pool transactions around, never during, upstream I/O.
     "application/provider_resources.py": {API},
     # Interactive paid runs: short transactions between legs, never across upstream waits.
     "application/arena.py": {API},
+    "application/web_arena.py": {API},
+    "application/web_arena_quality.py": {API},
+    "application/web_arena_publications.py": {API},
+    # Request previews read a short snapshot; scheduled call folding uses the worker process.
+    "application/web_arena_calls.py": {API},
+    # `/table/`: one short read of a hub tool's manifest, after the call's answer is fully read.
+    "application/table.py": {API},
+    # `/tasks/`: one primary-key read, closed before the look's poll goes on the call road.
+    "application/tasks.py": {API},
     # Snapshot read on the request path; the collector runs in the `treg-worker` process (see
     # `worker.py` below), where the API pool is the only one in use.
     "application/arena_insights.py": {API},
+    "application/shadow.py": {API},
     "application/arena_verification_insights.py": {API},  # explicit aggregate publication, no worker
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
+    "application/catalog_search.py": {API},  # the hub read and the per-caller judge cap, each closed before the judge
 
-    "application/referrals.py": {API}, "application/signup.py": {API},
+    # Referral page journeys use API; authenticated affiliate administration stays in ADMIN.
+    "application/referrals.py": {API, ADMIN}, "application/signup.py": {API},
     "application/onboard/__init__.py": {API},
+    # The first-run lookup: a short write per finished step, never across a GitHub, LLM or call wait.
+    "application/onboard/first_run.py": {API},
     "application/call/authorize.py": {API}, "application/call/idempotency.py": {API},
     "application/call/intake.py": {API}, "application/call/overflow.py": {API},
     "application/call/reserve.py": {API}, "application/call/resolve.py": {API},
@@ -63,10 +85,23 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "worker.py": {API},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
+    # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
+    "application/key_spend_rollup.py": {API},
+    # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.
+    "application/call_usage_rollup.py": {API},
+    # `refresh` runs only inside `treg-worker rankings refresh`; the page reads one saved row.
+    "application/rankings.py": {API},
+    # Short reads and single writes per request, each closed before any picture storage I/O; the
+    # activity fold runs only inside `treg-worker showcase activity`, same reasoning as `worker.py`.
+    "application/showcase.py": {API},
+    "application/images.py": {API},
     # Runs only inside `treg-worker admin purge-evidence`; same reasoning as `worker.py`.
     "application/evidence_retention.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
+    # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short
+    # transactions with the connection released around object I/O (archive.md, "Opting out").
+    "application/archive_erasure.py": {API},
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
@@ -175,6 +210,7 @@ BACKGROUND_SITES = {
     "archive.py:_touch_write": "archive._store/_touch",
     "archive.py:_ignored_matches": "archive._store/_touch",
     "archive.py:_read_change_body": "archive._store/_touch",
+    "archive.py:flush_stats": "archive._store/_touch",
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",

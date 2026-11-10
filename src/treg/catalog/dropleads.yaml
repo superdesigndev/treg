@@ -43,6 +43,7 @@ endpoints:
       note: One credit when an email is found; a not_found response is free. The response-reported credits_charged is authoritative.
     docs_url: https://dropleads.readme.io/reference/email-finder
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.email.find.json
 
   - id: dropleads.people.phone.find
@@ -74,6 +75,7 @@ endpoints:
       note: Three credits when a mobile is found; a miss is free. The response-reported credits_charged is authoritative.
     docs_url: https://dropleads.readme.io/reference/mobile-finder
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.phone.find.json
 
   - id: dropleads.people.email.verify
@@ -84,7 +86,7 @@ endpoints:
     method: POST
     host: api.dropleads.io
     path: /email-verifier
-    name: Verify an email
+    name: Verify an email address — catch-all result
     summary: Check an email address for deliverability.
     input:
       bodyType: json
@@ -105,6 +107,7 @@ endpoints:
       note: Reserves 0.1 credit. Dropleads reports the exact credits_charged, including zero for an uncharged catch-all result.
     docs_url: https://dropleads.readme.io/reference/email-verifier
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.email.verify.json
 
   - id: dropleads.people.search
@@ -153,6 +156,7 @@ endpoints:
       note: Searching and counting do not consume credits; only returned-data actions are metered.
     docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-search
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.search.json
 
   - id: dropleads.people.search.count
@@ -173,6 +177,7 @@ endpoints:
     cost: *free_cost
     docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-count
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.search.count.json
 
   - id: dropleads.people.enrich.verified
@@ -216,6 +221,7 @@ endpoints:
       note: 0.2 credit for a returned verified lead; a miss is free. credits_consumed is authoritative.
     docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-enrich
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.enrich.verified.json
   - id: dropleads.people.enrich
     capability: people.enrich
@@ -225,6 +231,10 @@ endpoints:
     method: POST
     path: /api/v2/prime-db/leads/simple-enrich
     name: Enrich a person
+    miss:
+      status: 400
+      when: "error == 'Person not found. Try providing more information like LinkedIn URL or company name.'"
+      means: "nobody matched the identity (400 with this exact error) — a normal, free outcome, not a bad request. Other 400 bodies stay real request errors."
     summary: Enrich one person without requiring a verified email result.
     input:
       <<: *verified_person_input
@@ -246,6 +256,7 @@ endpoints:
       note: 0.2 credit for a returned person; a miss is free. credits_consumed is authoritative.
     docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-simple-enrich
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.people.enrich.json
   - id: dropleads.companies.search
     capability: companies.search
@@ -291,6 +302,7 @@ endpoints:
       note: 0.1 credit per returned company. credits.creditsDeducted is authoritative; empty results are free.
     docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-search
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.companies.search.json
 
   - id: dropleads.companies.search.count
@@ -311,6 +323,7 @@ endpoints:
     cost: *free_cost
     docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-count
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.companies.search.count.json
 
   - id: dropleads.companies.enrich
@@ -342,4 +355,5 @@ endpoints:
       note: 0.1 credit per returned company. credits.creditsDeducted is authoritative; the combined input maximum is 50.
     docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-enrich
     verified: '2026-09-15'
+    added: '2026-09-15'
     example_response: examples/dropleads.companies.enrich.json

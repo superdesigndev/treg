@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: reddit-search: 'async runtime' · relevance · 25 posts"
+    ]
+  },
+  "recipe": "reddit-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 190,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "iso3200",
+      "comments": 47,
+      "created": "2026-07-18T07:02:18Z",
+      "flair": null,
+      "id": "1uzotgx",
+      "link": "https://i.redd.it/w6swju4rsxdh1.png",
+      "score": 126,
+      "subreddit": "dotnet",
+      "text": "",
+      "title": "Simple .NET 11 preview 6 runtime async benchmark",
+      "url": "https://www.reddit.com/r/dotnet/comments/1uzotgx/simple_net_11_preview_6_runtime_async_benchmark/"
+    },
+    {
+      "author": "lelelesdx",
+      "comments": 53,
+      "created": "2026-06-13T07:09:42Z",
+      "flair": "🙋 seeking help & advice",
+      "id": "1u4k55x",
+      "link": "https://www.reddit.com/r/rust/comments/1u4k55x/why_are_async_runtimes_so_big_and_complex/",
+      "score": 123,
+      "subreddit": "rust",
+      "text": "I've been trying to learn how async and futures work. Made a small useless async runtime using dummy Wakers. I tried to look at Tokie, FuturesExt etc. When those are too big I tried to look at Smol. The smol async framework is not small.",
+      "title": "Why are async runtimes so big and complex?",
+      "url": "https://www.reddit.com/r/rust/comments/1u4k55x/why_are_async_runtimes_so_big_and_complex/"
+    }
+  ]
+}

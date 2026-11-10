@@ -33,6 +33,7 @@ limits: "per-METHOD tiers (Tier 1 ~1/min … Tier 4 ~100/min), not one global li
 pricing_url: https://api.slack.com/apis/rate-limits  # API free; rate tiers depend on workspace plan and the specific method.
 endpoints:
   - id: slack.slack.channels.list
+    added: '2026-07-28'
     capability: slack.channels.list
     platform: slack
     scope: own_account
@@ -53,6 +54,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/conversations.list
 
   - id: slack.slack.message.send
+    added: '2026-07-28'
     kind: action
     capability: slack.message.send
     platform: slack
@@ -77,6 +79,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/chat.postMessage
 
   - id: slack.slack.messages.history
+    added: '2026-07-28'
     capability: slack.messages.history
     platform: slack
     scope: own_account
@@ -98,6 +101,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/conversations.history
 
   - id: slack.slack.thread.replies
+    added: '2026-07-28'
     capability: slack.thread.replies
     platform: slack
     scope: own_account
@@ -120,6 +124,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/conversations.replies
 
   - id: slack.slack.channel.info
+    added: '2026-07-28'
     capability: slack.channel.info
     platform: slack
     scope: own_account
@@ -138,6 +143,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/conversations.info
 
   - id: slack.slack.users.list
+    added: '2026-07-28'
     capability: slack.users.list
     platform: slack
     scope: own_account
@@ -157,6 +163,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/users.list
 
   - id: slack.slack.user.profile
+    added: '2026-07-28'
     capability: slack.user.profile
     platform: slack
     scope: own_account
@@ -174,6 +181,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/users.info
 
   - id: slack.slack.reaction.add
+    added: '2026-07-28'
     kind: action
     capability: slack.reaction.add
     platform: slack
@@ -194,6 +202,7 @@ endpoints:
     docs_url: https://docs.slack.dev/reference/methods/reactions.add
 
   - id: slack.account.identity
+    added: '2026-07-28'
     kind: utility
     capability: account.identity
     platform: account

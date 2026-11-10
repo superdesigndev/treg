@@ -3,8 +3,9 @@
 import logging
 
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.exc import IntegrityError
 
-from ..infra.db import session_maker
+from ..infra.db import admin_session_maker, session_maker
 from ..domain import referrals
 from ..models import User
 
@@ -32,7 +33,7 @@ async def get_referral_summary(user_id: int) -> dict:
                 "referral code mint failed for user %s: %s", user_id, exc)
         try:
             await referrals.sweep(db, referrer_user_id=user_id)
-        except Exception as exc:  # noqa: BLE001 — pragma: no cover
+        except Exception as exc:  # noqa: BLE001
             logging.getLogger("treg").warning(
                 "referral sweep failed for user %s: %s", user_id, exc)
         # A recovery rollback above (the sweep's contained payout failure, or either except branch)
@@ -48,3 +49,23 @@ async def mint_code(user_id: int) -> str:
     async with session_maker() as db:
         user = await _user(db, user_id)
         return await referrals.ensure_code(db, user)
+
+
+async def get_affiliate(*, user_id: int | None = None, email: str | None = None) -> dict:
+    async with admin_session_maker() as db:
+        return await referrals.affiliate_state(db, user_id=user_id, email=email)
+
+
+async def set_affiliate(*, user_id: int, affiliate: bool, expected_version: int, reason: str,
+                        operation_id: str, principal: str) -> dict:
+    async with admin_session_maker() as db:
+        try:
+            result = await referrals.set_affiliate(
+                db, user_id=user_id, affiliate=affiliate, expected_version=expected_version,
+                reason=reason, operation_id=operation_id, principal=principal,
+            )
+            await db.commit()
+            return result
+        except IntegrityError as exc:
+            await db.rollback()
+            raise referrals.AffiliateConflict("operation_id was already used for a different request") from exc

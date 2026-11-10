@@ -1,7 +1,7 @@
 /* tools-registry - the interactive tutorial, as data.
  *
  * SINGLE SOURCE OF TRUTH for the walkthrough. Both the in-dashboard Help view
- * (src/treg/web/index.html) and the standalone page (docs/tutorial.html) render
+ * (frontend/src/pages/HelpPage.vue) and the standalone page (src/treg/web/tutorial.html) render
  * from `window.TREG_TUTORIAL` and highlight with `window.tregHL`, so they never drift.
  *
  * Each step: { part, who, title, explain, cmd, out, notice }.
@@ -34,7 +34,7 @@
     { h: "Import",
       p: "<code>treg upload</code> is the bulk on-ramp: it scans a <code>.env</code> (matching the providers treg recognizes) and/or a folder of skills, and registers everything you pick in one pass - building a <code>treg.json</code> for any skill that lacks one. Preview first with <code>treg scan</code> (read-only); idempotent, so re-run freely. <code>treg skill install</code> is the reverse: pull a shared skill onto your machine." },
     { h: "Two ways to use a tool",
-      p: "<code>treg call</code> proxies an HTTP <b>API</b> - the secret is injected server-side and nothing lands on your machine. <code>treg run</code> runs a vendor <b>command-line tool</b> (stripe, gh, gcloud…) with the credential injected, so you use the CLI without owning it or logging in. Two tiers: <code>--local</code> (default; runs on your machine - on Linux the key is isolated under a dedicated <code>treg-run</code> user) and <code>--server</code> (runs on the registry server, so the key never reaches you). The owner opts each tool in first; <code>treg runs</code> is the audit log." },
+      p: "<code>treg call</code> proxies an HTTP <b>API</b> - the secret is injected server-side and nothing lands on your machine. <code>treg run</code> runs a vendor <b>command-line tool</b> (stripe, gh, gcloud…) locally with the credential injected. The owner opts each tool in first; <code>treg runs</code> is the audit log. Server-side CLI execution is disabled: <code>--server</code> returns HTTP 503." },
   ];
 
   const ROLES = {
@@ -50,21 +50,19 @@
   };
 
   const STEPS = [
-    // ---- Setup ------------------------------------------------------------
     { part: "Setup", who: "sys", title: "Simulate three people on one machine",
       explain: "We play three users on one laptop by giving each its own <code>HOME</code>, so each gets an isolated <code>~/.treg/config.json</code> pointed at the registry. In real life every person is on their own machine and drops the <code>HOME=</code> prefix.",
       cmd: `for u in tom bob alice; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.to\ndone`,
       out: `# each persona now points at the registry`,
       notice: "Prefix any command with <code>HOME=~/.treg-personas/&lt;name&gt;</code> to act as that person." },
 
-    // ---- Part 1 - the catalog (before any team machinery) -----------------
     // Deliberately FIRST: everything below this needs a team, a secret and a registered tool before
     // anything happens. The catalog needs none of them, so it is the shortest path from "installed"
     // to "got real data" — and it is what the product now leads with.
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Find a tool by what it DOES",
       explain: "Tom has just installed the CLI. He has no team, no keys, nothing registered — and he can already work. He does not need to know which vendor sells backlink data; he searches by the <b>job</b>. Each hit shows what it costs, so nothing is a surprise.",
       cmd: `treg catalog search "backlinks for a domain"`,
-      out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.links.summary                     web        Moz          $0.0025/call\n  majestic.backlinks.list               web        Majestic     $0.010/call\n  …`,
+      out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.web.backlinks.summary             web        Moz          $0.013334/call (2 quota rows)\n  majestic.web.backlinks.list           web        Majestic     $0.02/call (5000 analysis units)\n  …`,
       notice: "Several providers usually serve one capability at different prices. treg shows them side by side — <b>choosing is yours</b>; it does not silently pick or fail over for you." },
 
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Read the price before you spend",
@@ -85,7 +83,6 @@
       out: `  Balance  $0.9990   (999000 micro-USD)\n\n  RECENT\n  settle   -$0.0010   tikhub.tiktok.user.profile`,
       notice: "Only calls on treg's key cost balance. Your own keys, your own tools and vendor CLIs are all free of it." },
 
-    // ---- Part 2 - Tom founds Superdesign ---------------------------------
     { part: "Part 2 · Tom founds Superdesign", who: "tom", title: "Tom signs in (the email door)",
       explain: "There is no <code>register</code>. Tom proves his email with a one-time code - and since it's his first time, that same act <b>creates</b> him plus a personal org (so there's never an empty state). The code is <b>emailed</b> to him; he checks his inbox and types it in.",
       cmd: `HOME=~/.treg-personas/tom treg login --email tom@superdesign.dev`,
@@ -98,7 +95,6 @@
       out: `{\n  "org": "superdesign",\n  "org_id": 2,\n  "name": "Superdesign",\n  "role": "owner",\n  "token": "<per-org token - agents/CI; a human doesn't need it>"\n}`,
       notice: "Personal orgs are auto-made on sign-in; <b>teams are created explicitly</b> with <code>org create</code>." },
 
-    // ---- Part 2 - Bob joins via the email door ---------------------------
     { part: "Part 3 · Bob joins (email door)", who: "tom", title: "Tom invites Bob",
       explain: "Tom invites a teammate by <b>email</b>. The invite attaches to that email and Tom gets a one-time code he <i>could</i> hand over - but Bob won't even need it.",
       cmd: `HOME=~/.treg-personas/tom treg org invite bob@superdesign.dev --role member`,
@@ -129,18 +125,17 @@
       out: `  bob-superdesign-dev    bob@superdesign.dev    owner\n* superdesign            Superdesign            member   (active)`,
       notice: "The <code>*</code> marks the active org. Switch anytime with <code>treg org use &lt;slug&gt;</code>." },
 
-    // ---- Part 3 - Alice joins via the code door --------------------------
     { part: "Part 4 · Alice joins (code door)", who: "tom", title: "Tom invites Alice as a viewer",
       explain: "The other door: the <b>code</b>. First Tom invites Alice as a <b>viewer</b> - she'll be able to read and call, but not register anything.",
       cmd: `HOME=~/.treg-personas/tom treg org invite alice@superdesign.dev --role viewer`,
       out: `{\n  "code": "ZTeW5ss-cXiyvzeMs3em-…",\n  "email": "alice@superdesign.dev",\n  "role": "viewer",\n  "org_id": 2,\n  "expires_at": "2026-07-09T…"\n}`,
       notice: "This time we <b>keep the code</b> - Alice uses it directly next." },
 
-    { part: "Part 4 · Alice joins (code door)", who: "alice", title: "Alice joins by code (no login first)",
-      explain: "The contrast with Bob: Alice <b>never runs</b> <code>login</code>. The code itself proves her email, so <code>join</code> creates her, adds her to Superdesign, and saves her token - all in one command.",
-      cmd: `HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-… --email alice@superdesign.dev`,
-      out: `{\n  "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",\n  "token": "<alice's superdesign token>",\n  "personal": { "org": "alice-superdesign-dev", "org_id": 4, "role": "owner",\n                "token": "<alice's personal token>" }\n}`,
-      notice: "One command created Alice, gave her a personal org, and made her a viewer - Tom never handled her token." },
+    { part: "Part 4 · Alice joins (code door)", who: "alice", title: "Alice signs in, then joins by code",
+      explain: "The contrast with Bob: Alice uses the <b>code</b> instead of browsing her invites. The code only names the invite - Tom holds it too - so Alice still proves her email with <code>login</code> first. Then <code>join</code> adds her to Superdesign and saves her token.",
+      cmd: `HOME=~/.treg-personas/alice treg login --email alice@superdesign.dev\nHOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-…`,
+      out: `We sent a 6-digit code to alice@superdesign.dev.\nEnter code: 304917\n✓ Logged in as alice@superdesign.dev.\n{\n  "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",\n  "token": "<alice's superdesign token>"\n}`,
+      notice: "The code picked the invite; Alice's own sign-in proved who she is. Tom never handled her token." },
 
     { part: "Part 4 · Alice joins (code door)", who: "alice", title: "The viewer role has teeth",
       explain: "Alice can read and call, but a viewer <b>cannot register</b> anything. Watch her get stopped.",
@@ -148,7 +143,6 @@
       out: `{\n  "detail": "viewers can call and read, but cannot register"\n}`,
       notice: "Alice was granted <i>use</i>, not <i>write</i> - the role gate doing its job." },
 
-    // ---- Part 4 - A tool through the proxy -------------------------------
     { part: "Part 5 · A tool through the proxy", who: "bob", title: "Bob registers a secret",
       explain: "Unlike Alice, a <b>member</b> can register. Bob adds an API key - encrypted server-side, its value never returned again.",
       cmd: `HOME=~/.treg-personas/bob treg secret add echo-key --value "sk-demo-secret-123"`,
@@ -173,7 +167,6 @@
       out: `[\n  {\n    "id": 1,\n    "user_email": "alice@superdesign.dev",\n    "tool_name": "echo",\n    "method": "GET",\n    "path": "https://postman-echo.com/get",\n    "status_code": 200,\n    "created_at": "2026-07-02T…"\n  }\n]`,
       notice: "Even though Alice used Bob's secret, the ledger records <b>who</b> actually made the call." },
 
-    // ---- Part 5 - Call shapes & skills -----------------------------------
     { part: "Part 6 · Call shapes & skills", who: "alice", title: "Call by full URL (agent-native)",
       explain: "An agent often already knows the real upstream URL. Instead of <code>call &lt;tool&gt; &lt;path&gt;</code>, hand treg the <b>whole URL</b> - it matches the host to a registered tool and injects the key. No treg-specific knowledge needed.",
       cmd: `HOME=~/.treg-personas/alice treg call https://postman-echo.com/get`,
@@ -198,7 +191,6 @@
       out: `{\n  "id": 1, "name": "echo-svc", "owner": "bob@superdesign.dev",\n  "recipe": "# echo-svc\\n…the SKILL.md…",\n  "tools":   [{ "id": 2, "name": "echo-svc", "base_url": "https://postman-echo.com", "bundle_id": 1 }],\n  "secrets": [{ "id": 2, "name": "echo-svc", "kind": "env", "bundle_id": 1 }]\n}`,
       notice: "Everything shares a <code>bundle_id</code>, so a skill deletes as one unit too." },
 
-    // ---- Part 5b - Import: the magic bulk on-ramp ------------------------
     { part: "Part 6b · Import - the magic bulk on-ramp", who: "bob", title: "Turn your whole .env into tools",
       explain: "The steps above, but for your <i>entire</i> environment at once. <code>treg upload env</code> reads your <code>.env</code>, matches each variable against the providers treg recognizes (OpenAI, Stripe, Resend, Render…), and registers the ones you pick as ready-to-call tools. It reads <b>names only</b> to detect - the value is loaded just for the keys you confirm. Config vars (<code>*_HOST</code>, <code>*_MODEL</code>) and your app's own secrets (<code>SECRET_KEY</code>, <code>DATABASE_URL</code>) are excluded automatically.",
       cmd: `HOME=~/.treg-personas/bob treg upload env --select openai,stripe,resend`,
@@ -211,7 +203,6 @@
       out: `Scanned ~/.claude/skills: 5 API-tool skill(s), 23 recipe-only.\n  ✓ render          (tool)   [wrote treg.json]\n  ✓ intercom        (tool)\n  ✓ seo-blog-writer (recipe)\n  … \nImported 27/28 skills.`,
       notice: "A teammate then pulls any of them with <code>treg skill install &lt;name&gt;</code> - the shared library, installable in one command. Bare <code>treg upload</code> does both env + skills for the current dir." },
 
-    // ---- Part 5c - Run a vendor CLI --------------------------------------
     { part: "Part 6c · Run a CLI tool", who: "tom", title: "Turn on `run` for a CLI tool",
       explain: "Every tool so far was an HTTP <b>API</b> you <code>call</code>. Many providers also ship a <b>command-line tool</b> (stripe, gh, gcloud…). <code>treg run</code> executes that CLI with the org's credential injected - so a teammate uses it <i>without</i> owning the key or logging in. Because a run hands the credential to a machine, the owner opts each tool in first (the dashboard's <b>⌘ run</b> toggle is the same switch). Here Tom enables it for the <code>stripe</code> tool (its id from <code>tool ls</code>).",
       cmd: `HOME=~/.treg-personas/tom treg tool update 4 --local-run on`,
@@ -219,18 +210,17 @@
       notice: "Off by default - a run is more powerful than a proxied call, so it's opt-in per tool, and only an owner/admin can flip it." },
 
     { part: "Part 6c · Run a CLI tool", who: "bob", title: "Run the vendor CLI - no login, nothing on disk",
-      explain: "Now Bob runs Stripe's real CLI <i>through</i> treg. Everything after <code>--</code> is handed to the vendor tool verbatim. treg injects the credential just for this run; Bob never logged into Stripe or stored its key. The default tier is <code>--local</code> - it runs on Bob's own machine, and on Linux the key is isolated under a dedicated <code>treg-run</code> user (installed once with <code>sudo treg setup-local-run</code>; on macOS it's best-effort). Add <code>--server</code> to run it on the registry instead, for a catalog-known CLI, so the key never reaches Bob's machine at all.",
+      explain: "Now Bob runs Stripe's real CLI <i>through</i> treg. Everything after <code>--</code> is handed to the vendor tool verbatim. treg injects the credential just for this run; Bob never logged into Stripe or stored its key. The default tier is <code>--local</code> - it runs on Bob's own machine, and on Linux the key is isolated under a dedicated <code>treg-run</code> user (installed once with <code>sudo treg setup-local-run</code>; on macOS it's best-effort). Server-side CLI execution is disabled; <code>--server</code> returns HTTP 503.",
       cmd: `HOME=~/.treg-personas/bob treg run stripe -- get /v1/balance`,
       out: `{\n  "object": "balance",\n  "available": [{ "amount": 0, "currency": "usd" }],\n  …\n}\n# Stripe's own CLI ran with the org key injected - Bob never logged in or held the key.`,
       notice: "<code>treg run &lt;tool&gt; -- &lt;args&gt;</code> for a CLI; <code>treg call &lt;tool&gt; &lt;path&gt;</code> for an HTTP API - same credential, two ways to use it." },
 
     { part: "Part 6c · Run a CLI tool", who: "tom", title: "Every run is on the record",
-      explain: "Like proxied calls, CLI runs are audited. A <code>--server</code> run is recorded in the run ledger with its exit code and duration; a <code>--local</code> run leaves its audit trail beside the calls (<code>treg calls</code>). The owner reviews server runs with <code>treg runs</code>.",
+      explain: "Like proxied calls, local CLI runs are audited. The owner reviews them with <code>treg runs</code>; historical server runs remain readable there too. The example below is a historical server run; new server runs are disabled.",
       cmd: `HOME=~/.treg-personas/tom treg runs --limit 5`,
       out: `[\n  {\n    "id": 1,\n    "user_email": "bob@superdesign.dev",\n    "bundle_name": "stripe",\n    "argv": ["get", "/v1/balance"],\n    "exit_code": 0,\n    "duration_ms": 812,\n    "created_at": "2026-07-02T…"\n  }\n]`,
       notice: "The mnemonic: <code>treg call</code> → <code>treg calls</code>; <code>treg run</code> → <code>treg runs</code>. Two verbs, two ledgers." },
 
-    // ---- Part 6 - Org administration -------------------------------------
     { part: "Part 7 · Org administration", who: "tom", title: "See the team",
       explain: "The owner lists everyone and their roles. Role changes reference a member by <code>user_id</code>.",
       cmd: `HOME=~/.treg-personas/tom treg org members`,
@@ -267,7 +257,6 @@
       out: `{\n  "detail": "admin role in this org is required"\n}`,
       notice: "Roles, cleanly enforced: <b>owner</b> &gt; <b>admin</b> &gt; <b>member</b> &gt; <b>viewer</b>." },
 
-    // ---- Part 7 - Super-admin --------------------------------------------
     { part: "Part 8 · Super-admin", who: "ops", title: "Become the platform operator",
       explain: "Super-admin sits <i>above</i> orgs - it reads and manages every tenant. Two ways to authorise: the platform bearer <code>TREG_ADMIN_TOKEN</code>, or a user flagged <code>is_superadmin</code>. We use the bearer, read from <code>.env</code> so it never appears on screen.",
       cmd: `treg admin login --token "$(grep -E '^TREG_ADMIN_TOKEN=' .env | cut -d= -f2-)"`,
@@ -292,14 +281,12 @@
       out: `{\n  "user_id": 1,\n  "is_superadmin": true\n}`,
       notice: "After the grant, Tom's normal identity token works on <code>admin</code> commands - and the dashboard's Admin panel lights up for him." },
 
-    // ---- Part 8 - The dashboard -----------------------------------------
     { part: "Part 9 · The dashboard", who: "tom", title: "The same registry, in the browser",
       explain: "Open <b>treg.to</b> and sign in with the <b>email code</b> door (the same one you used in the terminal): type your email → click <b>Email me a sign-in code</b> → <b>check your inbox</b> for the 6-digit code → paste it in and <b>Sign in</b>. You land on your team org - Tools shows the <code>echo</code> tool, Activity shows the call, and (since Tom is now super-admin) an <b>Admin</b> panel appears.",
       cmd: `open https://treg.to/`,
       out: `# Sign in with email → land on Superdesign\n#   Tools    → the echo tool (Copy a snippet · Try it live)\n#   Activity → Alice's GET echo · 200\n#   Admin    → cross-tenant stats + orgs (super-admin only)`,
       notice: "The dashboard now does it all in the browser - create teams, invite members, add secrets, register tools & skills, plus the super-admin surface - not just read + call." },
 
-    // ---- Part 9 - Cleanup ------------------------------------------------
     { part: "Part 10 · Cleanup", who: "bob", title: "Delete the tool",
       explain: "Bob (its creator, and an admin) removes the tool. The bound secret stays - only the tool goes. A member can't delete a teammate's resource.",
       cmd: `HOME=~/.treg-personas/bob treg tool rm 1`,
@@ -312,7 +299,6 @@
       out: `{\n  "deleted_org": 2\n}`,
       notice: "Bob and Alice keep their personal orgs - they were separate tenants all along. That's the full lifecycle: sign in → team → invite (both doors) → roles → tool → proxied call → audit → admin → tear down. 🏁" },
 
-    // ---- Further, focused tutorials --------------------------------------
     { part: "Further tutorials", who: "sys", title: "Two deep-dive tutorials",
       explain: "Two features have their own step-by-step tutorials - <b>Import &amp; shell</b> and <b>Team access control</b>. Both are cards on the Tutorial page (← Tutorials, top left), and both also exist as plain markdown.",
       cmd: `open https://treg.to/tutorial-import-shell.md   # import + shell + the security sandbox\nopen https://treg.to/tutorial-access.md         # per-member tool access control`,
@@ -320,20 +306,19 @@
       notice: "Pick them from the Tutorial page like this one, or open the markdown URLs directly (agent-friendly)." },
   ];
 
-  // ---- Focused tutorial: Import & shell ----------------------------------
   // Prose twin: src/treg/web/tutorial-import-shell.md (served at /tutorial-import-shell.md).
   const IMPORT_SHELL = [
     { part: "Part 1 · Auto-import", who: "you", title: "Preview what would be registered",
       explain: "You already have <code>gh</code>, <code>stripe</code>, <code>gcloud</code> … installed and logged in. <code>treg scan clis</code> reads your machine: for each CLI in treg's catalog it checks whether the program is installed, whether its API key is in your environment, and whether you are logged into the CLI itself. It writes <b>nothing</b> - it only reports.",
       cmd: `treg scan clis`,
       out: `Scanned 21 catalog CLIs — 9 installed here.\n\nWould register (server, key injected):\n  openai\n  stripe\nWould register (local, uses your login):\n  doctl\n  flyctl\n  gcloud\n  gh\n  supabase\n  vercel\nNot supported:\n  az: az has no token-override env var (device/browser login only)\n\n12 more catalog CLIs aren't installed. List them with: treg scan clis --status`,
-      notice: "Two tiers. <b>Server</b> (openai, stripe): the key is in your environment, so treg can hold it and inject it - the key never touches a member's machine. <b>Local</b> (gh, gcloud, …): you're logged into the CLI itself, so treg registers it with no secret and just runs the CLI you already authenticated." },
+      notice: "The scan's <b>server</b> label (openai, stripe) means the key can be uploaded for injection; server-side execution is disabled. <b>Local</b> (gh, gcloud, …) means treg registers the CLI without a secret and uses your existing login. CLI execution is local, subject to the tool and member permissions." },
 
     { part: "Part 1 · Auto-import", who: "you", title: "Register them",
       explain: "Same scan, but it registers. <code>--replace</code> deletes-and-recreates anything already registered, so re-running is always safe.",
       cmd: `treg upload clis --replace`,
       out: `Scanned 21 catalog CLIs — 9 installed here.\n\nRegistered (server, key injected):\n  openai\n  stripe\nRegistered (local, uses your login):\n  doctl\n  flyctl\n  gcloud\n  gh\n  supabase\n  vercel`,
-      notice: "The server-tier CLIs uploaded their key (encrypted) and are now bound tools; the local-tier CLIs registered <b>secret-less</b> - \"inject nothing, just run the program the member is logged into.\"" },
+      notice: "The CLIs labelled server uploaded their key (encrypted) and are now bound tools; this does not enable server-side execution. The local-tier CLIs registered <b>secret-less</b> - \"inject nothing, just run the program the member is logged into.\"" },
 
     { part: "Part 1 · Auto-import", who: "you", title: "Confirm a local-tier CLI runs",
       explain: "A local-tier tool needs no credential at all - treg runs the program you're already logged into, and records the run.",
@@ -345,9 +330,8 @@
       explain: "<code>--status</code> lists the catalog CLIs you do <b>not</b> have, with the install command for each. <code>--add BIN</code> registers an installed CLI that isn't in the catalog at all - it asks for the env var the CLI reads its key from and the API base URL.",
       cmd: `treg scan clis --status\ntreg upload clis --add mycli --env MYCLI_TOKEN --base-url https://api.mycli.com`,
       out: `In the catalog, not installed here:\n  glab          brew install glab\n  render        brew install render-oss/render/render\n  neonctl       npm i -g neonctl\n  …`,
-      notice: "<code>--add</code> also prints a catalog-entry snippet you can share. An off-catalog CLI isn't on the server's allow-list, so it runs <b>locally</b> until an admin allow-lists its program name." },
+      notice: "<code>--add</code> also prints a catalog-entry snippet you can share. CLI execution is <b>local</b>; adding a program to the server's allow-list does not enable server execution." },
 
-    // ---- Shell mode --------------------------------------------------------
     { part: "Part 2 · Shell mode", who: "you", title: "Start the shell",
       explain: "Typing <code>treg run</code> before every command is friction. <code>treg shell start</code> opens a subshell where every <b>registered</b> CLI runs with the team credential injected automatically - you just type <code>stripe</code>, <code>gh</code>, <code>gcloud</code> as normal.",
       cmd: `treg shell start`,
@@ -372,13 +356,12 @@
       out: `▚ treg shell closed.\n/opt/homebrew/bin/gh`,
       notice: "<code>which gh</code> points at the real binary again. Nothing is left behind." },
 
-    { part: "Part 2 · Shell mode", who: "you", title: "Route one CLI to the server; set a time limit",
-      explain: "<code>--server-for &lt;tools&gt;</code> makes those CLIs run <b>on the registry</b> (the key never touches your machine); <code>--ttl &lt;minutes&gt;</code> closes the shell automatically.",
-      cmd: `treg shell start --server-for stripe --ttl 60\n# inside the shell:\nstripe --version      # runs on the server; output streamed back\nexit\ntreg runs --limit 1`,
-      out: `[\n  { "tool": "stripe", "argv": ["--version"], "exit_code": 0, "duration_ms": 92, "where": "server" }\n]`,
-      notice: "<code>stripe</code> is marked <code>(server)</code> in the banner and its run is logged with <code>\"where\": \"server\"</code> - it executed on the registry, not your laptop." },
+    { part: "Part 2 · Shell mode", who: "you", title: "Set a time limit for a local shell",
+      explain: "<code>--ttl &lt;minutes&gt;</code> closes the shell automatically. Registered CLIs run locally with the same tool and member permissions as <code>treg run</code>.",
+      cmd: `treg shell start --ttl 60\n# inside the shell:\ngh --version      # runs locally\nexit`,
+      out: `▸ gh · audit #60\ngh version 2.72.0 (2025-04-30)\nhttps://github.com/cli/cli/releases/tag/v2.72.0`,
+      notice: "Server-side execution is disabled. Existing <code>--server-for</code> requests warn and fall back to local because no tool is advertised as <code>server_runnable</code>." },
 
-    // ---- The local-run security sandbox ------------------------------------
     { part: "Part 3 · The security sandbox", who: "sys", title: "Set it up (once, as admin)",
       explain: "A local run puts a shared team key on a member's machine for the length of one command. That is only safe if the member cannot capture the key. <code>sudo treg setup-local-run</code> (Linux and macOS) builds a sandbox with three layers.",
       cmd: `sudo treg setup-local-run`,
@@ -410,11 +393,10 @@
       notice: "Local runs are <b>off by default</b> per tool - a run hands a credential to a machine, so the owner opts in. Prose version of this whole tutorial: <code>/tutorial-import-shell.md</code>." },
   ];
 
-  // ---- Focused tutorial: Team access control ------------------------------
   // Prose twin: src/treg/web/tutorial-access.md (served at /tutorial-access.md).
   const ACCESS = [
     { part: "Setup", who: "sys", title: "Two dials, two people",
-      explain: "Every member has two independent dials: <b>tool access</b> (<code>tool_access</code>: which tools they may touch - default <b>all</b>) and <b>local execution</b> (<code>local_run_enabled</code>: may they run a CLI on their own machine - default <b>on</b>). A withheld tool is closed through <i>every</i> door - proxy call, server run, local run. The <b>owner</b> is never restricted. We play two people on one machine: <b>Tom</b> (owner) and <b>Sam</b> (the new teammate we restrict).",
+      explain: "Every member has two independent dials: <b>tool access</b> (<code>tool_access</code>: which tools they may touch - default <b>all</b>) and <b>local execution</b> (<code>local_run_enabled</code>: may they run a CLI on their own machine - default <b>on</b>). A withheld tool is closed through both proxy calls and local runs. The <b>owner</b> is never restricted by these dials. Server runs are disabled for everyone. We play two people on one machine: <b>Tom</b> (owner) and <b>Sam</b> (the new teammate we restrict).",
       cmd: `for u in tom sam; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.to\ndone`,
       out: `# each persona now points at the registry`,
       notice: "Prefix a command with <code>HOME=~/.treg-personas/&lt;name&gt;</code> to act as that person. In real life each person is on their own machine and drops the prefix." },
@@ -423,7 +405,7 @@
       explain: "Tom invites Sam but grants access to <b>only</b> the <code>gh</code> tool and turns <b>local runs off</b>. The access travels with the invite and lands on Sam's membership the moment he accepts.",
       cmd: `HOME=~/.treg-personas/tom treg org invite sam@superdesign.dev --tools gh --local-run off`,
       out: `{\n  "code": "<one-time-invite-code>",\n  "email": "sam@superdesign.dev",\n  "role": "member",\n  "org_id": 44,\n  "expires_at": "2026-07-21T…"\n}`,
-      notice: "<code>--tools gh</code> is the allow-list (comma-separated for several); <code>--local-run off</code> means server-only. <code>--all-tools</code> grants everything explicitly." },
+      notice: "<code>--tools gh</code> is the allow-list (comma-separated for several); <code>--local-run off</code> blocks local CLI execution while permitted HTTP calls remain available. <code>--all-tools</code> grants everything explicitly." },
 
     { part: "Part 1 · Invite with tailored access", who: "tom", title: "(Alternative) let treg ask",
       explain: "Run the invite <b>without</b> the access flags and treg asks interactively - \"give access to all tools?\" - and, on no, shows a checklist of every tool (all pre-ticked) to uncheck the ones to withhold.",
@@ -447,13 +429,13 @@
       explain: "<code>stripe</code> is <b>not</b> on Sam's list. Every door to it is closed - here, the proxy.",
       cmd: `HOME=~/.treg-personas/sam treg call stripe v1/balance`,
       out: `{\n  "detail": "you don't have access to the tool 'stripe' in this team — an admin can grant it (dashboard → Team, or \`treg org access <you> --tools …\`)"\n}`,
-      notice: "The message tells Sam exactly how to get access. <code>treg run stripe</code> and <code>treg run --server stripe</code> are refused the same way - no side path." },
+      notice: "The message tells Sam exactly how to get access. <code>treg run stripe</code> is also refused by tool access; <code>treg run --server stripe</code> returns HTTP 503 because server execution is disabled for everyone." },
 
     { part: "Part 2 · The walls", who: "sam", title: "Local execution is off",
-      explain: "<code>gh</code> is allowed, but Sam's <code>local_run_enabled</code> is <b>off</b>, so he cannot run it on his own machine. treg points him at the server tier instead.",
+      explain: "<code>gh</code> is allowed, but Sam's <code>local_run_enabled</code> is <b>off</b>, so he cannot run it on his own machine. He must ask an admin to enable local runs; server execution is disabled.",
       cmd: `HOME=~/.treg-personas/sam treg run gh -- --version`,
       out: `treg: local execution is disabled for you — run on the server instead (\`treg run --server\`), or ask an admin to enable local runs for your account`,
-      notice: "This is the <i>local</i> wall, separate from tool access - <code>treg run --server gh …</code> (the key stays on the registry) is allowed." },
+      notice: "This is the <i>local</i> wall, separate from tool access. The legacy error text still suggests <code>--server</code>, but that option returns HTTP 503; ask an admin to enable local runs." },
 
     { part: "Part 2 · The walls", who: "sam", title: "A member can't manage the team",
       explain: "Access control is an admin power. Sam (a member) cannot list or change anyone's access.",
@@ -486,7 +468,6 @@
       notice: "<code>null</code> = all tools; a list = the allow-list (validated - unknown names → 422; all tools collapses to <code>null</code>). Admin/owner only; an owner cannot be restricted. Prose version: <code>/tutorial-access.md</code>." },
   ];
 
-  // ---- tiny self-contained highlighter (shell + json) -------------------
   const RULES = {
     shell: [
       { re: /#[^\n]*/,                     cls: "comment" },

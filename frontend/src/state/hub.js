@@ -1,8 +1,7 @@
 // The tool hub (docs/context/architecture/hub.md): the maker's view of the team's hub tools and the
-// run page. Moved from the legacy dashboard with its behavior unchanged. `hubOn` comes from the
-// server: /meta.hub is false when the hub is off here, so nothing is asked; otherwise /hub/tools/mine
-// answers 404 when the hub is on but not for this team (TREG_HUB_TEAMS), so the Hub entry follows
-// the ACTIVE team and is probed again on a team switch.
+// run page. `hubOn` comes from the server: /meta.hub is false when the hub is off here, so nothing
+// is asked; otherwise /hub/tools/mine answers 404 when the hub is on but not for this team
+// (TREG_HUB_TEAMS), so the Hub entry follows the ACTIVE team and is probed again on a team switch.
 export default {
 async probeHub(){ const live=this.ticket('hubProbe'); let on=false;
       if(this.meta.hub){ try{ const r=await fetch('/hub/tools/mine',{credentials:'include', headers:this.headers()}); on=r.status!==404; }catch(e){} }

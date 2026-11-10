@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: shopify-products: allbirds.com · page 1 · 50 products"
+    ]
+  },
+  "recipe": "shopify-products",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 185,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "available": true,
+      "handle": "womens-allbirds-flip-flop-dusty-pink",
+      "image": "https://cdn.shopify.com/s/files/1/1104/4168/files/A12513_26Q2_Allbirds-Flip-Flop-Dusty-Pink_PDP_LEFT.png?v=1774646345",
+      "price": "25.00",
+      "price_max": "25.00",
+      "product_type": "Shoes",
+      "tags": "allbirds::carbon-score => undefined, allbirds::cfId => color-a4d5d0f6620dc304306f503bf67bc5f9, allbirds::complete => true, allbirds::edition => limited, allbirds::gender => womens, allbirds::hue => pink, allbirds::master => womens-allbirds-flip-flop, allbirds::material => sugar, allbirds::price-tier…",
+      "title": "Women's Allbirds Flip Flop - Dusty Pink",
+      "updated_at": "2026-10-10T22:20:08-07:00",
+      "url": "https://allbirds.com/products/womens-allbirds-flip-flop-dusty-pink",
+      "variants": 7,
+      "vendor": "Allbirds"
+    },
+    {
+      "available": true,
+      "handle": "mens-canvas-runner-nz",
+      "image": "https://cdn.shopify.com/s/files/1/1104/4168/files/A12500_26Q1_Runner-NZ-Canvas-Stripes-Deep-Navy-Blizzard-Sole_PDP_LEFT.png?v=1774550585",
+      "price": "100.00",
+      "price_max": "100.00",
+      "product_type": "Shoes",
+      "tags": "allbirds::carbon-score => undefined, allbirds::cfId => color-1cef6be0d20d9c20d604095208afc4c8, allbirds::complete => true, allbirds::edition => limited, allbirds::gender => mens, allbirds::hue => blue, allbirds::hue => white, allbirds::master => mens-canvas-runner-nz, allbirds::material => cotton, a…",
+      "title": "Men's Canvas Runner NZ - Deep Navy Stripes (Blizzard Sole)",
+      "updated_at": "2026-10-10T22:20:08-07:00",
+      "url": "https://allbirds.com/products/mens-canvas-runner-nz",
+      "variants": 13,
+      "vendor": "Allbirds"
+    }
+  ]
+}

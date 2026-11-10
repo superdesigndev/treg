@@ -1,6 +1,5 @@
 
 export default {
-// ---- referrals ----
     // GET /referrals also runs the payout sweep server-side, so simply opening this page is what
     // makes a reward whose hold has elapsed actually land. That is deliberate: treg has no
     // scheduler, so the work rides on a request someone is already making.
@@ -15,19 +14,20 @@ export default {
     refPresetBonus(usd){ const o=this.billing&&this.billing.referral_offer;
       // NULL-GUARD FIRST. `referral_offer` is null for every team that was not referred — i.e. most
       // of them — and reading through it throws inside a render, which in Vue blanks the ENTIRE
-      // dashboard rather than just this row. Cost one blank page during review; keep it on its own
-      // line rather than folded into the expression below, where deleting a clause drops it silently.
+      // dashboard rather than just this row. Keep it on its own line rather than folded into the
+      // expression below, where deleting a clause drops it silently.
       if(!o) return 0;
       // Against what is REMAINING, not the full minimum: a team that already added $5 unlocks the
       // bonus with another $5, and marking that button "one-time" would be simply wrong.
       return (usd*1000000 >= o.remaining_micro) ? o.referred_micro : 0; },
-// The top-bar entry names the offer: legacy's "get $5" line out-drew a bare "Refer a friend" by a
-    // wide margin. Amounts come from /meta (config only), never from GET /referrals, which has side
-    // effects. Falls back to the plain label while /meta loads or when either side earns nothing.
-    refEntryLabel(){ const r=this.meta&&this.meta.referral;
-      if(!r || !(r.referrer_micro>0) || !(r.referred_micro>0)) return 'Refer a friend';
+// Amounts come from /meta (config only), never from GET /referrals, which has side effects.
+    // Falls back to the plain label while /meta loads or when either side earns nothing.
+    // The top bar's entry says Referral: it leads to two programs, and the friend credit is a small
+    // pull for an affiliate with an audience. The credit offer rides along on hover and for screen readers.
+    refEntryTitle(){ const r=this.meta&&this.meta.referral;
+      if(!r || !(r.referrer_micro>0) || !(r.referred_micro>0)) return 'Refer a friend, or become an affiliate partner';
       const usd=m=>m%1000000===0 ? '$'+m/1000000 : this.money(m);
-      return 'Give '+usd(r.referred_micro)+', get '+usd(r.referrer_micro); },
+      return 'Give '+usd(r.referred_micro)+', get '+usd(r.referrer_micro)+', or become an affiliate partner'; },
 async copyRefLink(){ try{ await navigator.clipboard.writeText(this.ref.link); }catch(e){}
       this.refCopied=true; this.track('referral_link_copied');
       setTimeout(()=>{ this.refCopied=false; }, 1600); },

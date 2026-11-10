@@ -3,6 +3,13 @@
 
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
 
 async def test_skill_md_served_and_templated(clients):
     r = await clients.get("/skill.md")
@@ -18,7 +25,7 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     r = await clients.get("/.well-known/skills/index.json")
     assert r.status_code == 200
     skills = r.json()["skills"]
-    assert [s["name"] for s in skills] == ["treg", "make-ugc", "lead-signals"]
+    assert [s["name"] for s in skills] == ["treg", "make-ugc", "lead-signals", "web-access", "recruit"]
     entry = skills[0]
     assert entry["name"] == "treg"
     assert entry["files"] == ["SKILL.md"]
@@ -27,6 +34,8 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     # would be caught the moment the two disagree.
     served = await clients.get("/skill.md")
     assert f"description: {entry['description']}" in served.text
+    # The installer offers the others to the human in one line each; a trigger description is no pitch.
+    assert all(s.get("summary") for s in skills[1:])
 
 
 async def test_well_known_skill_md_matches_the_canonical_one(clients):
@@ -60,3 +69,98 @@ async def test_lead_signals_skill_is_served_and_advertised(clients):
     assert wk.text == r.text
     idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][2]
     assert f"description: {idx['description']}" in r.text
+
+
+async def test_web_access_skill_is_served_and_advertised(clients):
+    """The web-access guide as a skill, served and indexed exactly like lead-signals."""
+    r = await clients.get("/skills/web-access/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: web-access")
+    assert "{BASE}" not in r.text
+    wk = await clients.get("/.well-known/skills/web-access/SKILL.md")
+    assert wk.text == r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][3]
+    assert f"description: {idx['description']}" in r.text
+
+
+async def test_recruit_skill_is_served_and_advertised(clients):
+    """The recruit workflow as a skill, served and indexed exactly like lead-signals."""
+    r = await clients.get("/skills/recruit/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: recruit")
+    assert "{BASE}" not in r.text
+    wk = await clients.get("/.well-known/skills/recruit/SKILL.md")
+    assert wk.text == r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][4]
+    assert f"description: {idx['description']}" in r.text
+
+
+async def test_web_access_landing_page_installs_the_skill(clients):
+    """The /web-access launch page is served with its placeholders filled and points at the skill it sells."""
+    r = await clients.get("/web-access")
+    assert r.status_code == 200 and "{BASE}" not in r.text
+    assert "npx skills add superdesigndev/treg --skill web-access" in r.text
+    assert "/web-arena/api/leaderboard" in r.text
+
+
+async def test_rea_growth_skill_is_served_but_opt_in(clients):
+    """The /rea-growth flow as a skill, served by URL with its placeholders filled, but kept out of
+    the index so install.sh never installs it unasked."""
+    r = await clients.get("/skills/rea-growth/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: rea-growth")
+    assert "{BASE}" not in r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"]
+    assert "rea-growth" not in [s["name"] for s in idx]
+
+
+def test_rea_growth_skill_names_only_endpoints_that_exist():
+    """Unlike lead-signals, rea-growth names endpoint ids step by step, so an agent calls them
+    as written. A renamed or retired row would send it to a 404 mid-run; this fails first."""
+    from treg.domain.catalog import store as catalog_store
+
+    ids = {e["id"] for e in catalog_store.load().endpoints}
+    text = (Path(__file__).resolve().parent.parent / "src/treg/web/skills/rea-growth/SKILL.md").read_text(
+        encoding="utf-8")
+    named = set(re.findall(r"`([a-z0-9]+(?:\.[a-z0-9_-]+){2,})`", text))
+    assert len(named) > 20
+    assert sorted(named - ids) == []
+
+
+async def test_jev_memory_skill_is_served_but_opt_in(clients):
+    """The Claude Code memory mod as a skill, served by URL but kept out of the index, so install.sh
+    never installs it unasked. It points at the mod in the repo, so that folder has to exist where
+    the skill says it is."""
+    r = await clients.get("/skills/jev-memory/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: jev-memory")
+    assert "{BASE}" not in r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"]
+    assert "jev-memory" not in [s["name"] for s in idx]
+    repo = Path(__file__).resolve().parent.parent
+    mod = repo / "examples" / "claude-code-mods"
+    assert "examples/claude-code-mods/jev-memory" in r.text
+    assert (mod / "jev-memory" / ".claude-plugin" / "plugin.json").is_file()
+    market = json.loads((mod / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    assert f"jev-memory@{market['name']}" in r.text
+    assert [p["source"] for p in market["plugins"]] == ["./jev-memory"]
+
+
+async def test_recruit_landing_page_installs_the_skill(clients):
+    """The /recruit launch page is served with its placeholders filled and points at the skill it sells."""
+    r = await clients.get("/recruit")
+    assert r.status_code == 200 and "{BASE}" not in r.text
+    assert "npx skills add superdesigndev/treg --skill recruit" in r.text
+    assert "/skills/recruit/SKILL.md" in r.text
+
+
+REPO = Path(__file__).resolve().parents[1]
+PUBLISHED_SKILLS = sorted(
+    p
+    for pattern in ("src/treg/web/skill.md", "src/treg/web/skills/*/SKILL.md", "skills/*/SKILL.md",
+                    "plugin*/**/SKILL.md", "dsh/skills/*/SKILL.md")
+    for p in REPO.glob(pattern)
+)
+
+
+@pytest.mark.parametrize("path", PUBLISHED_SKILLS, ids=lambda p: str(p.relative_to(REPO)))
+def test_published_skill_frontmatter_is_valid_yaml(path):
+    """skills.sh and Claude Code parse the frontmatter as YAML and silently skip a skill that fails."""
+    fm = yaml.safe_load(path.read_text().split("---\n", 2)[1])
+    assert isinstance(fm, dict) and isinstance(fm.get("name"), str) and isinstance(fm.get("description"), str)

@@ -6,6 +6,7 @@ from __future__ import annotations
 _CALL_SURFACES = (
     ("/catalog/call/", "catalog_call"),
     ("/call/", "call"),
+    ("/table/", "table"),
 )
 
 

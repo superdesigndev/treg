@@ -19,17 +19,20 @@ import zlib
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import Integer, String, case, column, delete, func, select, values
+from sqlalchemy import Integer, String, case, column, delete, func, select, update, values
 
 from ..domain import arena, arena_insights as rules
 from .. import archive_bodies
+from ..domain import asynctasks
 from ..domain.catalog import store
 from ..infra.db import session_maker
 from ..models import ArenaInsightState, ArenaObservation, ArchiveKey, ArchiveSnapshot, CallRecord
 from ..timeutil import utcnow_naive as now
 
 WINDOW_DAYS = 30
-REFRESH_SECONDS = 120
+# Each refresh re-aggregates the whole 30-day window on the primary (tens of seconds on a large
+# table, evicting the money path's cached pages). A 30-day leaderboard does not need minutes.
+REFRESH_SECONDS = 1800
 BATCH_SIZE = 100
 MAX_BODY_BYTES = 2_000_000
 log = logging.getLogger(__name__)
@@ -39,13 +42,19 @@ def _catalog():
     cat = store.load()
     endpoints = {eid: ep for eid, ep in cat.by_id.items()
                  if ep.get("capability") in arena.TASKS and ep.get("capability") not in arena.DISCOVERY_TASKS and eid in cat.adapters
-                 and cat.adapters[eid].verified and ep.get("provider") not in {"treg", "wrangle"}
-                 and eid not in arena.EXCLUDED and not ep.get("async") and ".bulk" not in eid}
-    fingerprint = {eid: {"path": ep.get("path"), "method": ep.get("method"),
-                        "adapter": cat.adapters[eid].__dict__, "contract": cat.contracts[ep["capability"]].__dict__}
-                   for eid, ep in sorted(endpoints.items())}
-    version = hashlib.sha256(json.dumps([rules.RULES_VERSION, arena.VERSION, fingerprint], sort_keys=True, default=str).encode()).hexdigest()
-    return cat, endpoints, version
+                 and cat.adapters[eid].verified and cat.adapters[eid].route and ep.get("provider") not in {"treg", "wrangle"}
+                 and eid not in arena.EXCLUDED and _first_answer_judged(ep) and ".bulk" not in eid}
+    return cat, endpoints, _version()
+
+
+def _version() -> str:
+    return hashlib.sha256(json.dumps([rules.RULES_VERSION, arena.VERSION]).encode()).hexdigest()
+
+
+def _first_answer_judged(ep: dict) -> bool:
+    """Insights judge the archived first answer. An async row's first answer is a task id, unless
+    the row declares that it usually answers at once (`terminal_on_submission`)."""
+    return not ep.get("async") or ep["async"].get("terminal_on_submission") is True
 
 
 def _insert(db, model):
@@ -104,7 +113,7 @@ async def _evidence(records, session_factory=session_maker):
     # Metadata and exact-version selection use a short session. Neither the cursor lock nor
     # another request-owned connection may survive across object reads, including DB fallback.
     async with session_factory() as db:
-        keymap, pointers = await _evidence_pointers(db, records)
+        keymap, pointers, _ = await _evidence_pointers(db, records)
     semaphore = asyncio.Semaphore(8)
     async def load(pair, pointer):
         async with semaphore:
@@ -129,10 +138,12 @@ async def _evidence(records, session_factory=session_maker):
     return result
 
 
-async def _evidence_pointers(db, records):
+async def _evidence_pointers(db, records, path="arena"):
+    """The archive key of each record's question, and a body pointer and media type for the exact
+    answer it received. `path` names the reader in the body-read switches and diagnostics."""
     keys = {r.archive_key_hash for r in records if r.archive_key_hash}
     if not keys:
-        return {}, {}
+        return {}, {}, {}
     # Read request metadata separately so explicit 404s can still be classified without a body.
     ak = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash.in_(keys)))).scalars().all()
     keymap = {k.key_hash: k for k in ak}
@@ -148,23 +159,24 @@ async def _evidence_pointers(db, records):
         latest = (select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == wanted.c.key_id,
             ArchiveSnapshot.content_hash == wanted.c.content_hash).order_by(ArchiveSnapshot.version.desc())
             .limit(1).correlate(wanted).scalar_subquery())
-        snaps = (await db.execute(select(ArchiveSnapshot).options(*archive_bodies.read_options("arena"))
+        snaps = (await db.execute(select(ArchiveSnapshot).options(*archive_bodies.read_options(path))
             .where(ArchiveSnapshot.id.in_(select(latest).select_from(wanted))))).scalars().all()
-    pointers = {}
+    pointers, media = {}, {}
     for snap in snaps:
         if snap.size_bytes > MAX_BODY_BYTES:
             continue
         try:
-            pointers[snap.key_id, snap.content_hash] = await archive_bodies.pointer(db, snap, "arena")
+            pointers[snap.key_id, snap.content_hash] = await archive_bodies.pointer(db, snap, path)
         except zlib.error:
             # In DB mode the pointer loads/decompresses bytes before releasing this session.
             continue
-    return keymap, pointers
+        media[snap.key_id, snap.content_hash] = snap.media_type
+    return keymap, pointers, media
 
 
-async def _aggregate(db, version, until):
+async def _aggregate(db, version, until, endpoints):
     O = ArenaObservation
-    where = (O.version == version, O.created_at >= until - timedelta(days=WINDOW_DAYS),
+    where = (O.version == version, O.endpoint.in_(endpoints), O.created_at >= until - timedelta(days=WINDOW_DAYS),
              O.created_at < until, O.input != "unknown")
     columns = (O.task, O.input, O.endpoint)
     counts = (await db.execute(select(*columns, O.category, func.count()).where(*where)
@@ -259,6 +271,10 @@ async def collect_batch(session_factory=session_maker):
                 inp, category = "unknown", "unresolved_evidence"
             if category in ("hit", "miss") and not record.params_hash:
                 category = "unresolved_identity"
+            if (category in ("hit", "miss") and ep.get("async")
+                    and not asynctasks.finished_on_submission(ep["async"], evidence[record.id][2])):
+                # "Still working" is no answer yet: neither a hit nor a miss.
+                category = "unresolved_pending"
             values = dict(id=record.id, version=version, endpoint=record.endpoint_id, task=ep["capability"],
                 input=inp, request_hash=record.params_hash or "", category=category,
                 duration_ms=record.duration_ms, created_at=record.created_at)
@@ -270,7 +286,7 @@ async def collect_batch(session_factory=session_maker):
             state.cursor = records[-1].id
         backlog = len(records) == BATCH_SIZE
         if not backlog:
-            state.payload = await _aggregate(db, version, until)
+            state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
             # Revisit recent evidence for delayed archive writes / concurrent audit commits. Only
             # the Arena's own endpoints are ever consumed, so the rewind asks about those rows and
@@ -281,10 +297,34 @@ async def collect_batch(session_factory=session_maker):
                 CallRecord.created_at >= until - timedelta(minutes=10)))).scalar_one()
             state.cursor = max(0, rewind - 1) if rewind else state.cursor
             state.scan_until = current - timedelta(seconds=60)
-            await db.execute(delete(ArenaObservation).where(ArenaObservation.created_at < until - timedelta(days=WINDOW_DAYS)))
         db.add(state)
         await db.commit()
     return backlog
+
+
+async def prune(session_factory=session_maker) -> None:
+    """Drop facts older than the window being collected and everything of superseded versions.
+
+    Runs every pass, backlog or not: tying it to publication let the table grow without bound
+    while a backfill was unfinished. A superseded state row is kept until the current version has
+    published, because `public_snapshot` falls back to it until then; its cursor is reset with its
+    facts, so a rolled-back collector rebuilds them instead of publishing over the payload.
+    """
+    _, _, version = _catalog()
+    O = ArenaObservation
+    async with session_factory() as db:
+        state = await db.get(ArenaInsightState, version)
+        until = min(state.scan_until, now()) if state else now()
+        await db.execute(delete(O).where(O.version == version, O.created_at < until - timedelta(days=WINDOW_DAYS)))
+        stale = (await db.execute(select(ArenaInsightState.id).where(ArenaInsightState.id != version))).scalars().all()
+        if stale:
+            await db.execute(delete(O).where(O.version.in_(stale)))
+            await db.execute(update(ArenaInsightState).where(ArenaInsightState.id.in_(stale),
+                (ArenaInsightState.cursor != 0) | ArenaInsightState.updated_at.is_not(None))
+                .values(cursor=0, updated_at=None, scan_until=now() - timedelta(seconds=60)))
+            if state and state.payload.get("status") == "ready":
+                await db.execute(delete(ArenaInsightState).where(ArenaInsightState.id.in_(stale)))
+        await db.commit()
 
 
 async def drain(session_factory=session_maker, *, max_seconds: float = 110.0) -> dict:
@@ -297,10 +337,14 @@ async def drain(session_factory=session_maker, *, max_seconds: float = 110.0) ->
     """
     started = time.monotonic()
     batches = 0
+    try:
+        await prune(session_factory)
+    except Exception:
+        log.exception("Arena observation prune failed; collecting anyway")
     while True:
         try:
             backlog = await collect_batch(session_factory)
-        except Exception:  # noqa: BLE001 — a bad batch must not lose the last aggregate
+        except Exception:
             log.exception("Arena observation refresh failed; retaining the last database aggregate")
             return {"batches": batches, "backlog": True, "failed": True}
         batches += 1

@@ -2,7 +2,7 @@
 // first tier that returns a count above zero wins. A reported 0 is treated as "the provider
 // could not classify this company", never as "no engineers".
 //
-//   0. pdl.x.company-clean        free   canonical LinkedIn URL + name (the join key for tier 1)
+//   0. pdl.companies.enrich       $0.10  canonical LinkedIn URL + name (the join key for tier 1)
 //   1. crustdata.companies.enrich ~4 cr  headcount.by_role_absolute.Engineering (+ YoY growth)
 //   2. pdl.companies.enrich       1 cr   employee_count_by_class.research_and_development
 //                                        (present only on PDL plans that carry class data)
@@ -27,10 +27,10 @@ function attempt(provider, count, extra) {
 }
 
 async function resolveIdentity(ctx, domain) {
-  const r = await ctx.call("pdl.x.company-clean", { query: { website: domain } });
+  const r = await ctx.call("pdl.companies.enrich", { query: { website: domain } });
   const j = r.status === 200 && r.json ? r.json : null;
   return { linkedin_url: j && typeof j.linkedin_url === "string" ? j.linkedin_url : null,
-           name: j && typeof j.name === "string" ? j.name : null, status: r.status };
+           name: j && typeof j.name === "string" ? j.name : null, status: r.status, profile: j };
 }
 
 async function crustByBody(ctx, body) {
@@ -52,12 +52,11 @@ async function crustTier(ctx, domain, linkedinUrl) {
   return { ...(await crustByBody(ctx, { domains: [domain] })), matched_on: "domain" };
 }
 
-async function pdlTier(ctx, domain) {
-  const r = await ctx.call("pdl.companies.enrich", { query: { website: domain } });
-  const j = r.status === 200 && r.json ? r.json : null;
-  if (!j) return { count: null, total: null, growth: null, status: r.status };
+function pdlTier(identity) {
+  const j = identity.profile;
+  if (!j) return { count: null, total: null, growth: null, status: identity.status };
   return { count: num((j.employee_count_by_class || {}).research_and_development), total: num(j.employee_count),
-           growth: num((j.employee_growth_rate_12_month_by_class || {}).research_and_development), status: r.status };
+           growth: num((j.employee_growth_rate_12_month_by_class || {}).research_and_development), status: identity.status };
 }
 
 export default async function run(ctx) {
@@ -78,7 +77,7 @@ export default async function run(ctx) {
 
   let pdl = { count: null, total: null, growth: null };
   if (method === "pdl_only" || method === "validate" || (method !== "crust_only" && !crustHas)) {
-    pdl = await pdlTier(ctx, domain);
+    pdl = pdlTier(identity);
     attempts.push(attempt("pdl company R&D class headcount", pdl.count, { status_code: pdl.status }));
     ctx.log("pdl: " + pdl.count + " r&d of " + pdl.total);
   }

@@ -2,7 +2,11 @@
 // is the one source: the Dashboard imports it, and the build also compiles it to the classic
 // `/agent-setup.js` script for the standalone Arena page (see index.ts). No credentials are stored.
 
-export type Agent = { id: string, name: string, icon: string | null, plugin?: string }
+// `plugin` and `connector` agents install treg in the host and sign in there over OAuth, so they get
+// no setup line and no key. `setupFallback` adds the setup line for the agent's surfaces that cannot
+// install plugins.
+export type Agent = { id: string, name: string, icon: string | null, plugin?: string, connector?: boolean,
+  setupFallback?: string, directiveSetup?: boolean }
 export type Example = { k: string, cat: string, logo: string, avatar?: string, show?: string, prompt: string }
 export type OAuthGroup = { label: string, items: { s: string, n: string }[], soon: { s: string, n: string }[] }
 export type IconUrl = (icon: string | null | undefined, theme?: string) => string
@@ -11,8 +15,9 @@ export type IconUrl = (icon: string | null | undefined, theme?: string) => strin
 // 'other' stays last, as the catch-all.
 export const agents: Agent[] = [
   {id:'claude-code',name:'Claude Code',icon:'claudecode-color'},
-  {id:'codex',name:'Codex',icon:'codex-color'},
-  {id:'claudeai',name:'Claude.ai',icon:'claude-color'},
+  {id:'codex',name:'Codex',icon:'codex-color',plugin:'https://chatgpt.com/plugins/plugin_asdk_app_6ac4c2df9c548191b83ea0c156bd9b6a',
+   setupFallback:'Using the Codex IDE extension, which installs no plugins? Send this in its chat instead:'},
+  {id:'claudeai',name:'Claude.ai',icon:'claude-color',connector:true},
   {id:'grokbot',name:'Grok Bot',icon:'/logos/agents/grokbot.png',plugin:'https://x.ai/bot/plugin/55647425'},
   {id:'hermes',name:'Hermes Agent',icon:'hermesagent'},
   {id:'cursor',name:'Cursor',icon:'cursor'},
@@ -22,14 +27,37 @@ export const moreAgents: Agent[] = [
   {id:'opencode',name:'opencode',icon:'opencode'},
   {id:'pi',name:'pi',icon:'pi'},
   {id:'gemini-cli',name:'Gemini CLI',icon:'gemini-color'},
-  {id:'other',name:'Other',icon:null},
+  {id:'other',name:'Other',icon:null,directiveSetup:true},
 ]
+
+export const installsInHost = (agent: Agent) => !!(agent.connector || agent.plugin)
 
 export const iconUrl: IconUrl = (icon, theme = 'light') =>
   icon?.startsWith('/') ? icon : icon ? 'https://unpkg.com/@lobehub/icons-static-png@latest/'+theme+'/'+icon+'.png' : ''
 
 // The published setup line, kept byte-for-byte with the copy the landing pages already show.
 export const command = (base: string) => 'set up treg \u2014 '+base.replace(/\/$/,'')+'/llms.txt'
+
+// Claude.ai adds treg as a custom connector over OAuth: no setup line, no key. This link opens
+// Claude.ai's add-connector dialog with this server's team MCP URL filled in: the whole surface
+// (catalog, the team's own tools, media), always mounted. /mcp/v2 is the catalog-only directory one.
+export const claudeConnectorLink = (base: string) =>
+  'https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Treg&connectorUrl='
+  + encodeURIComponent(base.replace(/\/$/,'')+'/mcp/')
+
+// The install prompt as explicit steps rather than one pointer at llms.txt: first person, the
+// commands themselves, and the MCP route for a client with no shell.
+export function directiveSetupText(base: string, team?: string, token?: string, masked = false) {
+  const root = base.replace(/\/$/, '')
+  const shown = token ? (masked ? token.slice(0,14)+'••••••••••••••••' : token) : ''
+  const teamName = team || '<team-slug>'
+  const install = token
+    ? `1. curl -fsSL ${root}/install.sh | sh -s -- --token ${shown}\n2. treg\n   It should print team ${teamName} and a balance.`
+    : `1. curl -fsSL ${root}/install.sh | sh\n2. treg login\n   Open the link it prints for me, then run treg to confirm.`
+  return `Install treg for me and sign it in to my team ${teamName}. I approve these steps; run them in order.\n\n${install}\n\n`
+    + `If you cannot run shell commands but can add an MCP server, add ${root}/mcp/ as a remote MCP server instead, and tell me to finish the sign-in there.\n\n`
+    + `How treg works: ${root}/llms.txt`
+}
 
 export function setupText(command: string, team?: string, token?: string, masked = false) {
   if(!team&&!token) return command
@@ -54,6 +82,16 @@ export const oauthGroups: OAuthGroup[] = [
   {label:'Manage ad campaigns', items:[{s:'google-ads',n:'Google Ads'},{s:'meta-ads',n:'Meta Ads'}], soon:[]},
   {label:'SEO on your own site',items:[{s:'google-analytics',n:'Google Analytics'},{s:'google-search-console',n:'Search Console'},{s:'google-business-profile',n:'Business Profile'}], soon:[]},
 ]
+
+// The chips this deployment offers: a provider left out of /oauth/providers (a paused one) loses its
+// chip, and a group left empty goes with it. Before the listing arrives every chip shows.
+export function listedOauthGroups(listing: { service: string }[] | null | undefined): OAuthGroup[] {
+  if (!listing || !listing.length) return oauthGroups
+  const offered = new Set(listing.map(p => p.service))
+  return oauthGroups
+    .map(g => ({ ...g, items: g.items.filter(p => offered.has(p.s)) }))
+    .filter(g => g.items.length)
+}
 
 // A logo that fails to load leaves its slot instead of a broken-image glyph.
 export function hideBrokenImage(event: Event) {

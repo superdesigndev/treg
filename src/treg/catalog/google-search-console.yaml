@@ -50,6 +50,7 @@ endpoints:
       pathParams: {siteUrl: "sc-domain:example.com"}
       body: {startDate: "2026-07-01", endDate: "2026-07-21", rowLimit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-search-console.performance.json
     docs_url: https://developers.google.com/webmaster-tools/v1/searchanalytics/query
 
@@ -66,6 +67,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account / platform quotas apply}
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-search-console.sites.json
     docs_url: https://developers.google.com/webmaster-tools/v1/sites/list
 
@@ -88,6 +90,7 @@ endpoints:
     test_request:
       body: {inspectionUrl: "https://example.com/", siteUrl: "sc-domain:example.com"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-search-console.url_inspection.json
     docs_url: https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect
 
@@ -109,5 +112,6 @@ endpoints:
     test_request:
       pathParams: {siteUrl: "sc-domain:example.com"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-search-console.sitemaps.json
     docs_url: https://developers.google.com/webmaster-tools/v1/sitemaps/list

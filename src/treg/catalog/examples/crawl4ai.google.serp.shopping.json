@@ -1,0 +1,95 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "google-shopping-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 187,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "brand": "Sony",
+      "currency": "USD",
+      "delivery_by": null,
+      "description": "Brand:Sony. Noise Canceling:Yes. With Microphone:Yes. Use With Mobile Phones:Yes. Color:Black, Silver, Pink. With Touch Controls:Yes. Style:On-ear. Headset:Yes. Wireless Type:Bluetooth. Over-ear:Yes. Assistant Support:Google Assistant, Amazon Alexa, Siri. Height:9.7″ tall. Width:8.9″ wide. Depth:2.8…",
+      "images": [
+        "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcS8WcU35DnaPcSJ2myijTM2MU4N_6J1N20Q0RHrVa-SrjlBs8xt-2-XcGrpdqILMOjGnPtVgfYGFsV9YWYk2-5M2fJD9dAE7Z8rqIwDJhY4yMUYWCQJdnZJRQ",
+        "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQKxNN_yMXIscnBYlggZCETbvO1hKoXDitjOU2W9H35K_aiqJ9Rl_xyM1FAgk__YFL84575Evk7Qh2Px4TqWIihRS86WrUx3rT0-rdHoeNb"
+      ],
+      "in_stock": true,
+      "offers": [
+        {
+          "currency": "USD",
+          "price": 399.99,
+          "seller": "ShopSimon",
+          "url": "https://www.google.com/goto?url=CAES8gEB6zswFcJGv4f3RwMX8qoYuW0n4mA2JE9GnjRrGyDUg2lq7dl1ZCun9pd903LRsg-l8YQ_M7NeB-9vIV_JzXWRdKwKU-igsqcTS8AcBbQsC54E1HKMGJbC9Fivlb33nXCEYpxak6lGJ9Ozg3WV0vkTDA6uT8DYT0PSwVorlj-7Adjyblurk2LUikpJbDFYaaMXgxSHhkQpspg0fREH9HcUn27NTLCv0M50MvSSwzrIrPN7glsCUtzWfnWQUi-_B1ho7I44…"
+        },
+        {
+          "currency": "USD",
+          "price": 274.3,
+          "seller": "Electronic Express",
+          "url": "https://www.google.com/goto?url=CAESxAEB6zswFd-evvY4F-GudKTlMSJ-eDe50AzM5Zjo3jdlgK7dgtqnk8BP1XHk0_S1aiotXQAnO13LX72T15M7AaT3lBSqMKdAAnACpSoOsgdJkMgKOONNnTSA7DBqdKQ5n7KduRi0LSA9Es17AXED9bWxEGv7NV40drZ6KMMAIzViBePsHu1aHLr-BZCnvGFR5NW2WrzqsaIe94MotOuP0k8wn3IoEUJ6EZAlD0RDO4ZyGyn-J5ofQlh6bkNJX1rKu6bY_D14"
+        }
+      ],
+      "price": 399.99,
+      "product_id": "15544113663339316856",
+      "related": [
+        {
+          "price": 299.99,
+          "title": "Sony WH-1000XM5 Noise-Canceling Wireless Over-Ear Headphones 2 Year",
+          "url": "https://www.google.com/search?q=sony+wh-1000xm5&hl=en&ibp=oshop&prds=catalogid:1450364227956983180,gpcid:16951088828645575361,headlineOfferDocid:10084964978265629046,imageDocid:2992653837521328050,mid:576462567975912091,productid:347255025789700350,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2"
+        },
+        {
+          "price": 294.0,
+          "title": "Sony WH-1000XM5 Wireless Noise Canceling Over-Ear Headphones Bundle",
+          "url": "https://www.google.com/search?q=sony+wh-1000xm5&hl=en&ibp=oshop&prds=catalogid:11272971376924574598,gpcid:2830746056554595271,headlineOfferDocid:18051988458086646405,imageDocid:6845705643723286513,productid:12002850068552584501,pvo:2,pvt:hg,rds:PC_2830746056554595271%7CPROD_PC_2830746056554595271&gl…"
+        }
+      ],
+      "seller": {
+        "name": "ShopSimon",
+        "url": "https://www.google.com/goto?url=CAES8gEB6zswFcJGv4f3RwMX8qoYuW0n4mA2JE9GnjRrGyDUg2lq7dl1ZCun9pd903LRsg-l8YQ_M7NeB-9vIV_JzXWRdKwKU-igsqcTS8AcBbQsC54E1HKMGJbC9Fivlb33nXCEYpxak6lGJ9Ozg3WV0vkTDA6uT8DYT0PSwVorlj-7Adjyblurk2LUikpJbDFYaaMXgxSHhkQpspg0fREH9HcUn27NTLCv0M50MvSSwzrIrPN7glsCUtzWfnWQUi-_B1ho7I44…"
+      },
+      "specifications": [
+        {
+          "name": "Brand",
+          "value": "Sony"
+        },
+        {
+          "name": "Noise Canceling",
+          "value": "Yes"
+        }
+      ],
+      "title": "Joyus Sony WH-1000XM5 Wireless Noise Canceling Headphones",
+      "url": "https://www.google.com/search?ibp=oshop&q=sony+wh-1000xm5&prds=gpcid%3A15544113663339316856%2Cpvt%3Ahg&gl=us&udm=28&hl=en"
+    }
+  ]
+}

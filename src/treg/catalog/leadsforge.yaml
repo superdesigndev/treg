@@ -91,6 +91,7 @@ endpoints:
       note: "credit balance was identical before and after this call (100 -> 100) on 2026-08-20; the pricing page prices only revealed contact channels, never the search"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.json
 
   - id: leadsforge.people.search.count
@@ -121,6 +122,7 @@ endpoints:
       note: "balance unchanged across the call on 2026-08-20"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.count.json
 
   # --- contact reveal: synchronous singles --------------------------------------------------------
@@ -158,6 +160,7 @@ endpoints:
       note: "1 credit on a hit, nothing on a miss. Confirmed live: balance 100 -> 99 on one successful call, and GET /balance reports emailEnrichmentPrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.email.find.json
 
   - id: leadsforge.people.phone.find
@@ -194,6 +197,7 @@ endpoints:
       note: "10 credits on a hit, nothing on a miss. Confirmed live: balance 99 -> 89 on one successful call; GET /balance reports phoneNumberEnrichmentPrice=10"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.phone.find.json
 
   # --- contact reveal: async batches --------------------------------------------------------------
@@ -234,6 +238,7 @@ endpoints:
       note: "1 credit per email found; misses free. Credits are reserved at submit (job.reservedCredits) and settled on completion (job.consumedCredits). A person already revealed on this account re-resolves for 0 — observed 2026-08-20"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.email.find.bulk.json
 
   - id: leadsforge.people.phone.find.bulk
@@ -273,6 +278,7 @@ endpoints:
       note: "10 credits per number found; misses free; already-revealed people re-resolve for 0"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.phone.find.bulk.json
 
   - id: leadsforge.people.identity.resolve.bulk
@@ -312,6 +318,7 @@ endpoints:
       note: "1 credit per profile found; misses free. Observed live: reservedCredits 1 at submit, consumedCredits 1 on completion"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.identity.resolve.bulk.json
 
   # --- enrichment job plumbing (free) -------------------------------------------------------------
@@ -344,6 +351,7 @@ endpoints:
       note: "polling never moved the balance"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.status.json
 
   - id: leadsforge.people.enrich.job.results
@@ -379,6 +387,7 @@ endpoints:
       note: "results are already paid for by the job"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.results.json
 
   - id: leadsforge.people.enrich.job.list
@@ -414,6 +423,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.list.json
 
   # --- lookalike companies -------------------------------------------------------------------------
@@ -448,6 +458,7 @@ endpoints:
       note: "documented as free and confirmed live — balance unchanged at 89 across the call"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.preview.json
 
   - id: leadsforge.companies.lookalike.search
@@ -486,6 +497,7 @@ endpoints:
       note: "1 credit per company returned (charged per company, not per lead). Confirmed live: pageSize=1 moved the balance 89 -> 88; GET /balance reports companyLookalikePrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.search.json
 
   # --- LinkedIn company followers ------------------------------------------------------------------
@@ -530,6 +542,7 @@ endpoints:
       note: "1 credit per follower returned, with their LinkedIn URL. Confirmed live: limit=1 reserved 1 credit and settled at 87 -> 86; GET /balance reports companyFollowersPrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.search.json
 
   - id: leadsforge.linkedin.company.followers.job.status
@@ -560,6 +573,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.status.json
 
   - id: leadsforge.linkedin.company.followers.job.results
@@ -594,6 +608,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.results.json
 
   - id: leadsforge.linkedin.company.followers.job.list
@@ -628,6 +643,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.list.json
 
   # --- filter-value discovery (all free) -----------------------------------------------------------
@@ -647,6 +663,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.seniorities.json
 
   - id: leadsforge.people.search.filters.departments
@@ -665,6 +682,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.departments.json
 
   - id: leadsforge.people.search.filters.industries
@@ -687,6 +705,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.industries.json
 
   - id: leadsforge.people.search.filters.company_types
@@ -705,6 +724,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.company_types.json
 
   - id: leadsforge.people.search.filters.funding_types
@@ -723,6 +743,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.funding_types.json
 
   - id: leadsforge.people.search.filters.revenue_ranges
@@ -741,6 +762,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.revenue_ranges.json
 
   - id: leadsforge.companies.lookalike.filters.departments
@@ -759,6 +781,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.departments.json
 
   - id: leadsforge.companies.lookalike.filters.employee_ranges
@@ -777,6 +800,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.employee_ranges.json
 
   - id: leadsforge.companies.lookalike.filters.locations
@@ -795,6 +819,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.locations.json
 
   - id: leadsforge.companies.lookalike.filters.seniorities
@@ -813,6 +838,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.seniorities.json
 
   - id: leadsforge.linkedin.company.followers.filters.countries
@@ -831,6 +857,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.countries.json
 
   - id: leadsforge.linkedin.company.followers.filters.states
@@ -849,6 +876,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.states.json
 
   - id: leadsforge.linkedin.company.followers.filters.departments
@@ -867,6 +895,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.departments.json
 
   - id: leadsforge.linkedin.company.followers.filters.levels
@@ -885,6 +914,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.levels.json
 
   - id: leadsforge.linkedin.company.followers.filters.job_titles
@@ -907,6 +937,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.job_titles.json
 
   # --- account ------------------------------------------------------------------------------------
@@ -927,6 +958,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.account.usage.json
 
 proposed_capabilities:

@@ -32,14 +32,27 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from treg.domain.catalog.schema import spelling
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
 CACHE = Path(os.environ.get("TREG_INGEST_CACHE") or (Path.home() / ".cache" / "treg-catalog-ingest"))
+
+def pricing_evidence_file(name: str) -> Path:
+    """Read operator-supplied evidence without depending on a private checkout."""
+    directory = os.environ.get("TREG_CATALOG_EVIDENCE_DIR")
+    if not directory:
+        raise ValueError("Set TREG_CATALOG_EVIDENCE_DIR to your pricing evidence directory")
+    path = Path(directory).expanduser() / name
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing pricing evidence: {path}")
+    return path
+
 
 CJK = re.compile("[　-鿿＀-￯]")
 
@@ -50,10 +63,8 @@ class _TolerantLoader(yaml.SafeLoader):
 
 
 _TolerantLoader.add_constructor("tag:yaml.org,2002:value", lambda loader, node: node.value)
-
-
-# ---------------------------------------------------------------------------------------------
-# plumbing
+# ...and an example date the spec writes as an impossible timestamp (month 13) stays a string.
+_TolerantLoader.add_constructor("tag:yaml.org,2002:timestamp", lambda loader, node: node.value)
 
 
 def fetch(url: str, key: str, *, refresh: bool = False, headers: dict[str, str] | None = None) -> bytes:
@@ -187,32 +198,68 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     the top of a proven request would drop the stamp on the next ingest and re-bill the call to
     learn what the file already knew. `--refresh` re-fetches the docs; re-verifying is what
     replaces a proven request, not re-ingesting.
+
+    A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
+    card (AnyAPI's sources and failover ceiling), so the fresh one is written over the carried one.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
-    if not old_file.is_file():
-        return 0
-    old = {ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
+    old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
+           if old_file.is_file() else {})
+    added = catalog_added_dates()
+    today = datetime.now(UTC).date().isoformat()
     kept = 0
     for ep in endpoints:
+        # `added` is carried by id from ANY catalog file, and before the route check below: a tool
+        # whose route moved, or that was promoted to core and back, is still the tool that reached
+        # main that day. Only an id the catalog has never had gets today's UTC date.
+        ep["added"] = added.get(ep["id"], today)
         prev = old.get(ep["id"])
-        if not prev:
-            continue
-        if prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
+        if not prev or prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
+            place_added(ep)
             continue
         carried_fields = [
             "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
+            # Reviewed per-row facts no spec carries: a price read from the provider's own bill
+            # (`cost`, the verifier's `observed_cost`), the success rule (`expect`), why a row
+            # cannot be tested, and a retired/broken `status`. Dropping them on a re-ingest
+            # silently un-prices, un-checks and un-retires rows.
+            "cost", "observed_cost", "expect", "untestable", "status",
+            # A caller-facing caveat about the whole tool, written by a reviewer: no ingest writes one.
+            "note",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
             "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
         ]
+        if spelling(prev) == "v2":
+            # A row in the v2 spelling carries its reviewed cost and its outcome rules, which hold
+            # the miss its adapter no longer does.
+            carried_fields += ["reserve", "settle", "bill", "error", "miss", "not_found"]
+            if prev.get("price") is not None:
+                # A price and its provenance are one reviewed fact: an absent provenance inherits the
+                # provider's default and a null one opts the row out, whatever the fresh entry says.
+                ep["price"] = prev["price"]
+                if "provenance" in prev:
+                    ep["provenance"] = prev["provenance"]
+                else:
+                    ep.pop("provenance", None)
+            for key in ("price", "expect", "reserve", "settle", "bill", "error", "miss", "not_found"):
+                if key in prev and prev[key] is None:
+                    ep[key] = None  # a reviewed opt-out of the provider's default
         if carry_input:
             carried_fields.append("input")
         if carry_capability:
             carried_fields.append("capability")
+        fresh_cost_note = ep["cost"].get("note") if isinstance(ep.get("cost"), dict) else None
         for field in carried_fields:
+            if field == "platform_blocked" and (ep.get("resource_ownership") or {}).get("requires"):
+                # The block stood in for ownership the row could not express; declared ownership
+                # supersedes it, and carrying it would keep a now-owned reader off the shared key.
+                continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
+        if fresh_cost_note and isinstance(ep.get("cost"), dict):
+            ep["cost"] = {**ep["cost"], "note": fresh_cost_note}
         if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
@@ -221,7 +268,32 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             if prev.get("test_request") is not None:
                 ep["test_request"] = prev["test_request"]
                 ep.pop("untestable", None)
+        place_added(ep)
     return kept
+
+
+def catalog_added_dates() -> dict[str, str]:
+    """id -> `added` over every catalog file, core and extended."""
+    out = {}
+    for path in CATALOG.glob("*.yaml"):
+        doc = yaml.safe_load(path.read_text())
+        for ep in (doc.get("endpoints") or []) if isinstance(doc, dict) else []:
+            if isinstance(ep, dict) and ep.get("id") and ep.get("added"):
+                out[str(ep["id"])] = str(ep["added"])
+    return out
+
+
+def place_added(ep: dict) -> None:
+    """Move `added` next to `verified` (after `id` when unverified), where catalog_added.py puts it,
+    so a re-ingest does not reorder rows the backfill or the helper wrote."""
+    day = ep.pop("added")
+    anchor = "verified" if "verified" in ep else "id"
+    items = list(ep.items())
+    ep.clear()
+    for key, value in items:
+        ep[key] = value
+        if key == anchor:
+            ep["added"] = day
 
 
 def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
@@ -261,9 +333,6 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
     return out
 
 
-# ---------------------------------------------------------------------------------------------
-# tikhub
-
 # path segment after /api/v1/ → platform slug. Absent = use the segment as-is.
 TIKHUB_PLATFORM = {"twitter": "x", "hybrid": "web"}
 TIKHUB_PLATFORM.update({k: k.replace("_", "-") for k in ("wechat_channels", "wechat_mp", "wechat_search")})
@@ -272,10 +341,8 @@ TIKHUB_PLATFORM.update({k: k.replace("_", "-") for k in ("wechat_channels", "wec
 TIKHUB_SKIP = {"captcha", "temp_mail", "ios_shortcut", "mcp", "sora2", "tikhub", "health", "downloader"}
 
 
-# --- TikHub parameter documentation -----------------------------------------------------------
-#
-# api.tikhub.io/openapi.json is served truncated at 842001 bytes (see the note in ingest_tikhub),
-# which costs us the parameter block of ~78% of the routes. TikHub's published docs are an Apifox
+# api.tikhub.io/openapi.json is served truncated (see the note in ingest_tikhub),
+# which costs us the parameter block of most routes. TikHub's published docs are an Apifox
 # site, and Apifox serves the same project as JSON through the API its own front-end calls — no
 # auth, no truncation, and richer than the OpenAPI: every parameter carries a `sampleValue`, the
 # working example value TikHub themselves demo the endpoint with. That is what makes a generated
@@ -545,14 +612,12 @@ def tikhub_input_and_test(op: dict, defs: dict, *, method: str = "GET",
     # different documents. Apifox lists every TikTok-Ads parameter under `parameters.query` while
     # the OpenAPI declares the same route POST-with-a-JSON-body, so the generator emitted a POST
     # whose arguments sat in the query string — still uncallable, just for a new reason, and a
-    # plain re-ingest would silently undo the hand correction of 2026-08-17. When the spec says
+    # plain re-ingest would silently undo the hand correction. When the spec says
     # this method carries a JSON body and Apifox gave us no body of its own, the documented
     # "query" parameters ARE that body's fields.
     # `not _spec_declares_query`: relocate only where the spec puts EVERYTHING in the body. A route
     # that genuinely takes both — TikHub's zhihu scholar search is the one live example — keeps its
     # query string, and moving those params into the body would break a currently-correct endpoint.
-    # Latent rather than live today (that route's docs supply a body, so `body is None` already
-    # blocked it), which is exactly why it is worth closing before it isn't.
     if (method not in ("GET", "HEAD", "DELETE") and body is None
             and _spec_wants_json_body(spec_op, method)
             and not _spec_declares_query(spec_op, method) and qs):
@@ -636,14 +701,6 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         # provider's own published contract, and it was wrong to rank it below an OPTIONS probe
         # that infers a verb from a preflight (a route answering with a list walks the preference
         # order below and comes out `GET`, whatever the handler actually takes).
-        #
-        # This is a hardening, NOT the cause of the 2026-08-17 TikTok-Ads breakage — the first
-        # write-up of that fix said otherwise and was wrong. Those routes were GET when ingested:
-        # the July spec says `get`, and the captured example_response is a real billed 200 from a
-        # GET on 2026-07-27. TikHub MOVED them to POST afterwards. The catalog did not mis-read the
-        # provider; it went stale, and nothing re-checks a provider's spec for drift. Preferring the
-        # spec narrows the window (a re-ingest now inherits the change) but does not close it —
-        # only re-ingesting does, and only if the cached spec is refreshed.
         method = resolve_method(spec_op=op, probed=methods.get(uri),
                                 documented=(doc_op or {}).get("method", ""))
         if (method, uri) in skip:
@@ -661,10 +718,9 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
             tail = uri.strip("/").split("/")[3:]
             where = "/".join(tail[:-1])
             summary = f"{label}: {titlecase(tail[-1]).lower()}" + (f" ({where})" if where else "")
-        cost = float(row.get("endpoint_cost") or 0)
+        cost = Decimal(str(row.get("endpoint_cost") or 0))
         entry = {
             "id": slug_id("tikhub", uri.replace("/api/v1/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             "path": uri,
@@ -675,10 +731,11 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         title = short_name((doc_op or {}).get("name") or "", summary)
         if title:
             entry["name"] = title
-        entry["cost"] = (
-            {"type": "free", "value": 0.0, "currency": "USD"} if cost == 0
-            else {"type": "per_success", "value": cost, "currency": "USD"}
-        )
+        # The provenance and the billing rule are the `defaults:` of tikhub.yaml.
+        if cost == 0:
+            entry["price"], entry["provenance"] = {"value": "0", "currency": "USD", "unit": "call"}, None
+        else:
+            entry["price"] = {"value": format(cost.normalize(), "f"), "currency": "USD", "per": 1, "unit": "call"}
         if doc_op is not None:
             documented += 1
             inp, test, reason = tikhub_input_and_test(doc_op, docs_defs, method=method, spec_op=op)
@@ -692,8 +749,8 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         else:
             # A route the rate card lists but the docs never describe is not usable inventory:
             # no parameter spec exists anywhere TikHub publishes, and spot checks 404 ("ghost
-            # routes" the server enumerates but no longer serves). Dropped rather than catalogued —
-            # 399 such routes on 2026-07-28; they return automatically if TikHub ever documents them.
+            # routes" the server enumerates but no longer serves). Dropped rather than catalogued;
+            # they return automatically if TikHub ever documents them.
             dropped_undocumented += 1
             continue
         endpoints.append(entry)
@@ -772,9 +829,6 @@ def tikhub_methods(paths: list[str], *, refresh: bool) -> dict[str, str]:
     return {k: v for k, v in known.items() if v}
 
 
-# ---------------------------------------------------------------------------------------------
-# dataforseo
-
 # /v3/<family>/<sub>/… → the platform the data is ABOUT (not the API family it lives under).
 DFS_PLATFORM = {
     ("serp", "google"): "google", ("serp", "bing"): "bing", ("serp", "yahoo"): "yahoo",
@@ -800,6 +854,70 @@ DFS_PLUMBING = {
     "models", "versions", "user_data", "force_stop", "task_get",
 }
 DFS_DOCS = re.compile(r"https://docs\.dataforseo\.com/[^'\s\"]+")
+# A /task_post-only family's result reader, in order of preference: one per family, never html
+# (a raw page, not data) and never the account-wide tasks_ready (it lists every team's tasks on
+# treg's shared account).
+DFS_TASK_GET = ("task_get/advanced/{id}", "task_get/{id}", "task_get/regular/{id}")
+# DataForSEO's per-task status codes (docs.dataforseo.com/v3/appendix/errors) as a task_get reads
+# them. 20100/40601/40602 mean created, handed to the engine, in the queue. DataForSEO bills a task
+# when it is POSTED, so an error the finished task reports is still a billed answer: the descriptor
+# settles it at the charge the submission reported, never at zero (the provider decides).
+DFS_TASK_PROGRESS = [20100, 40601, 40602]
+# A task_post answers 20100, task created, where every other route answers the provider's 20000.
+DFS_TASK_POSTED = {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
+DFS_TASK_FAILED = [40101, 40102, 40103, 40106, 40400, 40401, 40402, 40403, 40404, 40405, 40408,
+                   50000, 50001, 50301, 50302, 50303, 50304, 50401, 50402]
+# The on-page crawl's readers take the crawl's task id: in the path (summary) or in a one-element
+# task array. The submitting team owns the id; a reader on treg's key checks it.
+DFS_ON_PAGE_TASK = "on_page_task"
+DFS_ON_PAGE_READERS = frozenset(f"/on_page/{name}" for name in (
+    "content_parsing", "duplicate_content", "duplicate_tags", "keyword_density", "links",
+    "microdata", "non_indexable", "pages", "pages_by_resource", "raw_html", "redirect_chains",
+    "resources", "summary/{id}", "uncrawlable_resources", "waterfall"))
+
+
+def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
+    """The reader of one submission-only family: free, owned by the team that submitted the task."""
+    path = get_path.removeprefix("/v3")
+    endpoint_id = slug_id("dataforseo", path.removesuffix("/{id}"))
+    desc = clean(op.get("description") or "")
+    docs = DFS_DOCS.search(desc)
+    row = {
+        "id": endpoint_id,
+        "platform": post["platform"],
+        "kind": "utility",
+        "method": "GET",
+        "path": path,
+        "name": f"Result of: {post.get('name') or post['id']}"[:60],
+        "summary": ("Read the result of a task submitted with " + post["id"] + ". Free; only the "
+                    "team that submitted the task can read it, for 30 days."),
+        "input": {"pathParams": {"id": {
+            "type": "string", "required": True,
+            "note": "tasks[].id from the submission's answer",
+            "example": "00000000-0000-0000-0000-000000000000"}}},
+        "price": {"value": "0", "currency": "USD", "unit": "call",
+                  "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        # a task_get answers 20000 only once its task is done; the async status words judge it
+        "expect": None,
+        "resource_ownership": {"requires": {"kind": f"poll:{endpoint_id}", "param": "id"}},
+    }
+    if docs:
+        row["docs_url"] = docs.group(0).rstrip("',.").split("?")[0]
+    return row
+
+
+def dfs_submission(post: dict, reader_id: str) -> None:
+    """Make a /task_post row an async submission whose tasks the submitting team owns."""
+    post["expect"] = DFS_TASK_POSTED
+    post["resource_ownership"] = {"produces": [{"kind": f"poll:{reader_id}", "path": "tasks.*.id"}]}
+    post["async"] = {
+        "id_from": "tasks.0.id",
+        "poll": {"endpoint": reader_id, "param": {"in": "pathParams", "name": "id"}},
+        "status": {"path": "tasks.0.status_code", "progress": DFS_TASK_PROGRESS,
+                   "success": [20000], "failure": [], "billed_failure": DFS_TASK_FAILED},
+        "result": {"path": "tasks.0.result", "ttl_note": "30 days"},
+        "interval": 20,
+    }
 
 
 def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
@@ -845,15 +963,14 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             summary = titlecase(seg[-1])
         entry = {
             "id": slug_id("dataforseo", path.replace("/v3/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
-            # base_url already ends in /v3 — a verbatim spec path would relay to /v3/v3/… (404 on
-            # all 216 extended routes; found live 2026-07-30). Core files store /v3-less paths too.
+            # base_url already ends in /v3 - a verbatim spec path would relay to /v3/v3/… (404).
+            # Core files store /v3-less paths too.
             "path": path.removeprefix("/v3"),
             "summary": summary[:400],
         }
-        # DataForSEO's spec has NO per-op summary/title field (checked 2026-07-28: 0 of 570 ops)
+        # DataForSEO's spec has NO per-op summary/title field
         # — the only short handle is the CamelCase operationId ("GoogleOrganicLiveRegular"),
         # which de-camels into a serviceable display title.
         title = short_name(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", op.get("operationId") or ""), summary)
@@ -862,6 +979,32 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         if docs:
             entry["docs_url"] = docs.group(0).rstrip("',.").split("?")[0]
         endpoints.append(entry)
+
+    # A submission-only family needs its reader on the same key, or a paid task is unreadable.
+    readers = []
+    for post in endpoints:
+        if not post["path"].endswith("/task_post"):
+            continue
+        stem = "/v3" + post["path"].removesuffix("task_post")
+        get_path = next((stem + tail for tail in DFS_TASK_GET if stem + tail in ops), None)
+        if get_path is not None:
+            reader = dfs_task_get_row(post, get_path, ops[get_path][1])
+            dfs_submission(post, reader["id"])
+            readers.append(reader)
+        elif post["path"] == "/on_page/task_post":
+            post["expect"] = DFS_TASK_POSTED
+            post["resource_ownership"] = {
+                "produces": [{"kind": DFS_ON_PAGE_TASK, "path": "tasks.*.id"}]}
+    endpoints += readers
+    for entry in endpoints:
+        if entry["path"] in DFS_ON_PAGE_READERS:
+            if "{id}" in entry["path"]:
+                entry.setdefault("input", {"pathParams": {"id": {
+                    "type": "string", "required": True,
+                    "note": "tasks[].id from dataforseo.x.on-page-task-post"}}})
+            entry["resource_ownership"] = {"requires": {
+                "kind": DFS_ON_PAGE_TASK, "param": "id",
+                **({"in": "body"} if entry["method"] == "POST" else {})}}
 
     source = {
         "method": "openapi",
@@ -884,9 +1027,6 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
     return write_extended("dataforseo", source, endpoints, notes), {}
 
 
-# ---------------------------------------------------------------------------------------------
-# justoneapi
-
 # Just One API's own x-platform-id values are marketing names ("douyin-tiktok-china"); normalise
 # them onto the slugs the rest of the catalog already uses so a platform page shows every provider.
 JOA_PLATFORM = {
@@ -908,6 +1048,10 @@ JOA_PLATFORM = {
 }
 
 
+def _money(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
 def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     sitemap = fetch("https://docs.justoneapi.com/en/sitemap.xml", "justoneapi_sitemap.xml",
                     refresh=refresh).decode()
@@ -923,7 +1067,7 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 f"justoneapi_{platform}__{endpoint}.json", refresh=refresh,
             )
             return rel, json.loads(blob)
-        except Exception:
+        except Exception:  # noqa: BLE001 - one unreadable spec page must not stop the ingest
             return rel, None
 
     todo = [p for p in pages if not p.endswith("/")]
@@ -932,9 +1076,8 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         specs = dict(pool.map(load, todo))
 
     skip = core_routes("justoneapi")
-    # Prices are dashboard-only (no public price API); scripts/data/justoneapi_prices.json is a
-    # hand-exported snapshot of the dashboard's Pricing page — re-export + rerun to refresh.
-    prices_file = Path(__file__).parent / "data" / "justoneapi_prices.json"
+    # Dashboard prices are supplied explicitly by the operator.
+    prices_file = pricing_evidence_file("justoneapi_prices.json")
     joa_prices: dict[str, float] = {}
     if prices_file.is_file():
         joa_prices = json.loads(prices_file.read_text()).get("prices", {})
@@ -960,7 +1103,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 summary = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else spec["info"].get("title", rel)
                 entry = {
                     "id": slug_id("justoneapi", path.replace("/api/", "")),
-                    "tier": "extended",
                     "platform": platform,
                     "method": method,
                     "path": path,
@@ -973,10 +1115,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                                    summary)
                 if title:
                     entry["name"] = title
+                # The provenance and the success rule are the `defaults:` of justoneapi.yaml.
                 price = joa_prices.get(path)
                 if price is not None:
-                    entry["cost"] = {"type": "per_success", "value": price, "currency": "CNY",
-                                     "note": "billed only on success (code 0); errors free"}
+                    entry["price"] = {"value": _money(price), "currency": "CNY", "per": 1, "unit": "call",
+                                      "note": "billed only on success (code 0); errors free"}
+                else:
+                    entry["provenance"] = None
                 endpoints.append(entry)
 
     source = {
@@ -993,26 +1138,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         "at /openapi/<platform>/<endpoint>-en.json, enumerated here from the English sitemap.",
         "`platform` comes from the spec's own x-platform-id tag, falling back to the docs URL segment.",
         "Endpoints whose docs page carries a `-deprecated` slug are kept — the provider still serves",
-        "them — and are visible as such in the id. Prices come from scripts/data/justoneapi_prices.json,",
+        "them — and are visible as such in the id. Prices come from the operator-supplied pricing evidence,",
         "a hand-exported snapshot of the logged-in dashboard's Pricing page (CNY per successful request);",
         "an endpoint without a cost was absent from that export (e.g. not activated for the account).",
     ]
     if missing:
         notes.append(f"{len(missing)} doc page(s) had no fetchable spec and were skipped.")
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
-
-
-def _aigc_async_static() -> dict:
-    return {
-        "id_from": "id",
-        "poll": {"endpoint": "openrouter.video-gen.task.status",
-                 "param": {"in": "pathParams", "name": "id"}},
-        "status": {"path": "status", "success": ["completed"],
-                   "failure": ["failed", "cancelled", "expired"]},
-        "result": {"fetch": "openrouter.video-gen.result.retrieve",
-                   "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}},
-        "interval": 30,
-    }
 
 
 def core_body_models(provider: str, method: str, path: str) -> set[str]:
@@ -1032,7 +1164,10 @@ def core_body_models(provider: str, method: str, path: str) -> set[str]:
     return models
 
 
-def _openrouter_cost(model: dict) -> dict:
+def _openrouter_price(model: dict) -> dict:
+    """A generated row's v2 cost keys, written against the `defaults:` of openrouter.yaml: the rate
+    card provenance and the terminal usage.cost settle are inherited, so a priced row carries only
+    its price."""
     model_id = str(model["id"])
     skus = model.get("pricing_skus") or {}
     unsupported = (
@@ -1040,14 +1175,10 @@ def _openrouter_cost(model: dict) -> dict:
     )
     if any(str(name).startswith(unsupported) for name in skus):
         return {
-            "type": "per_success",
-            "value": None,
-            "confidence": "unknown",
-            "source": "rate_card_api",
-            "source_url": "https://openrouter.ai/api/v1/videos/models",
-            "checked": "2026-09-02",
-            "rate_card": {str(name): str(value) for name, value in sorted(skus.items())},
-            "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.",
+            "price": {"value": None, "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only."},
+            "provenance": {"source": "rate_card_api", "source_url": "https://openrouter.ai/api/v1/videos/models",
+                           "checked": "2026-09-02", "confidence": "unknown"},
+            "settle": None,
         }
     durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
     duration_max = max(durations, default=30)
@@ -1086,22 +1217,18 @@ def _openrouter_cost(model: dict) -> dict:
     rows = list(grouped.values())
     rows.sort(key=lambda row: (-len(row["when"]), sorted(row["when"].items())))
     upper = max([minimum, *maxima], default=0.0)
-    return {
-        "type": "per_success",
-        "table": rows or [{"when": {"body.model": model_id}, "value": 0.0}],
+    table = [{"when": [{"path": k, "op": "equals", "value": v} for k, v in row["when"].items()],
+              "value": _money(row["value"]), **({"times": row["times"]} if "times" in row else {})}
+             for row in rows or [{"when": {"body.model": model_id}, "value": 0.0}]]
+    return {"price": {
+        "table": table,
         "fallback": {
-            "value": round(upper + 0.000000001, 9),
+            "value": _money(round(upper + 0.000000001, 9)),
             "note": "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.",
         },
         "currency": "USD",
-        "settle": "usage",
-        "usage": {"path": "usage.cost", "unit": "usd"},
-        "source": "rate_card_api",
-        "source_url": "https://openrouter.ai/api/v1/videos/models",
-        "checked": "2026-09-02",
-        "confidence": "documented",
         "note": "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).",
-    }
+    }}
 
 
 def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
@@ -1134,7 +1261,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                                       "default": bool(model.get("generate_audio", False))}
         ep = {
             "id": slug_id("openrouter", model_id),
-            "tier": "extended",
             "platform": "video-gen",
             "domain": "models",
             "method": "POST",
@@ -1144,7 +1270,7 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                 str(model.get("description") or f"Generate video with {model_id}.")
             ).replace("\N{EM DASH}", "-")[:400],
             "input": {"body": body, "bodyType": "json"},
-            "cost": _openrouter_cost(model),
+            **_openrouter_price(model),
             "docs_url": f"https://openrouter.ai/{model_id}",
         }
         endpoints.append(ep)
@@ -1153,12 +1279,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
         "Generated from the live video model rate card. Each row fixes one model on POST /videos.",
         "pricing_skus become a first-match reserve table; terminal usage.cost remains authoritative.",
     ], carry_capability=False)
-    # Provider defaults belong at the document top level, not inside source provenance.
-    generated = yaml.safe_load(out.read_text())
-    doc = {"provider": generated["provider"], "source": generated["source"],
-           "async": _aigc_async_static(), "endpoints": generated["endpoints"]}
-    header, _, _ = out.read_text().partition("provider:")
-    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
     return out, {"models": len(endpoints)}
 
 
@@ -1242,9 +1362,6 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
 
 
 
-# ---------------------------------------------------------------------------------------------
-# anyapi
-
 # AnyAPI's SKU prefix -> treg platform slug. Absent = the prefix is already a platform slug.
 # The left-hand side is the first dotted segment of an AnyAPI SKU id (`twitter.profile`).
 ANYAPI_PLATFORM = {
@@ -1297,29 +1414,19 @@ ANYAPI_EXCLUDE = frozenset({
     "technographics.theirstack",
 })
 
-# Two SKUs held back because neither of their sources answers today (checked 2026-09-09):
+# Two SKUs held back because neither of their sources answers the canonical example:
 # socialcrawl returns HTTP 503 "instagram is temporarily unavailable" and scraper.tech returns
 # not-found on the canonical example. Listing them would put two endpoints that return nothing on
 # a public shelf and fail our own verify pass. This is about whether an answer comes back, not
-# about price: their $0.018 ceiling against a $0.0015 catalogued price is an ordinary spread and
-# is perfectly listable. Re-ingest them once either source serves the canonical example again.
-#
-# This set previously also held `twitter.followers` and `twitter.following` for a price reason:
-# each paired a flat single-page source with a bulk source priced per row whose input maximum made
-# the same endpoint legitimately charge up to $16.50, so no single scalar could describe the row.
-# AnyAPI deleted those bulk sources on 2026-09-09. Both now publish one source at $0.00075 with a
-# $0.00075 ceiling - price and ceiling are the same number - so the reserve can never fall short
-# and they are listed again.
+# about price. Re-ingest them once either source serves the canonical example again.
 ANYAPI_EXCLUDE_DEAD = frozenset({
     "instagram.followers", "instagram.following",
 })
 
 # PLATFORMS THE EXTENDED TIER LISTS. Every other platform's rows are dropped.
 #
-# The line is a measured break in AnyAPI's own 60-day production request volume, not a chosen
-# threshold: tiktok-shop, the last platform kept, took 5,121 requests, and the next platform down
-# (hackernews) took 1,567 - a 3.3x step. The 106 rows below that break carry 6,275 requests
-# BETWEEN THEM, and several took none at all: alibaba 13, douyin 97, zhihu 38. Listing an endpoint
+# The line is a measured break in AnyAPI's own production request volume, not a chosen
+# threshold: the rows below that break are rarely called, and listing an endpoint
 # nobody calls costs a reader attention and costs us a verify pass, so the tail is not listed.
 #
 # The first six are the same platforms anyapi.yaml curates in core; the last four are the next
@@ -1336,24 +1443,15 @@ ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePag
 ANYAPI_RATE_CARD = "https://api.getanyapi.com/v1/apis?limit=1000"
 ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
 # Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
-ANYAPI_CHECKED = "2026-09-11"
+ANYAPI_CHECKED = "2026-10-02"
 
-# What AnyAPI actually billed, per SKU, over the trailing 60 days: a hand-exported snapshot of the
-# vendor's own request ledger (calls, p50, p90, max USD), the same arrangement as
-# scripts/data/justoneapi_prices.json. It needs the vendor's production database, so it cannot be
-# fetched here; re-export it and re-run to refresh. Only SKUs with at least 5 charged calls in the
-# window are in it - the rest fall back to the live rate card. See _anyapi_cost.
-ANYAPI_MEASURED_FILE = Path(__file__).parent / "data" / "anyapi_measured_charges.json"
+# Measured pricing evidence is supplied by the operator, outside the public checkout.
 _ANYAPI_MEASURED: dict[str, dict] | None = None
 
 # CORE-TIER SHELF ROWS WHOSE SOURCES CHARGE DIFFERENT PRICES FOR THE SAME RESULT COUNT.
 #
 # For these the p90 measures lane spread, not work done, so it is not the price a buyer will pay.
-# maps.search, measured per source over the same 60 days: scrapertech $0.00175 flat (312 calls),
-# serper $0.00297 flat (743 calls), apify $0.06005 median (485 calls) - and all three average
-# 11-12 items per response. The p90 of the blend is $0.07734, which is only ever paid when the
-# dearest source serves; the cheapest source serves the same query for $0.00175. Listing $0.07734
-# on the price-sorted google.serp.maps shelf misrepresents the endpoint by a factor of 44.
+# A blended percentile can overstate the cheapest advertised source for the same result count.
 #
 # So these rows list the CHEAPEST ADVERTISED price instead - `pricing.from.maxUsd`, the cheapest
 # source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
@@ -1377,20 +1475,9 @@ ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE = {
 def _anyapi_measured() -> dict[str, dict]:
     global _ANYAPI_MEASURED
     if _ANYAPI_MEASURED is None:
-        _ANYAPI_MEASURED = (json.loads(ANYAPI_MEASURED_FILE.read_text()).get("skus", {})
-                            if ANYAPI_MEASURED_FILE.is_file() else {})
+        path = pricing_evidence_file("anyapi_measured_charges.json")
+        _ANYAPI_MEASURED = json.loads(path.read_text()).get("skus", {})
     return _ANYAPI_MEASURED
-
-
-def _anyapi_measured_window() -> tuple[str, int]:
-    """The ledger export's own window, which is NOT the rate-card read date.
-
-    ANYAPI_CHECKED moves whenever the rate card is re-read; the measured window only moves when
-    the ledger is re-exported. Reusing one date for both made a re-read silently restate every
-    measured price as covering days it never saw.
-    """
-    blob = json.loads(ANYAPI_MEASURED_FILE.read_text()) if ANYAPI_MEASURED_FILE.is_file() else {}
-    return blob.get("as_of", ANYAPI_CHECKED), blob.get("window_days", 60)
 
 
 def _anyapi_input(schema: dict, example: dict) -> dict:
@@ -1463,6 +1550,7 @@ def _anyapi_cost(api: dict) -> dict:
         "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
         "checked": ANYAPI_CHECKED,
         "confidence": "verified",
+        "note": anyapi_cost_note(len(api.get("lanes") or []), api["pricing"]["failoverMaxUsd"]),
     }
 
 
@@ -1484,41 +1572,16 @@ def _anyapi_flat_floor(api: dict) -> float:
     pricing = (api.get("pricing") or {}).get("from") or {}
     return pricing.get("maxUsd", 0.0) if pricing.get("model") == "flat" else 0.0
 
-def anyapi_price_basis(sku: str, api: dict | None = None) -> str:
-    """One sentence naming where this row's price came from, for the row's own `note`.
 
-    Core rows are hand-curated but priced by the same rule, so this is shared rather than copied.
-    Pass `api` (the rate-card row) to have a clamped price say so: a p90 is a statistic over a
-    trailing window, and a row whose note claims a $0.002 median while charging $0.0012 reads as a
-    contradiction rather than as the correction it is.
-    """
-    if sku in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE:
-        return ("Price is the cheapest source's advertised price, because the sources that "
-                "serve this endpoint charge very different amounts for the same number of "
-                "results; a rescue on a dearer source settles above it.")
-    as_of, days = _anyapi_measured_window()
-    m = _anyapi_measured().get(sku)
-    if m:
-        basis = (f"Price is the p90 of what AnyAPI really charged for this endpoint over the {days} "
-                 f"days to {as_of} ({m['calls']} charged calls, ${m['p50_usd']:g} median), not "
-                 "a list price; roughly one call in ten settles above it.")
-        return basis + (_anyapi_clamp_clause(m["p90_usd"], api) if api else "")
-    return (f"Too few charged calls in the {days} days to {as_of} to measure, so the price is "
-            "the live rate card's cheapest source at the input maximum.")
-
-
-def _anyapi_clamp_clause(p90: float, api: dict) -> str:
-    """The sentence a clamped measured price owes the reader, or nothing when it was not clamped."""
-    ceiling = (api.get("pricing") or {}).get("failoverMaxUsd")
-    floor = _anyapi_flat_floor(api)
-    if ceiling and p90 > ceiling:
-        return (f" That p90 is capped here at ${ceiling:g}, the dearest price any source can charge "
-                "for this request today: the dearer source it measured has since been withdrawn, so "
-                "no call can settle at the p90 any more.")
-    if floor > p90:
-        return (f" That p90 is raised here to ${floor:g}, today's cheapest advertised price, because "
-                "the cheaper source it measured has since been withdrawn.")
-    return ""
+def anyapi_cost_note(lanes: int, ceiling: float) -> str:
+    """The row's `cost.note`: how far a failover can take one charge, what settles it and how a
+    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_cost`.
+    The hand-curated core rows in anyapi.yaml use the same sentences."""
+    serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
+             f"to ${ceiling:g} at the dearest." if lanes > 1 else
+             f"One source serves this, at up to ${ceiling:g} a call.")
+    return (f"{serve} The charge follows the answer's `costUsd`, not the listed price. Send "
+            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.")
 
 
 def ingest_anyapi(refresh: bool = False):
@@ -1570,16 +1633,6 @@ def ingest_anyapi(refresh: bool = False):
         }
         # No `test_request` here: a freshly ingested entry has never been called, and the vendor's
         # own example values already ride on each input field for the verify pass to build one from.
-        lanes = len(api.get("lanes") or [])
-        ceiling = api["pricing"]["failoverMaxUsd"]
-        ep["note"] = (
-            f"AnyAPI slug `{sku}`. {anyapi_price_basis(sku, api)} "
-            f"{lanes} source{'s' if lanes != 1 else ''} can serve it; the "
-            f"cheapest serves first and a failed attempt is retried on the next, up to a "
-            f"${ceiling:g} ceiling per request. `costUsd` on the response is the exact charge, "
-            f"which is what reported_charge settles. Send `max_cost_usd` to refuse any source "
-            f"dearer than a price you name."
-        )
         endpoints.append(ep)
         unknown_platform.add(platform)
     source = {"method": "openapi + provider rate card", "ingested": ANYAPI_CHECKED,
@@ -1589,12 +1642,12 @@ def ingest_anyapi(refresh: bool = False):
         "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
         "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
         "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
-        "over the 60 days to the ingest date (scripts/data/anyapi_measured_charges.json), so it is",
+        "over the 60 days to the ingest date (operator-supplied pricing evidence), so it is",
         "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
-        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price and",
-        "says so in its note (cost.source: rate_card_api vs observed). One call in ten settles",
-        "ABOVE the reserve by design; every response reports its exact charge as costUsd, which is",
-        "what reported_charge settles on.",
+        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price",
+        "(cost.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve by",
+        "design; every response reports its exact charge as costUsd, which is what reported_charge",
+        "settles on. cost.note tells the caller the failover ceiling and how to cap it.",
     ], carry_capability=True, carry_input=False)
     return out, {"endpoints": len(endpoints)}
 
@@ -1609,7 +1662,6 @@ INGESTERS = {
 }
 
 
-# =============================================================================================
 # FIRST-PARTY OAUTH PROVIDERS
 #
 # The scraper providers above sell breadth, and their extended tier reads as a menu. These nine
@@ -1648,7 +1700,6 @@ def _oauth_source(method: str, urls: list[str]) -> dict:
     return {"method": method, "ingested": str(date.today()), "spec_urls": urls}
 
 
-# --- Google discovery documents ----------------------------------------------------------------
 # Every Google REST API publishes a machine-readable Discovery document describing every method:
 # httpMethod, flatPath (the URL relative to the service host), a description, the full parameter
 # list with types/required flags/enums, and the OAuth scopes the method accepts.
@@ -1795,8 +1846,6 @@ FREE_QUOTA = {"type": "free", "value": 0.0, "currency": "USD", "unit": "call",
               "note": "no per-call charge; billed against the API's daily quota"}
 
 
-# --- google-search-console ---------------------------------------------------------------------
-
 def ingest_google_search_console(refresh: bool) -> tuple[Path, dict]:
     provider = "google-search-console"
     doc = google_discovery("searchconsole", "v1", refresh)
@@ -1834,8 +1883,6 @@ def ingest_google_search_console(refresh: bool) -> tuple[Path, dict]:
         ["https://searchconsole.googleapis.com/$discovery/rest?version=v1"],
     ), endpoints, notes), {"scope_gaps": gaps}
 
-
-# --- google-analytics --------------------------------------------------------------------------
 
 def ingest_google_analytics(refresh: bool) -> tuple[Path, dict]:
     provider = "google-analytics"
@@ -1883,8 +1930,6 @@ def ingest_google_analytics(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps, "admin": admin}
 
 
-# --- google-tag-manager ------------------------------------------------------------------------
-
 def ingest_google_tag_manager(refresh: bool) -> tuple[Path, dict]:
     provider = "google-tag-manager"
     granted = {
@@ -1926,7 +1971,6 @@ def ingest_google_tag_manager(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps}
 
 
-# --- google-business-profile -------------------------------------------------------------------
 # Google retired the single "My Business API v4" into SIX narrow services, each on its own host.
 # base_url is the account-management one, so only that family is callable through the provisioned
 # tool; the rest carry `host:`. Reviews never made the migration and still live on the legacy v4
@@ -2018,7 +2062,6 @@ def ingest_google_business_profile(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"off_host": off_host}
 
 
-# --- youtube -----------------------------------------------------------------------------------
 # Quota, not money, is what runs out on the YouTube Data API: a project gets 10,000 units a day and
 # a single search.list costs 100 of them. The per-method costs below are the published quota table
 # (developers.google.com/youtube/v3/determine_quota_cost) — the discovery document does not carry
@@ -2100,7 +2143,6 @@ def ingest_youtube(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps, "quota_units": units}
 
 
-# --- google-ads --------------------------------------------------------------------------------
 # The Google Ads API has no discovery document or OpenAPI spec worth ingesting: apart from a
 # handful of mutate services, ONE endpoint (googleAds:searchStream) answers everything, and what
 # varies is the GAQL `FROM` clause. So the unit of coverage here is the RESOURCE, not the route —
@@ -2212,8 +2254,6 @@ def ingest_google_ads(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {}
 
 
-# --- x ------------------------------------------------------------------------------------------
-
 X_OPENAPI = "https://api.twitter.com/2/openapi.json"
 # treg's X app requests these across its read + write capabilities. Anything else is a scope gap.
 X_GRANTED = {"tweet.read", "tweet.write", "users.read", "offline.access"}
@@ -2278,7 +2318,7 @@ X_FALLBACK_READ, X_FALLBACK_WRITE = "posts", "post_create"
 # route's resource type is a judgement call (a route returning the users who liked a post could be
 # read as User: Read or Like: Read — it takes the dearer reading, since treg pays the difference).
 X_ROUTE_RATES: list[tuple[str, str, str, str]] = [
-    # --- writes: the specific actions first -----------------------------------------------------
+    # Writes: the specific actions first.
     ("POST",            r"^/2/lists$",                              "list_create", "documented"),
     ("PUT|DELETE",      r"^/2/lists/\{[^}]+\}$",                    "list_manage", "documented"),
     ("POST|DELETE",     r"^/2/lists/\{[^}]+\}/members",             "list_manage", "documented"),
@@ -2296,7 +2336,7 @@ X_ROUTE_RATES: list[tuple[str, str, str, str]] = [
     ("DELETE",          r"^/2/tweets/\{[^}]+\}$",                   "int_delete",  "inferred"),
     ("PUT",             r"^/2/tweets/\{[^}]+\}/hidden$",            "content",     "documented"),
     ("POST|DELETE",     r"^/2/(notes|articles|broadcasts)",          "content",     "inferred"),
-    # --- reads: per-resource rows ---------------------------------------------------------------
+    # Reads: per-resource rows.
     ("GET",             r"^/2/tweets/counts/recent$",               "counts_recent", "documented"),
     ("GET",             r"^/2/tweets/counts/all$",                  "counts_all",  "documented"),
     ("GET",             r"^/2/trends/",                             "trends",      "documented"),
@@ -2452,7 +2492,6 @@ def ingest_x(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps}
 
 
-# --- Meta Graph API: facebook / instagram / meta-ads --------------------------------------------
 # Meta publishes NO machine-readable spec for the Graph API — no OpenAPI, no discovery document,
 # nothing versioned we could diff. The only source is the HTML reference index, one page per node
 # type. Transcribing hundreds of routes from HTML is precisely what catalog.md step 1 warns
@@ -2461,7 +2500,7 @@ def ingest_x(refresh: bool) -> tuple[Path, dict]:
 # the official reference page for that node. Accuracy over volume.
 #
 # Every path is relative to base_url, which already ends in /v25.0 — do NOT prefix the version.
-# Tuple: (slug, method, path, summary, scope_gap or "")
+# Each tuple holds slug, method, path, summary, then scope_gap or an empty string.
 
 META_GRAPH_DOCS = "https://developers.facebook.com/docs/graph-api/reference"
 

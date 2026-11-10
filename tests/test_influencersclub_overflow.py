@@ -36,7 +36,7 @@ ENVELOPE = json.loads((FIX / "orthogonal_influencersclub_search.json").read_text
 
 
 @pytest.fixture
-def influencers_on(monkeypatch, overflow_on):  # noqa: F811
+def influencers_on(monkeypatch, overflow_on):
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "influencersclub")
     monkeypatch.setenv("TREG_PLATFORM_KEY_INFLUENCERSCLUB", "DIRECT-KEY")
     get_settings.cache_clear()

@@ -9,7 +9,12 @@ Why this exists (lessons from the first build):
 - tmpfiles.org returned HTML on download.
 So: upload, download back, byte-compare, only then trust the URL. Try hosts in order.
 """
-import subprocess, sys, json, os, filecmp, tempfile
+import subprocess
+import sys
+import json
+import os
+import filecmp
+import tempfile
 
 UA = "Mozilla/5.0 (Macintosh) ugc-skill"
 
@@ -26,7 +31,7 @@ def verify(url, path):
 def uguu(path):
     r = curl("-F", f"files[]=@{path}", "https://uguu.se/upload")
     try: return json.loads(r)["files"][0]["url"]
-    except Exception: return ""
+    except (ValueError, KeyError, IndexError, TypeError): return ""
 
 def catbox(path):
     return curl("-F", "reqtype=fileupload", "-F", f"fileToUpload=@{path}", "https://catbox.moe/user/api.php").strip()

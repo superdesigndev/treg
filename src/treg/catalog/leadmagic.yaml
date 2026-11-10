@@ -66,6 +66,7 @@ endpoints:
       confidence: documented
       note: 1 credit per email found; a null result costs nothing. The FREE-MISS half is observed (the test_request is a deliberate no-match and reported credits_consumed 0 on 2026-07-28 and 2026-07-31); the 1-credit hit price is still only documented, because verifying it would mean buying a real person's email address. Dollar value depends on plan.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.people.email.find.json
     docs_url: https://leadmagic.io/docs/api-reference/email-finder
 
@@ -78,7 +79,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v1/people/email-validation
-    name: "Verify an email address is deliverable"
+    name: "Verify email — catch-all and MX provider"
     summary: "Check an email is real and deliverable, and whether its domain is catch-all"
     input:
       bodyType: json
@@ -99,6 +100,7 @@ endpoints:
       confidence: verified
       note: 0.25 credits per DEFINITIVE result (valid or invalid) — four validations to a credit. 'unknown' results and RFC syntax failures are free. OBSERVED live 2026-07-31 - the response reported credits_consumed 0.25. Rate limit 300 req/min.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.people.email.verify.json
     docs_url: https://leadmagic.io/docs/api-reference/email-validation
 
@@ -133,6 +135,7 @@ endpoints:
       confidence: verified
       note: 1 credit per profile matched; free when the profile cannot be resolved. OBSERVED live 2026-07-31 - a matched profile reported credits_consumed 1.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.people.enrich.json
     docs_url: https://leadmagic.io/docs/reference/profile-search
 
@@ -166,6 +169,7 @@ endpoints:
       confidence: documented
       note: 5 credits when a mobile number is found; free when nothing is returned. Only the free-miss half is observed (the test_request points at a nonexistent profile and reported credits_consumed 0 on 2026-07-28 and 2026-07-31); the 5-credit hit price stays documented, because confirming it would mean buying a real person's mobile number - which rule 1 of the catalog's PII policy forbids capturing anyway.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.people.phone.find.json
     docs_url: https://leadmagic.io/docs/api-reference/mobile-finder
 
@@ -199,12 +203,14 @@ endpoints:
       confidence: verified
       note: 1 credit per company matched; free when no company is found. OBSERVED live 2026-07-31 - a matched company reported credits_consumed 1.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.companies.enrich.json
     docs_url: https://leadmagic.io/docs/v1/reference/search-company
 
   - id: leadmagic.people.search
     example_response: examples/leadmagic.people.search.json
     verified: '2026-08-28'
+    added: '2026-07-28'
     domain: contacts
     capability: people.search
     platform: people
@@ -254,5 +260,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: free — consumes no credits and is not rate-limited; this is the registry's health probe}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/leadmagic.account.usage.json
     docs_url: https://leadmagic.io/docs/reference/check-credits

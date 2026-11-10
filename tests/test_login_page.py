@@ -197,9 +197,15 @@ async def test_approve_rejects_bad_login_id(web):
 
 
 # ---- the email door end-to-end: start → verify → approve → poll -----------------------------
-async def test_email_door_completes_the_handshake(web):
+async def test_email_door_completes_the_handshake(web, monkeypatch):
+    sent = []
+
+    async def capture_otp(email, code, **kwargs):
+        sent.append(code)
+
+    monkeypatch.setattr("treg.email.send_otp", capture_otp)
     start = await web.post("/auth/email/start", json={"email": "new@x.dev"})
-    code = start.json()["dev_code"]  # TREG_EMAIL_DEV_MODE=true in conftest
+    code = start.json().get("dev_code") or sent[0]  # Postgres deliberately never exposes dev codes.
     verify = await web.post("/auth/email/verify", json={"email": "new@x.dev", "code": code})
     assert verify.status_code == 200 and web.cookies.get("treg_session")  # verify set the session
     lid, code = await _start(web)

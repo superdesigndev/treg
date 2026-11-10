@@ -145,7 +145,7 @@ async def test_deleting_the_rule_restores_the_call(env):
 
 
 # ---- the run tiers are gated too -------------------------------------------------------------
-async def test_a_host_rule_blocks_the_server_run_tier(env):
+async def test_server_runs_remain_disabled_with_host_rules(env):
     await env.c.post("/skills", headers=_h(env.owner), json={
         "name": "beta", "recipe": "# beta",
         "secrets": [{"local_name": "k", "kind": "env", "value": "s"}],
@@ -154,7 +154,7 @@ async def test_a_host_rule_blocks_the_server_run_tier(env):
                            "enabled": True}}]})
     await _rule(env, host="upstream")
     r = await env.c.post("/run", headers=_h(env.owner), json={"tool": "beta", "args": ["-c", "true"]})
-    assert r.status_code == 403 and "blocked by a policy rule" in r.text
+    assert r.status_code == 503 and r.json()["detail"] == "Server-side CLI execution is disabled"
 
 
 async def test_a_host_rule_blocks_the_local_grant(env):

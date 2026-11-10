@@ -1,18 +1,15 @@
-"""Tier 0 server-side CLI execution (`treg run --server`).
-
-Runs a real CLI (`sh`) on the server with the tool's `cli.inject` secrets injected via env, never
-onto the caller. The tool-side unification: one `Tool.cli` profile drives BOTH run tiers —
-`cli.bin` is the entrypoint, `cli.inject` names the env vars; any tool with a profile is
-server-runnable (no opt-in — the key never reaches the member; the bin allow-list gates). Covers:
-env injection + output redaction, a scrubbed env (server secrets excluded), exit-code propagation,
-the no-profile / missing-CLI / unknown-tool guards, timeout, audit, cross-org isolation, and the legacy bundle→tool migration fold. See docs/CLI-RUN-PLAN.md.
-"""
+"""Retained runner primitives and read access to historical server-run records."""
 
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
+from sqlmodel import select
 
-from treg import audit
+from treg import audit, runner
+from treg.infra.db import session_maker
+from treg.models import RunRecord, Tool
+from conftest import verified_signup
 
 
 async def _register_runnable(c: AsyncClient, *, name="sh-skill", value="s3cr3t-value", bin="sh"):
@@ -36,11 +33,19 @@ async def _register_runnable(c: AsyncClient, *, name="sh-skill", value="s3cr3t-v
     return r.json()
 
 
-async def test_run_rejects_a_command_not_on_the_allow_list(clients: AsyncClient):
-    # `bash` is not a catalog CLI and not in the test allow-list → refused (no arbitrary code as the server)
-    await _register_runnable(clients, name="bash-skill", bin="bash")
-    r = await clients.post("/run", json={"tool": "bash-skill", "args": ["-c", "echo hi"]})
-    assert r.status_code == 422 and "not approved for server runs" in r.text
+async def _run(name: str, args: list[str], *, timeout_s: int = runner.DEFAULT_TIMEOUT_S):
+    async with session_maker() as db:
+        tool = (await db.execute(select(Tool).where(Tool.name == name))).scalar_one()
+        return await runner.run_tool(tool, args, db, timeout_s=timeout_s)
+
+
+async def _historical_run(clients: AsyncClient):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        db.add(RunRecord(org_id=org_id, user_email="synthetic@example.invalid",
+                         bundle_name="sh-skill", argv=["-c", "echo hi"],
+                         exit_code=0, duration_ms=1))
+        await db.commit()
 
 
 async def test_server_run_applies_resource_limits(clients: AsyncClient):
@@ -48,12 +53,11 @@ async def test_server_run_applies_resource_limits(clients: AsyncClient):
     # would spill the injected secret to disk) and the file-size limit is finite (disk-fill guard). We
     # read them back with the shell's own `ulimit`, which reports the limits the child was started with.
     await _register_runnable(clients, name="rl-skill")
-    core = await clients.post("/run", json={"tool": "rl-skill", "args": ["-c", "ulimit -c"]})
-    assert core.status_code == 200, core.text
-    assert core.json()["stdout"].strip() == "0"  # RLIMIT_CORE = 0
+    core = await _run("rl-skill", ["-c", "ulimit -c"])
+    assert core.stdout.strip() == "0"  # RLIMIT_CORE = 0
 
-    fsize = await clients.post("/run", json={"tool": "rl-skill", "args": ["-c", "ulimit -f"]})
-    assert fsize.json()["stdout"].strip().isdigit()  # a finite block count, not "unlimited"
+    fsize = await _run("rl-skill", ["-c", "ulimit -f"])
+    assert fsize.stdout.strip().isdigit()  # a finite block count, not "unlimited"
 
 
 def test_spawn_preexec_toggles_with_the_setting(monkeypatch):
@@ -72,13 +76,11 @@ def test_spawn_preexec_toggles_with_the_setting(monkeypatch):
 
 async def test_run_injects_secret_and_redacts(clients: AsyncClient):
     await _register_runnable(clients)
-    r = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "echo tok=$MY_SECRET"]})
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["exit_code"] == 0
+    result = await _run("sh-skill", ["-c", "echo tok=$MY_SECRET"])
+    assert result.exit_code == 0
     # the secret WAS injected (echo printed it) but is REDACTED before leaving the server
-    assert "tok=***" in d["stdout"]
-    assert "s3cr3t-value" not in d["stdout"]
+    assert "tok=***" in result.stdout
+    assert "s3cr3t-value" not in result.stdout
 
 
 async def test_run_injects_under_the_cli_inject_name(clients: AsyncClient):
@@ -100,14 +102,9 @@ async def test_run_injects_under_the_cli_inject_name(clients: AsyncClient):
     }
     r = await clients.post("/skills", json=payload)
     assert r.status_code == 200, r.text
-    r = await clients.post(
-        "/run",
-        json={"tool": "slug-skill", "args": ["-c", "echo mapped=${REAL_ENV_NAME:+yes}"]},
-    )
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["exit_code"] == 0
-    assert "mapped=yes" in d["stdout"]  # injected under the cli.inject name, not the stored slug
+    result = await _run("slug-skill", ["-c", "echo mapped=${REAL_ENV_NAME:+yes}"])
+    assert result.exit_code == 0
+    assert "mapped=yes" in result.stdout  # injected under the cli.inject name, not the stored slug
 
 
 async def test_run_resolves_from_binding_and_sole_secret_injects(clients: AsyncClient):
@@ -126,56 +123,47 @@ async def test_run_resolves_from_binding_and_sole_secret_injects(clients: AsyncC
     }
     r = await clients.post("/skills", json=payload)
     assert r.status_code == 200, r.text
-    r = await clients.post("/run", json={"tool": "implicit", "args": ["-c", "echo got=${ONLY_KEY:+yes}"]})
-    assert r.status_code == 200, r.text
-    assert "got=yes" in r.json()["stdout"]
+    result = await _run("implicit", ["-c", "echo got=${ONLY_KEY:+yes}"])
+    assert "got=yes" in result.stdout
 
 
 async def test_run_scrubs_server_env(clients: AsyncClient, monkeypatch):
     # A var set on the treg process must NOT reach the child (the env is built fresh, not copied).
     monkeypatch.setenv("SERVER_ONLY_ENV", "leaky")
     await _register_runnable(clients)
-    r = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "echo v=${SERVER_ONLY_ENV:-absent}"]})
-    assert r.status_code == 200, r.text
-    assert r.json()["stdout"].strip() == "v=absent"
+    result = await _run("sh-skill", ["-c", "echo v=${SERVER_ONLY_ENV:-absent}"])
+    assert result.stdout.strip() == "v=absent"
 
 
 async def test_run_exit_code_propagates(clients: AsyncClient):
     await _register_runnable(clients)
-    r = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "exit 3"]})
-    assert r.status_code == 200, r.text  # a non-zero CLI exit is a normal result, not an HTTP error
-    assert r.json()["exit_code"] == 3
+    result = await _run("sh-skill", ["-c", "exit 3"])
+    assert result.exit_code == 3
 
 
 async def test_run_plain_http_tool_rejected(clients: AsyncClient):
     # an ordinary HTTP tool (no cli profile at all) can never be executed
     r = await clients.post("/tools", json={"name": "plainhttp", "base_url": "https://api.example.com"})
     assert r.status_code == 200, r.text
-    r = await clients.post("/run", json={"tool": "plainhttp", "args": ["-c", "echo hi"]})
-    assert r.status_code == 422
-    assert "no CLI profile" in r.json()["detail"]
+    with pytest.raises(runner.RunError, match="no CLI profile"):
+        await _run("plainhttp", ["-c", "echo hi"])
 
 
 async def test_run_missing_cli_rejected(clients: AsyncClient):
     await _register_runnable(clients, name="ghost", bin="treg-nonexistent-bin-xyz")
-    r = await clients.post("/run", json={"tool": "ghost", "args": []})
-    assert r.status_code == 422
-    assert "not installed" in r.json()["detail"]
+    with pytest.raises(runner.RunError, match="not installed"):
+        await _run("ghost", [])
 
 
 async def test_run_timeout(clients: AsyncClient):
     await _register_runnable(clients)
-    r = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "sleep 5"], "timeout_s": 1})
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["timed_out"] is True
-    assert d["exit_code"] != 0
+    result = await _run("sh-skill", ["-c", "sleep 5"], timeout_s=1)
+    assert result.timed_out is True
+    assert result.exit_code != 0
 
 
-async def test_run_is_audited(clients: AsyncClient):
-    await _register_runnable(clients)
-    await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "echo hi"]})
-    await audit.drain()  # audit is fire-and-forget — flush before asserting
+async def test_historical_server_runs_remain_readable(clients: AsyncClient):
+    await _historical_run(clients)
     r = await clients.get("/runs")
     assert r.status_code == 200
     runs = r.json()
@@ -183,14 +171,13 @@ async def test_run_is_audited(clients: AsyncClient):
     assert runs[0]["tool"] == "sh-skill"
     assert runs[0]["exit_code"] == 0
     assert runs[0]["argv"] == ["-c", "echo hi"]
-    assert runs[0]["where"] == "server"  # a /run is a server-tier execution
+    assert runs[0]["where"] == "server"
 
 
 async def test_runs_log_includes_local_runs_tagged_where(clients: AsyncClient):
-    """The run audit unifies both tiers: a server /run AND a local grant both appear in /runs, each
-    tagged `where`. Local successes carry no exit code (only failures report back) → exit_code null."""
-    await _register_runnable(clients)  # sh-skill, server tier
-    await clients.post("/run", json={"tool": "sh-skill", "args": ["ok"]})
+    """Historical server runs and new local grants remain distinguishable in /runs."""
+    await _register_runnable(clients)
+    await _historical_run(clients)
     # a local run is audited as its grant (kind="local_run")
     g = await clients.post("/tools/sh-skill/grant", json={"argv": ["local", "args"]})
     assert g.status_code == 200, g.text
@@ -203,9 +190,7 @@ async def test_runs_log_includes_local_runs_tagged_where(clients: AsyncClient):
     assert local["argv"] == ["local", "args"]
 
 
-async def test_cli_profile_is_server_runnable_without_optin(clients: AsyncClient):
-    # server runs need no per-tool flag: the key never reaches the member, and the bin
-    # allow-list gates what may execute — a tool WITH a cli profile just runs.
+async def test_cli_profile_never_advertises_server_execution(clients: AsyncClient):
     payload = {
         "name": "flip",
         "recipe": "x",
@@ -218,14 +203,14 @@ async def test_cli_profile_is_server_runnable_without_optin(clients: AsyncClient
     }
     b = await clients.post("/skills", json=payload)
     assert b.status_code == 200, b.text
-    r = await clients.post("/run", json={"tool": "flip", "args": ["-c", "echo hi"]})
-    assert r.status_code == 200 and r.json()["exit_code"] == 0  # even with LOCAL runs off
+    tool = (await clients.get("/tools/by-name/flip")).json()
+    assert tool["server_runnable"] is False
 
 
-async def test_run_cross_org_isolation(clients: AsyncClient):
-    await _register_runnable(clients, name="sh-skill")
-    # a second user (their own personal org) cannot see or run org A's tool
-    r = await clients.post("/users", json={"email": "other@superdesign.dev"})
+async def test_historical_server_runs_are_org_isolated(clients: AsyncClient):
+    await _historical_run(clients)
+    r = await verified_signup(clients, json={"email": "other@superdesign.dev"})
     tok2 = r.json()["token"]
-    r = await clients.post("/run", json={"tool": "sh-skill", "args": []}, headers={"X-Treg-Token": tok2})
-    assert r.status_code == 404
+    r = await clients.get("/runs", headers={"X-Treg-Token": tok2})
+    assert r.status_code == 200
+    assert r.json() == []

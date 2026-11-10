@@ -1,0 +1,431 @@
+provider: blitzapi
+source:
+  docs: https://docs.blitz-api.ai/
+  openapi: https://docs.blitz-api.ai/api-reference/v2.openapi.json
+  curated: '2026-10-16'
+pricing_url: https://docs.blitz-api.ai/guide/reference/fair-use-policy
+limits: "The Start key reports 10 requests per second per endpoint. Search pages consume one record per returned row; enrichment consumes one record on a hit. Every metered answer reports fair_usage.records_used."
+cache: forbidden
+proposed_capabilities:
+  companies.linkedin.find: Resolve a company's website domain to its LinkedIn page
+  companies.email_domain.find: Find the domain a company uses for work email
+  companies.employees.distribution: Count a company's employees by country or department
+
+endpoints:
+  - id: blitzapi.people.search
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/search/people
+    body_allowlist: true
+    name: Search people across companies
+    summary: Find people by role, location and company criteria with cursor pagination.
+    input:
+      bodyType: json
+      body:
+        company: {type: object, required: false, note: "Company firmographic filters; use a LinkedIn company URL to target a specific employer."}
+        people: {type: object, required: false, note: "Job title, level, function and location filters."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false, note: "Cursor from the prior page."}
+    test_request: {body: {people: {job_title: {include: [Founder]}}, max_results: 1}}
+    cost: &search_cost
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: fair_usage.records_used, unit: credit}
+      source: observed
+      source_url: https://docs.blitz-api.ai/guide/reference/fair-use-policy
+      checked: '2026-10-16'
+      confidence: verified
+      note: "One record per returned person, company or job; fair_usage.records_used settled exactly against the free key-info balance in live calls. Empty pages use zero records."
+    docs_url: https://docs.blitz-api.ai/api-reference/people-search/find-people
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.search.json
+
+  - id: blitzapi.people.employee-finder
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/search/employee-finder
+    body_allowlist: true
+    name: Find a company's employees
+    summary: List employees at one LinkedIn company, with page and role filters.
+    input:
+      bodyType: json
+      body:
+        company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
+        country_code: {type: "array[string]", required: false, note: "ISO two-letter codes or WORLD."}
+        continent: {type: "array[string]", required: false}
+        sales_region: {type: "array[string]", required: false}
+        job_level: {type: "array[string]", required: false}
+        job_function: {type: "array[string]", required: false}
+        min_connections_count: {type: integer, required: false}
+        is_recent_hire: {type: boolean, required: false}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        page: {type: integer, required: false, default: 1, min: 1}
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api", max_results: 1, page: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-search/employee-finder
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.employee-finder.json
+
+  - id: blitzapi.people.waterfall-icp
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/search/waterfall-icp-keyword
+    body_allowlist: true
+    name: Find decision-makers by priority
+    summary: Search one company through an ordered cascade of title criteria.
+    input:
+      bodyType: json
+      body:
+        company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
+        cascade: {type: "array[object]", required: true, minItems: 1, maxItems: 10, note: "Each tier requires include_title and may set exclude_title, location and current-job options."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 100, example: 1}
+        profile_min_connections: {type: integer, required: false}
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api", cascade: [{include_title: [Founder]}], max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-search/waterfall-icp-search
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.waterfall-icp.json
+
+  - id: blitzapi.companies.search
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/search/companies
+    body_allowlist: true
+    name: Search companies
+    summary: Find companies by firmographics, funding and keywords with cursor pagination.
+    input:
+      bodyType: json
+      body:
+        company: {type: object, required: false, note: "Name, industry, size, HQ, revenue, funding and keyword filters."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {company: {name: {include: [BlitzAPI]}}, max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-search/company-search
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.search.json
+
+  - id: blitzapi.companies.tam-by-jobs
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/company/tam-by-jobs
+    body_allowlist: true
+    name: Find companies hiring for a role
+    summary: Return distinct companies whose job postings match a hiring profile.
+    input:
+      bodyType: json
+      body:
+        job: {type: object, required: false, note: "Job title, seniority, location and date-posted filters."}
+        company: {type: object, required: false, note: "Company firmographic filters."}
+        max_results: {type: integer, required: false, default: 3, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {job: {title: {include: [Software Engineer]}}, max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-search/tam-by-jobs
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.tam-by-jobs.json
+
+  - id: blitzapi.companies.tam-by-people
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/company/tam-by-people
+    body_allowlist: true
+    name: Find companies employing a persona
+    summary: Return distinct companies whose people match role and location criteria.
+    input:
+      bodyType: json
+      body:
+        company: {type: object, required: false, note: "Company firmographic filters."}
+        people: {type: object, required: false, note: "Job title, function, seniority and location filters."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {people: {job_title: {include: [Founder]}}, max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-search/tam-by-people
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.tam-by-people.json
+
+  - id: blitzapi.jobs.search
+    capability: companies.jobs.search
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /v2/jobs/search
+    body_allowlist: true
+    name: Search job postings
+    summary: Search jobs across companies by role, location, seniority and date.
+    input:
+      bodyType: json
+      body:
+        job: {type: object, required: false, note: "Title, description, seniority, location and date-posted filters."}
+        company: {type: object, required: false, note: "Company firmographic filters."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {job: {title: {include: [Software Engineer]}}, max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/job-search/search-jobs
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.jobs.search.json
+
+  - id: blitzapi.jobs.company
+    capability: companies.jobs.search
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /v2/jobs/company
+    body_allowlist: true
+    name: Search jobs at a company
+    summary: List jobs at one LinkedIn company, optionally filtering by role or location.
+    input:
+      bodyType: json
+      body:
+        company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/openai"}
+        job: {type: object, required: false, note: "Title, seniority, location and date-posted filters."}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/openai", max_results: 1}}
+    cost: *search_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/job-search/company-jobs
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.jobs.company.json
+
+  - id: blitzapi.people.enrich
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/person
+    body_allowlist: true
+    name: Enrich a LinkedIn person
+    summary: Return a full profile with experience, education and skills.
+    input: &person_input
+      bodyType: json
+      body:
+        person_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/in/antoine-blitz-5581b7373"}
+    test_request: {body: {person_linkedin_url: "https://www.linkedin.com/in/antoine-blitz-5581b7373"}}
+    cost: &hit_cost
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: fair_usage.records_used, unit: credit}
+      source: observed
+      source_url: https://docs.blitz-api.ai/guide/reference/fair-use-policy
+      checked: '2026-10-16'
+      confidence: verified
+      note: "One record on a found answer, zero on a miss; fair_usage.records_used matched the live key-info delta."
+    docs_url: https://docs.blitz-api.ai/api-reference/people-enrichment/person-enrichment
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.enrich.json
+
+  - id: blitzapi.people.email.find
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/email
+    body_allowlist: true
+    name: Find a verified work email
+    summary: Find a work email from a LinkedIn person profile URL.
+    input: *person_input
+    test_request: {body: {person_linkedin_url: "https://www.linkedin.com/in/antoine-blitz-5581b7373"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-enrichment/find-work-email
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.email.find.json
+
+  - id: blitzapi.people.phone.find
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/phone
+    body_allowlist: true
+    name: Find a US direct phone
+    summary: Find a US direct or mobile number from a LinkedIn person profile URL.
+    input: *person_input
+    test_request: {body: {person_linkedin_url: "https://www.linkedin.com/in/antoine-blitz-5581b7373"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-enrichment/find-mobile-&-direct-phone
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.phone.find.json
+
+  - id: blitzapi.people.email.reverse
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/email-to-person
+    body_allowlist: true
+    name: Enrich a person from a work email
+    summary: Look up a professional profile from a work email.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: "alex@example.com"}
+    test_request: {body: {email: "alex@example.com"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-enrichment/reverse-email-lookup
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.email.reverse.json
+
+  - id: blitzapi.people.phone.reverse
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/phone-to-person
+    body_allowlist: true
+    name: Enrich a person from a US phone
+    summary: Look up a professional profile from a US phone number.
+    input:
+      bodyType: json
+      body:
+        phone: {type: string, required: true, example: "+14155550123"}
+    test_request: {body: {phone: "+14155550123"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/people-enrichment/reverse-phone-lookup
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.people.phone.reverse.json
+
+  - id: blitzapi.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    domain: company
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/company
+    body_allowlist: true
+    name: Enrich a LinkedIn company
+    summary: Return a company's profile, headquarters, website and firmographics.
+    input: &company_input
+      bodyType: json
+      body:
+        company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-enrichment/company-enrichment
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.enrich.json
+
+  - id: blitzapi.companies.domain-to-linkedin
+    capability: companies.linkedin.find
+    platform: companies
+    domain: company
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/domain-to-linkedin
+    body_allowlist: true
+    name: Find a company's LinkedIn page
+    summary: Resolve a website domain to its LinkedIn company URL and name.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: true, example: "blitz-api.ai"}
+    test_request: {body: {domain: "blitz-api.ai"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-enrichment/domain-to-linkedin-url
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.domain-to-linkedin.json
+
+  - id: blitzapi.companies.linkedin-to-domain
+    capability: companies.email_domain.find
+    platform: companies
+    domain: company
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/linkedin-to-domain
+    body_allowlist: true
+    name: Find a company's email domain
+    summary: Resolve a LinkedIn company URL to the domain used for work email.
+    input: *company_input
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/company-enrichment/linkedin-url-to-domain
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.linkedin-to-domain.json
+
+  - id: blitzapi.companies.employees.by-country
+    capability: companies.employees.distribution
+    platform: companies
+    domain: company
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/company-distribution-by-country
+    body_allowlist: true
+    name: Count a company's employees by country
+    summary: Return employee counts and shares by country, optionally for recent hires.
+    input: &distribution_input
+      bodyType: json
+      body:
+        company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
+        is_recent_hire: {type: boolean, required: false, default: false}
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/utilities/company-employment-distribution
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.employees.by-country.json
+
+  - id: blitzapi.companies.employees.by-department
+    capability: companies.employees.distribution
+    platform: companies
+    domain: company
+    scope: any_account
+    method: POST
+    path: /v2/enrichment/company-distribution-by-department
+    body_allowlist: true
+    name: Count a company's employees by department
+    summary: Return employee counts and shares by department, optionally for recent hires.
+    input: *distribution_input
+    test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api"}}
+    cost: *hit_cost
+    docs_url: https://docs.blitz-api.ai/api-reference/utilities/company-department-distribution
+    verified: '2026-10-16'
+    added: '2026-10-16'
+    example_response: examples/blitzapi.companies.employees.by-department.json

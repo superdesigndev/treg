@@ -62,6 +62,7 @@ endpoints:
       confidence: verified
       note: "A standard scrape costs one credit per request. A live cached-eligible scrape returned credits_consumed: 1 and reduced the account balance by one credit; no evidence says rejected requests are free. BYOK calls remain unmetered by treg."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/scrapes/create
     example_response: examples/olostep.web.scrape.json
 
@@ -99,6 +100,7 @@ endpoints:
       confidence: verified
       note: "Base Search costs five credits per request. A live fast-mode, three-result request reported credits_consumed: 5; no evidence says rejected requests are free. Search page-scraping add-ons are not accepted by this catalog tool."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/searches/create
     example_response: examples/olostep.web.search.json
 
@@ -132,6 +134,7 @@ endpoints:
       confidence: verified
       note: "Answers cost twenty credits per request. The response does not report a charge field; a live request reduced the account balance by exactly twenty credits, and no evidence says rejected requests are free, so the fixed documented price is the settlement amount."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/answers/create
     example_response: examples/olostep.web.answer.json
 
@@ -163,6 +166,7 @@ endpoints:
       source_url: https://docs.olostep.com/features/maps
       note: "A map request costs one credit through 1,000 returned URLs. This row requires a relevance query and top_n <= 1,000; a live one-URL map reduced the account balance by one credit even though the immediate response's credits_consumed and cost_usd fields were null, and no evidence says rejected requests are free."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/maps/create
     example_response: examples/olostep.web.map.search.json
 
@@ -213,6 +217,7 @@ endpoints:
       confidence: verified
       note: "Crawl costs one credit per completed page. treg reserves max_pages, then the terminal status response's credits_consumed settles the exact charge and releases the rest. A live one-page crawl completed with pages_count: 1 and credits_consumed: 1; the account's actual purchase cost is $0.002 per credit."
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/crawls/create
     example_response: examples/olostep.web.crawl.json
 
@@ -234,6 +239,7 @@ endpoints:
     test_request: {pathParams: {crawl_id: "crawl_wp3m5fl4sf"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling an existing crawl consumes no Olostep credits."}
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/crawls/info
     example_response: examples/olostep.web.crawl.status.json
 
@@ -263,5 +269,6 @@ endpoints:
       queryParams: {limit: 10, formats: [markdown]}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading pages from an existing crawl consumes no Olostep credits."}
     verified: '2026-09-23'
+    added: '2026-09-23'
     docs_url: https://docs.olostep.com/api-reference/crawls/pages
     example_response: examples/olostep.web.crawl.results.json

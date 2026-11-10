@@ -31,6 +31,7 @@ source:
 pricing_url: https://learn.microsoft.com/advertising/guides/  # API free; requires a developer token.
 endpoints:
   - id: microsoft-ads.query
+    added: '2026-07-28'
     capability: microsoft-ads.query
     platform: microsoft-ads
     scope: own_account
@@ -49,6 +50,7 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getcampaignsbyaccountid?view=bingads-13
 
   - id: microsoft-ads.adgroups
+    added: '2026-07-28'
     capability: microsoft-ads.adgroups
     platform: microsoft-ads
     scope: own_account
@@ -66,6 +68,7 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getadgroupsbycampaignid?view=bingads-13
 
   - id: microsoft-ads.ads
+    added: '2026-07-28'
     capability: microsoft-ads.ads
     platform: microsoft-ads
     scope: own_account
@@ -84,6 +87,7 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getadsbyadgroupid?view=bingads-13
 
   - id: microsoft-ads.keywords
+    added: '2026-07-28'
     capability: microsoft-ads.keywords
     platform: microsoft-ads
     scope: own_account

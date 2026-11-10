@@ -102,6 +102,7 @@ platforms:
   douyin-xingtu: {label: "Xingtu — Douyin's creator marketplace (influencer rates, audience data)", category: "Advertising", summary: "Influencer rates, audience breakdowns and campaign performance."}
   xiaohongshu-pugongying: {label: "Pugongying — Xiaohongshu's creator marketplace", category: "Advertising", summary: "Creator pricing, audience and note performance from Xiaohongshu's creator marketplace."}
   qq-huxuan: {label: "QQ Huxuan — Tencent's creator marketplace", category: "Advertising", summary: "Creator and placement data from Tencent's Huxuan marketplace."}
+  ugc: {label: "UGC clips", category: "Advertising", summary: "Search and license UGC video clips for ads and organic posts."}
 
   # --- Community -------------------------------------------------------------------------------
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}
@@ -120,14 +121,40 @@ platforms:
 
   ebay: {label: "eBay", category: "E-commerce", summary: "Product listings and search results from eBay."}
   walmart: {label: "Walmart", category: "E-commerce", summary: "Product listings and search results from Walmart."}
+  home-depot: {label: "Home Depot", category: "E-commerce", summary: "Search Home Depot products by keyword."}
   yandex: {label: "Yandex Search Results (SERP)", category: "SEO/AEO", summary: "Organic results and rankings from Yandex."}
   duckduckgo: {label: "DuckDuckGo Search Results (SERP)", category: "SEO/AEO", summary: "Organic results from DuckDuckGo."}
   yelp: {label: "Yelp", category: "Reviews & Apps", summary: "Business listings and reviews from Yelp."}
+  places: {label: "Places (local search)", category: "Reviews & Apps", summary: "Restaurants, cafes and other local places: search, details and review-based scores."}
+  # --- Sites served by ready-made scrapers (Crawl4AI recipes) ----------------------------------
+  airbnb: {label: "Airbnb", category: "Reviews & Apps", summary: "Listings, prices and ratings from Airbnb."}
+  booking: {label: "Booking.com", category: "Reviews & Apps", summary: "Hotels, prices and ratings from Booking.com."}
+  glassdoor: {label: "Glassdoor", category: "Reviews & Apps", summary: "Job listings and company reviews from Glassdoor."}
+  zillow: {label: "Zillow", category: "E-commerce", summary: "Homes, prices and listing facts from Zillow."}
+  etsy: {label: "Etsy", category: "E-commerce", summary: "Products and shops from Etsy search."}
+  shopify: {label: "Shopify stores", category: "E-commerce", summary: "The product catalog of any Shopify store."}
+  steam: {label: "Steam", category: "E-commerce", summary: "Games, prices and reviews from the Steam store."}
+  crunchbase: {label: "Crunchbase", category: "Enrichment", summary: "Company profiles from Crunchbase."}
+  indeed: {label: "Indeed", category: "Community", summary: "Job search results from Indeed."}
+  remoteok: {label: "Remote OK", category: "Community", summary: "Remote job listings from Remote OK."}
+  weworkremotely: {label: "We Work Remotely", category: "Community", summary: "Remote job listings from We Work Remotely."}
+  hackernews: {label: "Hacker News", category: "Community", summary: "Stories, search and who-is-hiring posts from Hacker News."}
+  producthunt: {label: "Product Hunt", category: "Community", summary: "Products and daily launches from Product Hunt."}
+  stackoverflow: {label: "Stack Overflow", category: "Developer", summary: "Questions by tag from Stack Overflow."}
+  packages: {label: "Package registries", category: "Developer", summary: "Package facts from npm, PyPI and crates.io."}
+  medium: {label: "Medium", category: "Research & public data", summary: "Posts of a Medium tag, author or publication."}
+  substack: {label: "Substack", category: "Research & public data", summary: "Latest posts of a Substack publication."}
+  wikipedia: {label: "Wikipedia", category: "Research & public data", summary: "Article summaries, sections and search from Wikipedia."}
+  weather: {label: "Weather", category: "Research & public data", summary: "Daily weather forecasts for a place."}
   account: {label: "The provider account itself — usage, quota, balance (not a content platform)", category: "Other"}
 
   # --- Market data: prices & financial markets --------------------------------------------------
   crypto: {label: "Crypto Market Data", category: "Market data", featured: 1, summary: "Live and historical prices, market caps, trends and exchanges across 17,000+ coins."}
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
+  markets: {label: "Other market data", category: "Market data", summary: "Foreign exchange, commodities, movers and prediction markets."}
+  research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
+  health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
+  economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
@@ -153,6 +180,8 @@ capabilities:
   image-gen.gpt-image-2-5.generate: "GPT Image 2.5"
 
   creators.search: "Find influencers & creators by niche, country, followers & engagement on Instagram, TikTok, YouTube"
+  creators.photo.demographics: "Estimate age and gender from a creator's profile photo"
+  home-depot.products.search: "Search Home Depot products by keyword"
   # --- SEO / search -----------------------------------------------------------------------------
   google.serp.organic: "Get organic search results for a keyword"
   google.serp.ai_overview: "Get the AI Overview panel Google shows above a search result"
@@ -179,8 +208,16 @@ capabilities:
   web.global.top_pages: "Most-linked pages on the web (index-wide)"
   web.global.top_domains: "Most-linked domains on the web (index-wide)"
   web.page.audit: "Run an on-page audit of a URL"
+  web.monitor.create: "Start a scheduled web-page change monitor"
+  web.monitor.list: "List web-page change monitors"
+  web.monitor.get: "Read one web-page change monitor"
+  web.monitor.update: "Change a web-page change monitor"
+  web.monitor.activity: "A web-page monitor's checks and changes"
+  web.monitor.delete: "Delete a web-page change monitor"
   web.search: "Search the open web by meaning or keyword"
   web.extract: "Extract clean content from web pages"
+  web.extract.structured: "Extract typed JSON from one web page"
+  web.extract.batch: "Scrape a bounded list of web pages"
   web.screenshot: "Capture a rendered web page image"
   web.map: "Discover the URLs on a website"
   web.crawl: "Crawl a website and extract its pages"
@@ -224,7 +261,6 @@ capabilities:
   facebook.page.insights: "Your Page's reach & engagement"
   facebook.page.post.create: "Publish a post to your Page"
   facebook.page.posts: "List your Page's posts with engagement"
-  facebook.pages.list: "List the Pages you manage"
   google-ads.accounts: "List the ad accounts you can reach"
   google-ads.budget.update: "Change a campaign's daily budget"
   google-ads.query: "Query your own account with GAQL"
@@ -269,6 +305,8 @@ capabilities:
   people.search.filters: "List the accepted values for a people-search filter"
   people.email.find.personal: "Find a person's personal email address"
   people.phone.verify: "Validate and format a phone number"
+  people.phone.live: "Check whether a phone number is live on its network"
+  people.profile.from_phone: "Find social profiles from a contact phone number"
   linkedin.profile.from_email: "Find a person's LinkedIn profile from their email address"
   creators.socials.connected: "List a creator's accounts on other platforms"
 
@@ -329,6 +367,8 @@ capabilities:
   companies.jobs: "A company's open job postings"
   companies.domain.find: "Find a company's website domain from its name"
   companies.jobs.search: "Search indexed job listings across companies"
+  companies.jobs.search.count: "Count job postings that match a search"
+  companies.jobs.detail: "Get one job posting by ID"
   companies.news: "Recent news & signals about a company"
   companies.reviews: "Read employee reviews of a company"
   google-play.search.apps: "Search apps by keyword"
@@ -838,6 +878,7 @@ capabilities:
 
   # --- Meta -------------------------------------------------------------------------------------
   account.usage: "Check your usage, quota & balance"
+  account.jobs.get: "Get one background job's details"
 
   # --- taxonomy-fill 2026-07-28 -----------------------------------------------------------------
   # ai-search
@@ -1260,3 +1301,48 @@ capabilities:
   stocks.company.news: "News for a specific company"
   stocks.fundamentals.metrics: "Fundamental metrics and ratios for a ticker"
   stocks.market.status: "Is the market open right now"
+
+# Short titles people scan on a platform shelf, only where a compared job's description runs long.
+# The description above stays whole: agents read it, and search ranks on it.
+capability_titles:
+  people.enrich: "Enrich a person's profile"
+  people.email.find: "Find a person's work email"
+  people.email.verify: "Verify an email address"
+  people.search: "Find people by role, company or location"
+  people.search.count: "Count a people search before paying"
+  people.search.filters: "List people-search filter values"
+  creators.search: "Find creators by niche and audience"
+  companies.search: "Find companies by industry, size or tech"
+  companies.search.count: "Count a company search before paying"
+  companies.funding.feed: "Browse the latest funding rounds"
+  google.keywords.trends: "Keyword popularity over time"
+  google.serp.ai_overview: "Get Google's AI Overview"
+  google.serp.local: "Get Google local pack results"
+  web.backlinks.summary: "Backlink profile"
+  web.backlinks.list: "List backlinks"
+  web.backlinks.competitors: "Backlink competitors"
+  web.search: "Search the web"
+  web.search.news: "Search news"
+  web.search.publications: "Search research papers"
+  web.extract: "Extract web page content"
+  web.screenshot: "Website screenshot"
+  web.extract.structured: "Extract structured page data"
+  web.answer: "Answer with cited sources"
+  web.answer.status: "Check web research"
+  web.answer.research: "Research with web sources"
+  web.scrape.job.results: "Download scrape results"
+  web.scrape.job.start: "Start batch scrape"
+  web.scrape.job.status: "Check batch scrape"
+  web.scrape.structured: "Scrape structured data"
+  web.crawl: "Crawl a website"
+  web.crawl.status: "Check website crawl"
+  web.crawl.results: "List crawled pages"
+  web.anchors.list: "Anchor text"
+  web.linking_domains.list: "Referring domains"
+  web.map: "Discover site URLs"
+  web.site.top_pages: "Top pages by authority"
+  web.url.metrics: "URL and domain authority"
+  linkedin.profile.from_email: "Find a LinkedIn profile from an email"
+  video-gen.result.retrieve: "Download a finished video"
+  tripadvisor.search.general: "Search places, hotels and restaurants"
+  stocks.quote.live: "Current quote for a ticker"

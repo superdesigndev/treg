@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "walmart-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 170,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "availability": "In stock",
+      "badges": [],
+      "brand": "Disney",
+      "categories": [
+        "Movies & TV Shows",
+        "Shop all movies & TV shows"
+      ],
+      "condition": "New",
+      "currency": "USD",
+      "delivery": {
+        "arrives_by": "2026-10-17T21:59:00.000Z",
+        "pickup": false,
+        "shipping": true
+      },
+      "description": "From world renowned animator Don Bluth (An American Tail, Titan A.E.) and award-winning composer Barry Manilow comes Hans Christian Andersen's Thumbelina, a magical story that reminds US that if we follow our hearts, nothing is impossible. When Thumbelina, a tiny enchanted fairy, meets Prince Cornel…",
+      "features": [
+        "Disney - Thumbelina [DIGITAL VIDEO DISC]",
+        "Movies"
+      ],
+      "fulfillment": "seller",
+      "identifiers": {
+        "gtin": null,
+        "model": "024543029298",
+        "mpn": "thumbelina",
+        "upc": "024543029298"
+      },
+      "images": [
+        "https://i5.walmartimages.com/seo/Thumbelina_fd579a0a-9585-46fb-b2fb-f4cdd8f7cd2d.c23b988837542a215c629a5d1ce640fb.jpeg",
+        "https://i5.walmartimages.com/asr/0dc1d11d-fa13-4b14-8e2d-daab117b812d.882b1509d7322e4018d171f9594d9a6f.jpeg"
+      ],
+      "in_stock": true,
+      "order_limit": 1,
+      "price": 6.49,
+      "price_before": 8.51,
+      "product_id": "12164618",
+      "rating": 4.59,
+      "rating_breakdown": {
+        "1": 1,
+        "2": 0,
+        "3": 2,
+        "4": 6,
+        "5": 25
+      },
+      "returns": {
+        "free": "Free Holiday returns until Jan 31",
+        "returnable": true,
+        "window_days": 30
+      },
+      "review_count": 34,
+      "review_tags": [],
+      "reviews": [
+        {
+          "author": "Elizabeth",
+          "date": "2021-02-21",
+          "id": "253488426",
+          "rating": 5.0,
+          "text": "love this movie! it comes in full and wide screen versions.",
+          "title": null
+        },
+        {
+          "author": "Sharon",
+          "date": "2020-10-10",
+          "id": "239977803",
+          "rating": 5.0,
+          "text": "A true blast from the past. I awkward loved this Disney character.",
+          "title": "My childhood shoos"
+        }
+      ],
+      "seller": {
+        "id": "06166FD48FED4A219DD8E842D994C4F9",
+        "name": "JSR Management Inc",
+        "url": "https://www.walmart.com/global/seller/101033502"
+      },
+      "specifications": [
+        {
+          "name": "Movie genre",
+          "value": "Kids & Family"
+        },
+        {
+          "name": "Mpaa rating",
+          "value": "G"
+        }
+      ],
+      "title": "Thumbelina",
+      "top_reviews": {
+        "negative": {
+          "rating": 1.0,
+          "text": "The DVD did not appear to be an original copy and did not work."
+        },
+        "positive": {
+          "rating": 5.0,
+          "text": "I watched this movie when I was a little girl and loved every bit of it!\nThe songs are great and catchy. You'll fall in love with this story, as well as your kids, guaranteed!!!"
+        }
+      },
+      "unit_price": {
+        "unit": "ea",
+        "value": 34.16
+      },
+      "url": "https://www.walmart.com/ip/Thumbelina/12164618",
+      "variants": [
+        {
+          "id": "1CIFC94WUEN1",
+          "in_stock": true,
+          "name": "Instawatch",
+          "price": 17.48,
+          "type": "Edition",
+          "url": "https://www.walmart.com/ip/Thumbelina/55370564"
+        },
+        {
+          "id": "79ANU8K1JPI1",
+          "in_stock": true,
+          "name": "New Packaging ed.",
+          "price": 6.49,
+          "type": "Edition",
+          "url": "https://www.walmart.com/ip/Thumbelina/12164618"
+        }
+      ],
+      "videos": []
+    }
+  ]
+}

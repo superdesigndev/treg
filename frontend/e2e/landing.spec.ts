@@ -6,12 +6,12 @@ test('landing email sign-in reaches the dashboard', async ({ page }) => {
   await page.getByRole('link', { name: 'Sign in', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Sign in', exact: true })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('link', { name: 'Continue with GitHub' })).toHaveAttribute('href', '/auth/github')
+  await expect(dialog.getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', '/auth/github')
   await dialog.getByPlaceholder('you@work.com').fill(`landing-${Date.now()}@example.com`)
-  await dialog.getByRole('button', { name: 'Email me a sign-in code' }).click()
+  await dialog.getByPlaceholder('you@work.com').press('Enter')
   await expect(dialog.locator('#em-err')).toContainText('dev mode')
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByPlaceholder('Team name, e.g. Superdesign')).toBeVisible()
+  await expect(page.getByText('We made your team Example.', { exact: false })).toBeVisible()
 })
 
 test('landing stays usable at phone width without WebGL or the library CDN', async ({ page }) => {

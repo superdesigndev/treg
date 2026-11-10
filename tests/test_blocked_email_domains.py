@@ -89,6 +89,8 @@ def test_ops_tier_parses_case_whitespace_and_leading_marks(ops):
     ("A@FARM-B.EXAMPLE", True),
     ("a@deep.mail.farm-c.example", True),   # the subdomain bypass that must not work
     ("a@farm-d.example", True),             # listed as ".farm-d.example"
+    ("a@farm-a.example.", True),            # a fully-qualified trailing dot is the same domain
+    ("a@mail.farm-c.example..", True),
     # The walk strips whole labels off the front only.
     ("a@notfarm-a.example", False),         # a string suffix, not a subdomain
     ("a@farm-a.example.org", False),        # the listed domain in the middle
@@ -167,18 +169,6 @@ async def test_otp_still_works_for_an_unlisted_domain_while_the_list_is_set(clie
     ops()
     assert await _otp_login(client, "real@company.dev")
     assert await _otp_login(client, "farm-a.example@company.dev")   # local part is never looked at
-
-
-# ---- open registration (POST /users: user + org + the $1 promo in one call) -----------------------
-
-async def test_open_registration_refuses_a_blocked_domain_and_creates_nothing(client, ops):
-    ops()
-    for email in ("farm@sub.farm-a.example", "farm@farm-b.example"):
-        r = await client.post("/users", json={"email": email})
-        assert r.status_code == 403 and r.json()["detail"] == REFUSAL
-        assert await _user_count(email) == 0
-    async with session_maker() as s:
-        assert (await s.execute(select(Org))).scalars().all() == []   # no team, so no grant
 
 
 # ---- creating a team (POST /orgs: the other promo door, for an already-registered identity) -------
@@ -314,11 +304,12 @@ async def test_emailed_invite_link_refuses_a_blocked_domain(client, ops, sent_in
     assert await _user_count("farm@farm-a.example") == 0
 
 
-async def test_invite_code_accept_refuses_a_blocked_domain(client, ops, sent_invites):
+async def test_invite_code_accept_never_creates_a_blocked_user(client, ops, sent_invites):
     await _team_with_invite(client, "owner@company.dev", "farm@sub.farm-b.example")
     ops()
+    client.cookies.clear()
     r = await client.post("/invites/accept",
                           json={"code": sent_invites[0]["code"], "email": "farm@sub.farm-b.example"})
-    assert r.status_code == 403 and r.json()["detail"] == REFUSAL
+    assert r.status_code == 401
     assert "token" not in r.json()
     assert await _user_count("farm@sub.farm-b.example") == 0

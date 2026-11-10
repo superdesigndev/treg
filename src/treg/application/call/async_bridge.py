@@ -50,6 +50,8 @@ async def await_terminal(
     except (UnicodeDecodeError, json.JSONDecodeError, asynctasks.ExtractionError) as exc:
         return AsyncResult("error", "", detail=str(exc))
 
+    # A provider that asks callers to stop polling sooner (`max_age`) bounds every waiter.
+    timeout_s = min(timeout_s, asynctasks.max_age(descriptor).total_seconds())
     deadline = time.monotonic() + max(0.0, timeout_s)
     interval = max(0.05, float(descriptor.get("interval") or 2))
     attempt = 0
@@ -66,7 +68,7 @@ async def await_terminal(
             response, raw = await poll(extracted.task_id, attempt)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # the durable worker remains the settlement backstop
+        except Exception as exc:  # noqa: BLE001 - the durable worker remains the settlement backstop
             last_detail = str(exc)[:160]
             continue
         if not 200 <= response.status < 300:

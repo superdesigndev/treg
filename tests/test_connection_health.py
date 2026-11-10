@@ -121,6 +121,7 @@ async def test_a_failed_refresh_records_why(clients: AsyncClient, treg_google_ap
     async with session_maker() as db:
         s = (await db.execute(select(Secret).where(Secret.id == sid))).scalars().one()
         blob = json.loads(crypto.decrypt(s.value))
+        blob["client_id"] = "retired-cid"  # no longer treg's app, so its own token_uri is used
         blob["token_uri"] = "http://upstream/token-broken"  # upstream 404s → refresh raises
         blob["expires_at"] = 0  # force staleness
         s.value = crypto.encrypt(json.dumps(blob))

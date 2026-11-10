@@ -126,7 +126,6 @@ def scaffold_skill(skill_dir: str | Path) -> dict:
     return {"name": p.name, "recipe": recipe, "secrets": secrets, "tools": tools}
 
 
-# ---- treg.json contract: heuristic generation + loading -----------------------------------
 def _read_recipe(p: Path) -> str:
     for cand in _RECIPE_FILES:
         f = p / cand
@@ -281,7 +280,7 @@ def load_contract(skill_dir: str | Path) -> dict | None:
     except json.JSONDecodeError as exc:
         raise ValueError(f"{CONTRACT_FILE} is not valid JSON: {exc}") from exc
     if contract.get("cli") is not None:
-        from .localrun import validate_cli_profile  # local import — keeps convert dependency-light
+        from .localrun import validate_cli_profile
         try:
             validate_cli_profile(contract["cli"])
         except ValueError as exc:

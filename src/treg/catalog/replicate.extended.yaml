@@ -32,6 +32,7 @@ async:
   interval: 2
 endpoints:
 - id: replicate.x.black-forest-labs-flux-1-1-pro-ultra
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -92,6 +93,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-1.1-pro-ultra
 - id: replicate.x.black-forest-labs-flux-2-flex
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -186,6 +188,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-2-flex
 - id: replicate.x.black-forest-labs-flux-2-klein-4b
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -249,6 +252,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-2-klein-4b
 - id: replicate.x.black-forest-labs-flux-2-max
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -324,6 +328,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-2-max
 - id: replicate.x.black-forest-labs-flux-2-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -399,6 +404,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-2-pro
 - id: replicate.x.black-forest-labs-flux-dev-lora
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -519,6 +525,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-dev-lora
 - id: replicate.x.black-forest-labs-flux-dev
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -609,6 +616,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-dev
 - id: replicate.x.black-forest-labs-flux-kontext-max
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -662,6 +670,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-kontext-max
 - id: replicate.x.black-forest-labs-flux-kontext-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -715,6 +724,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-kontext-pro
 - id: replicate.x.black-forest-labs-flux-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -808,6 +818,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/black-forest-labs/flux-pro
 - id: replicate.x.bria-fibo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -860,6 +871,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bria/fibo
 - id: replicate.x.bria-image-3-2
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -913,6 +925,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bria/image-3.2
 - id: replicate.x.bytedance-seedream-3
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -971,6 +984,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedream-3
 - id: replicate.x.bytedance-seedream-4-5
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1039,6 +1053,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedream-4.5
 - id: replicate.x.bytedance-seedream-4
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1107,6 +1122,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedream-4
 - id: replicate.x.bytedance-seedream-5-lite
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1160,6 +1176,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedream-5-lite
 - id: replicate.x.google-imagen-3-fast
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1197,6 +1214,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/imagen-3-fast
 - id: replicate.x.google-imagen-3
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1234,6 +1252,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/imagen-3
 - id: replicate.x.google-imagen-4-fast
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1271,6 +1290,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/imagen-4-fast
 - id: replicate.x.google-imagen-4-ultra
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1312,6 +1332,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/imagen-4-ultra
 - id: replicate.x.google-imagen-4
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1353,6 +1374,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/imagen-4
 - id: replicate.x.google-nano-banana-2
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1405,6 +1427,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/nano-banana-2
 - id: replicate.x.google-nano-banana
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1443,6 +1466,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/nano-banana
 - id: replicate.x.ideogram-ai-ideogram-v2-turbo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1501,6 +1525,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2-turbo
 - id: replicate.x.ideogram-ai-ideogram-v2
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1559,6 +1584,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2
 - id: replicate.x.ideogram-ai-ideogram-v2a-turbo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1605,6 +1631,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2a-turbo
 - id: replicate.x.ideogram-ai-ideogram-v2a
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1651,6 +1678,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2a
 - id: replicate.x.ideogram-ai-ideogram-v3-balanced
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1713,6 +1741,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-balanced
 - id: replicate.x.ideogram-ai-ideogram-v3-quality
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1775,6 +1804,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-quality
 - id: replicate.x.ideogram-ai-ideogram-v3-turbo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1837,6 +1867,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-turbo
 - id: replicate.x.leonardoai-lucid-origin
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1890,6 +1921,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/leonardoai/lucid-origin
 - id: replicate.x.luma-photon-flash
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -1961,6 +1993,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/photon-flash
 - id: replicate.x.luma-photon
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2020,6 +2053,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/photon
 - id: replicate.x.minimax-image-01
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2065,6 +2099,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/image-01
 - id: replicate.x.openai-gpt-image-1-5
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2140,6 +2175,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/openai/gpt-image-1.5
 - id: replicate.x.prunaai-flux-fast
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2204,6 +2240,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/flux-fast
 - id: replicate.x.prunaai-hidream-l1-fast
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2268,6 +2305,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/hidream-l1-fast
 - id: replicate.x.prunaai-p-image-lora
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2338,6 +2376,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/p-image-lora
 - id: replicate.x.prunaai-p-image
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2408,6 +2447,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/p-image
 - id: replicate.x.prunaai-wan-2-2-image
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2461,6 +2501,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/wan-2.2-image
 - id: replicate.x.prunaai-z-image-turbo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2574,6 +2615,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/z-image-turbo
 - id: replicate.x.quiverai-arrow-1-1-max
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2630,6 +2672,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/quiverai/arrow-1.1-max
 - id: replicate.x.quiverai-arrow-1-1
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2686,6 +2729,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/quiverai/arrow-1.1
 - id: replicate.x.qwen-qwen-image
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2800,6 +2844,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/qwen/qwen-image
 - id: replicate.x.recraft-ai-recraft-v3-svg
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2837,6 +2882,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v3-svg
 - id: replicate.x.recraft-ai-recraft-v3
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2874,6 +2920,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v3
 - id: replicate.x.recraft-ai-recraft-v4-pro-svg
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2907,6 +2954,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-pro-svg
 - id: replicate.x.recraft-ai-recraft-v4-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2940,6 +2988,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-pro
 - id: replicate.x.recraft-ai-recraft-v4-styles-pro-svg
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -2986,6 +3035,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-styles-pro-svg
 - id: replicate.x.recraft-ai-recraft-v4-svg
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3019,6 +3069,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-svg
 - id: replicate.x.sourceful-riverflow-2-0-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3094,6 +3145,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/sourceful/riverflow-2.0-pro
 - id: replicate.x.stability-ai-stable-diffusion-3-5-large-turbo
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3153,6 +3205,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large-turbo
 - id: replicate.x.stability-ai-stable-diffusion-3-5-large
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3212,6 +3265,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large
 - id: replicate.x.stability-ai-stable-diffusion-3-5-medium
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3271,6 +3325,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-medium
 - id: replicate.x.tencent-hunyuan-image-3
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3325,6 +3380,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/tencent/hunyuan-image-3
 - id: replicate.x.wan-video-wan-2-7-image-pro
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3380,6 +3436,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.7-image-pro
 - id: replicate.x.wan-video-wan-2-7-image
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3435,6 +3492,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.7-image
 - id: replicate.x.xai-grok-imagine-image
+  added: '2026-09-04'
   tier: extended
   platform: image-gen
   domain: models
@@ -3468,6 +3526,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/xai/grok-imagine-image
 - id: replicate.x.alibaba-happyhorse-1-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3514,6 +3573,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/alibaba/happyhorse-1.0
 - id: replicate.x.alibaba-happyhorse-1-1
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3562,6 +3622,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/alibaba/happyhorse-1.1
 - id: replicate.x.alibaba-wan-3
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3622,6 +3683,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/alibaba/wan-3
 - id: replicate.x.bytedance-dreamactor-m2-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3656,6 +3718,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/dreamactor-m2.0
 - id: replicate.x.bytedance-seedance-1-pro-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3713,6 +3776,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedance-1-pro-fast
 - id: replicate.x.bytedance-seedance-1-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3774,6 +3838,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedance-1-pro
 - id: replicate.x.bytedance-seedance-1-5-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3836,6 +3901,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedance-1.5-pro
 - id: replicate.x.bytedance-seedance-2-0-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3908,6 +3974,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedance-2.0-fast
 - id: replicate.x.bytedance-seedance-2-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -3983,6 +4050,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/bytedance/seedance-2.0
 - id: replicate.x.google-veo-2
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4024,6 +4092,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/veo-2
 - id: replicate.x.google-veo-3-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4078,6 +4147,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/veo-3-fast
 - id: replicate.x.google-veo-3-1
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4141,6 +4211,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/veo-3.1
 - id: replicate.x.google-veo-3
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4195,6 +4266,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/google/veo-3
 - id: replicate.x.kwaivgi-kling-o1
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4257,6 +4329,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-o1
 - id: replicate.x.kwaivgi-kling-v1-6-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4314,6 +4387,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v1.6-pro
 - id: replicate.x.kwaivgi-kling-v1-6-standard
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4367,6 +4441,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v1.6-standard
 - id: replicate.x.kwaivgi-kling-v2-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4416,6 +4491,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v2.0
 - id: replicate.x.kwaivgi-kling-v2-1-master
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4458,6 +4534,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v2.1-master
 - id: replicate.x.kwaivgi-kling-v2-1
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4504,6 +4581,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v2.1
 - id: replicate.x.kwaivgi-kling-v2-5-turbo-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4558,6 +4636,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v2.5-turbo-pro
 - id: replicate.x.kwaivgi-kling-v2-6
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4605,6 +4684,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v2.6
 - id: replicate.x.kwaivgi-kling-v3-omni-video
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4679,6 +4759,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v3-omni-video
 - id: replicate.x.kwaivgi-kling-v3-video
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4741,6 +4822,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/kwaivgi/kling-v3-video
 - id: replicate.x.leonardoai-motion-2-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4804,6 +4886,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/leonardoai/motion-2.0
 - id: replicate.x.luma-modify-video
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4849,6 +4932,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/modify-video
 - id: replicate.x.luma-ray-2-540p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4907,6 +4991,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/ray-2-540p
 - id: replicate.x.luma-ray-2-720p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -4965,6 +5050,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/ray-2-720p
 - id: replicate.x.luma-ray-3-2
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5027,6 +5113,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/ray-3.2
 - id: replicate.x.luma-ray-flash-2-540p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5085,6 +5172,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/ray-flash-2-540p
 - id: replicate.x.luma-ray-flash-2-720p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5143,6 +5231,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/luma/ray-flash-2-720p
 - id: replicate.x.minimax-hailuo-02
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5189,6 +5278,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/hailuo-02
 - id: replicate.x.minimax-hailuo-2-3-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5231,6 +5321,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/hailuo-2.3-fast
 - id: replicate.x.minimax-hailuo-2-3
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5273,6 +5364,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/hailuo-2.3
 - id: replicate.x.minimax-video-01-director
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5307,6 +5399,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/video-01-director
 - id: replicate.x.minimax-video-01-live
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5341,6 +5434,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/video-01-live
 - id: replicate.x.minimax-video-01
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5379,6 +5473,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/minimax/video-01
 - id: replicate.x.openai-sora-2-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5424,6 +5519,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/openai/sora-2-pro
 - id: replicate.x.openai-sora-2
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5465,6 +5561,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/openai/sora-2
 - id: replicate.x.pixverse-pixverse-v4-5
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5540,6 +5637,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/pixverse/pixverse-v4.5
 - id: replicate.x.pixverse-pixverse-v4
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5615,6 +5713,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/pixverse/pixverse-v4
 - id: replicate.x.pixverse-pixverse-v5-6
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5678,6 +5777,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/pixverse/pixverse-v5.6
 - id: replicate.x.pixverse-pixverse-v5
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5736,6 +5836,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/pixverse/pixverse-v5
 - id: replicate.x.pixverse-pixverse-v6
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5800,6 +5901,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/pixverse/pixverse-v6
 - id: replicate.x.prunaai-p-video-animate
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5871,6 +5973,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/p-video-animate
 - id: replicate.x.prunaai-p-video-avatar
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -5958,6 +6061,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/p-video-avatar
 - id: replicate.x.prunaai-p-video
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6043,6 +6147,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/prunaai/p-video
 - id: replicate.x.runwayml-gen-4-5
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6084,6 +6189,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/runwayml/gen-4.5
 - id: replicate.x.veed-fabric-1-0
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6117,6 +6223,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/veed/fabric-1.0
 - id: replicate.x.vidu-q3-pro
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6174,6 +6281,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/vidu/q3-pro
 - id: replicate.x.wan-video-wan-2-1-1-3b
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6236,6 +6344,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.1-1.3b
 - id: replicate.x.wan-video-wan-2-2-i2v-a14b
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6306,6 +6415,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.2-i2v-a14b
 - id: replicate.x.wan-video-wan-2-2-i2v-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6401,6 +6511,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.2-i2v-fast
 - id: replicate.x.wan-video-wan-2-2-t2v-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6497,6 +6608,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.2-t2v-fast
 - id: replicate.x.wan-video-wan-2-5-i2v-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6552,6 +6664,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.5-i2v-fast
 - id: replicate.x.wan-video-wan-2-5-i2v
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6607,6 +6720,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.5-i2v
 - id: replicate.x.wan-video-wan-2-5-t2v-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6658,6 +6772,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.5-t2v-fast
 - id: replicate.x.wan-video-wan-2-5-t2v
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6709,6 +6824,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.5-t2v
 - id: replicate.x.wan-video-wan-2-7-i2v
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6776,6 +6892,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.7-i2v
 - id: replicate.x.wan-video-wan-2-7-r2v
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6839,6 +6956,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wan-video/wan-2.7-r2v
 - id: replicate.x.wavespeedai-hunyuan-video-fast
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6860,6 +6978,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wavespeedai/hunyuan-video-fast
 - id: replicate.x.wavespeedai-wan-2-1-i2v-480p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -6943,6 +7062,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wavespeedai/wan-2.1-i2v-480p
 - id: replicate.x.wavespeedai-wan-2-1-i2v-720p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -7026,6 +7146,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wavespeedai/wan-2.1-i2v-720p
 - id: replicate.x.wavespeedai-wan-2-1-t2v-480p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -7105,6 +7226,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wavespeedai/wan-2.1-t2v-480p
 - id: replicate.x.wavespeedai-wan-2-1-t2v-720p
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -7184,6 +7306,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/wavespeedai/wan-2.1-t2v-720p
 - id: replicate.x.xai-grok-imagine-video-1-5
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models
@@ -7228,6 +7351,7 @@ endpoints:
     note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
   docs_url: https://replicate.com/xai/grok-imagine-video-1.5
 - id: replicate.x.xai-grok-imagine-video
+  added: '2026-09-04'
   tier: extended
   platform: video-gen
   domain: models

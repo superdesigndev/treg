@@ -32,7 +32,7 @@ async def test_grokbot_icons_are_served_files(clients: AsyncClient):
 
 async def test_static_pages_fill_the_catalog_size(clients: AsyncClient):
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
-    for path in ("/grokbot", "/fable", "/people-search", "/ugc", "/jev", "/gpt6", "/resources"):
+    for path in ("/grokbot", "/fable", "/people-search", "/ugc", "/aeo", "/jev", "/gpt6", "/resources"):
         text = (await clients.get(path)).text
         assert f"{endpoints} " in text, path
     assert f"{providers} providers" in (await clients.get("/grokbot")).text
@@ -79,7 +79,7 @@ def _front_door_files() -> list[Path]:
     skip = {"dashboard", "vendor", "media"}
     files = [p for p in WEB.rglob("*") if p.suffix in {".html", ".js", ".md", ".txt"}
              and not skip & set(p.relative_to(WEB).parts)]
-    return files + [ROOT / "README.md", ROOT / "docs" / "TUTORIAL.md"]
+    return files + [ROOT / "README.md"]
 
 
 def test_no_page_types_the_catalog_size():

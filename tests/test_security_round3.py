@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from treg.health import host_is_public, safe_webhook_url
+from conftest import accept_with_code
 
 
 def test_ssrf_blocks_numeric_ip_encodings():
@@ -31,7 +32,7 @@ def test_host_is_public_resolves_and_blocks_internal(fake_getaddrinfo):
 async def _member_in_owner_org(clients: AsyncClient, email="m3b@x.dev"):
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": email, "role": "member"})).json()
-    tok = (await clients.post("/invites/accept", json={"code": inv["code"], "email": email})).json()["token"]
+    tok = (await accept_with_code(clients, json={"code": inv["code"], "email": email})).json()["token"]
     return org_id, tok
 
 
@@ -60,13 +61,11 @@ async def test_update_tool_grandfathers_an_admin_added_shared_binding(clients: A
 async def test_delete_org_removes_run_records(clients: AsyncClient):
     from treg.infra.db import session_maker
     from treg.models import RunRecord
-    # a server-runnable tool + a server run → writes a RunRecord
-    await clients.post("/skills", json={"name": "r3", "recipe": "r", "secrets": [],
-                                        "tools": [{"name": "r3", "base_url": "https://api.example.com",
-                                                   "cli": {"bin": "sh"}}]})
-    await clients.post("/run", json={"tool": "r3", "args": ["-c", "true"]})
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as s:
+        s.add(RunRecord(org_id=org_id, user_email="synthetic@example.invalid",
+                        bundle_name="r3", argv=["-c", "true"], exit_code=0, duration_ms=1))
+        await s.commit()
         before = len((await s.execute(select(RunRecord).where(RunRecord.org_id == org_id))).scalars().all())
     assert before >= 1
     slug = (await clients.get("/orgs")).json()[0]["slug"]

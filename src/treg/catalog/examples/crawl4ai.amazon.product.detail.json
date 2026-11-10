@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 1 null fields across 1 items",
+      "module: amazon-product: B0F5HSNDXF · Acer 10 Gbps USB C Hub, USBC Splitter with 4*USB C 3.2 and 100W PD Port"
+    ]
+  },
+  "recipe": "amazon-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 197,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "asin": "B0F5HSNDXF",
+      "availability": "In Stock",
+      "brand": null,
+      "bullets": [
+        "Ultra-Fast 10Gbps: 5-in-1 USB C Hub with 4 USB-C 3.2 Gen 2 ports, offering 10Gbps high-speed data transfer which can transfer 1GB of files in 1 second. As a USB-C hub for laptops it effortlessly transfers large files, quickly uploads and edits videos, and backs up data with ease.📌📌𝐍𝐎𝐓𝐄:𝐓𝐡𝐞 𝐡𝐮𝐛 𝐩𝐫𝐨𝐯𝐢…",
+        "100W PD Port: This USB-C hub features a 100W Power Delivery (PD) port that efficiently charges your “𝐡𝐨𝐬𝐭 𝐝𝐞𝐯𝐢𝐜𝐞”, keeping your laptop powered whether you're in a meeting or on the move.📌📌𝐄𝐧𝐬𝐮𝐫𝐞 𝐲𝐨𝐮𝐫 𝐥𝐚𝐩𝐭𝐨𝐩'𝐬 𝐔𝐒𝐁-𝐂 𝐩𝐨𝐫𝐭 𝐬𝐮𝐩𝐩𝐨𝐫𝐭𝐬 𝐏𝐃 𝐩𝐫𝐨𝐭𝐨𝐜𝐨𝐥 𝐚𝐧𝐝 𝐮𝐬𝐞 𝐚 𝟔𝟓𝐖+ 𝐜𝐡𝐚𝐫𝐠𝐞𝐫 𝐟𝐨𝐫 𝐛𝐞𝐬𝐭 𝐩𝐞𝐫𝐟𝐨𝐫𝐦𝐚𝐧𝐜𝐞."
+      ],
+      "image": "https://m.media-amazon.com/images/I/61RK-9CpgBL._AC_SY300_SX300_QL70_FMwebp_.jpg",
+      "price": "$31.99",
+      "rating": 4.3,
+      "reviews": 829,
+      "title": "Acer 10 Gbps USB C Hub, USBC Splitter with 4*USB C 3.2 and 100W PD Port",
+      "url": "https://www.amazon.com/dp/B0F5HSNDXF"
+    }
+  ]
+}

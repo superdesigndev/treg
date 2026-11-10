@@ -40,6 +40,7 @@ endpoints:
     body:
       query: kubernetes
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.technologies.find.json
   tier: extended
 - id: sumble.technologies.lookup
@@ -90,6 +91,7 @@ endpoints:
       - kubernetes
       - python
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.technologies.lookup.json
   tier: extended
 - id: sumble.technologies.categories.lookup
@@ -139,6 +141,7 @@ endpoints:
       technology_categories:
       - crm
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.technologies.categories.lookup.json
   tier: extended
 - id: sumble.job_functions.lookup
@@ -196,6 +199,7 @@ endpoints:
       - Software Engineer
       - VP of Sales
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.job_functions.lookup.json
   tier: extended
 - id: sumble.projects.lookup
@@ -245,6 +249,7 @@ endpoints:
       projects:
       - cloud migration
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.projects.lookup.json
   tier: extended
 - id: sumble.documentation.search
@@ -286,9 +291,11 @@ endpoints:
       query: technology lookup
       limit: 1
   verified: '2026-09-09'
+  added: '2026-09-10'
   example_response: examples/sumble.documentation.search.json
   tier: extended
 - id: sumble.contact_lists.list
+  added: '2026-09-10'
   platform: people
   scope: own_account
   method: GET
@@ -318,6 +325,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.contact_lists.create
+  added: '2026-09-10'
   platform: people
   scope: own_account
   method: POST
@@ -350,6 +358,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.contact_lists.add
+  added: '2026-09-10'
   platform: people
   scope: own_account
   method: POST
@@ -389,6 +398,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.contact_lists.get
+  added: '2026-09-10'
   platform: people
   scope: own_account
   method: GET
@@ -428,6 +438,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.list
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: GET
@@ -462,6 +473,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.create
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -494,6 +506,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.get
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: GET
@@ -537,6 +550,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.rename
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -575,6 +589,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.set_deleted
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -611,6 +626,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.add
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -656,6 +672,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organization_lists.set_signals
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -692,6 +709,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.signals.search
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -825,6 +843,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.signals.priority
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -925,6 +944,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.signals.priority.relevance
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -965,6 +985,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.signals.configs
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -994,6 +1015,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.support.data_quality
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST
@@ -1039,6 +1061,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.support
+  added: '2026-09-10'
   platform: companies
   scope: own_account
   method: POST

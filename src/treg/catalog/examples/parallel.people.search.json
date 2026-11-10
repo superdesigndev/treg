@@ -1,0 +1,20 @@
+{
+  "entity_set_id": "entity_set_03adb39e04a5ddd51d9334ae0b00e340",
+  "entities": [
+    {
+      "name": "Example Person 1 - Founder & CEO, Example Vector DB",
+      "url": "https://www.linkedin.com/in/example-person-1",
+      "description": "Founder of an open-source vector database company."
+    },
+    {
+      "name": "Example Person 2 - Founder & CEO, Example Vector DB",
+      "url": "https://www.linkedin.com/in/example-person-2",
+      "description": "Founder of an open-source vector database company."
+    },
+    {
+      "name": "Example Person 3 - Founder & CEO, Example Vector DB",
+      "url": "https://www.linkedin.com/in/example-person-3",
+      "description": "Founder of an open-source vector database company."
+    }
+  ]
+}

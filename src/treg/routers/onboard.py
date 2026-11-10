@@ -1,27 +1,26 @@
 """HTTP routes for first-run team onboarding."""
 
-import re
-
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from .. import sandbox as demo_sandbox
 from ..application import onboard as onboard_use_cases
-from ..config import get_settings
+from ..application import signup as signup_use_cases
+from ..application.onboard import first_run
 from ..domain.identity.access import (
+    SANDBOX_CLOSED,
     Caller,
     _require_can_register,
     require_identity,
     require_member,
 )
 from ..models import User
-from .auth import _client_ip
-from .orgs import _require_admin_of, _owned_team_limit_error
+from .auth_helpers import require_managed_cli
+from .orgs import _require_admin_of, _owned_team_limit_error, _signup_http_error
+from .signup_cookies import REFERRAL_COOKIE
 from ..domain.governance.teams import OwnedTeamLimitReached
 
 
-# app is the APIRouter alias so mechanically moved @app decorators stay byte-identical.
 app = APIRouter()
 
 
@@ -29,6 +28,9 @@ _ONBOARD_HTTP_ERRORS = {
     "org_not_found": (404, "org not found"),
     "not_demo_email": (400, "onboarding auto-accept is for demo teammates only"),
     "invite_not_found": (404, "no pending invite for that email"),
+    "sandbox_user": (403, (
+        "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
+    )),
 }
 
 
@@ -40,15 +42,11 @@ def _onboard_http_error(exc: onboard_use_cases.OnboardError) -> HTTPException:
 _SANDBOX_HTTP_ERRORS = {
     "rate_limited": (429, "too many demo sandboxes from here — try again later"),
     "sandbox_only_live": (400, "live-wire info is for the landing-page sandbox only"),
-    "bad_signature": (400, "bad signature"),
-    "bad_payload": (400, "bad payload"),
     "sandbox_only_skill": (400, "skill export is for the landing-page sandbox only"),
 }
 
 
 def _sandbox_http_error(exc: onboard_use_cases.SandboxError) -> HTTPException:
-    if exc.kind == "webhook_unconfigured":
-        return HTTPException(status_code=404)
     status_code, detail = _SANDBOX_HTTP_ERRORS[exc.kind]
     return HTTPException(status_code=status_code, detail=detail)
 
@@ -68,6 +66,8 @@ async def onboard_demo(
     try:
         return await onboard_use_cases.provision_demo(
             user_id=user.id, team_name=(body.team_name if body else "Acme Design"))
+    except onboard_use_cases.OnboardError as exc:
+        raise _onboard_http_error(exc) from exc
     except OwnedTeamLimitReached as exc:
         raise _owned_team_limit_error() from exc
 
@@ -88,33 +88,39 @@ async def onboard_reset(
     return await onboard_use_cases.reset(user_id=user.id)
 
 
+@app.post("/onboard/team")
+async def onboard_team(
+    request: Request, response: Response,
+    user: User = Depends(require_identity),
+) -> dict:
+    """A new account's first team, named for it, so the dashboard never asks for a name.
+    Idempotent per user: `created` is false when the account already has its first run."""
+    require_managed_cli(request, team_change=True)
+    try:
+        result = await first_run.first_team(
+            user,
+            ad_cookie=request.cookies.get("treg_ad") or "",
+            utm_cookie=request.cookies.get("treg_utm") or "",
+            referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+        )
+    except signup_use_cases.SignupError as exc:
+        raise _signup_http_error(exc) from exc
+    except OwnedTeamLimitReached as exc:
+        raise _owned_team_limit_error() from exc
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
 onboard_entry_router = app
 
 
-# app is rebound so the landing-sandbox block keeps its original attachment point.
 app = APIRouter()
 
 
-# ---- landing-page sandbox studio: an anonymous, throwaway team the visitor builds ----------
-# Per-IP limiter for the unauthenticated mint endpoint, in the DB (treg.ratestore) so it survives a
-# restart and holds across instances (backlog #3). It caps DB churn from the public landing page (abuse
-# is otherwise structurally contained — sandbox calls never touch the network, each sandbox is capped + TTL'd).
-SANDBOX_HIT_NS = onboard_use_cases.SANDBOX_HIT_NS
-SANDBOX_RATE_MAX = onboard_use_cases.SANDBOX_RATE_MAX
-SANDBOX_RATE_WINDOW_S = onboard_use_cases.SANDBOX_RATE_WINDOW_S
-
-
-@app.post("/demo/sandbox")
-async def demo_sandbox_mint(request: Request) -> dict:
-    """Mint a login-free, short-lived sandbox TEAM for the landing-page studio: a throwaway org + a
-    starter secret + a starter endpoint + a member token, returned so the browser (and the visitor's
-    terminal) can register more, call them, and export a skill — all with no account. Sandbox calls
-    never touch the network (see call_tool → sandbox.synthesize); rate-limited per IP; GC'd after the
-    TTL. No auth — this is the anonymous front door."""
-    try:
-        return await onboard_use_cases.mint_sandbox(client_ip=_client_ip(request))
-    except onboard_use_cases.SandboxError as exc:
-        raise _sandbox_http_error(exc) from exc
+@app.post("/demo/sandbox", status_code=410)
+async def demo_sandbox_mint() -> dict:
+    """The landing sandbox is closed: no new sandbox is minted."""
+    raise HTTPException(status_code=410, detail=SANDBOX_CLOSED)
 
 
 @app.get("/demo/sandbox/live")
@@ -125,30 +131,6 @@ async def demo_sandbox_live(caller: Caller = Depends(require_member)) -> dict:
         return onboard_use_cases.sandbox_live_facts(caller.org)
     except onboard_use_cases.SandboxError as exc:
         raise _sandbox_http_error(exc) from exc
-
-
-# ---- landing-page live payments feed (the public Stripe demo — see pubfeed.py) --------------
-@app.post("/stripe/webhook", include_in_schema=False)
-async def stripe_webhook(request: Request) -> dict:
-    """Stripe → treg: a signed event from the demo sandbox account. Only `charge.succeeded` feeds
-    the landing ticker; everything else is acknowledged and dropped. 404 when unconfigured, so a
-    deploy without the secret exposes no unauthenticated POST surface."""
-    try:
-        return await onboard_use_cases.accept_stripe_event(
-            payload_factory=request.body,
-            signature=request.headers.get("stripe-signature", ""))
-    except onboard_use_cases.SandboxError as exc:
-        raise _sandbox_http_error(exc) from exc
-
-
-@app.get("/landing/stripe-feed", include_in_schema=False)
-async def landing_stripe_feed() -> StreamingResponse:
-    """SSE stream for the landing demo pane: recent charges, then live ones. Unauthenticated by
-    design — it carries only server-chosen fields (amount/currency/created/id-suffix)."""
-    return StreamingResponse(onboard_use_cases.stripe_feed(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",  # tell the reverse proxy not to buffer the stream
-    })
 
 
 @app.get("/demo/sandbox/skill")
@@ -164,34 +146,8 @@ async def demo_sandbox_skill(
         raise _sandbox_http_error(exc) from exc
 
 
-@app.get("/skills/samples")
-async def skill_samples() -> list[dict]:
-    """The hosted sample skills the landing offers — each with its files (SKILL.md/treg.json/.secret)
-    and the prompt to try. Public: the landing renders these as file packages."""
-    base = get_settings().public_url.rstrip("/")
-    return onboard_use_cases.sample_skills(base=base)
-
-
-@app.get("/skills/{name}/install.sh", include_in_schema=False)
-async def skill_install(name: str, token: str = ""):
-    """`curl -fsSL {BASE}/skills/<name>/install.sh?token=<t> | sh` — writes the skill into
-    ./.claude/skills/<name>/ so Claude Code loads it. The token (if given) is baked into the
-    recipe's calls; without it the recipe reads the token from `treg login`."""
-    if name not in demo_sandbox.SAMPLE_SKILLS:
-        raise HTTPException(status_code=404, detail=f"unknown skill {name!r}")
-    # The token is interpolated into a shell script the visitor runs (`curl … | sh`). Restrict it to a
-    # real token charset so a crafted value can't inject a newline + commands into the generated script.
-    if token and not re.fullmatch(r"[A-Za-z0-9_\-]{1,200}", token):
-        raise HTTPException(status_code=422, detail="invalid token")
-    base = get_settings().public_url.rstrip("/")
-    script = onboard_use_cases.sandbox_install_script(
-        name=name, base=base, token=token or None)
-    return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
-
-
 sandbox_router = app
 
-# The third router preserves the later attachment point after the landing-sandbox routes.
 app = APIRouter()
 
 

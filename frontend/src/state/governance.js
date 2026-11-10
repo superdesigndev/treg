@@ -1,6 +1,5 @@
 
 export default {
-// ---- deny rules ----
     denyWho(uid){ const m=(this.orgMembers||[]).find(x=>x.user_id===uid); return m?m.email:('user '+uid); },
 async addDeny(){ const f=this.denyForm;
       if(!f.host && !f.path_prefix && !f.method){ this.orgErr='Give at least a host, a path, or a method.'; return; }

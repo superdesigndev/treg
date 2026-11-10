@@ -41,6 +41,7 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {fields: "id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.user.profile.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-user
 
@@ -71,6 +72,7 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {fields: "id,caption,media_type,permalink,timestamp,like_count,comments_count", limit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.user.posts.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-user/media
 
@@ -99,6 +101,7 @@ endpoints:
       pathParams: {ig_media_id: "17953960824194864"}
       queryParams: {fields: "id,text,username,timestamp,like_count", limit: 5}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.post.comments.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/comments
 
@@ -130,6 +133,7 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {metric: "reach,accounts_engaged,total_interactions", period: "day", metric_type: "total_value"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.account.insights.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/insights
 
@@ -157,11 +161,13 @@ endpoints:
       pathParams: {ig_media_id: "17953960824194864"}
       queryParams: {metric: "reach,saved,likes,comments,shares"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.media.insights.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights
 
   # --- direct messages (the `manage` capability, scope instagram_manage_messages) -------------
   - id: instagram.x.user-messages
+    added: '2026-07-28'
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
     required_scopes: [instagram_business_basic, instagram_business_manage_messages]
@@ -191,6 +197,7 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/messenger-platform/instagram/features/conversation
 
   - id: instagram.instagram.message.send
+    added: '2026-09-01'
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
     required_scopes: [instagram_business_basic, instagram_business_manage_messages]
@@ -238,6 +245,7 @@ endpoints:
   # as one); the remaining allowance is readable at GET /{ig_user_id}/content_publishing_limit
   # before a batch. Containers expire 24h after creation.
   - id: instagram.instagram.media.container.create
+    added: '2026-07-28'
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
     required_scopes: [instagram_business_basic, instagram_business_content_publish]
@@ -270,6 +278,7 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/instagram-platform/content-publishing
 
   - id: instagram.instagram.media.container.status
+    added: '2026-07-28'
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
     required_scopes: [instagram_business_basic, instagram_business_content_publish]
@@ -294,6 +303,7 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media
 
   - id: instagram.instagram.post.publish
+    added: '2026-07-28'
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
     required_scopes: [instagram_business_basic, instagram_business_content_publish]

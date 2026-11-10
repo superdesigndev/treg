@@ -42,6 +42,7 @@ pricing_url: https://www.spyfu.com/api
 endpoints:
   # --- Domain stats -----------------------------------------------------------------------------
   - id: spyfu.google.domain.overview
+    added: '2026-07-28'
     capability: google.domain.overview
     platform: google
     scope: any_account
@@ -74,6 +75,7 @@ endpoints:
 
   # --- Paid search (PPC) ------------------------------------------------------------------------
   - id: spyfu.google.domain.paid_keywords
+    added: '2026-07-28'
     capability: google.domain.paid_keywords
     platform: google
     scope: any_account
@@ -110,6 +112,7 @@ endpoints:
     docs_url: https://developer.spyfu.com/reference/paidserpapi_getmostsuccessful_get
 
   - id: spyfu.google.domain.ad_history
+    added: '2026-07-28'
     capability: google.domain.ad_history
     platform: google
     scope: any_account
@@ -146,6 +149,7 @@ endpoints:
 
   # --- Organic search (SEO) ---------------------------------------------------------------------
   - id: spyfu.google.domain.ranked_keywords
+    added: '2026-07-28'
     capability: google.domain.ranked_keywords
     platform: google
     scope: any_account
@@ -190,6 +194,7 @@ endpoints:
 
   # --- Competitors (the cheapest family at $0.20 CPM) -------------------------------------------
   - id: spyfu.google.domain.competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
@@ -220,6 +225,7 @@ endpoints:
     docs_url: https://developer.spyfu.com/reference/competitorsapi_gettopseocompetitors_get
 
   - id: spyfu.google.domain.ppc_competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account

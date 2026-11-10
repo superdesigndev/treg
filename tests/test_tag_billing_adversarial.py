@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -202,7 +202,7 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
 
     async with session_maker() as db:
         spent = await ledger.tag_spent_since(
-            db, org_id, "customer", "race", datetime(2000, 1, 1, tzinfo=timezone.utc))
+            db, org_id, "customer", "race", datetime(2000, 1, 1))
         rows = (await db.execute(select(TagSpend).where(
             TagSpend.org_id == org_id,
             TagSpend.dim == "customer",

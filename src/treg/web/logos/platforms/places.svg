@@ -1,0 +1,7 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Places">
+  <!-- Generic map pin: this platform is local places from any source, which has no brand of its own. -->
+  <g fill="none" stroke="#3E7CB1" stroke-width="1.7">
+    <path d="M12 21.5s-6.8-6.6-6.8-11.6a6.8 6.8 0 0 1 13.6 0c0 5-6.8 11.6-6.8 11.6z"/>
+    <circle cx="12" cy="9.9" r="2.6"/>
+  </g>
+</svg>

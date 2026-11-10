@@ -6,7 +6,7 @@ from ..config import get_settings
 
 
 def _is_https(request: Request) -> bool:
-    # behind a reverse proxy (Render), TLS is terminated upstream and forwarded as http + X-Forwarded-Proto.
+    # behind a reverse proxy, TLS is terminated upstream and forwarded as http + X-Forwarded-Proto.
     return request.headers.get("x-forwarded-proto", "").lower() == "https" or request.url.scheme == "https"
 
 
@@ -34,8 +34,7 @@ def _take_oauth_return(request: Request) -> str | None:
     "redirect me anywhere after login" primitive, which is a phishing aid rather than a feature.
     """
     # Starlette quotes a cookie value containing separators, and not every client strips the quotes
-    # back off. Tolerating them here costs nothing; assuming they are absent cost a failing test and
-    # would have cost a silently-dropped authorization in production.
+    # back off. Assuming they are absent would silently drop an authorization.
     target = (request.cookies.get(OAUTH_RETURN_COOKIE) or "").strip('"')
     return target if target.startswith("/oauth/authorize?") else None
 
@@ -54,9 +53,8 @@ def _same_origin(request: Request) -> bool:
         return True
     # `Origin: null` is a browser telling us the submitting document has an OPAQUE origin, which it
     # does after certain redirect chains — a consent form reached by way of a sign-in bounce through
-    # GitHub, for instance. It is not evidence of a cross-site request, and treating it as one made
-    # the OAuth consent screen fail intermittently: refused on the attempt that went through
-    # sign-in, accepted on the retry that did not.
+    # GitHub, for instance. It is not evidence of a cross-site request; treating it as one refuses
+    # the OAuth consent screen whenever it was reached through sign-in.
     #
     # `Sec-Fetch-Site` is the right corroboration. It is set by the browser and cannot be written by
     # script, so a page on another site cannot forge `same-origin` — which is exactly what Origin was

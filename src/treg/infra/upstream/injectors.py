@@ -96,7 +96,6 @@ def _token_from_json(blob: str, field: str) -> str:
     return str(val)
 
 
-# ---- string-value shapes ------------------------------------------------------------------
 @register("env")
 def env_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
                  binding: dict, secret: str) -> None:
@@ -112,7 +111,6 @@ def cli_auth_injector(headers: dict[str, str], params: list, json_body: dict[str
     _place(headers, params, json_body, binding, secret)
 
 
-# ---- JSON-blob shapes ---------------------------------------------------------------------
 @register("secret_file")
 def secret_file_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
                          binding: dict, secret: str) -> None:

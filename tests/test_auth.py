@@ -9,9 +9,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI
@@ -26,7 +27,7 @@ from treg.infra.db import reset_db, session_maker
 from treg.models import Membership, Org, User
 
 
-def _github_app() -> FastAPI:
+def _github_app(email: str = "octo@example.com") -> FastAPI:
     g = FastAPI()
 
     @g.post("/login/oauth/access_token")
@@ -35,11 +36,11 @@ def _github_app() -> FastAPI:
 
     @g.get("/user")
     async def user() -> dict:
-        return {"login": "octo", "email": None}  # force the /user/emails path
+        return {"login": "octo", "email": None, "created_at": "2020-01-01T00:00:00Z"}  # email: force /user/emails
 
     @g.get("/user/emails")
     async def emails() -> list:
-        return [{"email": "octo@example.com", "primary": True, "verified": True}]
+        return [{"email": email, "primary": True, "verified": True}]
 
     return g
 
@@ -181,6 +182,68 @@ async def test_bad_state_rejected(login):
     await c.get(f"/auth/{provider}", follow_redirects=False)
     cb = await c.get(f"/auth/{provider}/callback?code=abc&state=WRONG", follow_redirects=False)
     assert cb.status_code == 400
+
+
+async def test_configured_alias_keeps_social_login_on_its_own_origin(login, monkeypatch):
+    provider, client = login
+    monkeypatch.setenv("TREG_PUBLIC_HOST_ALIASES", '["alias.example"]')
+    get_settings.cache_clear()
+    client.base_url = "https://alias.example"
+    response = await client.get(f"/auth/{provider}")
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["redirect_uri"] == [f"https://alias.example/auth/{provider}/callback"]
+    state = client.cookies.get("treg_oauth_state")
+    callback = await client.get(f"/auth/{provider}/callback", params={"code": "abc", "state": state})
+    assert callback.status_code == 302 and callback.headers["location"] == "/app"
+    assert (await client.get("/auth/me")).status_code == 200
+
+
+async def test_cli_social_callback_returns_to_picker_without_issuing_token(login):
+    provider, client = login
+    started = (await client.post("/auth/cli/start")).json()
+    await client.get(f"/auth/{provider}", params={"cli": started["login_id"]})
+    state = client.cookies.get("treg_oauth_state")
+    callback = await client.get(f"/auth/{provider}/callback", params={"code": "abc", "state": state})
+    assert callback.status_code == 302
+    assert callback.headers["location"] == f"/login?cli={started['login_id']}"
+    assert client.cookies.get(sess.COOKIE)
+    assert (await client.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json() == {
+        "status": "pending",
+    }
+    assert (await client.post("/auth/cli/approve", json=started)).status_code == 200
+    result = (await client.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json()
+    assert sess.read_identity_claims(result["token"])["scope"] == sess.BOOTSTRAP_SCOPE
+
+
+async def test_cli_social_callback_storage_failure_uses_the_browser_error_page(login, monkeypatch, caplog):
+    from types import SimpleNamespace
+    from sqlalchemy.exc import OperationalError
+    from treg.application import auth
+
+    provider, client = login
+    started = (await client.post("/auth/cli/start")).json()
+    await client.get(f"/auth/{provider}", params={"cli": started["login_id"]})
+    state = client.cookies.get("treg_oauth_state")
+    consume = auth._consume_cli_state
+
+    def unavailable():
+        raise OperationalError("synthetic", {"state": "private-test-value"}, Exception("storage down"))
+
+    async def fail_consume(state):
+        with monkeypatch.context() as patch:
+            patch.setattr(auth, "database", SimpleNamespace(session_maker=unavailable))
+            return await consume(state)
+
+    monkeypatch.setattr(auth, "_consume_cli_state", fail_consume)
+    response = await client.get(f"/auth/{provider}/callback", params={"code": "abc", "state": state})
+    assert response.status_code == 502  # the existing callback_failed page/status
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Login failed" in response.text and "Please try again" in response.text
+    assert "private-test-value" not in response.text and "private-test-value" not in caplog.text
+    assert not client.cookies.get(sess.COOKIE)
+    assert (await client.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json() == {
+        "status": "pending",
+    }
 
 
 async def test_no_session_no_token_is_401(gc):
@@ -349,7 +412,7 @@ async def test_oauth_callback_carries_arena_acquisition_and_counts_signup_once(g
         assert r.status_code == 302 and r.headers["location"] == "/enrich-arena"
     signups = [a for a in events if a[1] == "signup_completed"]
     assert len(signups) == 1
-    assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena"}
+    assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena", "client": "browser"}
 
 
 async def test_oauth_arena_return_cookie_encrypts_and_restores_query(gc):
@@ -367,8 +430,176 @@ async def test_oauth_arena_return_cookie_encrypts_and_restores_query(gc):
                          if h.startswith("treg_arena_return="))
     assert "HttpOnly" in return_header and "SameSite=lax" in return_header
 
+
     state = gc.cookies.get("treg_oauth_state")
     response = await gc.get("/auth/github/callback", params={"code": "test", "state": state})
     assert response.status_code == 302
     assert response.headers["location"] == target
     assert gc.cookies.get("treg_arena_return") is None
+
+
+def test_arena_return_target_accepts_web_arena_only_on_local_path():
+    from treg.routers.auth import _arena_return_target
+    assert _arena_return_target("/web-arena") == "/web-arena"
+    assert _arena_return_target("https://other.example/web-arena") == ""
+
+
+# ---- Turnstile on the social doors ---------------------------------------------------------------
+_EMAILS = {"github": "octo@example.com", "google": "guser@example.com"}
+
+
+@pytest.fixture
+def social_widget(monkeypatch):
+    """Turnstile on, in enforce, with siteverify answering `answer` (a pass for social_start)."""
+    from treg.infra import turnstile
+    settings = get_settings()
+    monkeypatch.setattr(settings, "turnstile_site_key", "1x00000000000000000000AA")
+    monkeypatch.setattr(settings, "turnstile_secret", "test-secret")
+    monkeypatch.setattr(settings, "turnstile_hostnames", "treg.example")
+    monkeypatch.setattr(settings, "turnstile_mode", "enforce")
+    state = {"answer": {"success": True, "action": "social_start", "hostname": "treg.example"}, "forms": []}
+
+    async def siteverify(form):
+        state["forms"].append(form)
+        return state["answer"]
+
+    monkeypatch.setattr(turnstile, "siteverify", siteverify)
+    return state
+
+
+async def _through_provider(client, provider, **params):
+    await client.get(f"/auth/{provider}", params=params)
+    state = client.cookies.get("treg_oauth_state")
+    return await client.get(f"/auth/{provider}/callback", params={"code": "abc", "state": state})
+
+
+async def _social_sign_up(client, provider, token, **params):
+    """Provider, browser check, team: returns (team balance, the response that signed in)."""
+    callback = await _through_provider(client, provider, **params)
+    assert callback.status_code == 303 and callback.headers["location"] == "/auth/social/check"
+    assert client.cookies.get(sess.COOKIE) is None
+    page = await client.get("/auth/social/check")
+    assert page.status_code == 200 and "tregCaptcha.token('social_start')" in page.text
+    finished = await client.post("/auth/social/check", data={"captcha_token": token})
+    assert finished.status_code == 302 and client.cookies.get(sess.COOKIE)
+    team = await client.post("/orgs", json={"name": "social-team"})
+    assert team.status_code == 200, team.text
+    async with session_maker() as s:
+        return (await s.get(Org, team.json()["org_id"])).balance_micro, finished
+
+
+async def test_a_new_social_address_passes_the_check_with_credit(login, social_widget):
+    provider, client = login
+    balance, finished = await _social_sign_up(client, provider, "real-token")
+    assert finished.headers["location"] == "/app"
+    assert balance == get_settings().promo_grant_micro > 0
+    assert [f["response"] for f in social_widget["forms"]] == ["real-token"]
+
+
+@pytest.mark.parametrize("token,answer", [
+    ("", None),
+    ("!blocked", None),
+    ("forged", {"success": False, "error-codes": ["invalid-input-response"]}),
+    ("wrong-action", {"success": True, "action": "email_start", "hostname": "treg.example"}),
+])
+async def test_a_failed_social_check_signs_in_without_credit(login, social_widget, token, answer):
+    provider, client = login
+    if answer is not None:
+        social_widget["answer"] = answer
+    balance, finished = await _social_sign_up(client, provider, token)
+    assert finished.headers["location"] == "/app"
+    assert balance == 0
+
+
+async def test_observe_keeps_social_credit_for_a_failed_check(login, social_widget, monkeypatch):
+    provider, client = login
+    monkeypatch.setattr(get_settings(), "turnstile_mode", "observe")
+    balance, _ = await _social_sign_up(client, provider, "")
+    assert balance == get_settings().promo_grant_micro
+
+
+async def test_social_check_off_signs_a_new_address_in_with_credit(login, social_widget, monkeypatch, caplog):
+    provider, client = login
+    monkeypatch.setattr(get_settings(), "turnstile_social", False)
+    caplog.set_level("INFO", logger="treg")
+    callback = await _through_provider(client, provider)
+    assert callback.status_code == 302 and callback.headers["location"] == "/app"
+    team = await client.post("/orgs", json={"name": "social-team"})
+    async with session_maker() as s:
+        assert (await s.get(Org, team.json()["org_id"])).balance_micro == get_settings().promo_grant_micro
+    assert social_widget["forms"] == []
+    assert any(f"event=social_signup door={provider} captcha=- promo=True" in r.getMessage()
+               for r in caplog.records)
+
+
+async def test_a_verified_user_signs_in_without_the_check(login, social_widget):
+    provider, client = login
+    async with session_maker() as s:
+        s.add(User(email=_EMAILS[provider], email_verified_at=sess_now()))
+        await s.commit()
+    callback = await _through_provider(client, provider)
+    assert callback.status_code == 302 and callback.headers["location"] == "/app"
+    assert client.cookies.get(sess.COOKIE) and social_widget["forms"] == []
+
+
+@pytest.mark.parametrize("token,funded", [("real-token", True), ("", False)])
+async def test_an_unproven_user_gets_credit_only_through_a_passed_check(login, social_widget, token, funded):
+    provider, client = login
+    async with session_maker() as s:
+        s.add(User(email=_EMAILS[provider]))  # as the invite-code door leaves one
+        await s.commit()
+    balance, _ = await _social_sign_up(client, provider, token)
+    assert balance == (get_settings().promo_grant_micro if funded else 0)
+
+
+async def test_the_social_check_carries_a_cli_handshake(login, social_widget):
+    provider, client = login
+    started = (await client.post("/auth/cli/start")).json()
+    _, finished = await _social_sign_up(client, provider, "real-token", cli=started["login_id"])
+    assert finished.headers["location"] == f"/login?cli={started['login_id']}"
+
+
+async def test_the_check_runs_once(login, social_widget):
+    provider, client = login
+    await _social_sign_up(client, provider, "real-token")
+    back = await client.get("/auth/social/check")
+    assert back.status_code == 302 and back.headers["location"] == "/app"
+    again = await client.post("/auth/social/check", data={"captcha_token": "real-token"})
+    assert again.status_code == 400 and "Sign-in expired" in again.text
+    assert len(social_widget["forms"]) == 1
+
+
+async def test_the_social_rate_window_bounds_siteverify_calls(gc, social_widget, monkeypatch):
+    from treg.application import auth
+    monkeypatch.setattr(auth, "SOCIAL_CHECK_MAX_PER_IP", 2)
+    balances = []
+    for n in range(3):
+        await app.state.http.aclose()
+        app.state.http = AsyncClient(transport=ASGITransport(app=_github_app(f"new{n}@example.com")),
+                                     base_url="http://gh")
+        gc.cookies.clear()
+        balances.append((await _social_sign_up(gc, "github", "real-token"))[0])
+    assert len(social_widget["forms"]) == 2
+    assert balances == [get_settings().promo_grant_micro] * 2 + [0]
+
+
+async def test_a_new_social_user_logs_its_check_and_github_account_age(gc, social_widget, caplog):
+    caplog.set_level("INFO", logger="treg")
+    await _social_sign_up(gc, "github", "real-token")
+    await _through_provider(gc, "github")  # a verified user logs nothing
+    lines = [r.getMessage() for r in caplog.records if "event=social_signup" in r.getMessage()]
+    assert len(lines) == 1
+    assert re.fullmatch(r"event=social_signup door=github captcha=pass promo=True account_age_days=\d{4}", lines[0])
+
+
+def test_age_days_reads_the_provider_timestamp():
+    from datetime import datetime, timedelta, timezone
+    from treg.application.auth import _age_days
+    born = (datetime.now(timezone.utc) - timedelta(days=40, hours=1)).isoformat().replace("+00:00", "Z")
+    assert _age_days(born) == "40"
+    assert _age_days("") == "-" and _age_days("2026-01-01T00:00:00") == "-"
+
+
+def sess_now():
+    from treg.timeutil import utcnow_naive
+    return utcnow_naive()

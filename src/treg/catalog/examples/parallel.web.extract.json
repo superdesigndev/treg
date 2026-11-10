@@ -1,0 +1,30 @@
+{
+  "extract_id": "extract_d168aab96c82bb6f4354534e742f59fe",
+  "results": [
+    {
+      "url": "https://example.com",
+      "title": "Example Domain",
+      "publish_date": null,
+      "excerpts": [
+        "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\n\n[Learn more](https://iana.org/help/example-domains)"
+      ],
+      "full_content": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\n\n[Learn more](https://iana.org/help/example-domains)"
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    {
+      "type": "warning",
+      "message": "Neither objective nor search_queries were provided, provide at least one to increase the relevance of excerpts.",
+      "detail": null
+    }
+  ],
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ],
+  "metadata": null,
+  "session_id": "session_d168aab96c82bb6f4354534e742f59fe"
+}

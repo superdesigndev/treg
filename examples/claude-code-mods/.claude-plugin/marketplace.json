@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "treg-mods",
+  "description": "Claude Code mods built on treg",
+  "owner": {
+    "name": "Superdesign dev, Inc.",
+    "url": "https://treg.to"
+  },
+  "plugins": [
+    {
+      "name": "jev-memory",
+      "source": "./jev-memory",
+      "category": "productivity",
+      "description": "A memory for Claude Code: Jev judges each prompt after the turn and saves your lasting preferences.",
+      "tags": ["memory", "jev", "mods"]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -9,10 +10,12 @@ from functools import cache
 from importlib import import_module
 
 from sqlalchemy import bindparam, event, inspect, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from ..config import get_settings
+from . import money_trace
 
 # `expire_on_commit=False` so objects stay usable after commit without a reload round-trip.
 # On a real (non-SQLite) DB, add production pool hygiene: pre-ping to drop dead connections
@@ -24,25 +27,18 @@ _is_sqlite = _db_url.startswith("sqlite")
 
 
 # THREE PRIMARY POOLS, ONE DATABASE — a bulkhead. Each class of work can exhaust only its own slots, so
-# admin pages and background writers can no longer starve the API. Sizing is deliberately lopsided:
+# admin pages and background writers cannot starve the API. Sizing is deliberately lopsided:
 # the API is the product, the other two are not. Overflow is 0 on both minor pools because overflow
 # is the escape hatch a bulkhead must not have. A pool, not a semaphore: a semaphore bounds only the
 # module that remembers to take one, a pool bounds every module routed to it.
 #
-# `background` is sized from `BACKGROUND_CONSUMERS` below, NOT from a number someone picked. The
-# first cut of this sized it as `audit(4) + archive(4)` and shipped a test asserting exactly that
-# sum — which passed while four more consumers drew on the same slots, one of them (`adsconv`)
-# holding one across two Google round trips. A guard that names a property it does not check is
-# worse than no guard, so the list is the source of truth and the test walks it.
+# `background` is sized from `BACKGROUND_CONSUMERS` below.
 #
 # `admin` is 3: one slot for a staff page left polling, one for a human using the dashboard, one
-# spare. Any handler that opens a SECOND session eats two, which is how `/admin/errors` ate the
-# whole pool when this was 2 — its retention sweep then moved off the request path entirely, to the
-# `treg-worker admin purge-evidence` cron (application/evidence_retention.py).
+# spare. Any handler that opens a SECOND session eats two.
 #
-# Sizes are PER PROCESS, the web service runs two uvicorn workers, and a rolling deploy runs two
-# instances, so `per_process × 2 × 2` is what must stay under the database plan's 103 ceiling —
-# see `connection_budget` below and ops/deploy.md.
+# Sizes are PER PROCESS: per-process size times workers times instances (a rolling deploy runs
+# old and new at once) must stay under the database's connection ceiling. See `connection_budget`.
 #
 # These numbers can only be validated in production: too small and real traffic gets 503s, too large
 # and the bulkhead is decorative, and no test can tell you which. `TREG_DB_POOL_OVERRIDES` makes a
@@ -53,7 +49,7 @@ _is_sqlite = _db_url.startswith("sqlite")
 BACKGROUND_CONSUMERS: dict[str, int] = {
     "audit._flush": 1,            # one batching writer per process (audit._MAX_CONCURRENT_WRITES)
     "archive._store/_touch": 2,   # bounded by archive._MAX_CONCURRENT_WRITES (one shared semaphore)
-    "adsconv.worker": 1,          # holds its slot across two Google round trips — see follow-ups
+    "adsconv.worker": 1,          # holds its slot across two Google round trips
     "archive.prune_worker": 1,    # holds one across a whole sweep
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
@@ -69,9 +65,7 @@ POOL_SPECS: dict[str, dict[str, int]] = {
 }
 
 # A pool of 0 or a negative overflow means UNLIMITED to SQLAlchemy, not "off" — `pool_size=0`
-# silently sets `_max_overflow=-1`. Someone typing `-1` mid-incident to mean "no overflow" would
-# uncap connections against the ~100 ceiling: the 2026-08-15 outage, entered through the knob added
-# to prevent outages. So the bounds are enforced here rather than trusted.
+# silently sets `_max_overflow=-1`. So the bounds are enforced here rather than trusted.
 _OVERRIDE_FLOORS = {"pool_size": 1, "max_overflow": 0}
 
 
@@ -156,6 +150,7 @@ def _new_engine(name: str, url: str | None = None):
         # Use a replica/read-only database role as the access boundary, not this session default.
         kwargs["connect_args"] = {"server_settings": {"default_transaction_read_only": "on"}}
     engine = create_async_engine(db_url, **kwargs)
+    money_trace.install_engine(engine.sync_engine, pool_name=name)
     if name == "read" and is_sqlite:
         # Keep this on the dedicated reader even when both URLs name the same SQLite file.
         # Applying it to the shared primary engine would also disable application writes.
@@ -378,7 +373,92 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 async def get_admin_session() -> AsyncIterator[AsyncSession]:
     """The `/admin/*` dependency. A separate callable, not a flag, because FastAPI caches a
-    dependency per request by identity: the admin gate and the handler it guards must name the SAME
-    one, or one admin request checks out a connection from each of two pools."""
+    dependency per request by identity. Primary handlers share it with the admin gate; opted-in
+    reports use `get_admin_read_session` after the gate releases its primary transaction."""
     async with admin_session_maker() as session:
         yield session
+
+
+_ADMIN_READ_STATEMENT_TIMEOUT_MS = 3_000
+
+
+async def get_admin_read_session() -> AsyncIterator[AsyncSession]:
+    """Opt-in admin reports: configured reader, otherwise the original admin primary pool.
+
+    Never use the general reader's unconfigured API-pool fallback, or retry a failed replica on
+    the primary. Authorization must finish on `get_admin_session` before this dependency runs.
+    Each statement is capped at `_ADMIN_READ_STATEMENT_TIMEOUT_MS`, answered as `ReportBusy`, so a
+    polled admin report cannot hold the read pool the dashboard reports share.
+    """
+    maker = read_session_maker if _read_db_url else admin_session_maker
+    async with maker() as session:
+        if session.get_bind().dialect.name == "postgresql":
+            await session.execute(text(
+                f"SET LOCAL statement_timeout = {_ADMIN_READ_STATEMENT_TIMEOUT_MS}"))
+        try:
+            yield session
+        except DBAPIError as exc:
+            if _canceled_by_timeout(exc):
+                raise ReportBusy("timeout") from exc
+            raise
+
+
+_REPORT_SLOTS = 2
+_REPORT_WAIT_S = 1.0
+_REPORT_STATEMENT_TIMEOUT_MS = 15_000
+_REPORT_DEADLINE_S = 15.0
+_QUERY_CANCELED = "57014"
+_report_gate: tuple[object, asyncio.Semaphore] | None = None
+
+
+class ReportBusy(Exception):
+    """A dashboard report was refused before checkout, or cut off by its timeout or deadline."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _report_slots() -> asyncio.Semaphore:
+    global _report_gate
+    loop = asyncio.get_running_loop()
+    if _report_gate is None or _report_gate[0] is not loop:
+        _report_gate = (loop, asyncio.Semaphore(_REPORT_SLOTS))
+    return _report_gate[1]
+
+
+def _canceled_by_timeout(exc: BaseException) -> bool:
+    return (isinstance(exc, DBAPIError)
+            and getattr(exc.orig, "sqlstate", None) == _QUERY_CANCELED)
+
+
+async def get_report_session() -> AsyncIterator[AsyncSession]:
+    """Dashboard reports: the configured reader, otherwise the API pool, behind a per-process gate.
+
+    Authorization must finish on `get_session` first; `require_member` commits, so that session
+    holds no connection while the report runs. A full gate, a statement timeout, or the report as a
+    whole passing `_REPORT_DEADLINE_S` raises `ReportBusy` rather than waiting on, or pinning, a
+    pooled connection. The deadline covers the handler: FastAPI runs a dependency's body and the
+    endpoint in one task."""
+    slots = _report_slots()
+    try:
+        async with asyncio.timeout(_REPORT_WAIT_S):
+            await slots.acquire()
+    except TimeoutError as exc:
+        raise ReportBusy("busy") from exc
+    try:
+        async with read_session_maker() as session:
+            try:
+                async with asyncio.timeout(_REPORT_DEADLINE_S):
+                    if session.get_bind().dialect.name == "postgresql":
+                        await session.execute(text(
+                            f"SET LOCAL statement_timeout = {_REPORT_STATEMENT_TIMEOUT_MS}"))
+                    yield session
+            except TimeoutError as exc:
+                raise ReportBusy("timeout") from exc
+            except DBAPIError as exc:
+                if _canceled_by_timeout(exc):
+                    raise ReportBusy("timeout") from exc
+                raise
+    finally:
+        slots.release()

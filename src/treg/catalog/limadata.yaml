@@ -52,6 +52,7 @@ endpoints:
     platform_blocked: Variable input and optional-result charges cannot be settled safely from the generic response contract; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.enrich.json
 
   - id: limadata.companies.enrich
@@ -83,6 +84,7 @@ endpoints:
       note: One credit on a successful response; HTTP errors are not charged.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.companies.enrich.json
 
   - id: limadata.database.autocomplete
@@ -107,6 +109,7 @@ endpoints:
       note: The docs omit a price. A successful live request consumed one credit.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.database.autocomplete.json
 
   - id: limadata.companies.count
@@ -138,6 +141,7 @@ endpoints:
       note: 0.1 credit for a successful request; HTTP errors are not charged.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.companies.count.json
 
   - id: limadata.people.count
@@ -155,6 +159,7 @@ endpoints:
     platform_blocked: LimaData's shared account does not have People Database API access; connect your own LimaData key on a plan that includes People Database access.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.count.json
 
   - id: limadata.companies.search
@@ -189,6 +194,7 @@ endpoints:
     platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.companies.search.json
 
   - id: limadata.people.search
@@ -206,6 +212,7 @@ endpoints:
     platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.search.json
 
   - id: limadata.people.employees.search
@@ -231,6 +238,7 @@ endpoints:
     platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.employees.search.json
 
   - id: limadata.people.audience.resolve
@@ -263,6 +271,7 @@ endpoints:
       note: Three credits only when a profile is found; a 404 miss is free.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.audience.resolve.json
 
   - id: limadata.people.audience.email-hash
@@ -284,6 +293,7 @@ endpoints:
     cost: *one_credit_success
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.audience.email-hash.json
 
   - id: limadata.people.email.find.personal
@@ -317,7 +327,11 @@ endpoints:
       note: Five credits only when a result is found; a 404 miss is free.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.email.find.personal.json
+    miss:
+      status: 404
+      means: "no personal email found for this identifier — a normal outcome (and free), not an API failure"
 
   - id: limadata.people.email.verify
     capability: people.email.verify
@@ -326,7 +340,7 @@ endpoints:
     domain: contacts
     method: POST
     path: /api/v1/find/email_verify
-    name: Verify an email
+    name: Verify email — catch-all, disposable and role flags
     summary: Check an email address for deliverability, risk, and mailbox evidence.
     input:
       bodyType: json
@@ -339,6 +353,7 @@ endpoints:
       note: 0.3 credit for any successful verification outcome; HTTP errors are not charged.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.email.verify.json
 
   - id: limadata.people.email.find.name
@@ -362,6 +377,7 @@ endpoints:
       means: "no email found for this person — a normal outcome (and free), not an API failure"
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.email.find.name.json
 
   - id: limadata.people.email.find.linkedin
@@ -384,6 +400,7 @@ endpoints:
       means: "no email found for this LinkedIn profile — a normal outcome (and free), not an API failure"
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.email.find.linkedin.json
 
   - id: limadata.companies.linkedin.find
@@ -406,6 +423,7 @@ endpoints:
       note: The docs omit a price. A successful live request reported one credit.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.companies.linkedin.find.json
 
   - id: limadata.people.phone.find
@@ -442,6 +460,7 @@ endpoints:
       means: "no phone number found for this person — a normal outcome (and free), not an API failure"
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.phone.find.json
 
   - id: limadata.people.identity.resolve
@@ -476,6 +495,7 @@ endpoints:
     platform_blocked: LimaData bills 404 misses, while the generic platform settlement releases holds on upstream errors; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.identity.resolve.json
 
   - id: limadata.people.identity.from-email
@@ -497,6 +517,7 @@ endpoints:
     cost: *five_credit_hit
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.people.identity.from-email.json
 
   - id: limadata.web.extract
@@ -530,6 +551,7 @@ endpoints:
     platform_blocked: URL count and JavaScript rendering change the charge; connect your own LimaData key.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.web.extract.json
 
   - id: limadata.web.research
@@ -553,6 +575,7 @@ endpoints:
       note: 0.3 credit per successful search.
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.web.research.json
 
   - id: limadata.google.serp.organic
@@ -573,4 +596,5 @@ endpoints:
     cost: *tenth_credit_success
     docs_url: https://api.limadata.com/docs/basic_v2
     verified: '2026-09-17'
+    added: '2026-09-17'
     example_response: examples/limadata.google.serp.organic.json

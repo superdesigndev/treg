@@ -11,15 +11,15 @@ endpoint's or an org's entire history to answer a bounded time-window question. 
 observation refresh and per-member daily counts both become tight range scans with these pairs.
 
 This is the fix for the API-pool saturation, not a pool size: the three pools bulkhead CONNECTIONS,
-not the single database's CPU, so a scan of this table makes every ordinary 3 ms request query queue
+not the single database's CPU, so a scan of this table makes every ordinary request query queue
 behind it until `pool_timeout` fires and callers get `503 treg_saturated`.
 
-**Why this one raises `lock_timeout`, and why that is not the 2026-08-15 rule being broken.** The
+**Why this one raises `lock_timeout`, and why that is not the `env.py` lock rule being broken.** The
 first attempt died on `LockNotAvailableError: canceling statement due to lock timeout` in 5 s — not
 against traffic, which cannot block it, but almost certainly against autovacuum, which runs
 constantly on a table this size and takes the SAME `SHARE UPDATE EXCLUSIVE` lock. The 5 s floor in
 `alembic/env.py` exists because an **ALTER** takes `ACCESS EXCLUSIVE`: it queues behind live traffic
-and then every new query queues behind IT, which is exactly how the 2026-08-15 outage wedged the
+and then every new query queues behind IT, which can wedge the
 database. `CREATE INDEX CONCURRENTLY` is not in that class — its lock conflicts with neither
 `SELECT` nor `INSERT`/`UPDATE`/`DELETE`, it blocks no reads or writes while it builds, and a
 statement WAITING for it holds nothing and blocks nobody. Waiting longer here costs a slower
@@ -51,7 +51,7 @@ _INDEXES = (
     ("ix_callrecord_org_id_created_at", ["org_id", "created_at"]),
 )
 
-# Long enough to outlast an autovacuum pass on a 1.7 GB table; see the docstring for why waiting
+# Long enough to outlast an autovacuum pass on a large table; see the docstring for why waiting
 # on THIS lock is safe. `env.py`'s values are restored before the autocommit block ends.
 _LOCK_TIMEOUT = "180s"
 _STATEMENT_TIMEOUT = "600s"

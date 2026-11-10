@@ -17,6 +17,7 @@ import time
 import httpx
 
 from ..config import get_settings
+from .house_calls import HouseCalls
 
 KV_NS, KV_KEY = "jev", "xboost"
 KV_TTL_S = 400 * 86400          # the run is replaced daily; the TTL only sweeps a dead deployment
@@ -26,7 +27,6 @@ JEV_URL = "https://ai-gateway.vercel.sh/v4/ai/evaluation-model"
 DEFAULT_TOPICS = ["introducing", "launching today", "now available", "we just shipped", "open source",
                   "AI agent", "AI agents", "Claude Code", "Codex", "Cursor", "MCP server", "developer tool", "API"]
 
-# ---------------------------------------------------------------------------------- the rubric
 QUESTIONS = {
     "relevance": {
         "type": "choice",
@@ -132,9 +132,9 @@ QUESTIONS = {
 }
 
 # A reply is "generic" when nothing is left once mentions, stock praise, the usual emoji and
-# punctuation are taken out. Done by removal, not by one anchored pattern: the old
-# `^(@\w+\s*)*((great|…|\s)+)$` nested a repeat over overlapping alternatives and backtracked
-# exponentially on a long run that ALMOST matched, and this text is a stranger's reply on X.
+# punctuation are taken out. Done by removal, not by one anchored pattern: a nested repeat over
+# overlapping alternatives backtracks exponentially on a long near-match, and this text is a
+# stranger's reply on X.
 _GENERIC_WORDS = re.compile(
     r"@\w+|\b(?:great|nice|amazing|awesome|love|wow|congrats|congratulations|this|so true|facts|fire)\b", re.I)
 _GENERIC_NOISE = str.maketrans("", "", "🔥👏💯🙌❤\ufe0f!. \t\r\n")
@@ -155,7 +155,6 @@ def configured() -> bool:
     return bool(s.jev_treg_token and s.ai_gateway_api_key)
 
 
-# --------------------------------------------------------------------------------- pure helpers
 def forensics(p: dict, profile: dict | None, replies: list[dict]) -> dict:
     """Per-view engagement rates, views per follower and the shape of the first replies."""
     v = max(p.get("viewCount") or 0, 1)
@@ -229,16 +228,19 @@ def _trim(p: dict, profile: dict, replies: list[dict], f: dict, answers: dict, u
     }
 
 
-# ---------------------------------------------------------------------------------- the clients
 class _Treg:
     """treg's public /call/ API as a visitor's agent sees it: routed endpoint, JSON body, real bill."""
 
     def __init__(self, http: httpx.AsyncClient):
-        s = get_settings()
-        self.http, self.base = http, s.public_url.rstrip("/")
-        self.headers = {"X-Treg-Token": s.jev_treg_token, "X-Treg-Client": "jev-xboost"}
-        self.cost_usd = 0.0
-        self.calls: dict[str, int] = {}
+        self.house = HouseCalls(http, get_settings().jev_treg_token, "jev-xboost")
+
+    @property
+    def cost_usd(self) -> float:
+        return self.house.cost_micro / 1e6
+
+    @property
+    def calls(self) -> dict[str, int]:
+        return self.house.calls
 
     async def call(self, endpoint: str, body: dict, kind: str, **headers: str) -> dict:
         return await self._request("POST", endpoint, kind, json=body, headers=headers)
@@ -248,22 +250,14 @@ class _Treg:
 
     async def _request(self, method: str, endpoint: str, kind: str, *, json: dict | None = None,
                        params: dict | None = None, headers: dict | None = None) -> dict:
-        self.calls[kind] = self.calls.get(kind, 0) + 1
-        try:
-            r = await self.http.request(method, f"{self.base}/call/{endpoint}", json=json, params=params,
-                                        headers={**self.headers, **(headers or {})}, timeout=60)
-        except httpx.HTTPError as exc:
-            raise XboostError(f"treg call failed: {type(exc).__name__}") from exc
-        self.cost_usd += int(r.headers.get("X-Treg-Cost-Micro") or 0) / 1e6
-        if r.status_code >= 400:
-            if r.status_code in (404, 502):       # a routed miss: every child said no
+        a = await self.house.request(method, endpoint, kind, json=json, params=params, headers=headers)
+        if a.status == 0:
+            raise XboostError(f"treg call failed: {a.error}")
+        if a.status >= 400:
+            if a.status in (404, 502):       # a routed miss: every child said no
                 return {}
-            raise XboostError(f"treg answered HTTP {r.status_code} on {endpoint}")
-        try:
-            d = r.json()
-        except ValueError:
-            return {}
-        return d if isinstance(d, dict) else {"output": d}
+            raise XboostError(f"treg answered HTTP {a.status} on {endpoint}")
+        return a.body
 
 
 async def _jev(http: httpx.AsyncClient, state: dict) -> tuple[dict, dict]:
@@ -328,7 +322,6 @@ async def _judge(http: httpx.AsyncClient, treg: _Treg, p: dict, topic: str | Non
     return _trim(p, profile, replies, f, answers, usage, topic)
 
 
-# ---------------------------------------------------------------------------------- entry points
 async def run_daily(http: httpx.AsyncClient, *, topics: list[str] | None = None, max_posts: int = 60,
                     min_likes: int = 150) -> dict:
     """The scheduled run: search each phrase for posts under 24h old, keep the top by views, judge each."""

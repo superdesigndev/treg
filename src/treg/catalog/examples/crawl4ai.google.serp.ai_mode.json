@@ -1,0 +1,14 @@
+{
+  "answer": {
+    "source": "google_ai_mode",
+    "text": "Stripe was founded by the Irish brothers Patrick Collison and John Collison in 2010. About the Founders Patrick Collison: Co-founder and Chief Executive Officer (CEO) of Stripe. He attended the Massachusetts Institute of Technology (MIT) before dropping out. John Collison: Co-founder and President of Stripe. He attended Harvard University before dropping out. Key Facts Previous Venture: The brothers sold their first startup, Auctomatic, for $5 million as teenagers in 2008. Founding"
+  },
+  "answered": true,
+  "cached": true,
+  "experimental": true,
+  "ms": 0,
+  "query": "who founded stripe",
+  "usage": {
+    "units": 1
+  }
+}

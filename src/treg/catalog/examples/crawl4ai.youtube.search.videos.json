@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-search: 'rust programming' · 20 videos · api"
+    ]
+  },
+  "recipe": "youtube-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 154,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "channel": "BekBrace",
+      "description": "Duration: 3 hours and 5 minutes Instructor: Amir Bekhit Support My Channel Through Patreon: ...",
+      "length": "3:05:04",
+      "published": "2 years ago",
+      "title": "Rust Programming Full Course  | Learn ⚙️ in 2024 | #rustprogramming #rust",
+      "url": "https://www.youtube.com/watch?v=rQ_J9WH6CGk",
+      "video_id": "rQ_J9WH6CGk",
+      "views": 640565
+    },
+    {
+      "channel": "freeCodeCamp.org",
+      "description": "In this comprehensive Rust course for beginners, you will learn about the core concepts of the language and underlying ...",
+      "length": "13:59:10",
+      "published": "3 years ago",
+      "title": "Learn Rust Programming - Complete Course 🦀",
+      "url": "https://www.youtube.com/watch?v=BpPEoZW5IiY",
+      "video_id": "BpPEoZW5IiY",
+      "views": 1259066
+    }
+  ]
+}

@@ -4,9 +4,8 @@ source:
   openapi: https://docs.fetchin.io/api-reference/openapi.json
   curated: '2026-09-24'
 limits: >-
-  The account reports 5 requests/second. Get Post Engagement consumes two rate-limit units;
-  treg conservatively paces the shared key at 2 calls/second because smoothing is provider-wide.
-  BYOK calls use the customer's account limit.
+  Get Post Engagement consumes two rate-limit units; treg conservatively paces the shared key at
+  2 calls/second because smoothing is provider-wide. BYOK calls use the customer's account limit.
 pricing_url: https://fetchin.io/pricing/credits
 proposed_capabilities:
   linkedin.post.engagement: List a post's comments and reactions together
@@ -43,6 +42,7 @@ endpoints:
       confidence: verified
       note: "One credit per successful call. Fetchin also bills one credit for a 404; without provider-reported charge evidence treg releases rejected responses and absorbs that upstream cost."
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.user.profile.json
     miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-profile
@@ -63,6 +63,7 @@ endpoints:
     test_request: {queryParams: {companyUrlOrUrn: microsoft}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.company.profile.json
     miss: {status: 404, means: "The company was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-company
@@ -86,6 +87,7 @@ endpoints:
     test_request: {queryParams: {profileUrlOrUrn: satyanadella, count: 1}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.user.posts.json
     miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-posts
@@ -104,6 +106,7 @@ endpoints:
     test_request: {queryParams: {profileUrlOrUrn: williamhgates, count: 1}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.user.reactions.json
     miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-profile-reactions
@@ -128,6 +131,7 @@ endpoints:
     test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", count: 1}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.post.comments.json
     miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-comments
@@ -151,6 +155,7 @@ endpoints:
     test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", count: 1}}
     cost: *one_credit
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.post.reactions.json
     miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-reactions
@@ -180,6 +185,7 @@ endpoints:
       value: 0.003
       note: "Two credits per successful call. Fetchin bills one credit, not two, for a 404; without provider-reported charge evidence treg releases rejected responses and absorbs that upstream cost."
     verified: '2026-09-24'
+    added: '2026-09-24'
     example_response: examples/fetchinio.linkedin.post.engagement.json
     miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
     docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-engagement

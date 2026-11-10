@@ -1,0 +1,9 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Google Search">
+  <!-- Four-arc ring in Google's four brand colours: recognisable at 16px without tracing the G. -->
+  <g fill="none" stroke-width="3.2" stroke-linecap="butt">
+    <path stroke="#EA4335" d="M12 5.2a6.8 6.8 0 0 0-5.89 3.4"/>
+    <path stroke="#FBBC05" d="M6.11 8.6a6.8 6.8 0 0 0 0 6.8"/>
+    <path stroke="#34A853" d="M6.11 15.4A6.8 6.8 0 0 0 12 18.8"/>
+    <path stroke="#4285F4" d="M12 18.8a6.8 6.8 0 0 0 6.8-6.8H12"/>
+  </g>
+</svg>

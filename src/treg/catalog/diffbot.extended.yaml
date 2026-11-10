@@ -1,10 +1,10 @@
 # diffbot — EXTENDED tier: the provider's full documented endpoint surface beyond the
-# Knowledge Graph enrich/search entries curated in diffbot.yaml. Diffbot ships no fetchable
+# Knowledge Graph and Web Search entries curated in diffbot.yaml. Diffbot ships no fetchable
 # OpenAPI/spec (readme.io docs only, as noted in the core file); every entry below is
 # transcribed by hand from docs.diffbot.com's reference pages, cited per-endpoint in `docs_url`.
 #
-# VERIFIED 2026-07-28, extended 2026-07-31 — 13 of 17 endpoints were live-tested against a real
-# free-plan (kgfree) key and passed: the 9 Extract APIs, web-search, nl-process, account, and (new
+# VERIFIED 2026-07-28, extended 2026-07-31 — 12 of 16 endpoints were live-tested against a real
+# free-plan (kgfree) key and passed: the 9 Extract APIs, nl-process, account, and (new
 # on 2026-07-31) the crawl job list. The remaining 4 Crawl/Bulk-job endpoints are `untestable`
 # because each needs a job that does not exist yet and creating one starts a real billed crawl —
 # NOT because of a plan gate, see the CORRECTION below.
@@ -12,33 +12,28 @@
 # allow-list in oauth_providers.py. Verification scripts still need to use the same target selection
 # before they can replay these entries safely; a catalog row cannot introduce a credential host.
 #
-# Two auth surprises found only by calling, not documented anywhere:
-#   - diffbot.x.web-search (llm.diffbot.com) rejects `?token=` and requires an
-#     `Authorization: Bearer <token>` HEADER instead. The approved llm.diffbot.com target overrides
-#     Diffbot's normal query-token injection for this endpoint without changing its other hosts.
+# Verification traps found only by calling, not documented anywhere:
 #   - diffbot.x.nl-process (nl.diffbot.com) does accept `?token=` as documented; an initial attempt
 #     that put the token in the JSON body instead (matching a plausible reading of the docs) 401'd.
 #   - diffbot.x.extract-product's first probe target (a Micro Center SKU from the docs' own
 #     example) both 403'd and later 404'd — dead/blocked, not a broken endpoint. Retargeted to
 #     books.toscrape.com, a stable public scraping sandbox, which passed cleanly.
 #
-# FOUR HOSTS, ONE PROVIDER. `base_url` (kg.diffbot.com/kg/v3, see diffbot.yaml) covers only the
+# `base_url` (kg.diffbot.com/kg/v3, see diffbot.yaml) covers only the
 # Knowledge Graph. Every entry below needs an explicit `host:` because none of them resolve
-# against base_url — same trap as the moz-account precedent, times three:
+# against base_url — the same trap as the moz-account precedent:
 #   - api.diffbot.com/v3/...  — the Extract APIs (analyze, article, product, image, video,
 #     discussion, job, list, event), the Crawl API, the Bulk Extract API, and /v4/account.
-#   - llm.diffbot.com         — Web Search API.
 #   - nl.diffbot.com          — Natural Language API (POST-only, JSON body).
-# Auth is the same `?token=` query parameter used on the KG host except for Web Search, whose
-# approved target overrides injection to `Authorization: Bearer`.
+# Auth is the same `?token=` query parameter used on the KG host. Web Search's
+# separate Bearer-authenticated target is curated in diffbot.yaml.
 #
 # Billing: Diffbot's published credit table (diffbot.com/pricing) prices a single Extract API
 # page fetch at 1 credit (2 credits if `useProxy=default` routes it through Diffbot's datacenter
 # proxy). Crawl and Bulk jobs are billed per PAGE PROCESSED through whichever Extract API
 # `apiUrl` names, at that API's per-page rate — not a flat per-job charge, so `cost.value` stays
 # null and the rate lives in the note. Natural Language API is 1 credit per 10,000 characters of
-# input (document cap 100,000 chars, request cap 1,000,000 chars). Web Search API pricing is not
-# broken out on the credit table.
+# input (document cap 100,000 chars, request cap 1,000,000 chars).
 #
 # CORRECTION 2026-07-31 — the "Plus plans and up" gate these five endpoints carried was TRANSCRIBED
 # FROM THE DOCS AND IS NOT TRUE OF THE API. On this Free-plan (kgfree) token, GET /v3/crawl and
@@ -118,6 +113,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-analyze.json
     docs_url: https://docs.diffbot.com/reference/extract-analyze
 
@@ -127,7 +123,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/article
-    name: "Extract article text, author and date from a URL"
+    name: "Extract article text"
     summary: "Extracts clean article text, author, date, images, tags, sentiment and NLP facts from a news or blog page"
     input:
       queryParams:
@@ -162,6 +158,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-article.json
     docs_url: https://docs.diffbot.com/reference/article
 
@@ -171,7 +168,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/product
-    name: "Extract product name, price and reviews from a URL"
+    name: "Extract product details"
     summary: "Extracts product name, price, SKU, images, specs and reviews from an e-commerce page"
     input:
       queryParams:
@@ -200,6 +197,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-product.json
     docs_url: https://docs.diffbot.com/reference/product
 
@@ -209,7 +207,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/image
-    name: "Extract a page's images by URL, with dimensions"
+    name: "Extract page images"
     summary: "Extracts the primary and secondary images from a page, with dimensions and metadata"
     input:
       queryParams:
@@ -237,6 +235,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-image.json
     docs_url: https://docs.diffbot.com/reference/image
 
@@ -246,7 +245,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/video
-    name: "Extract video title, duration and embed URL from a page"
+    name: "Extract video page details"
     summary: "Extracts title, embed/player URL, duration, thumbnail and metadata from a video page"
     input:
       queryParams:
@@ -274,6 +273,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-video.json
     docs_url: https://docs.diffbot.com/reference/video
 
@@ -283,7 +283,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/discussion
-    name: "Extract forum posts and comments from a thread URL"
+    name: "Extract forum discussion"
     summary: "Extracts individual posts, authors, dates and sentiment from a forum thread or comment section"
     input:
       queryParams:
@@ -313,6 +313,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-discussion.json
     docs_url: https://docs.diffbot.com/reference/discussion
 
@@ -322,7 +323,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/job
-    name: "Extract a job posting page by URL — title, salary"
+    name: "Extract job posting"
     summary: "Extracts job title, employer, location, salary and description from a job posting page"
     input:
       queryParams:
@@ -350,6 +351,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-job.json
     docs_url: https://docs.diffbot.com/reference/job
 
@@ -359,7 +361,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/list
-    name: "Extract linked items from an index page by URL"
+    name: "Extract index-page links"
     summary: "Extracts the list of linked items (with titles, dates, images) from an index or category page"
     input:
       queryParams:
@@ -387,6 +389,7 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-list.json
     docs_url: https://docs.diffbot.com/reference/list
 
@@ -396,7 +399,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v3/event
-    name: "Extract event name, date and venue from a page URL"
+    name: "Extract event details"
     summary: "Extracts event name, date, venue, price and organizer from an event listing page"
     input:
       queryParams:
@@ -424,10 +427,12 @@ endpoints:
       confidence: verified
       note: 1 credit per page (2 with useProxy=default) OBSERVED 2026-07-31 — GET /v4/account's daily usage rows reconcile exactly to credits = 25*entities + 1*extractions + 1*nlp on two independent days — 2026-07-28 billed 136 for 5 entities + 10 extractions + 1 nlp, and 2026-07-30 billed 60 for 2 + 9 + 1, which is the whole charge with nothing left over. The 2-credit useProxy=default rate was not exercised and stays documented.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.extract-event.json
     docs_url: https://docs.diffbot.com/reference/event
 
   - id: diffbot.x.crawl-create
+    added: '2026-07-28'
     kind: account
     tier: extended
     capability: web.scrape.job.start
@@ -488,10 +493,12 @@ endpoints:
     test_request:
       queryParams: {}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/diffbot.x.crawl-manage.json
     docs_url: https://docs.diffbot.com/reference/manage-a-crawl-job
 
   - id: diffbot.x.crawl-data
+    added: '2026-07-28'
     tier: extended
     capability: web.scrape.job.results
     platform: web
@@ -511,6 +518,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/retrieve-crawl-job-data
 
   - id: diffbot.x.bulk-create
+    added: '2026-07-28'
     kind: account
     tier: extended
     capability: web.scrape.job.start
@@ -547,6 +555,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/create-a-bulk-job
 
   - id: diffbot.x.bulk-data
+    added: '2026-07-28'
     tier: extended
     capability: web.scrape.job.results
     platform: web
@@ -565,33 +574,13 @@ endpoints:
     untestable: "requires an existing completed bulk job to name; no test target exists until one is run. NOT plan-gated — it 302s rather than refusing on a Free token (2026-07-31)"
     docs_url: https://docs.diffbot.com/reference/retrieve-bulk-job-data
 
-  - id: diffbot.x.web-search
-    tier: extended
-    platform: web
-    host: llm.diffbot.com
-    method: GET
-    path: /api/v1/web_search/
-    name: "Web search shaped for an LLM context window"
-    summary: "Search the web and return results shaped for feeding into an LLM context window"
-    input:
-      queryParams:
-        text: {type: string, required: true, note: "the search query"}
-        size: {type: integer, required: false, note: "number of results to return", example: 10}
-        maxTokens: {type: integer, required: false, note: "caps the search response to this token budget; highlight chunks are reduced equitably"}
-      note: "different HOST than base_url: llm.diffbot.com, not kg.diffbot.com or api.diffbot.com. AUTH DIFFERS FROM EVERY OTHER DIFFBOT ROUTE: this one 401s on ?token= and requires an `Authorization: Bearer <token>` HEADER instead, confirmed live 2026-07-28. The approved catalog target applies that header profile without changing Diffbot's other routes"
-    test_request:
-      queryParams: {text: "knowledge graph AI", size: 3}
-    verified: 2026-07-28
-    example_response: examples/diffbot.x.web-search.json
-    docs_url: https://docs.diffbot.com/reference/web-search-get
-
   - id: diffbot.x.nl-process
     tier: extended
     platform: web
     host: nl.diffbot.com
     method: POST
     path: /v1/
-    name: "Extract entities, sentiment and facts from text"
+    name: "Extract entities and sentiment"
     summary: "Runs a pre-trained classifier, named-entity recognizer, sentence tokenizer and sentiment analyzer over submitted text or a URL"
     input:
       bodyType: json
@@ -618,6 +607,7 @@ endpoints:
       confidence: documented
       note: 1 credit per 10,000 characters of input (document cap 100,000 chars; request cap 1,000,000 chars) — scales with input length, no single fixed per-call figure to record
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.nl-process.json
     docs_url: https://docs.diffbot.com/reference/introduction-to-natural-language-api
 
@@ -628,7 +618,7 @@ endpoints:
     host: api.diffbot.com
     method: GET
     path: /v4/account
-    name: "Check plan, usage and credit balance"
+    name: "Diffbot plan and usage"
     summary: "Retrieves account plan tier, monthly credit allowance, token status, child tokens and a daily usage breakdown by API"
     input:
       queryParams:
@@ -644,5 +634,6 @@ endpoints:
       unit: call
       note: account/usage lookups are not metered
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/diffbot.x.account.json
     docs_url: https://docs.diffbot.com/reference/account

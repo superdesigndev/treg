@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: reddit-user: u/spez · posts · new · 23 rows"
+    ]
+  },
+  "recipe": "reddit-user",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 188,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "comments": 477,
+      "created": "2026-08-05T16:03:56Z",
+      "id": "1vgbkge",
+      "kind": "post",
+      "score": 355,
+      "subreddit": "u_spez",
+      "text": "Hi everyone,\n\nLast May, I shared how we were building Reddit for its [next chapter](https://www.reddit.com/user/spez/comments/1kfciml/reddits_next_chapter_smarter_easier_still_human/). I owe you an update, including a few changes I know some people will have strong opinions about.\n\nWhile we’ve made ",
+      "title": "Modernizing Reddit’s infrastructure with you",
+      "url": "https://www.reddit.com/r/u_spez/comments/1vgbkge/modernizing_reddits_infrastructure_with_you/"
+    },
+    {
+      "comments": 304,
+      "created": "2026-06-16T16:04:27Z",
+      "id": "1u7hraf",
+      "kind": "post",
+      "score": 909,
+      "subreddit": "u_spez",
+      "text": "Hi everyone,\n\nReddit turns 21 next week. Funny enough, it’s the same age I was when we started it. Save your jokes about r/13or30, I’ve already [heard them](https://i.redd.it/mup6rvwj0o7h1.png).\n\nThat’s a long time in human years and an even longer time in internet years.\n\nWhen a few of us started R",
+      "title": "21 years of Reddit",
+      "url": "https://www.reddit.com/r/u_spez/comments/1u7hraf/21_years_of_reddit/"
+    }
+  ]
+}

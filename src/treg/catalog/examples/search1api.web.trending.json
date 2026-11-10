@@ -1,0 +1,12 @@
+{
+  "trendingParameters": {
+    "search_service": "hackernews",
+    "max_results": 1
+  },
+  "results": [
+    {
+      "title": "Pi.dev: You Said No MCP",
+      "url": "https://earendil.com/posts/you-said-no-mcp/"
+    }
+  ]
+}

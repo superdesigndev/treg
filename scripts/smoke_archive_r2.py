@@ -38,5 +38,5 @@ async def run():
 if __name__ == '__main__':
     try:
         asyncio.run(run())
-    except Exception:
+    except Exception:  # noqa: BLE001 - the smoke run hides config detail behind one message
         raise SystemExit('R2 smoke failed; check the dev configuration and bucket access') from None

@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "step repos: 1 null fields across 13 items"
+    ]
+  },
+  "recipe": "github-trending",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 194,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "description": "Reverse engineer anything with agents, from app behavior down to native binaries.",
+      "forks": 16645,
+      "language": "TypeScript",
+      "name": "morluto / rea",
+      "stars": 77705,
+      "stars_today": 25793,
+      "url": "https://github.com/morluto/rea"
+    },
+    {
+      "description": "Tool for automatic PS5 executables porting to Linux and Windows",
+      "forks": 2310,
+      "language": "C++",
+      "name": "boykopovar / AnyPS5",
+      "stars": 27381,
+      "stars_today": 5805,
+      "url": "https://github.com/boykopovar/AnyPS5"
+    }
+  ]
+}

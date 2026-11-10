@@ -41,6 +41,7 @@ endpoints:
         fields: ["basic_info.name", "basic_info.primary_domain"]
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.search.json
     cost:
       type: per_result
@@ -74,6 +75,7 @@ endpoints:
     test_request:
       body: {field: "basic_info.industries", query: "tech", limit: 5}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.autocomplete.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/company-docs/autocomplete/introduction
@@ -97,6 +99,7 @@ endpoints:
     test_request:
       body: {domains: ["stripe.com"]}
     verified: '2026-08-24'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.identify.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/company-docs/identify/introduction
@@ -121,6 +124,7 @@ endpoints:
     test_request:
       body: {domains: ["stripe.com"]}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.enrich.json
     cost:
       type: per_result
@@ -161,6 +165,7 @@ endpoints:
         filters: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.search.json
     cost:
       type: per_result
@@ -194,6 +199,7 @@ endpoints:
     test_request:
       body: {field: "experience.employment_details.current.title", query: "VP", limit: 5}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.autocomplete.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/person-docs/autocomplete/introduction
@@ -217,6 +223,7 @@ endpoints:
     test_request:
       body: {professional_network_profile_urls: ["https://www.linkedin.com/in/satyanadella"]}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.enrich.json
     cost:
       type: per_result
@@ -255,6 +262,7 @@ endpoints:
         fields: ["job_details.title", "job_details.url", "company.basic_info.name"]
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.jobs.search.json
     cost:
       type: per_result

@@ -34,9 +34,7 @@ async def main() -> int:
         # 1. Discovery, exactly as a client does it: protected resource -> authorization server.
         prm = (await c.get(f"{BASE}/.well-known/oauth-protected-resource")).json()
         auth_server = prm["authorization_servers"][0]
-        # A correct client uses the identifier the METADATA declares, not the URL it dialled. My
-        # first version hard-coded the latter and got a token with the wrong audience — which is how
-        # treg's missing `resource` validation was found.
+        # A correct client uses the identifier the METADATA declares, not the URL it dialled.
         resource_id = prm["resource"]
         check("discovery: protected resource names an authorization server", bool(auth_server))
         asm = (await c.get(f"{BASE}/.well-known/oauth-authorization-server")).json()

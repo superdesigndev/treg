@@ -17,6 +17,7 @@ from treg.config import get_settings
 from treg.domain.catalog import interleave
 from treg.domain.catalog import store as catalog_store
 from treg.infra import judge as judge_infra
+from conftest import verified_signup
 
 
 # ---- domain: recall, merge, credit ----------------------------------------------------------------
@@ -124,6 +125,54 @@ async def test_judge_sends_criteria_and_extra_questions_in_the_same_request():
     assert len(seen) == 2
 
 
+async def test_judge_asks_a_job_its_own_question_and_answers_a_choice():
+    judge_infra.clear_cache()
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"answers": {
+            "c0": {"noul": 0.8}, "c1": {"noul": 0.3},
+            "x_plat": {"type": "choice", "choice": "people", "confidence": 0.9,
+                       "probabilities": {"people": 0.9, "none": 0.1}}}})
+
+    kw = dict(api_key="k", model="jev-latest", url="https://judge.test/v1", timeout_s=1.0,
+              transport=_transport(handler))
+    cands = [judge_infra.job_view("people.email.find", "Find a work email", "people", 12, ["Email finder"]),
+             {"id": "hunter.people.email.find", "name": "", "summary": "", "capability": "", "platform": ""}]
+    plat = {"type": "choice", "instructions": "which platform", "criteria": {"people": "People", "none": "none"}}
+    job_crit = {"true": "does the job", "false": "does not"}
+    v = await judge_infra.judge("work email", cands, job_criteria=job_crit, extra={"plat": plat}, **kw)
+    assert v.probs == [0.8, 0.3]
+    assert v.extra == {"plat": {"choice": "people", "confidence": 0.9, "probabilities": {"people": 0.9, "none": 0.1}}}
+    q = seen[0]["questions"]
+    assert q["c0"]["instructions"].startswith("Tools that do the job `candidates[0]`") and q["c0"]["criteria"] == job_crit
+    assert q["c1"]["instructions"].startswith("Calling the API endpoint `candidates[1]`")
+    assert seen[0]["state"]["candidates"][0]["providers"] == 12
+    assert (await judge_infra.judge("work email", cands, job_criteria=job_crit, extra={"plat": plat}, **kw)).cached
+    # the same ids asked as endpoints are another answer
+    as_endpoints = [{k: v for k, v in c.items() if k != "job"} for c in cands]
+    await judge_infra.judge("work email", as_endpoints, extra={"plat": plat}, **kw)
+    assert len(seen) == 2
+
+
+async def test_with_no_candidates_only_the_extra_questions_are_asked():
+    judge_infra.clear_cache()
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"answers": {"x_name": {"noul": 0.1}}})
+
+    kw = dict(api_key="k", model="jev-latest", url="https://judge.test/v1", timeout_s=1.0,
+              transport=_transport(handler))
+    assert (await judge_infra.judge("weather", [], **kw)).probs == [] and not seen       # nothing to ask
+    v = await judge_infra.judge("weather", [], extra={"name": {"type": "noul", "instructions": "a name"}}, **kw)
+    assert v.probs == [] and v.extra == {"name": 0.1}
+    assert set(seen[0]["questions"]) == {"x_name"} and seen[0]["state"]["candidates"] == []
+
+
 async def test_judge_abstains_on_timeout_http_error_and_bad_body():
     judge_infra.clear_cache()
 
@@ -141,6 +190,30 @@ async def test_judge_abstains_on_timeout_http_error_and_bad_body():
         return httpx.Response(200, json={"answers": {}})
     v = await _judge(garbage, query="third")
     assert v.probs is None and v.error == "KeyError"
+
+
+async def test_a_judge_refusal_is_logged_as_an_error_once_per_window(caplog, monkeypatch):
+    """No credit (402) or a bad key (401/403) fails every search after it; the keyword page hides
+    that, so it reaches error tracking: once, not once per search. A throttle (429) does not."""
+    judge_infra.clear_cache()
+    caplog.set_level("ERROR", logger="treg.judge")
+
+    def broke(request):
+        return httpx.Response(402, json={"detail": "insufficient credit"})
+    for q in ("one", "two"):
+        assert (await _judge(broke, query=q)).error == "http_402"
+    assert [r.levelname for r in caplog.records] == ["ERROR"]
+    assert "402" in caplog.records[0].getMessage()
+
+    def busy(request):
+        return httpx.Response(429)
+    await _judge(busy, query="three")
+    assert len(caplog.records) == 1
+
+    clock = judge_infra.time.monotonic() + judge_infra._OUTAGE_LOG_EVERY_S + 1
+    monkeypatch.setattr(judge_infra.time, "monotonic", lambda: clock)
+    await _judge(broke, query="four")
+    assert len(caplog.records) == 2
 
 
 # ---- application: every arm gets a page -----------------------------------------------------------
@@ -200,7 +273,7 @@ async def test_run_serves_baseline_in_shadow_and_logs_both_pages(monkeypatch):
     assert judged["tiingo.daily.prices"] == 0.9 and judged["marketstack.eod.latest"] == 0.8
     assert set(judged) == {"tiingo.daily.prices", "marketstack.eod.latest"}   # 0.0 rows dropped below `keep`
     assert out.log["judge_ms"] == 12 and out.log["judge_error"] is None
-    assert all(owner == "shadow" for _, owner in out.log["shown"])
+    assert all(owner == "shadow" for _, owner, _ in out.log["shown"])
 
 
 async def test_run_falls_back_to_the_baseline_when_the_judge_abstains(monkeypatch):
@@ -244,7 +317,7 @@ async def test_run_interleaves_and_owns_rows_and_pure_arms_get_pure_pages(monkey
     assert out.arm == se.ARM_INTERLEAVE
     assert {ep["id"] for ep, _ in out.shown} == {other["id"], "treg.stocks.eod.history", "tiingo.daily.prices"}
     assert out.owners == {other["id"]: "baseline", "treg.stocks.eod.history": "judged", "tiingo.daily.prices": "judged"}
-    assert sorted(o for _, o in out.log["shown"]) == ["baseline", "judged", "judged"]
+    assert sorted(o for _, o, _ in out.log["shown"]) == ["baseline", "judged", "judged"]
 
 
 # ---- the MCP wiring -------------------------------------------------------------------------------
@@ -265,7 +338,7 @@ async def _search_rows_and_log(clients, query, token):
 
 
 async def test_mcp_off_writes_no_searchlog(clients):
-    token = (await clients.post("/users", json={"email": "off@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "off@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "backlinks", token)
     assert out["results"] and rows == []
 
@@ -273,7 +346,7 @@ async def test_mcp_off_writes_no_searchlog(clients):
 async def test_mcp_shadow_serves_the_baseline_and_records_both_pages(clients, monkeypatch):
     _on(monkeypatch, mode="shadow")
     monkeypatch.setattr(judge_infra, "judge", _fake_judge({"tiingo.daily.prices": 0.9}))
-    token = (await clients.post("/users", json={"email": "shadow@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "shadow@superdesign.dev"})).json()["token"]
     q = "apple stock closing prices for last year"
     out, rows = await _search_rows_and_log(clients, q, token)
     assert out["count"] == 0 and "hint" in out                     # the caller still sees the lexical miss
@@ -294,13 +367,13 @@ async def test_mcp_shadow_serves_the_baseline_and_records_both_pages(clients, mo
 async def test_mcp_interleave_serves_the_merge_and_owns_each_row(clients, monkeypatch):
     _on(monkeypatch, mode="interleave", search_experiment_holdout_percent=0)
     monkeypatch.setattr(judge_infra, "judge", _fake_judge({"tiingo.daily.prices": 0.9}))
-    token = (await clients.post("/users", json={"email": "merge@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "merge@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "apple stock closing prices for last year", token)
     ids = [r["endpoint_id"] for r in out["results"]]
     assert ids and ids[0] == "treg.stocks.eod.history" and "tiingo.daily.prices" in ids   # grouped: parent first
     assert all("judged" not in r for r in out["results"])          # the probability stays in the log
     (row,) = rows
-    assert row.arm == "interleave" and row.shown == [[i, "judged"] for i in ids]
+    assert row.arm == "interleave" and row.shown == [[i, "judged", "stocks.eod.history"] for i in ids]
     assert row.baseline_ids == []                                   # nothing to interleave WITH — the judged page fills it
 
 
@@ -310,9 +383,9 @@ async def test_mcp_an_abstaining_judge_leaves_search_as_it_was(clients, monkeypa
     async def down(query, cands, **kw):
         return judge_infra.Judgement(probs=None, ms=1500, error="timeout")
     monkeypatch.setattr(judge_infra, "judge", down)
-    token = (await clients.post("/users", json={"email": "down@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "down@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "backlinks", token)
     assert out["results"]                                           # a page, not an error
     (row,) = rows
     assert row.judge_error == "timeout" and row.judged is None and row.differs is False
-    assert [r["endpoint_id"] for r in out["results"]] == [i for i, _ in row.shown]
+    assert [r["endpoint_id"] for r in out["results"]] == [i for i, _, _ in row.shown]

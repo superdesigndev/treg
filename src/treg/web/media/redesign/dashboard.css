@@ -23,8 +23,12 @@ body:has(.redesign)::before { display:none; }
 .redesign .btn,.redesign .seg button,.redesign .tabs button { font-family:var(--sans); }
 .rd-background { position:absolute; top:0; left:0; width:100%; height:auto; pointer-events:none; }
 [data-theme="dark"] .rd-background { filter:invert(1); opacity:.68; }
-.rd-top { position:sticky; top:0; z-index:50; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:18px; min-height:57px; padding:9px 20px; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(14px); }
-.rd-identity,.rd-account,.rd-brand,.rd-navs,.rd-social { display:flex; align-items:center; min-width:0; }
+/* The sides never shrink below their content (a squeezed account strip slid its icons under the
+   balance); the leftover width is split evenly, so the nav sits centred whenever it fits, and scrolls
+   rather than overlaps when it does not. Declare only the standard backdrop-filter: the minifier adds
+   the -webkit- form, and drops the standard one when a rule declares both. */
+.rd-top { position:sticky; top:0; z-index:50; display:grid; grid-template-columns:minmax(max-content,1fr) minmax(0,auto) minmax(max-content,1fr); align-items:center; gap:18px; min-height:57px; padding:9px 20px; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(14px); }
+.rd-identity,.rd-account,.rd-brand,.rd-navs { display:flex; align-items:center; min-width:0; }
 .rd-identity { gap:24px; }
 .rd-brand { gap:6px; flex:none; text-decoration:none; font-size:15px; font-weight:700; color:var(--ink); }
 .rd-top .orgblock { width:185px; min-width:0; margin:0; border-radius:10px; background:var(--surface); }
@@ -34,19 +38,12 @@ body:has(.redesign)::before { display:none; }
 .rd-top .orgcaret { margin-left:auto; }
 .rd-top .dropdown .row { width:100%; border:0; background:transparent; color:var(--ink); text-align:left; font:13px var(--sans); }
 .rd-top .dropdown .row:hover { background:var(--hover); }
-.rd-navs { justify-content:center; gap:2px; scrollbar-width:none; }
+.rd-navs { justify-content:safe center; gap:2px; overflow-x:auto; scrollbar-width:none; }
 .rd-navs::-webkit-scrollbar { display:none; }
-.rd-nav { display:flex; align-items:center; justify-content:center; flex:none; gap:8px; border:0; border-radius:10px; padding:7px 12px; background:transparent; color:var(--muted); font:500 13px/19.5px var(--sans); white-space:nowrap; }
-.rd-nav img { width:15px; height:15px; filter:brightness(0); opacity:.75; }
+.rd-nav { display:flex; align-items:center; justify-content:center; flex:none; border:0; border-radius:10px; padding:7px 12px; background:transparent; color:var(--muted); font:500 13px/19.5px var(--sans); white-space:nowrap; }
 .rd-nav:hover { background:var(--hover); color:var(--ink); }
 .rd-nav.active { background:var(--inverse); color:var(--inverse-ink); font-weight:600; }
-.rd-nav.active img { filter:brightness(0) invert(1); opacity:1; }
-[data-theme="dark"] .rd-nav img,[data-theme="dark"] .rd-social img { filter:brightness(0) invert(1); }
-[data-theme="dark"] .rd-nav.active img { filter:brightness(0); }
 .rd-account { justify-content:flex-end; gap:12px; }
-.rd-social { gap:4px; }
-.rd-social a { display:grid; place-items:center; width:28px; height:32px; border-radius:8px; }
-.rd-social img { width:12px; height:12px; }
 .rd-balance { display:flex; align-items:center; gap:12px; padding:8px 13px; border:1px solid var(--line); border-radius:999px; background:linear-gradient(90deg,#f4fdff,#fff); color:var(--ink); white-space:nowrap; }
 .rd-balance span { font-size:10px; color:var(--muted); }
 .rd-balance b { font:500 12px/18px var(--mono); }
@@ -65,11 +62,7 @@ body:has(.redesign)::before { display:none; }
 .rd-referral[aria-current="page"] { background:var(--inverse); border-color:var(--inverse); color:var(--inverse-ink); }
 .rd-referral[aria-current="page"] img,[data-theme="dark"] .rd-referral img { filter:brightness(0) invert(1); }
 [data-theme="dark"] .rd-referral[aria-current="page"] img { filter:brightness(0); }
-.redesign .rd-view-search { margin:0 0 22px auto; max-width:320px; min-height:40px; padding:9px 14px; gap:10px; background:var(--surface); box-shadow:none; border:1px solid var(--line); border-radius:999px; }
-.redesign .rd-view-search:hover { border-color:var(--muted2); }
-.rd-view-search img { width:16px; height:16px; flex:none; opacity:.6; }
 .redesign .search input { min-width:0; font-family:var(--sans); }
-.redesign .rd-view-search input { padding:0; line-height:20px; }
 .redesign .search:focus-within { outline:none; border-color:var(--muted); box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 12%,transparent); }
 /* The wrapper owns the focus indicator, including the global focus-visible shadow. */
 .redesign .search input:focus-visible { outline:none; box-shadow:none; }
@@ -86,9 +79,12 @@ body:has(.redesign)::before { display:none; }
 .rd-welcome-title > span { display:grid; place-items:center; flex:0 0 36px; height:36px; border-radius:50%; background:var(--surface); }
 .rd-welcome-title img { width:12px; height:12px; }
 .rd-welcome h1 { margin:0; }
+.rd-welcome-note { margin:-4px 0 20px 48px; color:var(--muted); font:13px var(--sans); }
+.rd-welcome-note b { color:var(--ink); font-weight:600; }
+.rd-welcome-note a { color:var(--ink); }
 .rd-search { display:flex; align-items:center; gap:10px; width:200px; min-height:40px; padding:10px 16px; border:0; border-radius:999px; background:var(--surface); color:var(--muted); font:12.5px var(--sans); text-align:left; }
 .rd-search img { width:13px; height:13px; }
-[data-theme="dark"] .rd-welcome-title img,[data-theme="dark"] .rd-search img,[data-theme="dark"] .rd-view-search img { filter:invert(1); }
+[data-theme="dark"] .rd-welcome-title img,[data-theme="dark"] .rd-search img { filter:invert(1); }
 .rd-start .start-card { background:var(--surface); border:1px solid var(--line); border-radius:24px; }
 .rd-start .rd-setup { display:flex; margin-top:14px; border-radius:32px; }
 .rd-setup-side { width:360px; flex:0 0 360px; padding:24px; border-right:1px solid var(--line); }
@@ -154,16 +150,18 @@ body:has(.redesign)::before { display:none; }
 .rd-build-panel { margin-top:12px; padding:4px; border-radius:20px; background:var(--panel2); }
 .rd-build-panel > .sub { margin:0; padding:12px 16px 8px; max-width:620px; }
 .rd-start > details { padding:0 24px; }
-@media(max-width:1250px) {
-  .rd-top { grid-template-columns:auto 1fr auto; gap:12px; }
+@media(max-width:1300px) {
+  .rd-top { grid-template-columns:max-content minmax(0,1fr) max-content; gap:12px; }
   .rd-identity { gap:12px; }
   .rd-top .orgblock { width:150px; }
   .rd-nav { padding-inline:9px; }
-  .rd-social { display:none; }
+  /* The referral keeps its gift; the word is on hover and in its accessible name. */
+  .rd-referral { width:36px; padding:0; justify-content:center; }
+  .rd-referral span { display:none; }
 }
-@media(max-width:1050px) {
+@media(max-width:1120px) {
   .rd-top { grid-template-columns:1fr auto; gap:8px; }
-  .rd-navs { grid-row:2; grid-column:1/-1; justify-content:flex-start; overflow-x:auto; padding-bottom:2px; }
+  .rd-navs { grid-row:2; grid-column:1/-1; justify-content:flex-start; padding-bottom:2px; }
   .rd-account { grid-row:1; grid-column:2; }
   .redesign { --lbar-top:102px; --lsec-top:152px; }
 }
@@ -183,10 +181,10 @@ body:has(.redesign)::before { display:none; }
   .rd-balance { padding:7px 9px; }
   .rd-balance span { display:none; }
   .rd-nav { min-height:40px; padding-inline:12px; }
-  .rd-nav img { display:none; }
   .redesign main { padding:18px 12px 100px; }
   .rd-welcome { flex-wrap:wrap; margin-top:20px; gap:14px; }
   .rd-welcome-title { gap:8px; }
+  .rd-welcome-note { margin-left:0; }
   .rd-welcome h1 { font-size:21px; }
   .rd-search { width:100%; }
   .rd-start .rd-setup { border-radius:24px; }
@@ -198,11 +196,8 @@ body:has(.redesign)::before { display:none; }
   .rd-start .try-cat { gap:6px; }
   .rd-build .seg { display:flex; flex-wrap:wrap; border-radius:16px; }
   .rd-build .seg button { flex:1; white-space:normal; }
-  .rd-referral { width:36px; padding:0; justify-content:center; }
-  .rd-referral span { display:none; }
   .rd-account-panel { position:fixed; top:54px; left:12px; right:12px; width:auto; }
   .rd-start > details { padding:0 8px; }
-  .redesign .rd-view-search { max-width:none; }
 }
 @media(max-width:360px) {
   .rd-nav { padding-inline:8px; font-size:12px; }

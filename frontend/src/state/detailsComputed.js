@@ -32,13 +32,13 @@ detailPrompt(){  // the copyable "give this to your agent" instruction — no to
           ...(t?[`3. The skill's API calls go through treg's proxy — the credential is injected server-side, never on this machine:`,
                 `   treg call ${t.name} <PATH>   # or prefix the real URL: ${B}/call/<full upstream URL>`,``]:[]),
           `Then use the "${n}" skill for my request.`,``,
-          `Full protocol reference: ${B}/llms.txt`]).join('\n');
+          `How to use treg (calls, prices, errors, retries): ${B}/skill.md`]).join('\n');
       }
       const t=this.detailData||{};
       return head.concat([
         `2. Call it through the proxy — the credential is injected server-side, never on this machine:`,
         `   treg call ${n} <PATH>   # PATH = the ${t.host||'upstream'} path you'd normally call`,
         ...(t.cli?[``,`   # it's also a CLI — run it with the key injected:`,`   treg run ${n} -- <cli args>`]:[]),``,
-        `Full protocol reference: ${B}/llms.txt`]).join('\n');
+        `How to use treg (calls, prices, errors, retries): ${B}/skill.md`]).join('\n');
     }
 }

@@ -5,7 +5,7 @@ export default {
       // /sitetrack.js (deferred in index.html, it runs before the app entry) normally initialises
       // PostHog already — with pageviews on, so first-touch source survives into the person. Then
       // this only has to identify. The inline path below is the fallback for a stale bundle.
-      if(window.__phInit){ this.analyticsIdentify(); return; }
+      if(window.__phInit){ this.analyticsIdentify(); this.analyticsForget(); return; }
       const key=this.meta && this.meta.posthog_key; if(!key) return; window.__phInit=true;
       const host=this.meta.posthog_host || 'https://eu.i.posthog.com';
       !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
@@ -14,29 +14,15 @@ export default {
       // and every code block so a replay can never leak a credential.
       window.posthog.init(key,{api_host:host, person_profiles:'identified_only', capture_pageview:false,
         session_recording:{maskAllInputs:true, maskTextSelector:'pre, .lc-codewrap, .agent-copy'}});
-      this.analyticsIdentify();
+      this.analyticsIdentify(); this.analyticsForget();
     },
+// A super property a finished experiment registered stays in a returning visitor's PostHog cookie
+// and rides on every event they send, so it is dropped once that experiment is gone.
+analyticsForget(){ try{ window.posthog?.unregister?.('catalog_arm'); }catch(e){} },
 analyticsIdentify(){ if(!this.me)return; if(window.TregTracking){window.TregTracking.identify(this.me,this.activeSlugNow);return;} if(!window.posthog || !window.posthog.identify || !this.me) return;
       try{ window.posthog.identify(this.me, {email:this.me}); if(this.activeSlugNow) window.posthog.group('team', this.activeSlugNow); }catch(e){} },
-track(name, props){ try{ if(window.posthog && window.posthog.capture) window.posthog.capture(name, props||{}); }catch(e){} },
-// An experiment's variant for this person, or null when PostHog is absent, fails, or has not
-// answered within `wait` ms. Only a returned variant records an exposure: reading the flag is what
-// sends it, and a caller that got null shows its default without ever reading it.
-featureVariant(key, wait=800){
-      return new Promise(resolve=>{
-        if(!window.__phInit || !window.posthog || !window.posthog.onFeatureFlags) return resolve(null);
-        let done=false;
-        const timer=setTimeout(()=>{ done=true; resolve(null); }, wait);
-        try{
-          window.posthog.onFeatureFlags((_flags, _variants, ctx)=>{
-            if(done || (ctx && ctx.errorsLoading)) return;
-            done=true; clearTimeout(timer);
-            // The loaded library replaces the queueing stub, so read through window, not a saved reference.
-            try{ const v=window.posthog.getFeatureFlag(key); resolve(typeof v==='string' ? v : null); }catch(e){ resolve(null); }
-          });
-        }catch(e){ done=true; clearTimeout(timer); resolve(null); }
-      });
-    },
+track(name, props){ if(this.welcome.on && this.welcome.replay) props={...props, replay:true};
+      try{ if(window.posthog && window.posthog.capture) window.posthog.capture(name, props||{}); }catch(e){} },
 // Support chat (Intercom) — only when this deployment opted in (meta.intercom_app_id present);
     // self-hosters load nothing. Booted AFTER /auth/me resolves (not at the /meta fetch, like
     // analytics) so the common case boots identified once instead of anonymous→identified.

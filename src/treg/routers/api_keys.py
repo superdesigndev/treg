@@ -8,12 +8,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from ..application import key_spend
 from ..domain.governance import teams
 from ..domain.identity import api_keys as managed
 from ..domain.identity import session as identity_session
 from ..domain.identity.access import Caller, _role_at_least, require_member
 from ..infra.db import get_session
-from ..models import ApiKey, ApiKeyEvent, Membership, Org, User
+from ..models import ApiKey, ApiKeyEvent, EnterpriseSSO, Membership, Org, User
 from ..timeutil import utcnow_naive
 
 
@@ -187,6 +188,32 @@ async def list_api_keys(
     return views
 
 
+@router.get("/orgs/{org_id}/api-keys/spend")
+async def api_key_spend(
+    org_id: int,
+    caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Billed spend per key over the last 30 UTC days, from the daily spend rollup.
+
+    A member sees only their own keys, as on the list. The not-attributed line is team-wide ledger
+    detail, so it is admin+ like the ledger on `/orgs/{id}/balance`. `ready` is false until the
+    rollup has caught up once; the page shows no number until then.
+    """
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="use this team's credential")
+    since = key_spend.first_day(utcnow_naive().date(), key_spend.WINDOW_DAYS)
+    state = await key_spend.history(db)
+    if not state["ready"]:
+        return {"ready": False, "days": key_spend.WINDOW_DAYS, "since": since.isoformat(), "keys": [], "unattributed": None}
+    admin = _admin(caller)
+    spend = await key_spend.spend_by_key(db, org_id, since, membership_id=None if admin else caller.membership.id)
+    rows = sorted(({"id": key_id, **line} for key_id, line in spend["keys"].items()),
+                  key=lambda row: (-row["spent_micro"], row["id"]))
+    return {"ready": True, "days": key_spend.WINDOW_DAYS, "since": since.isoformat(), "keys": rows,
+            "unattributed": spend["unattributed"]}
+
+
 @router.post("/orgs/{org_id}/api-keys")
 async def create_api_key(
     org_id: int,
@@ -201,6 +228,7 @@ async def create_api_key(
         raise HTTPException(status_code=403, detail="viewers cannot create additional keys")
     if managed.is_machine_email(caller.email):
         raise HTTPException(status_code=403, detail="machine identities cannot create human keys")
+    enterprise = await db.get(EnterpriseSSO, org_id)
     secret, prefix, key_hash = managed.mint_secret()
     row = ApiKey(
         org_id=org_id,
@@ -211,6 +239,7 @@ async def create_api_key(
         safe_prefix=prefix,
         key_hash=key_hash,
         state=managed.ACTIVE,
+        sso_org_id=org_id if enterprise is not None and enterprise.enforced else None,
         created_by=caller.email,
     )
     db.add(row)
@@ -322,6 +351,8 @@ async def rotate_api_key(
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     old = await _key(org_id, key_id, db, caller)
+    enterprise = await db.get(EnterpriseSSO, org_id)
+    sso_org_id = org_id if enterprise is not None and enterprise.enforced else None
     if old.kind == managed.DEFAULT_KIND:
         if not _assigned(caller, old):
             raise HTTPException(status_code=403, detail="only the assigned human can rotate this key")
@@ -337,13 +368,14 @@ async def rotate_api_key(
                 db, old, actor_email=caller.email,
             )
             await db.commit()
-        except (managed.RotationConflict, IntegrityError):
+        except (managed.RotationConflict, IntegrityError) as exc:
             await db.rollback()
-            raise HTTPException(status_code=409, detail="another rotation already replaced this key")
+            raise HTTPException(status_code=409, detail="another rotation already replaced this key") from exc
         secret = identity_session.make_identity(
             user.id, user.token_version, org=org.slug,
             key_generation=generation,
             scope=identity_session.TEAM_SCOPE,
+            sso_org_id=sso_org_id,
         )
         response.headers["Cache-Control"] = "no-store"
         return {**_view(old, caller, user.id, safe_prefix=secret[:12]), "secret": secret,
@@ -363,10 +395,11 @@ async def rotate_api_key(
         try:
             secret, new = await managed.rotate_agent_key(
                 db, membership, user, actor_email=caller.email, expected_key_id=old.id,
+                sso_org_id=sso_org_id,
             )
-        except (managed.RotationConflict, IntegrityError):
+        except (managed.RotationConflict, IntegrityError) as exc:
             await db.rollback()
-            raise HTTPException(status_code=409, detail="another rotation already replaced this key")
+            raise HTTPException(status_code=409, detail="another rotation already replaced this key") from exc
     elif old.kind == managed.ADDITIONAL_KIND:
         if not _assigned(caller, old):
             raise HTTPException(status_code=403, detail="only the assigned human can rotate this key")
@@ -374,18 +407,18 @@ async def rotate_api_key(
             raise HTTPException(status_code=409, detail="a revoked key cannot be rotated")
         try:
             secret, new = await managed.rotate_human_key(
-                db, old, actor_email=caller.email,
+                db, old, actor_email=caller.email, sso_org_id=sso_org_id,
             )
-        except (managed.RotationConflict, IntegrityError):
+        except (managed.RotationConflict, IntegrityError) as exc:
             await db.rollback()
-            raise HTTPException(status_code=409, detail="another rotation already replaced this key")
+            raise HTTPException(status_code=409, detail="another rotation already replaced this key") from exc
     else:
         raise HTTPException(status_code=409, detail="legacy human keys cannot be rotated here")
     try:
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="another rotation already replaced this key")
+        raise HTTPException(status_code=409, detail="another rotation already replaced this key") from exc
     response.headers["Cache-Control"] = "no-store"
     return {**_view(new, caller), "secret": secret,
             "note": "copy this key now; the old key was revoked"}

@@ -29,7 +29,6 @@ proposed_capabilities:
   companies.funding: "A company's funding rounds & financing events"
   companies.news.detail: "Get one company news event by ID"
   companies.news.feed: "Browse the latest company news events across all companies"
-  companies.jobs.detail: "Get one job posting by ID"
   companies.tech_stack.users: "Find companies that use a given technology"
   companies.tech_stack.detection: "Get the full evidence for one technology detection"
   companies.technologies.list: "Browse the catalog of tracked technologies"
@@ -62,6 +61,7 @@ endpoints:
       pathParams: {id_or_domain: "stripe.com"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.enrich.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/companies_dataset/retrieve_company
 
@@ -89,6 +89,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'; the pricing FAQ confirms discovery endpoints bill per returned company, not per request"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.discover.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/companies_dataset/retrieve_companies
 
@@ -113,6 +114,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'; the pricing FAQ calls out Similar Companies by name as priced per returned company"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.similar.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/similar_companies_dataset/retrieve_company_s_similar_companies
 
@@ -147,6 +149,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response' — up to 1,000 records for one credit"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.job_openings.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/job_openings_dataset/retrieve_company_s_job_openings
 
@@ -166,6 +169,7 @@ endpoints:
       pathParams: {id: "284eb966-142d-47ac-8430-83ef870ff77f"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.jobs.detail.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/job_openings_dataset/retrieve_a_single_job_opening_by_id
 
@@ -193,6 +197,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.jobs.discover.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/job_openings_dataset/retrieve_a_list_of_job_openings
 
@@ -221,6 +226,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.technology_detections.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/technology_detections_dataset/retrieve_technologies_used_by_specific_company
 
@@ -249,6 +255,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.technologies.users.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/technology_detections_dataset/retrieve_companies_using_specific_technology_id_or_fuzzy_name
 
@@ -272,6 +279,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 3, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '3 Credits / Record' — the only non-1-credit data route"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.technologies.list.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/technologies_dataset/retrieve_all_tracked_technologies
 
@@ -292,10 +300,12 @@ endpoints:
       pathParams: {id_or_fuzzy_name: "996ad860-2a9a-504f-8861-aeafd0b2ae29"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.technologies.detail.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/technologies_dataset/retrieve_a_single_technology_by_id_or_fuzzy_name
 
   - id: predictleads.technologies.detection_detail
+    added: '2026-08-20'
     domain: companies
     capability: companies.tech_stack.detection
     platform: companies
@@ -327,17 +337,18 @@ endpoints:
         company_id_or_domain: {type: string, required: true, note: "company domain or PredictLeads company UUID", example: "stripe.com"}
       queryParams:
         location: {type: string, required: false, note: "country name or US state name/abbreviation"}
-        found_at_from: {type: string, required: false, note: "ISO 8601 date — the polling dial for 'what changed since my last run'", example: "2026-08-01"}
-        found_at_until: {type: string, required: false, note: "ISO 8601 date"}
+        found_at_from: {type: string, required: false, note: "ISO 8601 date — filters on found_at, when PredictLeads found the event, not when the event happened: the polling dial for 'what changed since my last run', not a recency filter for events; a recently found row can describe an event months or years old", example: "2026-08-01"}
+        found_at_until: {type: string, required: false, note: "ISO 8601 date — filters on found_at (discovery time), not the event date"}
         categories: {type: "array[string]", required: false, note: "comma-separated event categories, e.g. partners_with,hires,opens_new_location,receives_financing"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it costs nothing extra", example: 1}
-      note: "these are CLASSIFIED events, not headlines: each carries a category, a confidence score, the triggering article sentence, and typed slots (amount, headcount, job_title, location, award, division) filled when the category implies them"
+      note: "these are CLASSIFIED events, not headlines: each carries a category, a confidence score, the triggering article sentence, and typed slots (amount, headcount, job_title, location, award, division) filled when the category implies them. Dates: found_at is when PredictLeads found the event and first_seen_at when it first recorded the event; neither is when the event happened, and rows are ordered and filtered by found_at. For a timeline use effective_date, and check it against the source article's published_at and any date in the summary: effective_date can be null, can be month-precision (the 1st of a month), and can disagree with the summary. confidence scores the classification, not the date"
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.news_events.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/news_events_dataset/retrieve_company_s_news_events
 
@@ -357,6 +368,7 @@ endpoints:
       pathParams: {id: "d378cf5a-01b4-4f81-8f9d-64c38df3ca03"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.news.detail.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/news_events_dataset/retrieve_a_single_news_event_by_id
 
@@ -376,11 +388,12 @@ endpoints:
         company_sizes: {type: "array[string]", required: false, note: "comma-separated company size buckets"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
-      note: "the market-wide signal feed: 'every company that opened a new location this week'. Ordered newest-first, so found_at on the first record is the watermark for the next poll"
+      note: "the market-wide signal feed: 'every company that opened a new location this week'. Ordered newest-first by found_at (when PredictLeads found the event), so found_at on the first record is the watermark for the next poll. found_at is discovery time, not event time: for a timeline use effective_date, which can be null, month-precision or older than found_at, and check it against the source article"
     test_request:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.news.discover.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/news_events_dataset/retrieve_news_events
 
@@ -397,16 +410,17 @@ endpoints:
       pathParams:
         company_id_or_domain: {type: string, required: true, note: "company domain or PredictLeads company UUID", example: "stripe.com"}
       queryParams:
-        first_seen_at_from: {type: string, required: false, note: "ISO 8601 date"}
-        first_seen_at_until: {type: string, required: false, note: "ISO 8601 date"}
+        first_seen_at_from: {type: string, required: false, note: "ISO 8601 date — filters on when PredictLeads first recorded the round, not when the round happened"}
+        first_seen_at_until: {type: string, required: false, note: "ISO 8601 date — filters on first-recorded time, not the round date"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it costs nothing extra", example: 1}
-      note: "each round carries effective_date, categories, financing_type plus a normalized form, amount and the source article"
+      note: "each round carries effective_date, categories, financing_type plus a normalized form, amount and the source article. Dates: found_at is when PredictLeads found the event, not when the round happened, so a recently found round can be years old. effective_date is the round date PredictLeads extracted; it can be null (including on the latest rounds) and is not guaranteed to match the announcement, so for a funding timeline check it against the articles in source_urls"
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.financing_events.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/financing_events_dataset/retrieve_company_s_financing_events
 
@@ -425,11 +439,12 @@ endpoints:
         company_location: {type: string, required: false, note: "country name or US state name/abbreviation", example: "United States"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
-      note: "the 'who just raised' feed — the standard trigger list for outbound to newly funded companies"
+      note: "the 'who just raised' feed — the standard trigger list for outbound to newly funded companies. Recency here is discovery recency: found_at is when PredictLeads found the event, not when the round happened, and there is no filter on the round date, so a recently found row can be a round from a prior year. Before treating a row as a new round, check effective_date (can be null, and can disagree with the announcement) against the articles in source_urls"
     test_request:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.financing.discover.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/financing_events_dataset/retrieve_financing_events
 
@@ -457,6 +472,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.sec_filings.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/sec_filings_dataset/retrieve_company_s_sec_filings
 
@@ -476,6 +492,7 @@ endpoints:
       pathParams: {id: "019fea12-bfd4-77ca-b958-3706a5afcb56"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.sec_filings.detail.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/sec_filings_dataset/retrieve_a_single_sec_filing_by_id
 
@@ -503,6 +520,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.connections.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/connections_dataset/retrieve_company_s_connections
 
@@ -528,6 +546,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.portfolio_companies.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/connections_dataset/retrieve_portfolio_companies
 
@@ -554,6 +573,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.website_evolution.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/website_evolution_dataset/retrieve_company_s_website_evolution
 
@@ -580,6 +600,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.github_repositories.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/github_repositories_dataset/retrieve_company_s_github_repositories
 
@@ -608,6 +629,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.companies.products.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/products_dataset/retrieve_company_s_products
 
@@ -627,6 +649,7 @@ endpoints:
       pathParams: {id: "db60bc8e-d43b-4551-ae0b-e64fd5e945e2"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.products.detail.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/products_dataset/retrieve_a_single_product_by_id
 
@@ -650,6 +673,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.products.discover.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/products_dataset/retrieve_a_list_of_products
 
@@ -674,6 +698,7 @@ endpoints:
       queryParams: {limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Record'"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.startup_platform_posts.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/startup_platform_posts_dataset/retrieve_latest_posts
 
@@ -693,5 +718,6 @@ endpoints:
       queryParams: {}
     cost: {type: free, value: 0, currency: USD, unit: call}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/predictleads.account.subscription.json
     docs_url: https://docs.predictleads.com/v3/api_endpoints/api_subscription/retrieve_api_subscription_information

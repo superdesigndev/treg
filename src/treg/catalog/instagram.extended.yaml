@@ -32,6 +32,7 @@ source:
   - https://developers.facebook.com/docs/graph-api/reference
 endpoints:
 - id: instagram.x.hashtag-search
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -57,6 +58,7 @@ endpoints:
   name: Resolve an Instagram hashtag name to its id
   kind: utility
 - id: instagram.x.comment-delete
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -81,6 +83,7 @@ endpoints:
   name: Delete a comment on your Instagram media
   kind: action
 - id: instagram.x.comment
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -106,6 +109,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: One Instagram comment — text, username, likes
 - id: instagram.x.comment-replies
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -132,6 +136,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Replies under an Instagram comment
 - id: instagram.x.comment-reply-create
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -158,6 +163,7 @@ endpoints:
   name: Reply to a comment as your Instagram account
   kind: action
 - id: instagram.x.comment-hide
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -184,6 +190,7 @@ endpoints:
   name: Hide or unhide a comment on your Instagram media
   kind: action
 - id: instagram.x.hashtag
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -209,6 +216,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: An Instagram hashtag's id and name
 - id: instagram.x.hashtag-recent-media
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -236,6 +244,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Recent public Instagram posts for a hashtag id
 - id: instagram.x.hashtag-top-media
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -263,6 +272,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Top public Instagram posts for a hashtag id
 - id: instagram.x.media
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic]
@@ -288,6 +298,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: One of your Instagram posts — caption, media URL, counts
 - id: instagram.x.media-children
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic]
@@ -314,6 +325,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Images and videos inside an Instagram carousel post
 - id: instagram.x.media-comment-create
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_manage_comments]
@@ -340,6 +352,7 @@ endpoints:
   name: Comment on your own Instagram media
   kind: action
 - id: instagram.x.catalog-product-search
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, instagram_shopping_tag_products, pages_read_engagement]
@@ -368,6 +381,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs instagram_shopping_tag_products
   name: Search your commerce catalog for products to tag
 - id: instagram.x.user-content-publishing-limit
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic, instagram_business_content_publish]
@@ -394,6 +408,7 @@ endpoints:
   name: Your remaining Instagram daily posting quota
   kind: utility
 - id: instagram.x.user-live-media
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic]
@@ -419,6 +434,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Your Instagram live broadcasts now running
 - id: instagram.x.user-mentioned-comment
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -445,6 +461,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: A comment that @-mentions your Instagram account
 - id: instagram.x.user-mentioned-media
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -471,6 +488,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Posts whose caption @-mentions your Instagram account
 - id: instagram.x.user-product-appeal
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, instagram_shopping_tag_products, pages_read_engagement]
@@ -497,6 +515,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs instagram_shopping_tag_products
   name: Status of appeals for rejected shopping products
 - id: instagram.x.user-recently-searched-hashtags
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -520,6 +539,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Hashtags your Instagram account searched recently
 - id: instagram.x.user-stories
+  added: '2026-07-28'
   authorization_method: instagram-login
   authorization_methods: [instagram-login, facebook-page]
   required_scopes: [instagram_business_basic]
@@ -545,6 +565,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Your Instagram stories from the last 24 hours
 - id: instagram.x.user-tags
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]
@@ -571,6 +592,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference
   name: Posts where your Instagram account is tagged
 - id: instagram.x.user-business-discovery
+  added: '2026-07-28'
   authorization_method: facebook-page
   authorization_methods: [facebook-page]
   required_scopes: [instagram_basic, pages_read_engagement]

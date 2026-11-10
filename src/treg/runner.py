@@ -2,7 +2,7 @@
 the tool's `cli.inject` secrets injected into the child process, and return its output. The caller
 never holds the key; the secret is decrypted here (as it already is for every /call) and placed
 only in the child's environment. Both run tiers read the same `Tool.cli` profile — this module is
-the server-side consumer of it; the local tier's is the /grant path. See docs/CLI-RUN-PLAN.md.
+the server-side consumer of it; the local tier's is the /grant path.
 
 Tier 0 scope (this module): **static-key (`kind="env"`) secrets** injected under their `cli.inject`
 names; a plain subprocess (no container); a per-run throwaway $HOME so concurrent orgs never share a
@@ -31,7 +31,7 @@ from .models import Secret, Tool
 
 try:
     import resource  # POSIX-only; absent on Windows
-except ImportError:  # pragma: no cover - the server runs on Linux
+except ImportError:
     resource = None
 
 DEFAULT_TIMEOUT_S = 120
@@ -120,7 +120,7 @@ def _rlimit_preexec() -> None:
         _lower_rlimit(resource.RLIMIT_CPU, max(1, s.run_cpu_seconds))
         _lower_rlimit(resource.RLIMIT_FSIZE, max(1, s.run_fsize_mb) * 1_000_000)
         _lower_rlimit(resource.RLIMIT_CORE, 0)
-    except (ValueError, OSError):  # pragma: no cover - defensive; never fail a run over a limit
+    except (ValueError, OSError):  # never fail a run over a limit
         pass
 
 
@@ -242,7 +242,7 @@ async def run_tool(
     )
     pgid = proc.pid  # start_new_session ⇒ the child is its group leader; capture before it's reaped
     # Read both streams with a memory cap running CONCURRENTLY with the wait, so a runaway CLI can't
-    # buffer gigabytes before truncation (the old communicate() did). Sinks are read at the end even if
+    # buffer gigabytes before truncation. Sinks are read at the end even if
     # the reader tasks time out, so partial output isn't lost.
     out_buf, err_buf = bytearray(), bytearray()
     out_task = asyncio.ensure_future(_read_capped(proc.stdout, MAX_OUTPUT_BYTES, out_buf))

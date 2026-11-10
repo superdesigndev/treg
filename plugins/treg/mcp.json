@@ -1,10 +1,7 @@
 {
   "mcpServers": {
     "treg": {
-      "url": "https://treg.to/mcp/",
-      "headers": {
-        "Authorization": "Bearer ${env:TREG_TOKEN}"
-      }
+      "url": "https://treg.to/mcp/"
     }
   }
 }

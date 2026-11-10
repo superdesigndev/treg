@@ -13,7 +13,7 @@ from treg.domain import money
 from treg.infra.db import session_maker
 from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallRecord, Feedback, LedgerEntry, RunRecord
 from treg.timeutil import utcnow_naive
-from test_asynctasks import EP, _response, replicate_platform, legacy_async_platform, minimax_platform
+from test_asynctasks import EP, _response, replicate_platform, legacy_async_platform, minimax_platform  # noqa: F401 - pytest fixtures
 from test_tag_billing import _mint_agent, _mk_echo_tool, _org_id
 from test_run import _register_runnable
 from test_marketplace_call import platform_on  # noqa: F401
@@ -162,8 +162,9 @@ async def test_resource_creation_and_fetch_preserve_customer(clients, identities
         hits.append(True)
         return _response(200, {'snapshot_id': 'snapshot-a'})
     monkeypatch.setattr(call_service, 'relay', relay)
-    response = await clients.post('/call/brightdata.web.scrape.job.start?dataset_id=gd_test',
-                                  json=[{'url': 'https://example.com'}], headers=h['a'])
+    response = await clients.post('/call/brightdata.linkedin.user.profile?dataset_id=gd_l1viktl72bvl7bjuj0',
+                                  json={'input': [{'url': 'https://www.linkedin.com/in/example'}]},
+                                  headers=h['a'])
     assert response.status_code == 200, response.text
     for path in ['/call/brightdata.web.scrape.job.status?snapshot_id=snapshot-a',
                  '/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-a&format=json']:
@@ -190,7 +191,7 @@ async def test_runs_are_filtered_before_limits(clients, identities):
     assert (await clients.get('/runs', headers=h['aw'])).json() == []
 
 
-async def test_run_writers_snapshot_pins(clients, identities, monkeypatch):
+async def test_local_run_writer_snapshots_pins(clients, identities, monkeypatch):
     from treg.config import get_settings
     monkeypatch.setattr(get_settings(), 'run_proof', 'synthetic-proof')
     org, _ = identities
@@ -198,13 +199,11 @@ async def test_run_writers_snapshot_pins(clients, identities, monkeypatch):
     token = await _mint_agent(clients, org, 'runner', role='member',
                              pinned_tags={'customer': 'a'}, local_run_enabled=True)
     headers = {'X-Treg-Token': token}
-    response = await clients.post('/run', headers=headers, json={'tool': 'sh-skill', 'args': ['-c', 'echo hi']})
-    assert response.status_code == 200, response.text
     grant = await clients.post('/tools/sh-skill/grant', headers={**headers, 'X-Treg-Run-Proof': 'synthetic-proof'}, json={'argv': ['echo', 'hi']})
     assert grant.status_code == 200, grant.text
     await audit.drain()
     rows = (await clients.get('/runs', headers=headers)).json()
-    assert len(rows) == 2 and {r['where'] for r in rows} == {'local', 'server'}
+    assert len(rows) == 1 and rows[0]['where'] == 'local'
 
 
 async def test_same_provider_idempotency_label_is_partitioned_by_pin(clients, identities, monkeypatch, replicate_platform):
@@ -221,7 +220,8 @@ async def test_same_provider_idempotency_label_is_partitioned_by_pin(clients, id
     assert len(headers_seen) == 2 and headers_seen[0] != headers_seen[1]
 
 
-@pytest.mark.parametrize('path, tool', [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
+# Team MCP only: the async reads here are generation tasks, which `/mcp/v2/` does not call at all.
+@pytest.mark.parametrize('path, tool', [('/mcp/', 'call')])
 async def test_mcp_async_reads_apply_the_same_pin_check(clients, identities, monkeypatch, replicate_platform, path, tool):
     from test_mcp_directory import paired_mcp_session, _call_tool
     org, h = identities

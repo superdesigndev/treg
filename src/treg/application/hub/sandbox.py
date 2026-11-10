@@ -1,4 +1,4 @@
-"""The hub's script sandbox — the PARENT side (docs/HUB-DECISIONS.md round 2).
+"""The hub's script sandbox — the PARENT side.
 
 Spawns `python -m treg.hub_sandbox` as a separate short-lived process with the discipline
 `treg/runner.py` already has for vendor CLIs: a scrubbed environment (never the server's), a
@@ -27,7 +27,7 @@ from typing import Any, Awaitable, Callable
 
 try:
     import resource
-except ImportError:  # pragma: no cover — Windows
+except ImportError:  # Windows
     resource = None  # type: ignore[assignment]
 
 MEMORY_MB = 64                 # the engine's own heap cap
@@ -119,20 +119,20 @@ async def run_script(
     calls = 0
     try:
         proc.stdin.write((json.dumps({"op": "run", "script": script, "inputs": inputs, "data": data,
-                                      "memory_mb": MEMORY_MB, "wall_s": wall_s},
-                                     ensure_ascii=False) + "\n").encode())
+                                      "memory_mb": MEMORY_MB, "wall_s": wall_s})
+                          + "\n").encode())
         await proc.stdin.drain()
         deadline = asyncio.get_running_loop().time() + wall_s + 2
         # Calls run as tasks, MAX_PARALLEL at a time (the JSON road's width), and each reply goes
         # back to the child by id the moment its task finishes: five calls in one Promise.all are
         # five in flight. The child's stdout is read by one reader task so a reply write and a
-        # pending readline never contend. A refused call still ends the run, as before.
+        # pending readline never contend. A refused call still ends the run.
         sem = asyncio.Semaphore(MAX_PARALLEL)
         in_flight: set[asyncio.Task] = set()
         failure: SandboxError | None = None
 
         async def write(reply: dict) -> None:
-            proc.stdin.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
+            proc.stdin.write((json.dumps(reply) + "\n").encode())
             await proc.stdin.drain()
 
         async def one_call(msg: dict) -> None:

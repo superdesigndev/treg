@@ -1,3 +1,4 @@
+import { parseTabHash } from './navigation.js'
 import { storageGet, storageSet, storageRemove } from './storage.js'
 export default async function boot(){
     const lifecycle = new AbortController();
@@ -7,13 +8,13 @@ export default async function boot(){
     document.documentElement.dataset.theme=this.theme;
     listen(document, 'click', ()=>{ if(this.mdMenu) this.mdMenu=false; if(this.keyMenu) this.keyMenu=null; });  // outside-click closes compact menus
     listen(document, 'keydown', e=>{
-      // Escape closes any open modal/drawer (a universal expectation the modals didn't honour)
+      // Escape closes any open modal/drawer
       if(e.key==='Escape'){ const orgWasOpen=this.orgMenu; this.closeOverlays(); if(orgWasOpen) this.elements.orgmain?.focus(); if(this.startAgentOpen){ this.startAgentOpen=false; this.elements.startAgentTrigger?.focus(); } else if(this.elements.accountMenu?.open){ this.elements.accountMenu.open=false; this.elements.accountMenu.querySelector('summary').focus(); } return; }
-      // "/" focuses the search box (the "/" glyph in the box advertised a shortcut that didn't exist)
+      // "/" focuses the search box
       const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable);
-      if(e.key==='/' && !typing && this.authed && (this.view==='tools'||this.view==='resources'||this.view==='connections')){ e.preventDefault(); this.elements.search && this.elements.search.focus(); }
+      if(e.key==='/' && !typing && this.authed && (this.view==='tools'||this.view==='resources'||this.view==='catalog')){ e.preventDefault(); this.elements.search && this.elements.search.focus(); }
     });
-    listen(document, 'click', e=>{  // the org dropdown didn't close on an outside click
+    listen(document, 'click', e=>{  // the org dropdown closes on an outside click
       if(this.elements.accountMenu && !e.target.closest('.rd-account-menu')) this.elements.accountMenu.open=false;
       if(this.startAgentOpen && !e.target.closest('.rd-agent-picker')) this.startAgentOpen=false;
       if(this.orgMenu && !e.target.closest('.orgblock') && !e.target.closest('.dropdown')) this.orgMenu=false;
@@ -21,7 +22,7 @@ export default async function boot(){
     // the fixed-position dropdown must follow its trigger when anything scrolls or resizes
     listen(window, 'scroll', ()=>{ if(this.orgMenu) this.placeOrgMenu(); if(this.keyMenu)this.keyMenu=null; }, true);
     listen(window, 'resize', ()=>{ if(this.orgMenu) this.placeOrgMenu(); if(this.keyMenu)this.keyMenu=null; });
-    listen(window, 'popstate', e=>{  // browser Back moves between views (was exiting the app)
+    listen(window, 'popstate', e=>{  // browser Back moves between views
       const mk=(e.state&&e.state.mk)||this.mkFromPath(location.pathname);
       if(mk){ this.openProvider(mk, true); return; }
       const pf=(e.state&&e.state.platform)||this.platformFromHash();
@@ -30,14 +31,20 @@ export default async function boot(){
       if(d){ this.openDetail(d.kind, d.name, true); return; }
       const rid=(e.state&&e.state.run)||this.runFromPath(location.pathname);
       if(rid){ this.openRun(rid, true); return; }
+      // The first entry of a page opened at a public catalog URL (/catalog, /catalog/<slug>) carries no
+      // state and no hash: resolve it from the path, as the first load did, not as the tools view.
+      const cr=!(e.state&&e.state.view) && !location.hash && this.catalogFromPath(location.pathname);
+      if(cr){ this.openCatalogRoute(cr); return; }
       let v=(e.state&&e.state.view)||(location.hash||'').replace('#','')||'tools';
+      const tabbed=parseTabHash(location.hash);
+      if(tabbed){ this._tabRoute=tabbed; v=tabbed.view; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals','hub'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)) this.go(v, true);
     });
     // Catalog data does not depend on the session, so a view that shows it starts fetching now,
-    // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
+    // alongside /meta and /auth/me, instead of after them.
     const catalogShelf=this.catalogFromPath(location.pathname)?.slug || this.platformFromHash();
-    if(this.catalogFromPath(location.pathname) || catalogShelf || location.hash==='#connections') this.loadPlatforms();
+    if(this.catalogFromPath(location.pathname) || catalogShelf || location.hash==='#catalog') this.loadPlatforms();
     if(catalogShelf) this.prefetchPlatform(catalogShelf);
     // /search needs no session to draw, so it does not wait for one: the page paints now, and the
     // session (the top bar's buttons, a result clicked before sign-in) follows when /auth/me answers.
@@ -60,16 +67,17 @@ export default async function boot(){
     // from the email link's POST-confirm; ?invite= is the legacy code path (prefilled login).
     const qs = new URLSearchParams(location.search);
     const linkOrg = qs.get('invite_org'), inv = qs.get('invite'), ref = qs.get('ref'), oauthSignin = qs.get('signin')==='oauth';
+    const welcomeReplay = qs.has('welcome');
     this.oauthSignin=oauthSignin;
-    if(ref) storageSet('treg-ref', ref);  // survives the sign-in reload so the welcome can preselect the agent the landing was about (see maybeOnboard)
-    if(linkOrg || inv || qs.get('invite_expired') || ref || oauthSignin){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
+    if(ref) storageSet('treg-ref', ref);  // survives the sign-in reload so Getting started can preselect the agent the landing was about (see maybeOnboard)
+    if(linkOrg || inv || qs.get('invite_expired') || ref || oauthSignin || welcomeReplay){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
     if(linkOrg){ this.inviteLinkOrg=parseInt(linkOrg,10)||null; }
     // A shared detail deep link (/app/skills/<x>, /app/tools/<x>) — from the URL itself, or stashed
     // before an OAuth hop (the callback always lands on /app, which would otherwise drop the path).
     let route=this.routeFromPath(location.pathname);
     let mkRoute=this.mkFromPath(location.pathname);
     const runRoute=this.runFromPath(location.pathname);   // /app/runs/<id>: the hub's run page, members only
-    // A public catalog URL renders the marketplace views with or without a session. Set BEFORE the
+    // A public catalog URL renders the catalog views with or without a session. Set BEFORE the
     // /auth/me check so the first paint is already in public mode, and drop the server-rendered
     // fallback (see `_spa_catalog_page`) now that the real UI is about to take over.
     const catRoute=this.catalogFromPath(location.pathname);
@@ -83,7 +91,16 @@ export default async function boot(){
     this._restoreAgent();
     const me = await meReq.catch(()=>null);
     this.sessionChecked=true;
-    if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.icHash=me.intercom_user_hash||''; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
+    if(me){
+      // A verified existing account must prove its normal treg login before its first SSO link.
+      // Resume that one SSO attempt after login; remove the hint first so a failed attempt cannot loop.
+      const pendingSso=sessionStorage.getItem('treg-pending-sso');
+      if(pendingSso){ sessionStorage.removeItem('treg-pending-sso');
+        if(/^[a-z0-9][a-z0-9-]*$/.test(pendingSso)){
+          location.replace('/auth/sso/'+encodeURIComponent(pendingSso)+'/start'); return;
+        } }
+      this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.icHash=me.intercom_user_hash||''; this.meAvatar=me.avatar_url||null; this.uploadsOn=!!me.uploads; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
+      if(welcomeReplay && (this.onboarded || !this.inviteFirstRun)){ this.welcome.replay=true; this.welcome.on=true; }
       // Share-born arrival (/app/skills/x?invite_org=N from the invite email): accept silently and
       // enter that team — the emailed "Sign in & accept" click was the consent. Otherwise the normal
       // first-run / invite-banner flow.
@@ -122,20 +139,20 @@ export default async function boot(){
       else { const hv=this.viewFromHash(); if(hv) this.go(hv, true);
         else { this.go('start', true); history.replaceState({view:'start'},'','/app#start'); } }
       return; }      // token-in-browser fallback
-    // A marketplace link is only meaningful to a member, so a logged-out visitor gets the front
+    // A catalog link is only meaningful to a member, so a logged-out visitor gets the front
     // door rather than the share gate (which exists to accept skill/tool shares).
     // Logged out on a /catalog URL: render the catalog anyway. Its API is unauthenticated, so this
-    // is the SAME marketplace UI a member sees, minus what needs a session — not a second build of
+    // is the SAME catalog UI a member sees, minus what needs a session - not a second build of
     // it. This is the branch that makes the catalog crawlable.
     if(catRoute){
       // loadConnections, not just loadPlatforms: /oauth/providers is an open endpoint, so the
       // Platform tab (the provider shelf) fills for a signed-out visitor too — only /connections
       // needs a session, and its failure is caught. Without this the tab reads "Platform 0" and
       // renders blank in an incognito window.
-      if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='connections'; this.loadConnections(); }
+      if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='catalog'; this.loadConnections(); }
       return; }
     if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
     if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
-    else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in; nothing mints a sandbox any more
+    else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in
     if(inv){ this.invitePrefill=inv; this.emailInput=inv; this.emailStage=false; this.demo.signin=true; }  // legacy code link while logged out: prefill + open sign-in; the invite auto-accepts after login (maybeOnboard)
   }

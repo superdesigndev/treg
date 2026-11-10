@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "title": "Software Engineer",
+      "company": {
+        "name": "Example Company",
+        "linkedin_url": "https://www.linkedin.com/company/example-company",
+        "domain": "example.com",
+        "website": "https://example.com",
+        "about": "Example company",
+        "industry": "Software",
+        "size": "11-50",
+        "employees_on_linkedin": 25,
+        "founded_year": 2020,
+        "hq": {
+          "city": "San Francisco",
+          "country_code": "US"
+        }
+      },
+      "url": "https://example.com/jobs/engineer"
+    }
+  ],
+  "results_length": 1,
+  "total_results": 1,
+  "max_results": 1,
+  "cursor": null,
+  "fair_usage": {
+    "records_used": 1,
+    "records_remaining": 199999,
+    "next_reset_at": "2026-11-16T00:00:00Z",
+    "rate_limit": {
+      "requests_per_second": 10,
+      "remaining_this_second": 9
+    },
+    "request_id": "example-request"
+  }
+}

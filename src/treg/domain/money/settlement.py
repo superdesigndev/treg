@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Any
 
 from ..asynctasks import json_path as _path
@@ -130,13 +131,23 @@ def derive_basis(
 
     `usage_unit_micro` is the micro-USD worth of one unit of the provider's `usage.path` meter,
     frozen here so a later fx edit cannot re-price a task already in flight. `usd` needs none."""
+    if cost.get("settle") == "terminal_presence":
+        estimate = max(0, int(response_estimate_micro))
+        presence = cost["presence"]
+        request_field = presence.get("request_field")
+        request_billed = bool(request_field and _path(request.get("body"), request_field))
+        return {
+            "when": "terminal", "amount": {"kind": "terminal_presence", **presence,
+                                             "request_billed": request_billed},
+            "fallback_micro": estimate, "reserve_micro": estimate,
+        }
     if cost.get("table") or cost.get("settle") == "usage":
         fallback = _micro(float(cost["fallback"]["value"]), unit_micro)
         if cost.get("settle") == "usage":
-            # Reserve what the rate card says THIS request costs, not the matrix ceiling: the
-            # ceiling made a $0.05 call demand a $6 balance. The provider's reported cost settles
-            # and may exceed the reserve; the ledger takes the difference from the balance, and the
-            # next reserve is the gate. reconcile lists every overrun (`async_task_settlement`).
+            # Reserve what the rate card says THIS request costs, not the matrix ceiling. The
+            # provider's reported cost settles and may exceed the reserve; the ledger takes the
+            # difference from the balance, and the next reserve is the gate. reconcile lists every
+            # overrun (`async_task_settlement`).
             amount = {"kind": "usage", **dict(cost["usage"])}
             if amount.get("unit") == "usd":
                 amount["unit_micro"] = 1_000_000
@@ -153,8 +164,10 @@ def derive_basis(
         return {"when": "terminal" if terminal else "response", "amount": amount,
                 "fallback_micro": fallback,
                 "reserve_micro": reserve}
+    # A fixed per-call price on an async task is owed for the finished answer: the hold waits for
+    # it, and a task that never finishes is released like any other.
     return {
-        "when": "response",
+        "when": "terminal" if terminal and cost.get("type") == "per_call" else "response",
         "amount": {"kind": "observed"},
         "fallback_micro": max(0, int(response_estimate_micro)),
         "reserve_micro": max(0, int(response_estimate_micro)),
@@ -162,6 +175,9 @@ def derive_basis(
 
 
 def _usage_number(value: object) -> float | None:
+    # A plain decimal string ("0.500") counts too.
+    if isinstance(value, str) and re.fullmatch(r"\d+(?:\.\d+)?", value.strip()):
+        value = float(value)
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) \
             and value >= 0:
         return float(value)
@@ -225,6 +241,16 @@ def settle(basis: dict, evidence: dict[str, Any]) -> int:
     """Resolve one frozen basis to raw integer micro-USD without moving ledger money."""
     amount = basis.get("amount") or {}
     kind = amount.get("kind")
+    if kind == "terminal_presence":
+        if amount.get("request_billed"):
+            return max(0, int(basis.get("reserve_micro") or 0))
+        terminal = evidence.get("terminal")
+        row = _path(terminal, amount["row"]) if amount.get("row") else terminal
+        if isinstance(row, dict):
+            found = _path(row, amount["field"])
+            if found is None or found == "" or found == []:
+                return 0
+        return max(0, int(basis.get("reserve_micro") or 0))
     if kind == "table":
         return table_amount_micro(
             amount["cost"], amount["request"], amount["input"], int(amount["unit_micro"]))
@@ -239,7 +265,9 @@ def settle(basis: dict, evidence: dict[str, Any]) -> int:
         # rate-card estimate), not the ceiling. The worker marks the row for review.
         return max(0, int(basis.get("reserve_micro") or 0))
     if kind == "observed":
-        observed = evidence.get("observed_micro")
-        if isinstance(observed, int) and not isinstance(observed, bool) and observed >= 0:
-            return observed
+        # The provider's report on the answer itself, else its report on the submission (an
+        # async task that is billed when submitted, frozen by `defer_submission`).
+        for observed in (evidence.get("observed_micro"), basis.get("submission_charge_micro")):
+            if isinstance(observed, int) and not isinstance(observed, bool) and observed >= 0:
+                return observed
     return max(0, int(basis.get("fallback_micro") or 0))

@@ -1,4 +1,4 @@
-"""The tool hub's maker routes (docs/HUB-DECISIONS.md).
+"""The tool hub's maker routes.
 
 Behind TREG_HUB_ENABLED: with the flag off every route here answers 404, so the surface does not
 exist until the whole hub lands. Phase 1: publish (validate + store) and read back. The check run,
@@ -59,7 +59,7 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
         if exists is None:
             raise HTTPException(status_code=404, detail=f"your team has no hub tool named {name!r}; POST /hub/tools creates one")
     # A team whose name reads as treg, as official, or as a catalog provider publishes only by a
-    # superadmin: its tools would pass for ours or theirs (hub simulation run 2). Teams made before
+    # superadmin: its tools would pass for ours or theirs. Teams made before
     # the name rule keep their name; this stops their tools.
     from ..application.signup import reserved_team_names
     from ..domain.governance.teams import reserved_reason
@@ -68,7 +68,7 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
         raise HTTPException(status_code=403, detail={"error": "team_name_reserved", "rule": why +
                             "; rename the team (treg org rename) before publishing a hub tool"})
     # The serving version's price before this publish: a new version's recipe.json replaces it, which
-    # undid a `treg hub price` without a word (hub simulation run 2).
+    # would silently undo a `treg hub price`.
     name = body.manifest.get("name") if isinstance(body.manifest, dict) else None
     before = (await db.execute(select(HubTool).where(
         HubTool.org_id == caller.org_id, HubTool.name == name, HubTool.status == "live")
@@ -103,7 +103,7 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
         out["call"] = f"POST /call/{published.tool_id}"
         out["page"] = f"{get_settings().public_url.rstrip('/')}/hub/{published.tool_id}"
     elif row.status == "review":
-        # Say what callers get NOW: with every approved version retired, nothing (hub simulation run 3).
+        # Say what callers get NOW: with every approved version retired, nothing.
         serving = (await db.execute(select(HubTool.version).where(
             HubTool.tool_id == published.tool_id, HubTool.status == "live").order_by(HubTool.version.desc()).limit(1))).scalar_one_or_none()
         now = (f"callers keep version {serving} until this one is approved" if serving is not None
@@ -186,7 +186,7 @@ async def hub_run(
     """One finished run. The CALLER's team sees what it paid, the inputs, the trace and the
     output. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,
     the script's log lines and the failure's error body, never the caller's identity or the
-    output (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404."""
+    output. Anyone else: 404."""
     _require_hub(caller)
     from ..application.hub import health as hub_health
     from ..models import HubRun
@@ -213,7 +213,7 @@ async def hub_run(
         if row.error:
             e = dict(row.error)
             # a caller sees the failing step's name, status and the tool's own name, never the
-            # upstream error body (round 4 q10); the maker reads the full error in their log
+            # upstream error body; the maker reads the full error in their log
             e.pop("log", None)
             for s in e.get("trace", []) or []:
                 s.pop("error", None)
@@ -248,7 +248,7 @@ async def get_hub_tool(
         out["readme"] = row.readme
     else:
         # another team reads the public contract only: not the maker's tools, not who
-        # published, not the check's trace (8.1 review)
+        # published, not the check's trace
         for k in ("uses", "created_by", "check_result"):
             out.pop(k, None)
         out["made_of"] = len(row.manifest.get("uses", []))
@@ -258,7 +258,7 @@ async def get_hub_tool(
 
 class RunIn(PublishIn):
     """A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is
-    real and charged to the maker (HUB-DECISIONS round 4 q10 / round 5 q2: `treg hub run .`)."""
+    real and charged to the maker (`treg hub run .`)."""
 
     inputs: dict[str, Any] = Field(default_factory=dict)
 
@@ -325,7 +325,7 @@ async def hub_tool_earnings(
     tool_id: str, days: int = 90, format: str = "json",
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """The seller's view (docs/HUB-DECISIONS.md round 3 q10, round 5 q9): per day, runs,
+    """The seller's view: per day, runs,
     successes, failures and what was earned, for one of the team's tools. Counts and amounts only;
     never who called. `format=csv` for a download."""
     _require_hub(caller)
@@ -353,8 +353,8 @@ async def hub_tool_earnings(
                HubRun.started_at >= since, HubRun.version > 0)
         .group_by(day).order_by(day.desc()))).all()
     # avg_price_micro: what one successful run earned on average (earned / ok). With a variable
-    # price (per_unit, cost_plus) this is how the maker sees where the price lands
-    # (docs/hub-pricing-decisions.md round 2 q5). 0 on a day with no successful run.
+    # price (a script's ctx.charge lines) this is how the maker sees where the price lands.
+    # 0 on a day with no successful run.
     table = [{"day": str(d), "runs": int(n), "ok": int(ok or 0), "failed": int(bad or 0),
               "earned_micro": int(earned),
               "avg_price_micro": int(round(int(earned) / int(ok))) if int(ok or 0) else 0}
@@ -391,7 +391,7 @@ async def retire_hub_tool(
 
 class PriceIn(BaseModel):
     """One PATCH, three knobs of the newest live version, none bumps the version: the seller's
-    price, and the two distribution switches (docs/hub-listing-decisions.md). At least one."""
+    price, and the two distribution switches. At least one."""
     model_config = ConfigDict(extra="forbid")
     price_usd: float | None = None
     listed: bool | None = None
@@ -467,8 +467,7 @@ async def hub_tool_health(
                      for r in runs]}
 
 
-# ---------------------------------------------------------------------------------------------
-# Listing review (docs/hub-listing-decisions.md round 2): a maker's `treg hub list` is a request;
+# Listing review: a maker's `treg hub list` is a request;
 # a superadmin approves or rejects it here. Only an approved tool is in catalog search.
 
 class ListingDecisionIn(BaseModel):
@@ -513,7 +512,7 @@ async def admin_hub_listing_decide(
     return {"tool_id": tool_id, **hub_app.listing_view(lst)}
 
 
-# Updates to an approved tool (round 4): a new version or a price change waits here. Approve makes
+# Updates to an approved tool: a new version or a price change waits here. Approve makes
 # it serve everyone; reject keeps the approved one and tells the maker why.
 
 class UpdateDecisionIn(BaseModel):

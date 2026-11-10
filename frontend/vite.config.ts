@@ -14,6 +14,9 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // The dashboard page is served by the API on :18790; without this, imported assets resolve
+    // against that origin and 404.
+    origin: 'http://localhost:5173',
     proxy: {
       '^/(?!app/ui/)': { target: 'http://127.0.0.1:18790', changeOrigin: false },
     },

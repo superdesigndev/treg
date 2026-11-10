@@ -234,6 +234,21 @@ dialog form>.primary { width:100%; margin-top:5px; }
 .social-buttons button { width:100%; font-size:13px; }
 .fine { font-size:11px!important; color:var(--muted); line-height:1.7; margin-top:17px; }
 .auth-error { color:#9A5A43; font-size:12px; margin:12px 0; }
+.arena-login form>.primary { margin-top:4px; }
+.arena-login .arena-auth-options { margin-top:10px; }
+.arena-login .arena-auth-options>button { width:100%; }
+.arena-login .arena-auth-divider { display:flex; align-items:center; gap:12px; margin:22px 0 14px; color:var(--muted); font-size:11px; white-space:nowrap; }
+.arena-login .arena-auth-divider::before,.arena-login .arena-auth-divider::after { content:""; height:1px; flex:1; background:var(--line); }
+.arena-login .arena-auth-method { display:flex; align-items:center; justify-content:center; gap:9px; }
+.arena-login .arena-auth-method::before { content:""; display:block; width:17px; height:17px; flex:none; background:var(--method-icon) center/contain no-repeat; }
+.arena-login .arena-auth-method.primary::before { filter:invert(1); }
+.arena-login .method-mail { --method-icon:url('/media/signin/mail.svg'); }
+.arena-login .method-sso { --method-icon:url('/media/signin/shield.svg'); }
+.arena-login .method-back { --method-icon:url('/media/signin/arrow-left.svg'); }
+.arena-login .method-google { --method-icon:url('/media/aeo/logos/google.svg'); }
+.arena-login .method-github { --method-icon:url('/media/recruit/github.svg'); }
+.arena-login .arena-sso-teams { margin-top:14px; font-size:12px; }
+.arena-login .arena-sso-teams button { width:100%; margin-top:8px; }
 .loader-fallback { text-align:center; padding:80px 20px; }
 .input-method { display:flex; align-items:center; gap:7px; margin:0; color:var(--muted); font-size:12px; }
 .input-method select { border:0; background:transparent; padding:3px 20px 3px 0; font-size:12px; color:var(--muted); }

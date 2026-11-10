@@ -1,0 +1,14 @@
+{
+  "found": true,
+  "email_domain": "example.com",
+  "fair_usage": {
+    "records_used": 1,
+    "records_remaining": 199999,
+    "next_reset_at": "2026-11-16T00:00:00Z",
+    "rate_limit": {
+      "requests_per_second": 10,
+      "remaining_this_second": 9
+    },
+    "request_id": "example-request"
+  }
+}

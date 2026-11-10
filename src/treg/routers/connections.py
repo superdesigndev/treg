@@ -51,6 +51,7 @@ _CONNECT_HTTP_ERRORS = {
     "unknown_connection": 404,
     "invalid_provider": 422,
     "invalid_token_provider": 422,
+    "pasted_secret_provider": 422,
     "invalid_token": 422,
     "provider_unreachable": 502,
     "unknown_state": 404,
@@ -66,6 +67,7 @@ _CONNECT_HTTP_ERRORS = {
     "invalid_name": 422,
     "name_taken": 409,
     "name_in_use": 409,
+    "provider_paused": 503,
 }
 
 

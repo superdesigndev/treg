@@ -1,16 +1,22 @@
 
 export default {
-// ---- connections (registry OAuth) ----
     async loadConnections(){
       this.connErr=''; const live=this.ticket('connections');
       this.loadPlatforms();  // fire-and-forget, and first: the catalog must neither hold up nor wait for the connect UI
       try{
-        const [ps, cs]=await Promise.all([
-          fetch('/oauth/providers').then(r=>r.json()).catch(()=>[]),
+        // The provider list is the deployment's, fixed for the session: fetched once, not per view.
+        // Secrets come in the same breath: a key saved under a provider's name is told apart from a
+        // connection by comparing the two lists, so one fetched later than the other (a team switch,
+        // a disconnect, a slow first answer) would show a removed or foreign key as saved.
+        const member=this.authed && !this.publicCatalog;
+        const [ps, cs, ss]=await Promise.all([
+          this.providers.length ? this.providers : fetch('/oauth/providers').then(r=>r.json()).catch(()=>[]),
           this.api('/connections').catch(()=>[]),
+          member ? this.api('/secrets').catch(()=>null) : null,
         ]);
         if(!live()) return;
         this.providers=ps||[]; this.connections=cs||[];
+        if(ss) this.secrets=ss;
       }catch(e){ if(live()) this.connErr=String(e.message||e); }
     },
 authorizationMethodSpec(providerName, methodName){
@@ -123,7 +129,7 @@ methodCapability(p, method){
 startConnect(p, conn){
       // A pasted-secret provider has no consent screen — the user brings their own bot token (Slack)
       // or API key (Apollo, TikHub, …), so setup is a form, not a redirect.
-      if(p.auth_kind==='token' || p.auth_kind==='key') return void (this.tokenAsk={provider:p, token:'', err:'', busy:false, conn});
+      if(this.pastedCredential(p)) return void (this.tokenAsk={provider:p, token:'', err:'', busy:false, conn});
       // Several separate grants are one Add-account decision. Providers with zero or one method
       // keep the old one-click behavior, so LinkedIn and every existing single-method flow do not
       // inherit an extra dialog. Reconnects also stay pinned to their stored method.
@@ -150,21 +156,42 @@ async submitToken(){
       try{
         await this.api('/connections/token',{method:'POST',headers:{'content-type':'application/json'},
           body:JSON.stringify({provider:t.provider.service, token:t.token.trim()})});
-        this.tokenAsk=null; await this.loadConnections(); await this.loadAll();
+        this.tokenAsk=null; await this.loadAll();
       }catch(e){ t.err=(e.detail||e.message||e); t.busy=false; }
     },
 async chooseCapability(cap){
       const p=this.capAsk.provider, conn=this.capAsk.conn; this.capAsk=null;
       await this.connectProvider(p, cap, conn);
     },
-connProvider(c){ return (this.providers||[]).find(p=>p.service===c.provider)||null; },
+connProvider(c){ return this.providerIndex.get(c.provider)||null; },
+// The one thing a connection needs from a person, if anything: the card's status and its action.
+    connState(c){
+      if(c.paused) return {key:'paused', tone:'quiet', label:'Paused', title:c.paused_message};
+      if(c.expiry_state==='expired') return {key:'reconnect', tone:'bad', label:'Expired', title:'This credential has expired. Reconnect to keep calling.'};
+      if(c.needs_reconnect) return {key:'reconnect', tone:'warn', label:'Expires soon', title:'treg cannot renew this one. Reconnect before '+(c.expires_at||'it expires')+'.'};
+      if(c.needs_extra_credential) return {key:'second', tone:'warn', label:'Needs a second credential', title:c.extra_credential_note};
+      if(c.health==='invalid') return {key:'failing', tone:'bad', label:'Failing', title:c.last_error||'The last call with this credential failed.'};
+      if(c.health==='setup_required') return {key:'setup', tone:'warn', label:'Setup required', title:c.health_detail||'The account needs setting up upstream.'};
+      if(c.supports_discovery && !c.resource_ref) return {key:'choose', tone:'warn', label:'Choose '+(c.resource_label||'an account'), title:'Nothing to call yet: pick which '+(c.resource_label||'account')+' this connection uses.'};
+      if(c.health==='ok') return {key:'ok', tone:'ok', label:'Working', title:'A real call with this credential succeeded.'};
+      return {key:'ok', tone:'ok', label:'Connected', title:'Saved. It is checked on its first call.'};
+    },
+// How a provider's credential is obtained, in the words a person uses for it: the key's own name,
+    // or the account they log in with ("Sign in" read as signing in to treg; the card's logo and name
+    // already say whose account, and the catalog calls it "your account" too).
+    authLabel(p){ return this.pastedCredential(p) ? (p.token_label || 'API key') : 'Your account'; },
+pastedCredential(p){ return !!p && (p.auth_kind==='key' || p.auth_kind==='token'); },
+// A provider's connect button: a pasted key is one per team, so a second one replaces it.
+    connectLabel(p, connected){ return this.pastedCredential(p) ? (connected ? 'Replace key' : 'Add key') : (connected ? 'Add account' : 'Connect account'); },
+// Renew a connection the way it was made: re-consent for an account, a fresh paste for a key.
+    renewConnection(a){ return a.pasted ? this.startConnect(a.p, a.c) : this.reconnect(a.c); },
 async saveExtraCred(c){
       const v=(this.extraCred[c.id]||'').trim(); if(!v) return;
       this.extraBusy=c.id; this.connErr='';
       try{
         await this.api('/connections/'+c.id+'/extra-credential',{method:'POST',
           headers:{'content-type':'application/json'}, body:JSON.stringify({value:v})});
-        this.extraCred[c.id]=''; await this.loadConnections(); await this.loadAll();
+        this.extraCred[c.id]=''; await this.loadAll();
       }catch(e){ this.connErr=(e.detail||e.message||e); }
       this.extraBusy=null;
     },
@@ -178,16 +205,20 @@ async openResources(c){
         const d=await this.api('/connections/'+c.id+'/resources');
         if(!this.resPick || this.resPick.id!==c.id) return;  // user closed it or opened another
         this.resPick={id:c.id, label:d.resource_label||label, plural:d.resource_plural||plural,
-                      rows:d.resources||[], selected:d.selected||'', loading:false,
+                      rows:d.resources||[], selected:d.selected||'', loading:false, scoped:!!d.resource_scoped,
                       err:d.setup_required?(d.setup_detail||'Account setup is required.'):''};
         // Discovery can change the row underneath us — it backfills a missing label and records
         // that the credential works — so pull the list again rather than leaving stale text on screen.
         this.loadConnections();
       }catch(e){
-        // e.detail carries the server's (and often the upstream's) actual words; e.message is just 'http'.
         if(!this.resPick || this.resPick.id!==c.id) return;
         this.resPick.loading=false;
-        this.resPick.err='Could not list '+plural+': '+(e.detail||e.message||e);
+        if(e.detail?.code==='youtube_quota_exceeded'){
+          this.resPick.err='YouTube is temporarily unavailable. We’re seeing high usage and have reached our current Google API limit. We’ve requested a higher limit and are waiting for Google’s response. Please try again later.';
+        }else{
+          // e.detail carries the server's (and often the upstream's) actual words; e.message is just 'http'.
+          this.resPick.err='Could not list '+plural+': '+(e.detail||e.message||e);
+        }
       }
     },
 async chooseResource(r){
@@ -206,13 +237,13 @@ async renameConnection(c){
       try{
         await this.api('/connections/'+c.id,{method:'PATCH',headers:{'content-type':'application/json'},
           body:JSON.stringify({name:name.trim()})});
-        await this.loadConnections(); await this.loadAll();
+        await this.loadAll();
       }catch(e){ this.connErr=(e.detail||e.message||e); }
     },
 async disconnect(c){
       if(this.confirmDisc!==c.id){ this.confirmDisc=c.id; setTimeout(()=>{ if(this.confirmDisc===c.id) this.confirmDisc=null; },4000); return; }
       this.confirmDisc=null;
-      try{ await this.api('/connections/'+c.id,{method:'DELETE'}); await this.loadConnections(); await this.loadAll(); }
+      try{ await this.api('/connections/'+c.id,{method:'DELETE'}); await this.loadAll(); }
       catch(e){ this.connErr=String(e.message||e); }
     }
 }

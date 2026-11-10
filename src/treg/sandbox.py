@@ -22,12 +22,20 @@ from __future__ import annotations
 import json
 import re
 
+from .application.onboard.sandbox import (
+    DEFAULTS as DEFAULTS,
+    MAX_SECRETS as MAX_SECRETS,
+    MAX_TOOLS as MAX_TOOLS,
+    SANDBOX_DOMAIN as SANDBOX_DOMAIN,
+    SANDBOX_TTL_MIN as SANDBOX_TTL_MIN,
+    gc as gc,
+    is_sandbox_user as is_sandbox_user,
+)
 from . import crypto
 from .infra.upstream import injectors
 from .models import Org, Secret, Tool
-from .sandbox_identity import visitor_name
+from .sandbox_identity import visitor_name as visitor_name
 
-# ---- the ONE live wire ----------------------------------------------------------------------
 # The seeded stripe tool above is special: when TREG_DEMO_STRIPE_KEY is configured, a sandbox call
 # to a tool matching this EXACT fingerprint relays to the real Stripe test API — with the key
 # injected from env, so no sandbox org ever holds it. Edit anything about the tool (base_url,
@@ -92,24 +100,3 @@ def synthesize(method: str, upstream_url: str, tool: Tool, secrets: dict[int, Se
         },
         "data": data,
     }
-
-
-
-
-from .application.onboard.sandbox import (
-    DEFAULTS,
-    MAX_SECRETS,
-    MAX_TOOLS,
-    SAMPLE_SKILLS,
-    SANDBOX_DOMAIN,
-    SANDBOX_TTL_MIN,
-    _skill_md,
-    _skill_secret,
-    _skill_treg_json,
-    export_skill,
-    gc,
-    install_script,
-    is_sandbox_user,
-    mint,
-    skill_files,
-)

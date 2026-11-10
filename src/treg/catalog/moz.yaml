@@ -77,6 +77,7 @@ endpoints:
       confidence: verified
       note: '1 row per target with no modifiers; each history list entry and `distributions: true` adds 1 row per target (weighted endpoint) OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.url.metrics.json
     docs_url: https://moz.com/help/links-api/making-calls/url-metrics
 
@@ -108,6 +109,7 @@ endpoints:
       confidence: verified
       note: 1 row per target + 1 row for the distributions modifier OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.backlinks.summary.json
     docs_url: https://moz.com/help/links-api/making-calls/url-metrics
 
@@ -141,12 +143,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned link; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.backlinks.list.json
     docs_url: https://moz.com/help/links-api/making-calls/links
 
@@ -178,12 +182,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned root domain; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.linking_domains.list.json
     docs_url: https://moz.com/help/links-api/making-calls/linking-root-domains
 
@@ -211,12 +217,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned anchor-text phrase; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.anchors.list.json
     docs_url: https://moz.com/help/links-api/making-calls/anchor-text
 
@@ -249,12 +257,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned page; history modifiers add rows as in url_metrics OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.site.top_pages.json
     docs_url: https://moz.com/help/links-api/making-calls/top-pages
 
@@ -264,7 +274,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /link_status
-    name: "Check whether specific sources link to a target domain"
+    name: "Check referring sites"
     summary: "Check whether specific sources link to a target — returns one boolean per source"
     input:
       bodyType: json
@@ -282,12 +292,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: source, variable: true}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 'weighted endpoint: 2 rows per source (1 source = 2 rows, 50 sources = 100 rows) OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.backlinks.status.json
     docs_url: https://moz.com/help/links-api/making-calls/link-status
 
@@ -297,7 +309,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /link_intersect
-    name: "Sources linking to competitors but not you — link gap"
+    name: "Competitor link gaps"
     summary: "Sources that link to the given competitors but not to you — link-gap prospecting"
     input:
       bodyType: json
@@ -320,12 +332,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result, variable: true}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 'weighted endpoint: 5 rows per RETURNED result (limit 1 = 5 rows, limit 50 = 250 rows). Fewer results than `limit` cost proportionally less. OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.backlinks.intersect.json
     docs_url: https://moz.com/help/links-api/making-calls/link-intersect
 
@@ -335,7 +349,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /index_metadata
-    name: "Current Moz link index version"
+    name: "Moz link index version"
     summary: "Which Moz link index is serving results — tells you if metrics moved on a refresh"
     input:
       bodyType: json
@@ -354,6 +368,7 @@ endpoints:
       confidence: verified
       note: '1 row per call. OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after; rows_consumed moved by exactly 1. This closes the previous `value: null, confidence: unknown`, which existed only because the test credential had been out of quota on 2026-07-28 — the endpoint gates on quota (403 insufficient-quota), so it was never free, just unmeasurable at the time.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.index.metadata.json
     docs_url: https://moz.com/help/links-api/making-calls/index-metadata
 
@@ -381,6 +396,7 @@ endpoints:
       unit: call
       note: answers 200 even when the account's row quota is fully exhausted, so it costs nothing and is the right liveness probe for a Moz key
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.account.usage.json
     docs_url: https://moz.com/help/links-api/making-calls/usage-data
 
@@ -391,7 +407,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /global_top_pages
-    name: "Most-linked pages on the web — index-wide, no target"
+    name: "Top linked pages"
     summary: "Most-linked pages on the web, with full URL metrics (index-wide, takes no target)"
     input:
       bodyType: json
@@ -407,12 +423,14 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned page; defaults to 25 rows when `limit` is omitted OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.global.top_pages.json
     docs_url: https://moz.com/help/links-api/making-calls/global-top-pages
 
@@ -423,7 +441,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /global_top_root_domains
-    name: "Most-linked domains on the web — Domain Authority, spam"
+    name: "Top linked domains"
     summary: "Most-linked root domains on the web, with DA and spam score (index-wide, no target)"
     input:
       bodyType: json
@@ -439,11 +457,13 @@ endpoints:
       currency: unit
       per: 1
       unit: quota_row
+      display: {unit: result}
       source: observed
       source_url: https://moz.com/api/pricing
       checked: '2026-07-31'
       confidence: verified
       note: 1 row per returned root domain; defaults to 25 rows when `limit` is omitted OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/moz.web.global.top_domains.json
     docs_url: https://moz.com/help/links-api/making-calls/global-top-root-domains

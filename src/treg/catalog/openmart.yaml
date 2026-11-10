@@ -48,6 +48,7 @@ endpoints:
     confidence: verified
     note: Openmart support confirmed 3 credits per 10 returned records, rounded up per operation; the effective charge is ceil(0.3 × returned records), and zero records cost zero. Ten live one-result calls each deducted one whole credit. Shared-key calls require an explicit limit from 1 to 25; own-key calls keep the upstream limit. Direct callers should treat match_score 0 as a miss.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.businesses.search.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -75,6 +76,7 @@ endpoints:
     note: Documentation says reduced billing; live 1-row, 10-row, and cursor calls moved no whole credit, so no fractional rate is claimed.
   platform_blocked: The upstream rate is unresolved; connect your own Openmart key.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.businesses.search.ids.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -105,6 +107,7 @@ endpoints:
     confidence: documented
     note: Full company records use the same ceil(0.3 × returned records) per-operation charge; omitted IDs are free because the response map contains no value for them. Shared-key calls accept at most 25 IDs; own-key calls keep the upstream limit.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.businesses.lookup.openmart.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -123,6 +126,7 @@ endpoints:
   test_request: {body: [ChIJ00000000000000000000000]}
   cost: *lookup_record_cost
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.businesses.lookup.google-place.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -155,6 +159,7 @@ endpoints:
     confidence: verified
     note: Openmart support confirmed ceil(0.3 × returned records) per operation; a no-match returns an empty array and costs zero. Shared-key calls require an explicit limit from 1 to 25; own-key calls keep the upstream limit.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.companies.enrich.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -185,6 +190,7 @@ endpoints:
     confidence: verified
     note: Openmart support confirmed ceil(0.3 × returned records) per operation; brand rows are returned in data[], and an empty page costs zero. Shared-key calls require pagination.limit from 1 to 25; own-key calls keep the upstream limit.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.companies.search.json
   docs_url: https://app.openmart.com/api-docs
 - id: openmart.deny-rules.create
@@ -205,6 +211,7 @@ endpoints:
   cache: forbidden
   platform_blocked: This mutates account state; connect your own Openmart key.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.deny-rules.create.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -223,6 +230,7 @@ endpoints:
   cache: forbidden
   platform_blocked: The answer depends on private account state; connect your own Openmart key.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.deny-rules.check.json
   docs_url: https://app.openmart.com/api-docs
 
@@ -241,5 +249,6 @@ endpoints:
   cache: forbidden
   platform_blocked: This destructive operation mutates account state; connect your own Openmart key.
   verified: '2026-09-17'
+  added: '2026-09-17'
   example_response: examples/openmart.deny-rules.delete.json
   docs_url: https://app.openmart.com/api-docs

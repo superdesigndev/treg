@@ -1,4 +1,4 @@
-"""Step D′ of docs/PROVIDER-CAPACITY-PLAN.md — burst smoothing on treg's own platform keys:
+"""Provider capacity: burst smoothing on treg's own platform keys:
 a per-provider token bucket (wait ≤ 2 s, in-process, no DB) and one bounded `retry-after`
 re-send for idempotent reads. Never a refusal; never on tiers 1/2."""
 
@@ -13,6 +13,7 @@ from httpx import AsyncClient
 from treg import ratestore
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
+from treg.domain.identity import api_keys as managed_keys
 from treg.infra.db import _engine, session_maker
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.sweep import STATE_NS
@@ -60,7 +61,10 @@ async def test_token_bucket_spaces_a_burst_and_never_waits_past_the_cap():
 # ---- the call path ------------------------------------------------------------------------------
 
 def _relay_script(answers: list[tuple[int, tuple, bytes]], seen: list):
-    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None,
+                     force_identity=False, before_outbound=None):
+        if before_outbound is not None:
+            await before_outbound()
         seen.append((request.method, tuple(request.query_items), time.monotonic()))
         status, headers, body = answers.pop(0)
         async def _s():
@@ -205,6 +209,8 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
     # seconds, during which the bucket refills — that is the cold start that made this test pass
     # only after its siblings had run (a laptop saw no wait at all; CI gw2 measured 77 ms).
     assert (await clients.get(f"/call/{EP}?aweme_id=0")).status_code == 200
+    # The warm-up call schedules a last-used write on SQLite's shared pool.
+    await managed_keys.drain_last_used()
     seen.clear()
     bucket = limiter.bucket("tikhub", 2, 1.0)
     bucket.updated = time.monotonic()
@@ -215,3 +221,31 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
     elapsed_ms = int((time.monotonic() - t_drained) * 1000)
     assert int(r.headers["X-Treg-Smoothed"].split("=")[1]) >= 300, f"setup took {elapsed_ms} ms"
     assert seen == [0], "no pooled connection during the wait or the relay"
+
+
+async def test_an_endpoint_with_its_own_allowance_is_its_own_bucket(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    """The ContactOut case: one route's allowance is far below its provider's. The endpoint's bucket
+    replaces the provider's for that route, so neither paces the other."""
+    from treg.domain.capacity import view as view_mod
+    await _publish_rate("tikhub", 1, 60.0)  # the provider's bucket would make the second call wait
+    monkeypatch.setitem(view_mod._ENDPOINT_RATE_LIMITS, EP, {"limit": 100, "window_s": 1, "source": "headers"})
+    await capacity_view.load()
+    assert capacity_view.rate_bucket("tikhub", EP) == (EP, 100, 1.0)
+    assert capacity_view.rate_bucket("tikhub", "tikhub.other") == ("tikhub", 1, 60.0)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_script([(200, (), b'{"ok":true}')] * 2, seen))
+    rs = [await clients.get(f"/call/{EP}?aweme_id={i}") for i in range(2)]
+    assert [r.status_code for r in rs] == [200, 200]
+    assert all("X-Treg-Smoothed" not in r.headers for r in rs), "the provider's 1/min bucket was not used"
+    assert "tikhub" not in limiter._buckets and EP in limiter._buckets
+
+
+def test_every_endpoint_rate_limit_names_a_catalog_endpoint():
+    from treg.domain.capacity.policy import _ENDPOINT_RATE_LIMITS
+    from treg.domain.catalog import store as catalog_store
+    by_id = catalog_store.load().by_id
+    for endpoint_id, rl in _ENDPOINT_RATE_LIMITS.items():
+        assert endpoint_id in by_id, endpoint_id
+        assert int(rl["limit"]) > 0 and float(rl["window_s"]) > 0 and rl.get("source"), endpoint_id

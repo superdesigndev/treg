@@ -4,30 +4,30 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
-import logging
+import json
+import re
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
-from sqlalchemy import func, or_
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import reconcile
-from ..application import evidence_retention
+from ..application import enterprise_sso, evidence_retention, referrals as referral_app
 from ..config import get_settings
 from ..infra import kv
-from ..infra.db import get_admin_session
-from ..domain import money
-from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
-from ..timeutil import as_naive as _as_naive
+from ..infra.db import get_admin_read_session, get_admin_session
+from ..domain import money, referrals as referral_domain
+from ..models import ArchiveEndpointStat, ArchiveSnapshot, Bundle, CallRecord, EndpointDayStat, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
 from ..domain.governance.teams import cascade_delete_org, delete_membership, drop_member_deny_rules
 
 
-# The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
 app = APIRouter()
 reads_router = app
 
@@ -41,62 +41,72 @@ def _tally(items) -> dict:
 
 @app.get("/admin/stats")
 async def admin_stats(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> dict:
-    async def n(model) -> int:
-        return (await db.execute(select(func.count()).select_from(model))).scalar() or 0
+    """Platform totals for the admin page. Every count runs in the database.
 
-    tools = (await db.execute(select(Tool))).scalars().all()
-    secrets = (await db.execute(select(Secret))).scalars().all()
-    # THREE COLUMNS, not the whole row. This is an unbounded read of the largest table in the
-    # database (tens of thousands of rows), and every one of them was being materialised as a full
-    # ORM object to count three fields. It matters more now that `callrecord` carries the failure
-    # evidence columns, which are wide and are read by nothing here.
-    calls = (await db.execute(
-        select(CallRecord.org_id, CallRecord.created_at, CallRecord.status_code))).all()
-    users = (await db.execute(select(User))).scalars().all()
-    orgs = (await db.execute(select(Org))).scalars().all()
-    # Sandbox onboarding data isn't real platform usage — exclude the demo footprint from totals so
-    # metrics stay honest (fake teammates, demo teams, and everything scoped to them).
-    demo_org_ids = {o.id for o in orgs if o.demo}
-    users = [u for u in users if not u.demo]
-    orgs = [o for o in orgs if not o.demo]
-    tools = [t for t in tools if t.org_id not in demo_org_ids]
-    secrets = [s for s in secrets if s.org_id not in demo_org_ids]
-    calls = [c for c in calls if c.org_id not in demo_org_ids]
+    Loading the whole call table to count it in Python ran past the request timeout at production
+    size, so the page got a 502. Call counts now come from `endpointdaystat` (one row per endpoint
+    per day, folded by the `treg-worker catalog stats` cron): calls the provider saw, as of that
+    job's last run. The all-time total is Postgres's own row estimate, not an exact count.
+    """
     now = _utcnow_naive()
+    demo_orgs = select(Org.id).where(Org.demo)
 
-    def since(rows, days, pred=lambda r: True):
-        cut = now - timedelta(days=days)
-        return sum(1 for r in rows if _as_naive(r.created_at) >= cut and pred(r))
+    async def n(stmt) -> int:
+        return int((await db.execute(stmt)).scalar() or 0)
 
-    ok = sum(1 for c in calls if c.status_code < 400)
+    def recent(model, days: int):
+        return model.created_at >= now - timedelta(days=days)
+
+    users = select(func.count()).select_from(User).where(User.demo.is_(False))
+    orgs = select(func.count()).select_from(Org).where(Org.demo.is_(False))
+    # `or_(is_(None))`: NOT IN drops a NULL org_id, and a tool or secret with no team still counts.
+    tools = (await db.execute(select(Tool).where(
+        or_(Tool.org_id.is_(None), Tool.org_id.not_in(demo_orgs))))).scalars().all()
+    secret_health = (await db.execute(select(Secret.health_status).where(
+        or_(Secret.org_id.is_(None), Secret.org_id.not_in(demo_orgs))))).scalars().all()
+
+    async def calls_since(days: int) -> tuple[int, int]:
+        day = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+        row = (await db.execute(select(func.sum(EndpointDayStat.n), func.sum(EndpointDayStat.ok))
+                                .where(EndpointDayStat.day >= day))).one()
+        return int(row[0] or 0), int(row[1] or 0)
+
+    calls_7d, _ok_7d = await calls_since(7)
+    calls_30d, ok_30d = await calls_since(30)
+    if db.bind.dialect.name == "postgresql":
+        total_calls = await n(text(
+            "SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'callrecord'::regclass"))
+    else:
+        total_calls = await n(select(func.count()).select_from(CallRecord))
     return {
         "totals": {
-            "users": len(users), "orgs": len(orgs), "tools": len(tools),
-            "secrets": len(secrets), "bundles": await n(Bundle), "calls": len(calls),
-            "superadmins": sum(1 for u in users if u.is_superadmin),
-            "suspended_orgs": sum(1 for o in orgs if o.suspended),
+            "users": await n(users), "orgs": await n(orgs), "tools": len(tools),
+            "secrets": len(secret_health), "bundles": await n(select(func.count()).select_from(Bundle)),
+            "calls": total_calls,
+            "superadmins": await n(users.where(User.is_superadmin)),
+            "suspended_orgs": await n(orgs.where(Org.suspended)),
         },
         "tools_by_injector": _tally(b.get("injector", "?") for t in tools for b in t.bindings),
         "tools_by_host": _tally(t.host for t in tools),
-        "credential_health": _tally(s.health_status for s in secrets),
+        "credential_health": _tally(secret_health),
         "calls": {
-            "last_7d": since(calls, 7), "last_30d": since(calls, 30), "total": len(calls),
-            "success_rate": round(ok / len(calls), 3) if calls else None,
+            "last_7d": calls_7d, "last_30d": calls_30d, "total": total_calls,
+            "success_rate": round(ok_30d / calls_30d, 3) if calls_30d else None,
         },
         "growth": {
-            "new_users_7d": since(users, 7), "new_users_30d": since(users, 30),
-            "new_orgs_7d": since(orgs, 7), "new_orgs_30d": since(orgs, 30),
+            "new_users_7d": await n(users.where(recent(User, 7))),
+            "new_users_30d": await n(users.where(recent(User, 30))),
+            "new_orgs_7d": await n(orgs.where(recent(Org, 7))),
+            "new_orgs_30d": await n(orgs.where(recent(Org, 30))),
         },
     }
-
-
 
 
 @app.get("/admin/orgs")
 async def admin_orgs(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> list[dict]:
     orgs = (await db.execute(select(Org))).scalars().all()
 
-    async def _counts(model) -> dict[int, int]:  # one grouped COUNT instead of one-per-org (was O(orgs) queries)
+    async def _counts(model) -> dict[int, int]:  # one grouped COUNT instead of one per org
         rows = await db.execute(select(model.org_id, func.count()).group_by(model.org_id))
         return {oid: n for oid, n in rows.all()}
 
@@ -104,7 +114,6 @@ async def admin_orgs(_: str = Depends(require_superadmin), db: AsyncSession = De
     for m in (await db.execute(select(Membership))).scalars().all():
         mems.setdefault(m.org_id, []).append(m)
     tool_n, secret_n, bundle_n = await _counts(Tool), await _counts(Secret), await _counts(Bundle)
-    # Was 1 + 4N serial queries (401 at 100 orgs); now a constant ~4 regardless of tenant count.
     return [
         {
             "id": o.id, "slug": o.slug, "name": o.name, "suspended": o.suspended,
@@ -126,7 +135,7 @@ async def admin_org_detail(
     mem = (await db.execute(select(Membership).where(Membership.org_id == org_id))).scalars().all()
     umap = {u.id: u for u in (await db.execute(
         select(User).where(User.id.in_([m.user_id for m in mem]))
-    )).scalars().all()}  # batched (was one db.get per member)
+    )).scalars().all()}  # batched, not one db.get per member
     members = [{"user_id": m.user_id, "email": umap[m.user_id].email if m.user_id in umap else None, "role": m.role}
                for m in mem]
     tools = (await db.execute(select(Tool).where(Tool.org_id == org_id))).scalars().all()
@@ -148,10 +157,10 @@ async def admin_org_detail(
 @app.get("/admin/users")
 async def admin_users(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> list[dict]:
     users = (await db.execute(select(User))).scalars().all()
-    mems_by_user: dict[int, list] = {}  # all memberships in one query, grouped (was one query per user)
+    mems_by_user: dict[int, list] = {}  # all memberships in one query, grouped
     for m in (await db.execute(select(Membership))).scalars().all():
         mems_by_user.setdefault(m.user_id, []).append(m)
-    omap = {o.id: o for o in (await db.execute(  # all referenced orgs in one query (was one db.get per membership)
+    omap = {o.id: o for o in (await db.execute(  # all referenced orgs in one query
         select(Org).where(Org.id.in_({m.org_id for ms in mems_by_user.values() for m in ms}))
     )).scalars().all()}
     return [
@@ -168,32 +177,211 @@ async def admin_users(_: str = Depends(require_superadmin), db: AsyncSession = D
 @app.get("/admin/tools")
 async def admin_tools(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> list[dict]:
     tools = (await db.execute(select(Tool))).scalars().all()
-    omap = {o.id: o for o in (await db.execute(  # batched (was one db.get per tool)
+    omap = {o.id: o for o in (await db.execute(  # batched, not one db.get per tool
         select(Org).where(Org.id.in_({t.org_id for t in tools}))
     )).scalars().all()}
     return [{"id": t.id, "name": t.name, "org": omap[t.org_id].slug if t.org_id in omap else None,
              "host": t.host, "owner": t.owner, "injectors": [b.get("injector") for b in t.bindings]} for t in tools]
 
 
+@app.get("/admin/share")
+async def admin_share(
+    minutes: int = 60, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)
+) -> dict:
+    """Who served each job over the last `minutes` (at most 360). `requests` counts what callers
+    asked (direct calls and routed parents, never a routed attempt). `by_provider` credits the
+    answer a caller actually got: a direct call's 2xx that its adapter did not judge a miss
+    (`CallRecord.hit` False), and, for a routed call, only the LAST attempt of a parent that
+    succeeded - the attempt whose answer the job returned. An earlier attempt the job moved on
+    from is not credited, whatever its status: a free provider's body is often streamed without
+    a `hit` verdict, so its empty 200s would otherwise count. Two reads over an id range.
+
+    `teams` counts the same answers per team, so one heavy team cannot stand for the market:
+    `total` teams with an answer, `by_provider` teams a provider served, `weighted` each
+    provider's share averaged over teams (every team one vote), and `direct` / `routed` the same
+    team counts for calls that named a provider and for calls treg's job served."""
+    from ..application import catalog_stats
+    from ..domain.catalog import store as catalog_store
+    minutes = max(1, min(minutes, 360))
+    since = _utcnow_naive() - timedelta(minutes=minutes)
+    first = await catalog_stats._first_id_at(db, since)
+    attempt = CallRecord.call_ref.like("%:r%")
+    ok = case((and_(CallRecord.status_code.between(200, 299), or_(CallRecord.hit.is_(None), CallRecord.hit.is_(True))), 1),
+              else_=0)
+    rows = (await db.execute(
+        select(CallRecord.endpoint_id, CallRecord.provider, CallRecord.org_id, func.count(), func.sum(ok))
+        .where(CallRecord.id >= first, CallRecord.endpoint_id.is_not(None), ~attempt)
+        .group_by(CallRecord.endpoint_id, CallRecord.provider, CallRecord.org_id))).all()
+    by_id = catalog_store.load().by_id
+
+    def capability(endpoint_id: str) -> str:
+        cap = (by_id.get(endpoint_id) or {}).get("capability")
+        return cap or (endpoint_id[len("treg."):] if endpoint_id.startswith("treg.") else "(none)")
+
+    jobs: dict[str, dict] = {}
+    # (capability, org, provider, routed?) -> answers served
+    served: dict[tuple[str, int, str, bool], int] = {}
+
+    def credit(cap: str, org: int, provider: str, routed: bool, n: int) -> None:
+        job = jobs.setdefault(cap, {"requests": 0, "answered": 0, "by_provider": {}})
+        job["by_provider"][provider] = job["by_provider"].get(provider, 0) + n
+        served[(cap, org, provider, routed)] = served.get((cap, org, provider, routed), 0) + n
+
+    for endpoint_id, provider, org, n, n_ok in rows:
+        job = jobs.setdefault(capability(endpoint_id), {"requests": 0, "answered": 0, "by_provider": {}})
+        job["requests"] += n
+        job["answered"] += int(n_ok or 0)
+        if provider and provider != "treg" and n_ok:
+            credit(capability(endpoint_id), org, provider, False, int(n_ok))
+    # Routed attempts: the last attempt of each parent that answered 2xx is the one served.
+    parents_ok = {ref for (ref,) in (await db.execute(
+        select(CallRecord.call_ref).where(
+            CallRecord.id >= first, CallRecord.endpoint_id.like("treg.%"), ~attempt,
+            CallRecord.status_code.between(200, 299)))).all()}
+    last: dict[str, tuple[int, str, str | None, int, bool | None, int]] = {}
+    for ref, endpoint_id, provider, status, hit, org in (await db.execute(
+            select(CallRecord.call_ref, CallRecord.endpoint_id, CallRecord.provider,
+                   CallRecord.status_code, CallRecord.hit, CallRecord.org_id)
+            .where(CallRecord.id >= first, CallRecord.endpoint_id.is_not(None), attempt))).all():
+        parent, _, n = ref.rpartition(":r")
+        if parent not in parents_ok or not n.isdigit():
+            continue
+        if parent not in last or int(n) > last[parent][0]:
+            last[parent] = (int(n), endpoint_id, provider, status, hit, org)
+    for _, endpoint_id, provider, status, hit, org in last.values():
+        if provider and provider != "treg" and 200 <= status < 300 and hit is not False:
+            credit(capability(endpoint_id), org, provider, True, 1)
+    for cap, job in jobs.items():
+        per_org: dict[int, dict[str, int]] = {}
+        sides: dict[bool, dict[str, set]] = {False: {}, True: {}}
+        side_orgs: dict[bool, set] = {False: set(), True: set()}
+        for (c, org, provider, routed), n in served.items():
+            if c != cap:
+                continue
+            per_org.setdefault(org, {})[provider] = per_org.get(org, {}).get(provider, 0) + n
+            sides[routed].setdefault(provider, set()).add(org)
+            side_orgs[routed].add(org)
+        weighted: dict[str, float] = {}
+        for split in per_org.values():
+            total = sum(split.values())
+            for provider, n in split.items():
+                weighted[provider] = weighted.get(provider, 0.0) + n / total / len(per_org)
+        users: dict[str, int] = {}
+        for split in per_org.values():
+            for provider in split:
+                users[provider] = users.get(provider, 0) + 1
+        job["teams"] = {
+            "total": len(per_org), "by_provider": users,
+            "weighted": {p: round(w, 4) for p, w in weighted.items()},
+            "direct": {"total": len(side_orgs[False]), "by_provider": {p: len(o) for p, o in sides[False].items()}},
+            "routed": {"total": len(side_orgs[True]), "by_provider": {p: len(o) for p, o in sides[True].items()}},
+        }
+    ordered = sorted(jobs.items(), key=lambda kv: -kv[1]["requests"])
+    return {"since": since.isoformat(), "minutes": minutes,
+            "jobs": [{"capability": cap, **job} for cap, job in ordered]}
+
+
+def _error_reason(text: str | None) -> str | None:
+    """A short failure reason from a stored error answer: the upstream's own `reason`, `error`,
+    `code` or `message` when the body is JSON, else its first characters."""
+    if not text or text == _ERROR_EVIDENCE_EXPIRED:
+        return None
+    body = re.sub(r"^\[[^\]]*\]\s*", "", text).strip()
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        for key in ("reason", "error", "code", "message"):
+            value = doc.get(key)
+            if isinstance(value, dict):
+                value = value.get("code") or value.get("message")
+            if isinstance(value, str) and value:
+                return value[:120]
+    return body[:120] or None
+
+
+@app.get("/admin/shadow")
+async def admin_shadow(days: int = Query(1, ge=1, le=30), _: str = Depends(require_superadmin)) -> dict:
+    """The shadow provider report (application.shadow): per capability and served endpoint, how often
+    each side answered, how often they agree, the candidate's speed and cost. Counts only."""
+    from ..application import shadow
+    return {"enabled": shadow.spec() is not None, **await shadow.report(days=days)}
+
+
 @app.get("/admin/calls")
 async def admin_calls(
-    limit: int = 50, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)
+    limit: int = 50, since_id: int | None = None, provider: str | None = None,
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)
 ) -> list[dict]:
+    """The newest calls, or with `since_id` the calls after that id, oldest first, so a poller
+    advances its cursor to the last id it read. `provider` needs `since_id`: it keeps the read a
+    range over the primary key instead of a walk back through the whole table. A failed call carries
+    `error_reason`, the upstream's own short reason from its stored error answer."""
     limit = max(1, min(limit, 1000))
-    rows = (await db.execute(select(CallRecord).order_by(CallRecord.id.desc()).limit(limit))).scalars().all()
+    if provider and since_id is None:
+        raise HTTPException(422, "provider needs since_id")
+    q = select(CallRecord)
+    if since_id is not None:
+        q = q.where(CallRecord.id > since_id).order_by(CallRecord.id.asc())
+    else:
+        q = q.order_by(CallRecord.id.desc())
+    if provider:
+        q = q.where(CallRecord.provider == provider)
+    rows = (await db.execute(q.limit(limit))).scalars().all()
     return [{"id": c.id, "org_id": c.org_id, "user": c.user_email, "tool": c.tool_name,
-             "method": c.method, "status": c.status_code, "at": c.created_at.isoformat()} for c in rows]
+             "method": c.method, "status": c.status_code, "at": c.created_at.isoformat(),
+             "endpoint_id": c.endpoint_id, "provider": c.provider, "tier": c.credential_tier,
+             "call_ref": c.call_ref, "charged_micro": c.cost_charged_micro,
+             "observed_micro": c.cost_observed_micro, "duration_ms": c.duration_ms,
+             "upstream_ms": c.upstream_ms, "cached": c.cached,
+             "error_reason": _error_reason(c.error_response)} for c in rows]
 
 
 _ERROR_EVIDENCE_TTL_DAYS = evidence_retention.ERROR_EVIDENCE_TTL_DAYS
 _ERROR_EVIDENCE_EXPIRED = evidence_retention.ERROR_EVIDENCE_EXPIRED
 
 
+@app.get("/admin/daily")
+async def admin_daily(
+    days: int = 7, provider: str = "", jobs: str = "web.extract,web.search,google.serp.organic",
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_read_session),
+) -> dict:
+    """Day by day (UTC, newest first, at most 60 days): every provider call (routed attempts
+    included, routed parents not), one `provider`'s calls, and for each capability in `jobs` the
+    answered calls of every provider and of that `provider`. Read from `endpointdaystat`, so it
+    is cheap at any traffic; `/admin/share` is the exact per-answer view for the last hours."""
+    from ..domain.catalog import store as catalog_store
+    days = max(1, min(days, 60))
+    since = (_utcnow_naive() - timedelta(days=days - 1)).date().isoformat()
+    wanted = [j for j in (s.strip() for s in jobs.split(",")) if j]
+    rows = (await db.execute(
+        select(EndpointDayStat.day, EndpointDayStat.endpoint_id, func.sum(EndpointDayStat.n), func.sum(EndpointDayStat.ok))
+        .where(EndpointDayStat.day >= since, ~EndpointDayStat.endpoint_id.like("treg.%"))
+        .group_by(EndpointDayStat.day, EndpointDayStat.endpoint_id))).all()
+    by_id = catalog_store.load().by_id
+    out: dict[str, dict] = {}
+    for day, endpoint_id, n, n_ok in rows:
+        entry = by_id.get(endpoint_id) or {}
+        mine = (entry.get("provider") or endpoint_id.split(".", 1)[0]) == provider
+        d = out.setdefault(day, {"day": day, "calls": 0, "provider_calls": 0,
+                                 "jobs": {j: {"answered": 0, "provider_answered": 0} for j in wanted}})
+        d["calls"] += int(n or 0)
+        if mine:
+            d["provider_calls"] += int(n or 0)
+        job = d["jobs"].get(entry.get("capability") or "")
+        if job is not None:
+            job["answered"] += int(n_ok or 0)
+            if mine:
+                job["provider_answered"] += int(n_ok or 0)
+    return {"provider": provider, "days": sorted(out.values(), key=lambda d: d["day"], reverse=True)}
+
+
 @app.get("/admin/errors")
 async def admin_errors(
     days: int = 7, limit: int = 100, provider: str | None = None, status: int | None = None,
     tier: str | None = None,
-    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_read_session),
 ) -> dict:
     """Failed calls with the evidence to explain them — the caller's request and the provider's own
     answer (see models.CallRecord.error_request).
@@ -204,11 +392,19 @@ async def admin_errors(
     Read-only. Ageing is the `treg-worker admin purge-evidence` cron's job
     (application/evidence_retention.py); until it has run, a row older than the window is shown as
     expired with no evidence, so a late schedule never widens what this view reveals.
+    Evidence and org names may lag when a read database is configured; authorization stays on
+    the primary.
     """
+    from ..application import catalog_stats
     cutoff = evidence_retention.cutoff()
     since = _utcnow_naive() - timedelta(days=max(1, min(days, 90)))
+    # The window as an id bound, found by bisection on the primary key, beside the time bound:
+    # the report reads newest first down the primary key and stops at the bound, whatever the
+    # planner makes of a status or provider filter. On the time bound alone, a narrow window with
+    # a status filter was planned as a scan of every row in the window, past the report's timeout.
+    first = await catalog_stats._first_id_at(db, since)
     q = (select(CallRecord)
-         .where(CallRecord.created_at >= since,
+         .where(CallRecord.id >= first, CallRecord.created_at >= since,
                 or_(CallRecord.error_request.is_not(None), CallRecord.error_response.is_not(None)))
          .order_by(CallRecord.id.desc()).limit(max(1, min(limit, 500))))
     if provider:
@@ -226,9 +422,8 @@ async def admin_errors(
         "errors": [{
             "id": c.id, "call_ref": c.call_ref, "at": c.created_at.isoformat(),
             "org": omap[c.org_id].slug if c.org_id in omap else None,
-            # `method` is already on the row and is the whole diagnosis for a real failure class:
-            # 47 of apollo.people.enrich's failures were a GET at a POST endpoint. Omitting a field
-            # we already store, in the view built to explain failures, was a free loss.
+            # `method` is already on the row and is the whole diagnosis for a failure class: a GET
+            # at a POST endpoint.
             "endpoint_id": c.endpoint_id, "provider": c.provider, "tier": c.credential_tier,
             "status": c.status_code,
             "method": c.method, "refused_by": c.refused_by, "duration_ms": c.duration_ms,
@@ -246,7 +441,7 @@ async def admin_errors(
 @app.get("/admin/health")
 async def admin_health(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> list[dict]:
     rows = (await db.execute(select(Secret).where(Secret.health_status != "ok"))).scalars().all()
-    omap = {o.id: o for o in (await db.execute(  # batched (was one db.get per secret)
+    omap = {o.id: o for o in (await db.execute(  # batched, not one db.get per secret
         select(Org).where(Org.id.in_({s.org_id for s in rows}))
     )).scalars().all()}
     out: list[dict] = []
@@ -265,12 +460,11 @@ async def admin_kv(_: str = Depends(require_superadmin)) -> dict:
     return {"configured": kv.configured(), "reachable": await kv.store().ping()}
 
 
-# Rebind app so the second block keeps its decorator text and remains a separate attach point.
 app = APIRouter()
 reports_router = app
 
 
-# ---- reconciliation: is the money real? ----------------------------------------------------
+# Reconciliation: is the money real?
 # Cross-org aggregates over platform spend, so `require_superadmin` and nothing weaker — an org admin
 # may see their own bill (`/orgs/{id}/balance`), never the platform's margin. See reconcile.py.
 @app.get("/admin/reconcile/drift")
@@ -414,10 +608,9 @@ async def admin_archive_keys(
         select(AK).where(AK.endpoint_id == endpoint_id)
         .order_by(AK.last_requested_at.desc().nulls_last(), AK.fetched_at.desc())
         .limit(limit))).scalars().all()
-    # ONE columns-only query for every key's recent versions — the previous shape ran a query
-    # per key AND selected whole rows, dragging every stored BODY out of the database just to
-    # report whether one exists (12 bodies × up to 100 keys × the panel's fan-out = the
-    # 2026-09-03 pool-pressure repeat). `body IS NOT NULL` reads the row header, never the bytes.
+    # ONE columns-only query for every key's recent versions, never whole rows: a stored BODY must
+    # not leave the database just to report whether one exists. `body IS NOT NULL` reads the row
+    # header, never the bytes.
     key_ids = [k.id for k in keys]
     vrows = (await db.execute(
         select(AS.key_id, AS.version, AS.origin, AS.size_bytes, AS.fetched_at,
@@ -559,6 +752,26 @@ async def admin_referrals(
     }
 
 
+@reads_router.get("/admin/referrals/users")
+async def admin_referral_user_by_email(
+    email: str = Query(min_length=3, max_length=320), _: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.get_affiliate(email=email.strip().lower())
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@reads_router.get("/admin/referrals/users/{user_id}")
+async def admin_referral_user(
+    user_id: int = Path(ge=1, le=2_147_483_647), _: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.get_affiliate(user_id=user_id)
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 async def _is_last_active_superadmin(db: AsyncSession, target: User) -> bool:
     """True if `target` is currently the ONLY active (unsuspended) super-admin, so demoting /
     suspending / deleting them would leave the platform with no reachable admin."""
@@ -576,6 +789,39 @@ class BoolIn(BaseModel):
 
 app = APIRouter()
 mutations_router = app
+
+
+class AffiliateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    affiliate: StrictBool
+    expected_version: int = Field(ge=0, le=2_147_483_646, strict=True)
+    reason: str = Field(min_length=1, max_length=1000)
+    operation_id: UUID
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be blank")
+        return value
+
+
+@mutations_router.put("/admin/referrals/users/{user_id}/affiliate")
+async def admin_set_referral_affiliate(
+    body: AffiliateIn, user_id: int = Path(ge=1, le=2_147_483_647),
+    principal: str = Depends(require_superadmin),
+) -> dict:
+    try:
+        return await referral_app.set_affiliate(
+            user_id=user_id, affiliate=body.affiliate, expected_version=body.expected_version,
+            reason=body.reason, operation_id=str(body.operation_id), principal=principal,
+        )
+    except referral_domain.AffiliateUserNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except referral_domain.AffiliateConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.post("/admin/users/{user_id}/superadmin")
@@ -638,6 +884,7 @@ async def admin_delete_user(
     # The USER row is about to go, so member-scoped rules must go from EVERY org — `DenyRule.user_id`
     # is a foreign key, and a surviving row would dangle (a hard error on Postgres).
     await drop_member_deny_rules(db, user_id)
+    await enterprise_sso.erase_user_links(db, user_id)
     await db.delete(user)
     await db.commit()
     return {"deleted_user": user_id, "deleted_empty_orgs": emptied}
@@ -675,8 +922,8 @@ def _usd_to_micro(amount_usd: str | int | float) -> int:
     """
     try:
         value = Decimal(str(amount_usd))
-    except InvalidOperation:
-        raise HTTPException(status_code=400, detail=f"amount_usd {amount_usd!r} is not a valid number")
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=400, detail=f"amount_usd {amount_usd!r} is not a valid number") from exc
     if value <= 0:
         raise HTTPException(status_code=400, detail="amount_usd must be positive")
     micro = value * 1_000_000

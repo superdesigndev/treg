@@ -1091,6 +1091,126 @@ async def test_the_result_never_carries_failure_evidence(clients: AsyncClient, s
     assert got.json()["note"] == "not stored: the call failed, so there is no answer on file"
 
 
+async def test_recordings_reach_the_endpoint_totals_in_one_batched_flush(
+        clients: AsyncClient, shadow, monkeypatch):
+    """The per-endpoint row is shared by every team: recordings never update it themselves. The
+    first creates it zeroed, and their counts land together when the pending deltas are flushed
+    (a timer, or drain())."""
+    import asyncio
+
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    from tests.test_marketplace_call import _fake_relay
+    from treg.models import ArchiveEndpointStat
+
+    statements = []
+    def seen(conn, cursor, statement, *args):
+        if "archiveendpointstat" in statement.lower() and not statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.lstrip().split()[0].upper())
+    event.listen(Engine, "before_cursor_execute", seen)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"n": 1}'))
+    try:
+        for n in range(3):
+            await clients.get(f"/call/{EP}?aweme_id={n}")
+        await asyncio.gather(*list(archive._pending))
+        assert "UPDATE" not in statements and statements.count("INSERT") <= 1
+        statements.clear()
+        await archive.flush_stats()
+    finally:
+        event.remove(Engine, "before_cursor_execute", seen)
+    assert statements == ["UPDATE"]
+    async with session_maker() as s:
+        st = (await s.execute(select(ArchiveEndpointStat)
+                              .where(ArchiveEndpointStat.endpoint_id == EP))).scalars().one()
+    assert (st.keys, st.snapshots) == (3, 3)
+
+
+async def test_a_subtraction_before_the_first_flush_is_not_lost(clients: AsyncClient, shadow, monkeypatch):
+    """Team deletion subtracts from the row directly. The first recording creates the row in its
+    own transaction, so an erase that lands before the flush still has a row to subtract from."""
+    import asyncio
+
+    from sqlalchemy import update
+
+    from tests.test_marketplace_call import _fake_relay
+    from treg.models import ArchiveEndpointStat
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"n": 1}'))
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await asyncio.gather(*list(archive._pending))
+    async with session_maker() as s:
+        await s.execute(update(ArchiveEndpointStat).where(ArchiveEndpointStat.endpoint_id == EP)
+                        .values(keys=ArchiveEndpointStat.keys - 1,
+                                snapshots=ArchiveEndpointStat.snapshots - 1))
+        await s.commit()
+    await archive.flush_stats()
+    async with session_maker() as s:
+        st = (await s.execute(select(ArchiveEndpointStat)
+                              .where(ArchiveEndpointStat.endpoint_id == EP))).scalars().one()
+    assert (st.keys, st.snapshots) == (0, 0)
+
+
+async def test_an_uncommitted_stat_row_is_not_trusted_by_the_next_recording(
+        clients: AsyncClient, shadow, monkeypatch):
+    """A recording whose transaction rolls back after creating the row must not mark the endpoint
+    as having one: the next recording creates it again, so an erase still has a row to hit."""
+    import asyncio
+
+    from sqlalchemy import update
+
+    from tests.test_marketplace_call import _fake_relay
+    from treg.infra.db import background_session_maker
+    from treg.models import ArchiveEndpointStat
+
+    async with background_session_maker() as s:
+        await archive._ensure_stat_row(s, endpoint_id=EP, provider="tikhub", pol="forbidden")
+        await s.rollback()
+    assert EP not in archive._stat_rows
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"n": 1}'))
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await asyncio.gather(*list(archive._pending))
+    assert EP in archive._stat_rows
+    async with session_maker() as s:
+        await s.execute(update(ArchiveEndpointStat).where(ArchiveEndpointStat.endpoint_id == EP)
+                        .values(keys=ArchiveEndpointStat.keys - 1,
+                                snapshots=ArchiveEndpointStat.snapshots - 1))
+        await s.commit()
+    await archive.flush_stats()
+    async with session_maker() as s:
+        st = (await s.execute(select(ArchiveEndpointStat)
+                              .where(ArchiveEndpointStat.endpoint_id == EP))).scalars().one()
+    assert (st.keys, st.snapshots) == (0, 0)
+
+
+async def test_drain_lands_the_deltas_of_a_flush_it_interrupts(clients: AsyncClient, monkeypatch):
+    """The flush takes one of the archive's two write slots, and drain() waits for an interrupted
+    flush to put its deltas back before landing them itself."""
+    import asyncio
+    from datetime import datetime
+
+    from treg.models import ArchiveEndpointStat
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 0)
+    sem = archive._get_sem()
+    for _ in range(archive._MAX_CONCURRENT_WRITES):
+        await sem.acquire()
+    archive._count_stats(endpoint_id=EP, provider="tikhub", pol="forbidden", new_key=True,
+                         stable_d=0, changed_d=0, kept=True, size=123, now=datetime(2026, 1, 1))
+    await asyncio.sleep(0.05)
+    assert archive._stat_deltas == {}                    # taken by a flush waiting for a slot
+    draining = asyncio.create_task(archive.drain())
+    await asyncio.sleep(0.05)
+    for _ in range(archive._MAX_CONCURRENT_WRITES):
+        sem.release()
+    await draining
+    async with session_maker() as s:
+        st = (await s.execute(select(ArchiveEndpointStat)
+                              .where(ArchiveEndpointStat.endpoint_id == EP))).scalars().one()
+    assert (st.snapshots, st.kept_bytes) == (1, 123)
+
+
 async def test_endpoint_stats_match_direct_aggregation(clients: AsyncClient, shadow, monkeypatch):
     """The rollup IS the report now, so it must equal what walking the tables would say — after
     new keys, dedup references, a changed answer, and a policy-forbidden recording."""
@@ -1647,7 +1767,10 @@ async def test_change_observation_failure_preserves_record(clients, shadow, monk
             await asyncio.Event().wait()
         return None
     monkeypatch.setattr(archive, "_read_change_body", unavailable)
-    monkeypatch.setattr(archive, "_CHANGE_TIMEOUT_S", 0.05)
+    if failure == "timeout":
+        # The same timeout also bounds the write's own snapshot lookup: too short and a busy test
+        # run times that out instead, and the counts drift.
+        monkeypatch.setattr(archive, "_CHANGE_TIMEOUT_S", 0.5)
     before = archive.change_outcomes.copy()
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"new":42}'))
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
@@ -1662,7 +1785,7 @@ async def test_change_observation_failure_preserves_record(clients, shadow, monk
 @pytest.mark.parametrize('at_header', [False, True])
 def test_catalog_rejects_invalid_ignore_paths(tmp_path, paths, at_header):
     import yaml
-    doc = {'provider': 'test', 'endpoints': [{'id': 'test.read', 'kind': 'read'}]}
+    doc = {'provider': 'test', 'endpoints': [{'id': 'test.read'}]}
     target = doc if at_header else doc['endpoints'][0]
     target['cache'] = {'mode': 'transient', 'ignore_paths': paths}
     (tmp_path / 'test.yaml').write_text(yaml.safe_dump(doc))
@@ -1915,3 +2038,45 @@ def test_ambiguous_or_lossy_json_comparison_falls_back(body, non_json, paths):
     assert archive._normalized_hash(body, paths) is None
     if non_json:
         assert archive._change_summary(body, b'{}')['changed_paths'] == ['non_json']
+
+
+async def test_a_direct_call_names_the_routed_tool_for_its_job(clients: AsyncClient, serve):
+    """A successful call to one provider's endpoint names the routed tool for the same job, so an
+    agent can be pointed to the tool that picks the provider and falls back."""
+    live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert live.status_code == 200
+    assert live.headers["X-Treg-Routed-Tool"] == "treg.tiktok.video.comments"
+
+
+async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncClient, shadow, monkeypatch):
+    """A retry row that dropped its own copy names an archive answer for the rest of its 24-hour
+    window; stripping it would turn the replay into a 410 for an answer the team paid for."""
+    from datetime import timedelta
+
+    from tests.test_marketplace_call import _fake_relay
+    from treg.models import IdempotentCall, Membership
+
+    for n in range(4):
+        monkeypatch.setattr(call_service, "relay",
+                            _fake_relay(200, b'{"v": %d, "pad": "%s"}' % (n, b"x" * 300)))
+        await clients.get(f"/call/{EP}?aweme_id=7")
+        await archive.drain()
+    await _age_versions(days=30)
+    keys, snaps = await _rows()
+    oldest = min(snaps, key=lambda s: s.version)
+    async with session_maker() as s:
+        m = (await s.execute(select(Membership))).scalars().first()
+        s.add(IdempotentCall(org_id=m.org_id, membership_id=m.id, key="trimmed", status="done",
+                             response_status=200, response_body=None, call_ref="c-trimmed",
+                             archive_key_hash=keys[0].key_hash, archive_content_hash=oldest.content_hash,
+                             expires_at=archive._utcnow() + timedelta(hours=12)))
+        await s.commit()
+    assert await archive.prune_once() == 1               # v2 stripped; v1 is still needed
+    _, snaps = await _rows()
+    assert next(s for s in snaps if s.id == oldest.id).body is not None
+    async with session_maker() as s:                     # once the row expires, it may go
+        row = (await s.execute(select(IdempotentCall))).scalars().one()
+        row.expires_at = archive._utcnow() - timedelta(minutes=1)
+        s.add(row)
+        await s.commit()
+    assert await archive.prune_once() == 1

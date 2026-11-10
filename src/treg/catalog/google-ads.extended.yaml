@@ -29,6 +29,7 @@ source:
   - https://developers.google.com/google-ads/api/reference/rpc/v25/overview
 endpoints:
 - id: google-ads.x.gaql-campaign
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -57,6 +58,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/campaign
   capability: google-ads.campaigns.performance
 - id: google-ads.x.gaql-ad-group
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -85,6 +87,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_group
   capability: google-ads.adgroups.performance
 - id: google-ads.x.gaql-ad-group-ad
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -113,6 +116,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_group_ad
   capability: google-ads.ads.performance
 - id: google-ads.x.gaql-ad-group-criterion
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -141,6 +145,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_group_criterion
   capability: google-ads.adgroup.targeting
 - id: google-ads.x.gaql-keyword-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -169,6 +174,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/keyword_view
   capability: google-ads.keywords.performance
 - id: google-ads.x.gaql-search-term-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -197,6 +203,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/search_term_view
   capability: google-ads.search_terms
 - id: google-ads.x.gaql-campaign-budget
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -225,6 +232,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/campaign_budget
   capability: google-ads.budgets.list
 - id: google-ads.x.gaql-campaign-criterion
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -253,6 +261,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/campaign_criterion
   capability: google-ads.campaign.targeting
 - id: google-ads.x.gaql-customer
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -281,6 +290,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/customer
   capability: google-ads.account.details
 - id: google-ads.x.gaql-customer-client
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -309,6 +319,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/customer_client
   capability: google-ads.mcc.accounts
 - id: google-ads.x.gaql-conversion-action
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -337,6 +348,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/conversion_action
   capability: google-ads.conversions.actions
 - id: google-ads.x.gaql-change-event
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -365,6 +377,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/change_event
   capability: google-ads.account.changes
 - id: google-ads.x.gaql-change-status
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -393,6 +406,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/change_status
   capability: google-ads.account.changes
 - id: google-ads.x.gaql-bidding-strategy
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -421,6 +435,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/bidding_strategy
   capability: google-ads.bidding_strategies
 - id: google-ads.x.gaql-billing-setup
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -449,6 +464,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/billing_setup
   capability: google-ads.billing
 - id: google-ads.x.gaql-account-budget
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -477,6 +493,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/account_budget
   capability: google-ads.account.budget
 - id: google-ads.x.gaql-asset
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -505,6 +522,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/asset
   capability: google-ads.assets
 - id: google-ads.x.gaql-asset-group
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -533,6 +551,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/asset_group
   capability: google-ads.performance_max.asset_groups
 - id: google-ads.x.gaql-campaign-asset
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -561,6 +580,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/campaign_asset
   capability: google-ads.campaign.assets
 - id: google-ads.x.gaql-customer-asset
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -589,6 +609,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/customer_asset
   capability: google-ads.account.assets
 - id: google-ads.x.gaql-ad-group-ad-asset-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -617,6 +638,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_group_ad_asset_view
   capability: google-ads.assets.performance
 - id: google-ads.x.gaql-audience
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -645,6 +667,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/audience
   capability: google-ads.audiences
 - id: google-ads.x.gaql-user-list
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -673,6 +696,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/user_list
   capability: google-ads.remarketing_lists
 - id: google-ads.x.gaql-user-interest
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -701,6 +725,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/user_interest
   capability: google-ads.interests.taxonomy
 - id: google-ads.x.gaql-campaign-audience-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -729,6 +754,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/campaign_audience_view
   capability: google-ads.campaign.audience_performance
 - id: google-ads.x.gaql-ad-group-audience-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -757,6 +783,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_group_audience_view
   capability: google-ads.adgroup.audience_performance
 - id: google-ads.x.gaql-age-range-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -785,6 +812,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/age_range_view
   capability: google-ads.performance.age
 - id: google-ads.x.gaql-gender-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -813,6 +841,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/gender_view
   capability: google-ads.performance.gender
 - id: google-ads.x.gaql-parental-status-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -841,6 +870,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/parental_status_view
   capability: google-ads.performance.parental_status
 - id: google-ads.x.gaql-income-range-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -869,6 +899,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/income_range_view
   capability: google-ads.performance.income
 - id: google-ads.x.gaql-geographic-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -897,6 +928,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/geographic_view
   capability: google-ads.performance.geographic
 - id: google-ads.x.gaql-user-location-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -925,6 +957,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/user_location_view
   capability: google-ads.performance.user_location
 - id: google-ads.x.gaql-location-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -953,6 +986,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/location_view
   capability: google-ads.performance.location_targeting
 - id: google-ads.x.gaql-ad-schedule-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -981,6 +1015,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/ad_schedule_view
   capability: google-ads.performance.schedule
 - id: google-ads.x.gaql-detail-placement-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1009,6 +1044,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/detail_placement_view
   capability: google-ads.placements.detail
 - id: google-ads.x.gaql-managed-placement-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1037,6 +1073,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/managed_placement_view
   capability: google-ads.placements.managed
 - id: google-ads.x.gaql-topic-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1065,6 +1102,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/topic_view
   capability: google-ads.performance.topic
 - id: google-ads.x.gaql-landing-page-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1093,6 +1131,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/landing_page_view
   capability: google-ads.performance.landing_page
 - id: google-ads.x.gaql-shopping-performance-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1121,6 +1160,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/shopping_performance_view
   capability: google-ads.shopping.performance
 - id: google-ads.x.gaql-recommendation
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1149,6 +1189,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/recommendation
   capability: google-ads.recommendations
 - id: google-ads.x.gaql-paid-organic-search-term-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST
@@ -1177,6 +1218,7 @@ endpoints:
   docs_url: https://developers.google.com/google-ads/api/fields/v25/paid_organic_search_term_view
   capability: google-ads.search_terms.paid_organic
 - id: google-ads.x.gaql-click-view
+  added: '2026-07-28'
   tier: extended
   platform: google-ads
   method: POST

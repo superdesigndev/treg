@@ -254,7 +254,6 @@ def _flag_header_collisions(det: SkillDetection) -> None:
                         "treg.json mapping each credential to its own header (e.g. Authorization + developer-token)")
 
 
-# --- contract + payload (increment 2) ------------------------------------------------------------
 def to_contract(det: SkillDetection) -> dict:
     """The treg.json dict for a generated/contract skill (drops the internal `source` marker; keeps
     `file` for local-file secrets and `env` for env-sourced ones)."""
@@ -351,7 +350,7 @@ def build_payload(det: SkillDetection, values: dict[str, str]) -> dict:
     return {"name": det.name, "recipe": recipe, "files": files, "secrets": secrets, "tools": [tool]}
 
 
-# --- dev/test entrypoint: `python -m treg.skills --dir DIR [--env-dir ENVDIR]` --------------------
+# Dev/test entrypoint: `python -m treg.skills --dir DIR [--env-dir ENVDIR]`.
 if __name__ == "__main__":
     import argparse
     import os

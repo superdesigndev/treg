@@ -41,6 +41,7 @@ endpoints:
       confidence: unknown
       note: "Spider bills variable bandwidth and compute and reports each page's USD total in costs.total_cost. The API budget fields did not establish a safe shared-key reserve. BYOK calls are unmetered by treg."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/scrape/
     example_response: examples/spidercloud.web.scrape.json
 
@@ -68,6 +69,7 @@ endpoints:
     test_request: {body: {url: "https://example.com", limit: 1, depth: 1, return_format: markdown, request: http}}
     cost: *variable_cost
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/crawl/
     example_response: examples/spidercloud.web.crawl.json
 
@@ -100,6 +102,7 @@ endpoints:
       confidence: verified
       note: "Four live listing searches each reduced the balance by ten credits ($0.001), including one with search_limit=2. The documented num field did not limit live results. This row forbids page-content fetching, which has variable cost."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/search/
     example_response: examples/spidercloud.web.search.json
 
@@ -123,6 +126,7 @@ endpoints:
     test_request: {body: {url: "https://example.com", limit: 1, request: http}}
     cost: *variable_cost
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/links/
     example_response: examples/spidercloud.web.links.json
 
@@ -145,6 +149,7 @@ endpoints:
     test_request: {body: {url: "https://example.com", return_format: markdown}}
     cost: *variable_cost
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/unblocker/
     example_response: examples/spidercloud.web.unblock.json
 
@@ -169,5 +174,6 @@ endpoints:
     test_request: {body: {url: "https://example.com", full_page: false, binary: false}}
     cost: *variable_cost
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://spider.cloud/docs/api/screenshot/
     example_response: examples/spidercloud.web.screenshot.json

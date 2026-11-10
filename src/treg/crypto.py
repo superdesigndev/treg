@@ -36,7 +36,6 @@ def new_key() -> str:
     return Fernet.generate_key().decode()
 
 
-# ---- caller API tokens --------------------------------------------------------------------
 # A token is high-entropy random, so a plain SHA-256 (not a slow password hash) is the right
 # store: we look up by hash, the token is shown to the user exactly once at registration.
 def new_token() -> str:

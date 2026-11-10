@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "facebook-event",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 187,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "categories": [
+        "Party"
+      ],
+      "cover": "https://scontent.fkul15-1.fna.fbcdn.net/v/t39.30808-6/509422418_10163049800530516_6797802783053944247_n.jpg?stp=dst-jpg_tt6&cstp=mx1200x628&ctp=s1200x628&_nc_cat=101&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=75d36f&_nc_ohc=GmLKa7v9oaoQ7kNvwEthtx3&_nc_oc=Adons7xoUXyDe3ovoZha_JLY3rlWXf0A9kcDuXT3OKIa_9…",
+      "description": "Hea sõber, mõttekaaslane, toetaja!\n\nArvamusfestivali raames toimub Mondo Ukraina õhtu, mis on pühendatud Ukraina partneritele ja külalistele. Kuulame ukraina muusikat, naudime ukraina suupisteid ja jooke ning täname neid, kes on andnud oma panuse Ukraina toetuseks. Samas alustame selle õhtuga ka väi…",
+      "ends_at": "2022-08-12T20:00:00Z",
+      "event_id": "601379014832379",
+      "host": {
+        "id": "100064875664679",
+        "name": "MTÜ Mondo"
+      },
+      "is_canceled": false,
+      "is_online": false,
+      "name": "Mondo Ukraina õhtu",
+      "place": {
+        "latitude": 58.81023,
+        "longitude": 25.41624,
+        "name": "Uskumatu Pirukas",
+        "url": "https://facebook.com/Pirukascatering"
+      },
+      "responded": 106,
+      "starts_at": "2022-08-12T17:00:00Z",
+      "url": "https://www.facebook.com/events/601379014832379/",
+      "when": "Friday 12 August 2022 from 20:00-23:00 EEST"
+    }
+  ]
+}

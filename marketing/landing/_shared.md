@@ -79,7 +79,7 @@ tools than to a data vendor: one base URL, one token, many providers behind it. 
 
 ## `S-FINAL-CTA-TRUST`
 $1.00 of free credit once per new verified account. No credit card, no provider signup. treg.to is open source
-(AGPL). `F-02` `F-08` `F-10`
+(Apache 2.0). `F-02` `F-08` `F-10`
 
 ## `S-INSTALL`
 ```text

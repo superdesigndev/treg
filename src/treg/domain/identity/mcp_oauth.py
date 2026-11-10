@@ -1,13 +1,8 @@
-"""treg as an OAuth **authorization server** — the metadata, and the tokens it will issue.
+"""treg as an OAuth **authorization server** — the metadata, and the tokens it issues.
 
 Everywhere else treg speaks OAuth as a *client*: `oauth.py` builds PKCE challenges to sign in with
 GitHub and to connect a provider account. This is the other direction — the thing that mints tokens
 rather than the thing that redeems them.
-
-This module is deliberately the FIRST piece built, and on its own it issues nothing. It is the part
-that **refuses**: the metadata that tells a client what we support, and the validation that rejects a
-token which is expired, forged, or minted for somebody else's server. Building the refusal before
-the issuance means there is never a window where we accept tokens we have not yet learned to check.
 
 **The `aud` claim is the load-bearing one.** The MCP spec has the client send `resource=<the mcp
 url>` on both the authorize and the token request, and the authorization server must copy it into the
@@ -18,7 +13,7 @@ argument. There is no default and no "skip the check" path, because the one thin
 happen by accident is not checking.
 
 Not ChatGPT-specific. The MCP authorization spec is the same for every compliant client, so this
-serves Claude Code, Cursor and anything else that implements it. See `docs/MCP-OAUTH-PLAN.md`.
+serves Claude Code, Cursor and anything else that implements it.
 """
 
 from __future__ import annotations
@@ -36,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import crypto
-from ...config import PUBLIC_HOST_ALIASES, get_settings
+from ...config import get_settings
 from ...models import OAuthGrant, OAuthRefresh
 
 # How long an access token lives. Short, because a refresh token will exist to renew it and a leaked
@@ -51,6 +46,22 @@ DIRECTORY_SCOPE = "treg:directory"
 BASE_SCOPES = ["treg:catalog", "treg:call", "treg:read"]
 
 
+# "treg for Sheets" (the Google Sheets add-on, docs/context/architecture/table.md): a first-party
+# public client with its own resource and scope, so its token works only on the `/table` routes and
+# an MCP token does not work there. Its token names a DEFAULT team; a request picks one of the
+# person's teams with `X-Treg-Org`, checked against membership on every request.
+SHEETS_CLIENT_ID = "treg-sheets"
+SHEETS_SCOPE = "treg:table"
+
+
+def sheets_resource_url() -> str:
+    return get_settings().public_url.rstrip("/") + "/table"
+
+
+def is_sheets_resource(resource: str) -> bool:
+    return bool(resource) and resource.rstrip("/") == sheets_resource_url()
+
+
 def scopes_for_resource(version: str = "v1") -> list[str]:
     if version == "v1":
         return [*BASE_SCOPES]
@@ -58,10 +69,7 @@ def scopes_for_resource(version: str = "v1") -> list[str]:
         return [*BASE_SCOPES, DIRECTORY_SCOPE]
     raise ValueError(f"unknown MCP resource version {version!r}")
 
-# Marks a token as an MCP access token and nothing else. treg already mints session cookies and
-# identity tokens with the same HMAC construction, so without a type marker a session cookie would
-# validate here (and vice versa) — one class of token would silently become another, which is a
-# privilege escalation waiting for someone to notice it before we do.
+# Session cookies and identity tokens share this HMAC construction; the marker keeps them apart.
 _TOKEN_TYPE = "treg-mcp-at"
 
 
@@ -107,7 +115,7 @@ def mcp_resource_audiences(version: str = "v1") -> set[str]:
     would 401 every pre-move grant forever, with refresh unable to recover. SYMMETRIC on purpose:
     grants minted on treg.to must equally survive a TREG_PUBLIC_URL rollback to the old name."""
     path = _mcp_path(version)
-    return {mcp_resource_url(version), *(f"https://{h}/{path}" for h in PUBLIC_HOST_ALIASES)}
+    return {mcp_resource_url(version), *(f"https://{h}/{path}" for h in get_settings().public_host_aliases)}
 
 
 def mcp_resource_version(resource: str) -> str | None:
@@ -182,7 +190,8 @@ def authorization_server_metadata() -> dict:
 
 
 def make_access_token(*, user_id: int, org_id: int, audience: str, scope: str = "",
-                      ttl: int = ACCESS_TTL_SECONDS, token_version: int = 0) -> str:
+                      ttl: int = ACCESS_TTL_SECONDS, token_version: int = 0,
+                      sso_org_id: int | None = None) -> str:
     """Mint an access token bound to a user, ONE team, and one audience.
 
     `org_id` is on the token rather than resolved per call on purpose. A person can belong to several
@@ -197,6 +206,7 @@ def make_access_token(*, user_id: int, org_id: int, audience: str, scope: str = 
         "aud": audience,
         "scope": scope,
         "tv": int(token_version),
+        "sso_org_id": sso_org_id,
         "exp": int(time.time()) + int(ttl),
     }, separators=(",", ":")).encode()
     sig = hmac.new(_key(), raw, hashlib.sha256).digest()
@@ -244,7 +254,8 @@ def read_access_token(token: str, *, expected_audience: str) -> dict | None:
             return None
         return {"sub": int(data["sub"]), "org": int(data["org"]), "aud": data["aud"],
                 "scope": data.get("scope", ""), "tv": int(data.get("tv", 0)),
-                "exp": int(data["exp"])}
+                "exp": int(data["exp"]),
+                "sso_org_id": int(data["sso_org_id"]) if data.get("sso_org_id") is not None else None}
     except Exception:  # noqa: BLE001 — a malformed token is simply not a token
         return None
 
@@ -257,10 +268,6 @@ def verify_pkce(verifier: str, challenge: str) -> bool:
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return hmac.compare_digest(_b64(digest), challenge)
 
-
-# ---------------------------------------------------------------------------------------------
-# Client registration — two doors in, one row shape out
-# ---------------------------------------------------------------------------------------------
 
 # A client-id metadata document is fetched from a URL the CALLER chose, which makes it a
 # request-forgery primitive unless it is fenced. The fence: https only, no redirects followed, a
@@ -437,12 +444,14 @@ def _refresh_is_live(row: OAuthRefresh, *, now: datetime | None = None) -> bool:
 
 
 async def _issue_refresh(*, family_id: str, client_id: str, user_id: int, org_id: int,
-                         resource: str, scope: str, db: AsyncSession) -> str:
+                         resource: str, scope: str, db: AsyncSession,
+                         sso_org_id: int | None = None) -> str:
     """Mint a refresh token and store only its hash — a database copy is a database leak."""
     import secrets as _s
 
     if await db.get(OAuthGrant, family_id) is None:
-        db.add(OAuthGrant(family_id=family_id, current_org_id=org_id))
+        db.add(OAuthGrant(family_id=family_id, current_org_id=org_id,
+                          sso_org_id=sso_org_id))
     token = _s.token_urlsafe(40)
     db.add(OAuthRefresh(
         token_hash=crypto.hash_token(token), family_id=family_id, client_id=client_id,

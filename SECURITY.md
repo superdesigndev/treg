@@ -27,6 +27,15 @@ provider account and bypass this platform ownership table.
   server-side and makes the upstream call; the consumer's token only authorizes it.
 - **Encryption at rest.** Stored secrets are Fernet-encrypted; the key is an environment variable, never
   in the repo or the database.
+- **CLI pairing is shared and single-use.** `treg login` keeps its pairing and social-login return
+  state in the database with ten-minute validity windows. Pairing codes and completed credentials
+  are encrypted, approval attempts are serialized, and polling atomically consumes a result.
+  Storage failures refuse the operation; there is no process-local fallback. Workers must share
+  the database, encryption key and session-signing secret. A lost response after consumption requires
+  starting a new login; credentials are never republished to make a retry succeed.
+  Expired CLI rows are cleaned in bounded batches outside the pairing transaction. On rollout,
+  an in-flight login from an old worker may need to restart once because its local state cannot
+  be read by the new workers.
 - **Tenant isolation.** Every secret, tool, and record is scoped to an org; access is gated by role and,
   per member, by an explicit tool allow-list. Pinned agent tags additionally scope call/run history,
   archived results and shared-provider async ownership; foreign and untagged records return 404.
@@ -36,12 +45,12 @@ provider account and bypass this platform ownership table.
 - **Local runs are sandboxed.** `treg run` on a member's machine executes the CLI as a locked-down
   `treg-run` user, with an egress allow-list and an optional filesystem jail, so a shared key can't be
   read, exfiltrated over the network, or written to a member-readable file.
-- **Server runs are resource-limited.** `treg run --server` executes each CLI with a scrubbed environment
-  (treg's own secrets removed), a per-run throwaway home, an allow-list of runnable commands, output
-  redaction, and POSIX resource limits (CPU, file size, no core dumps).
+- **Server runs are disabled.** `POST /run` unconditionally returns 503 before authentication,
+  database access, secret decryption or subprocess execution. No role, CLI profile or executable
+  allow-list can enable it.
 - **Signup credit belongs to a verified account, once.** Only an email OTP, provider-verified
-  Google/GitHub email, or inbox-only invitation link marks an identity verified. Legacy `POST /users`
-  and admin-visible invitation codes do not. `claim_signup_promo` atomically consumes the user's
+  Google/GitHub email, or inbox-only invitation link marks an identity verified. Admin-visible
+  invitation codes do not. `claim_signup_promo` atomically consumes the user's
   eligibility in the same transaction as the money grant; team deletion never restores it. Accounts
   predating revision `0033` receive no new automatic grant; their existing balances are unchanged.
   New identities can still be farmed through verified inboxes, so this is not a one-human guarantee.
@@ -86,17 +95,31 @@ configuration when archive mode is enabled and any storage switch selects R2. Th
 script accepts only `treg-archive-dev`, refuses CI, and skips absent credentials. It creates no
 cloud resources apart from one small test object. Production configuration belongs in the private ops project.
 
+## Picture storage (avatars and /showcase pictures)
+
+Pictures use their own credentials and buckets (`TREG_MEDIA_*`), never the archive's: a private
+STAGING bucket every upload lands in, and a PUBLIC bucket where treg publishes (an avatar once its
+owner sets it, a /showcase picture once staff approve it). treg writes and deletes only under `img/`
+in the public bucket, which may hold other files (page videos); never give that bucket a lifecycle
+rule that is not limited to its own prefix. Scope one token to these two buckets with object
+read/write access. The endpoint must be https; only `http://localhost`
+(a local MinIO) is accepted over plain HTTP.
+
+Every upload is checked before it is decoded (size cap, leading bytes must be PNG, JPEG or WebP; SVG
+and GIF are refused), decoded under a pixel cap, and re-drawn from its pixels into fixed sizes, so
+metadata and anything appended to the original are discarded. Files are named by the SHA-256 of the
+re-drawn picture: clients never supply a path, bucket, host or URL, and a name never changes
+meaning. Staged pictures are served only to signed-in people (`private, no-store`), the public
+bucket through a media domain or treg's `/media-files/`; bytes from treg's origin carry `nosniff`
+and `sandbox`. Picture storage I/O never holds a database connection. Give the staging bucket a
+lifecycle rule that expires objects after about 30 days; nothing else cleans it. Public pictures no
+row names any more are deleted by `treg-worker media sweep`.
+
 ## Known limitations (by design, documented on purpose)
 
-Honesty is part of the model. Two items are deliberately deferred:
-
-1. **Server runs do not yet have filesystem/network isolation.** The resource limits above cap denial of
-   service, but a full jail (a locked-down user + egress allow-list, like the local sandbox) requires a
-   container deployment and is planned. In the supported hosted configuration the encryption key is
-   an environment variable rather than an on-disk secret file, and only allow-listed CLIs may run.
-2. **The CLI-login handshake is in-process.** The short-lived pairing state for `treg login` lives in the
-   server process (it self-heals on retry and carries no rate-limit value). Running more than one server
-   instance requires sticky routing for that one flow, or moving it to shared storage.
+**The server CLI runner lacks filesystem/process isolation.** A scrubbed child environment and
+resource limits do not isolate it from the server's credentials. Server-side CLI execution remains
+disabled until an independently reviewed isolation boundary is in place.
 
 ## Supported versions
 

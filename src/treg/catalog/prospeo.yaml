@@ -60,6 +60,7 @@ endpoints:
       means: "no verified work email for this person — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/enrich-person
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.people.email.find.json
 
   - id: prospeo.people.phone.find
@@ -102,6 +103,7 @@ endpoints:
       means: "no mobile number for this person — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/enrich-person
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.people.phone.find.json
 
   - id: prospeo.people.enrich
@@ -136,6 +138,7 @@ endpoints:
       means: "nobody matched the identity — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/enrich-person
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.people.enrich.json
   - id: prospeo.companies.enrich
     capability: companies.enrich
@@ -161,6 +164,7 @@ endpoints:
       note: One credit per matched company; a miss or free_enrichment=true is free.
     docs_url: https://prospeo.io/api-docs/enrich-company
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.companies.enrich.json
   - id: prospeo.people.search
     capability: people.search
@@ -202,6 +206,7 @@ endpoints:
       means: "no people matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/search-person
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.people.search.json
 
   - id: prospeo.companies.search
@@ -236,6 +241,7 @@ endpoints:
       means: "no companies matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/search-company
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.companies.search.json
 
   - id: prospeo.search.suggestions
@@ -285,4 +291,5 @@ endpoints:
       note: Free authenticated utility; 15 requests/second on every plan.
     docs_url: https://prospeo.io/api-docs/search-suggestions
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/prospeo.search.suggestions.json

@@ -40,6 +40,7 @@ endpoints:
       confidence: verified
       note: Datagma reports the exact charge in creditBurn. A fresh verified email used one credit; a cached repeat reported zero.
     verified: '2026-09-18'
+    added: '2026-09-18'
     example_response: examples/datagma.people.email.find.json
     docs_url: https://datagmaapi.readme.io/reference/find-email-from-full-name-company
 
@@ -54,7 +55,7 @@ endpoints:
     summary: Enrich one person from an email, LinkedIn URL, or name and company domain
     input:
       queryParams:
-        data: {type: string, required: true, note: Email, LinkedIn profile URL, or company domain when fullName is also supplied.}
+        data: {type: string, required: true, note: "Email, LinkedIn profile URL, or company domain when fullName is also supplied."}
         fullName: {type: string, required: false}
         countryCode: {type: string, required: false, note: Optional two-letter country hint.}
         companyPremium: {type: boolean, required: true, enum: [false]}
@@ -70,6 +71,7 @@ endpoints:
       <<: *one_credit
       note: Datagma reports the exact charge in creditBurn. A successful basic-person enrichment used one credit.
     verified: '2026-09-18'
+    added: '2026-09-18'
     example_response: examples/datagma.people.enrich.json
     docs_url: https://datagmaapi.readme.io/reference/enrich-a-person-or-company
 
@@ -84,7 +86,7 @@ endpoints:
     summary: Enrich one company from its domain, name, email, or LinkedIn URL
     input:
       queryParams:
-        data: {type: string, required: true, example: algolia.com, note: Company domain, company name, company email, or LinkedIn company URL.}
+        data: {type: string, required: true, example: algolia.com, note: "Company domain, company name, company email, or LinkedIn company URL."}
         companyPremium: {type: boolean, required: true, enum: [true]}
         companyFull: {type: boolean, required: true, enum: [true]}
         personFull: {type: boolean, required: true, enum: [false]}
@@ -98,6 +100,7 @@ endpoints:
       <<: *one_credit
       note: Datagma reports the exact charge in creditBurn. A successful premium + full company enrichment used one credit.
     verified: '2026-09-18'
+    added: '2026-09-18'
     example_response: examples/datagma.companies.enrich.json
     docs_url: https://datagmaapi.readme.io/reference/enrich-a-person-or-company
 
@@ -130,6 +133,7 @@ endpoints:
       confidence: verified
       note: Datagma reports the exact charge in creditBurn. A successful mobile lookup used 30 credits; a restricted lookup used zero.
     verified: '2026-09-18'
+    added: '2026-09-18'
     example_response: examples/datagma.people.phone.find.json
     docs_url: https://datagmaapi.readme.io/reference/find-mobile-phone
 
@@ -153,5 +157,6 @@ endpoints:
       <<: *one_credit
       note: Datagma reports the exact charge in creditBurn. A completed job-change check used one credit.
     verified: '2026-09-18'
+    added: '2026-09-18'
     example_response: examples/datagma.people.job-change.detect.json
     docs_url: https://datagmaapi.readme.io/reference/detect-job-change

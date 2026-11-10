@@ -8,7 +8,6 @@ from ..domain.identity.access import require_identity
 from ..models import User
 
 
-# app is the APIRouter alias so mechanically moved @app decorators stay byte-identical.
 app = APIRouter()
 
 

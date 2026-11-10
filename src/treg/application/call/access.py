@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ... import oauth_providers
 from ...config import get_settings
 from ...domain import money as ledger
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.identity.access import Caller
 from .resolve import (
@@ -26,6 +26,7 @@ from .resolve import (
     _platform_offer,
     _provider_tool_grant,
     _resolve_call,
+    provider_paused,
     resolve_call_target,
 )
 from .route import RouteOptions, build_plan
@@ -45,6 +46,8 @@ async def catalog_endpoint_access(
         )
     _enforce_catalog_status(endpoint)
     service = endpoint["provider"]
+    if oauth_providers.is_paused(service):
+        raise provider_paused(service, endpoint_id)
     if endpoint.get("kind") == "routed":
         return await _routed_access(endpoint, caller, catalog)
 
@@ -148,6 +151,8 @@ async def catalog_endpoint_access(
 
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     """Estimate the catalog's runnable example, including provider-specific request pricing."""
+    if schema.is_v2(endpoint):
+        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
     if service != "openmart":
         return _platform_estimate_micro(cost, {})
     test_request = endpoint.get("test_request") or {}
@@ -213,7 +218,8 @@ def _billed_note(endpoint: dict, provider, service: str, catalog) -> str:
     if not (provider.platform_billed and service in get_settings().oauth_billed_set):
         return ""
     cost = catalog.cost_view(endpoint.get("cost"), service) if endpoint.get("cost") else None
-    estimate = _platform_estimate_micro(cost, {}) if cost and cost.get("usd") else 0
+    estimate = ((_marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0] if schema.is_v2(endpoint)
+                 else _platform_estimate_micro(cost, {})) if cost and cost.get("usd") else 0)
     if estimate:
         return (
             f" — metered from the team balance (~${ledger.usd(estimate):g}/call: "
@@ -227,23 +233,24 @@ async def _direct_access(
     billed_note: str,
 ) -> dict | None:
     probe = provider.base_url.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
-    try:
-        target = await resolve_call_target(probe, caller, _resolve_call)
-        return {
-            "tier": "tool",
-            "metered": bool(billed_note),
-            "detail": (
-                f"will use this org's registered {target.tool.name!r} tool{billed_note}"
-            ),
-        }
-    except CallFailure as exc:
-        if exc.status_code == 403:
+    for url in provider.tool_lookup_urls(probe):
+        try:
+            target = await resolve_call_target(url, caller, _resolve_call)
             return {
-                "tier": "restricted",
-                "detail": "a registered tool exists but your access is restricted — ask an admin",
+                "tier": "tool",
+                "metered": bool(billed_note),
+                "detail": (
+                    f"will use this org's registered {target.tool.name!r} tool{billed_note}"
+                ),
             }
-        if exc.status_code != 404:
-            raise
+        except CallFailure as exc:
+            if exc.status_code == 403:
+                return {
+                    "tier": "restricted",
+                    "detail": "a registered tool exists but your access is restricted — ask an admin",
+                }
+            if exc.status_code != 404:
+                raise
     if await _marketplace_secret(service, caller.org_id, db) is not None:
         return {
             "tier": "credential",

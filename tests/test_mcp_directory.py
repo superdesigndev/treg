@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.routing import Mount
 
+from conftest import mcp_text_result
 from treg import mcp
 from treg.domain.identity import mcp_oauth
 from treg.routers import auth as auth_routes
@@ -66,11 +67,7 @@ async def _call_tool(client: AsyncClient, name: str, args: dict, token: str,
     }, token, extra_headers, path=path)
     response = await _rpc(client, "tools/call", {"name": name, "arguments": args},
                           token, extra_headers, path=path)
-    payload = response.json()
-    content = (payload.get("result") or {}).get("content") or []
-    if content and content[0].get("type") == "text":
-        return json.loads(content[0]["text"])
-    return payload
+    return mcp_text_result(name, response.json())
 
 
 async def _modern_rpc(client: AsyncClient, method: str, params=None,
@@ -173,25 +170,23 @@ async def test_v2_no_slash_path_rejects_a_v1_token_with_the_v2_challenge(monkeyp
 
 async def test_v2_declares_exact_directory_contract():
     tools = {tool.name: tool for tool in await mcp.directory_mcp.list_tools()}
+    # The six tools the directory listing was submitted with; a seventh is a change to that listing.
     assert list(tools) == [
         "catalog_search", "catalog_get", "catalog_call_read", "catalog_call_write",
-        "catalog_call_media", "resources_list", "balance", "catalog_request", "feedback", "review",
+        "balance", "catalog_request",
     ]
     expected_titles = {
         "catalog_search": "Search Treg Catalog",
         "catalog_get": "Get Catalog Endpoint",
         "catalog_call_read": "Call a Read Endpoint",
         "catalog_call_write": "Call a Write Endpoint",
-        "catalog_call_media": "Call an Audio Endpoint",
-        "resources_list": "List Team Resources",
         "balance": "Check Treg Balance",
         "catalog_request": "Request a Catalog Capability",
-        "feedback": "Submit Feedback",
-        "review": "Review a Catalog Call",
     }
     assert {name: tool.title for name, tool in tools.items()} == expected_titles
     assert {name: tool.annotations.title for name, tool in tools.items()} == expected_titles
     assert "my_tools" not in tools and "call" not in tools
+    assert "review" not in mcp.directory_mcp.instructions
     assert "method" not in tools["catalog_call_read"].input_schema["properties"]
     assert "method" not in tools["catalog_call_write"].input_schema["properties"]
     assert "authorization_method" in tools["catalog_call_read"].input_schema["properties"]
@@ -301,7 +296,8 @@ async def test_v2_shared_catalog_details_balance_and_guidance_work_end_to_end(cl
         }, token)
         balance = await _call_tool(client, "balance", {}, token)
 
-    assert search["results"] and search["results"][0].get("usd_per_call") is not None
+    # a routed row whose children bill misses quotes no single price; its children do
+    assert search["results"] and any(r.get("usd_per_call") is not None for r in search["results"])
     assert "catalog_call_read" in search["next"]
     assert "catalog_call_write" in search["next"]
     assert "then call(...)" not in search["next"]
@@ -327,6 +323,9 @@ async def test_team_and_directory_catalog_search_results_and_prices_match(client
 
 
 async def test_team_and_directory_endpoint_details_and_balance_match(clients):
+    from treg.application import catalog_stats
+    from treg.infra.db import session_maker
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
     token = clients.headers["X-Treg-Token"]
     endpoint_args = {"endpoint_id": "tikhub.tiktok.video.comments"}
     async with paired_mcp_session() as client:
@@ -347,6 +346,19 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_endpoint["endpoint"]["id"] == endpoint_args["endpoint_id"]
     assert team_endpoint["endpoint"]["cost"] == directory_endpoint["endpoint"]["cost"]
     assert team_balance == directory_balance
+
+
+async def test_only_the_team_surface_shows_a_rows_note(clients):
+    """The directory surface returns what it was submitted with; `/mcp/` shows the row's note."""
+    from treg.domain.catalog import store
+    ep = next(e for e in store.load().endpoints
+              if e.get("note") and e.get("platform") not in mcp._DIRECTORY_HIDDEN_PLATFORMS)
+    token = clients.headers["X-Treg-Token"]
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+    assert team["endpoint"]["note"] == ep["note"]
+    assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
 
 
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
@@ -609,7 +621,7 @@ def test_transport_factory_refuses_a_server_audience_mismatch():
         mcp.build_mcp_app(server=mcp.mcp, resource_version="v2")
 
 
-@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
+@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call')])
 @pytest.mark.parametrize('sampled', [False, True])
 async def test_feedback_hint_only_wraps_successful_sampled_calls(clients, monkeypatch, path, tool, sampled):
     from treg import analytics, hints
@@ -651,7 +663,7 @@ async def test_feedback_hint_only_wraps_successful_sampled_calls(clients, monkey
         get_settings.cache_clear()
 
 
-@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
+@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call')])
 async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(clients, monkeypatch, path, tool):
     from treg import hints
     from treg.application.call import service as call_service
@@ -676,9 +688,10 @@ async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(client
 
 
 @pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
-async def test_balance_hint_wins_with_all_sampling_enabled(clients, monkeypatch, path, tool):
+async def test_account_out_notice_wins_with_all_sampling_enabled(clients, monkeypatch, path, tool):
     from treg import hints
     from treg.application.call import service as call_service
+    from treg.capacity_notice import account_out_notice
     from test_marketplace_call import _fake_relay
 
     monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
@@ -691,9 +704,63 @@ async def test_balance_hint_wins_with_all_sampling_enabled(clients, monkeypatch,
             result = await _call_tool(client, tool, {
                 'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
             }, clients.headers['X-Treg-Token'], path=path)
-        assert result['status'] == 402
-        assert result['hint'] == "the team's prepaid balance is not enough for this call"
+        assert result['status'] == 402 and result['whose_error'] == 'treg'
+        # treg's own account answered 402: not the team's balance, so not the balance hint.
+        assert result['hint'] == account_out_notice({'X-Treg-Capacity': 'exhausted', 'X-Treg-Cost-Micro': '0'})
     finally:
         get_settings.cache_clear()
 
 
+async def test_v2_shows_no_review_or_feedback_invitation(clients, monkeypatch):
+    """V2 has no review or feedback tool, so a result must not ask for either."""
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: True)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'}}
+    try:
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, 'call', {**args, 'idempotency_key': 'team'},
+                                    clients.headers['X-Treg-Token'], path='/mcp/')
+            directory = await _call_tool(client, 'catalog_call_read', {**args, 'idempotency_key': 'v2'},
+                                         clients.headers['X-Treg-Token'])
+        assert team['hint'] == hints.review_hint(team['call_id'])
+        assert directory['status'] == 200 and directory['call_id']
+        assert 'hint' not in directory
+    finally:
+        get_settings.cache_clear()
+
+
+def _generation_endpoint() -> dict:
+    from treg.domain.catalog import store
+    return next(ep for ep in store.load().endpoints
+                if ep.get("platform") in mcp._DIRECTORY_HIDDEN_PLATFORMS and ep.get("method") == "POST")
+
+
+async def test_v2_does_not_list_describe_or_call_generation_endpoints(clients):
+    ep = _generation_endpoint()
+    token = clients.headers["X-Treg-Token"]
+    search = {"query": ep["name"] or ep["summary"], "limit": 25}
+    async with paired_mcp_session() as client:
+        team_search = await _call_tool(client, "catalog_search", search, token, path="/mcp/")
+        team_get = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        v2_search = await _call_tool(client, "catalog_search", search, token)
+        v2_get = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+        v2_call = await _call_tool(client, "catalog_call_write", {"endpoint_id": ep["id"], "body": {}}, token)
+
+    hidden = mcp._DIRECTORY_HIDDEN_PLATFORMS
+    from treg.domain.catalog import store
+    platform_of = {e["id"]: e.get("platform") for e in store.load().endpoints}
+    assert any(platform_of.get(r["endpoint_id"]) in hidden for r in team_search["results"])
+    assert team_get["endpoint"]["id"] == ep["id"]
+    assert not any(platform_of.get(r["endpoint_id"]) in hidden for r in v2_search["results"])
+    assert not any(j["capability"].split(".")[0] in hidden for j in v2_search.get("jobs") or [])
+    if not v2_search["results"]:
+        assert v2_search["hint"] == mcp._DIRECTORY_HIDDEN_NOTE
+    assert mcp._DIRECTORY_HIDDEN_NOTE in v2_get["error"]
+    assert mcp._DIRECTORY_HIDDEN_NOTE in v2_call["error"] and "status" not in v2_call

@@ -20,6 +20,8 @@ source:
 # signals, buying-group (the retired decision-makers route is kept as a tombstone), website-visits
 # and the webhook-subscription family. Auth is the same `api_key` header, no scheme prefix. No calls
 # were made while writing this file.
+# Hand-maintained: no ingester reads Lusha's client-rendered reference, so this file is never
+# regenerated and edits here (tombstones included) survive.
 endpoints:
   - id: lusha.x.contacts-prospecting-filters
     kind: utility
@@ -37,6 +39,7 @@ endpoints:
     test_request:
       pathParams: {filterType: "departments"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.contacts-prospecting-filters.json
     docs_url: https://docs.lusha.com/apis/openapi/prospecting-search-and-enrich
 
@@ -56,10 +59,12 @@ endpoints:
     test_request:
       pathParams: {filterType: "sizes"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.companies-prospecting-filters.json
     docs_url: https://docs.lusha.com/apis/openapi/company-filters
 
   - id: lusha.x.companies-enrich-by-id
+    added: '2026-07-28'
     domain: companies
     tier: extended
     platform: companies
@@ -100,6 +105,7 @@ endpoints:
       body: {seeds: {ids: ["v1.-R1YwK7SIvBv1FVAOW1zmel9bZ4XD9mxNQ", "v1.ujDPLE3res-lYBnt6iiLr3jwCe9wXPdmrg", "v1.n0ghmmrFpkVf6z0q-rKCjt4kTMVGydVe", "v1.Ex7lVhKX97ZmbbTTg4AumQqE0SPKKsw", "v1.AUMmbUKy3d9zrSEMaIog-hADfblVwPQCZQ"]}, limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, checked: '2026-07-28', confidence: verified, note: 'OBSERVED live 2026-07-28: 1 credit for 1 returned result (lookalikeContact, perQuantity 5 per account/usage pricing)'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.contacts-lookalike.json
     docs_url: https://docs.lusha.com/apis/openapi/lookalikes
     capability: people.lookalike
@@ -125,10 +131,12 @@ endpoints:
       body: {seeds: {domains: ["salesforce.com", "hubspot.com", "zoominfo.com", "apollo.io", "clearbit.com"]}, limit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, checked: '2026-07-28', confidence: verified, note: 'OBSERVED live 2026-07-28: 1 credit for 1 returned result (lookalikeCompany, perQuantity 5 per account/usage pricing)'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.companies-lookalike.json
     docs_url: https://docs.lusha.com/apis/openapi/lookalikes
 
   - id: lusha.x.contacts-signals
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
@@ -150,6 +158,7 @@ endpoints:
     capability: people.signals
 
   - id: lusha.x.companies-signals
+    added: '2026-07-28'
     domain: other
     tier: extended
     platform: companies
@@ -182,6 +191,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: type/filter discovery endpoint; not billed}
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.contact-signal-types.json
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
@@ -198,6 +208,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: type/filter discovery endpoint; not billed}
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.company-signal-types.json
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
@@ -214,6 +225,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: filter discovery endpoint; not billed}
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.company-signal-filters.json
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
@@ -232,6 +244,7 @@ endpoints:
     test_request:
       pathParams: {filterType: "newsEventTypes"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.company-signal-filter-values.json
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
@@ -255,11 +268,13 @@ endpoints:
       body: {companies: [{domain: "lusha.com"}]}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-03', confidence: verified, note: 'OBSERVED live 2026-09-02: billing.creditsCharged 44 for resultsReturned 44 (one company, no contactsLimit). Lusha''s OpenAPI bundle says "Charged per contact returned via the buyingGroupContact action". Previously catalogued as free from the docs prose — wrong, like lusha.people.search: trust billing.creditsCharged, never the prose. treg settles from that field, so the estimate is the reservation only; the bill is the row count'}
     verified: 2026-09-02
+    added: '2026-07-28'
     example_response: examples/lusha.x.decision-makers.json
     docs_url: https://docs.lusha.com/apis/openapi/decision-makers
     capability: people.decision_makers
 
   - id: lusha.x.buying-group
+    added: '2026-09-19'
     domain: contacts
     tier: extended
     platform: people
@@ -283,6 +298,7 @@ endpoints:
     capability: people.decision_makers
 
   - id: lusha.x.companies-website-visits
+    added: '2026-07-28'
     domain: other
     tier: extended
     platform: companies
@@ -313,6 +329,7 @@ endpoints:
       note: "no required parameters"
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.webhook-subscriptions-list.json
     docs_url: https://docs.lusha.com/apis/openapi/webhooks/listsubscriptions
 
@@ -334,10 +351,12 @@ endpoints:
       body: {defaults: {entityType: "company", signalTypes: ["headcountIncrease1m"], url: "https://example.com/webhooks/lusha-catalog-test"}, subscriptions: [{entityId: "v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S", name: "catalog-verify-test"}]}
     cost: {type: free, value: 0, currency: USD, unit: call, note: webhook management is not metered against the data-credit balance}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.webhook-subscriptions-create.json
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-subscription-get
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -352,6 +371,7 @@ endpoints:
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-subscription-update
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -385,10 +405,12 @@ endpoints:
       body: {ids: ["000000000000000000000000"]}
     cost: {type: free, value: 0, currency: USD, unit: call, note: webhook management is not metered against the data-credit balance}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.webhook-subscriptions-delete.json
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-subscription-test
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -414,6 +436,7 @@ endpoints:
       note: "success logs retained 90 days, failures 180 days"
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.webhook-audit-logs.json
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
@@ -429,10 +452,12 @@ endpoints:
       note: "no required parameters"
     test_request: {queryParams: {}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.x.webhook-audit-log-stats.json
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-secret-get
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -448,6 +473,7 @@ endpoints:
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-secret-regenerate
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -461,6 +487,7 @@ endpoints:
     docs_url: https://docs.lusha.com/apis/openapi/webhooks
 
   - id: lusha.x.webhook-opt-out-subscribe
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account

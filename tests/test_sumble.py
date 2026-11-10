@@ -13,7 +13,7 @@ from test_marketplace_call import _balance, _entries, _mk, platform_on  # noqa: 
 
 
 @pytest.fixture
-def sumble_on(monkeypatch, platform_on):  # noqa: F811
+def sumble_on(monkeypatch, platform_on):
     monkeypatch.setenv('TREG_PLATFORM_KEY_SUMBLE', 'PLATFORM-SUMBLE')
     monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'sumble')
     get_settings.cache_clear()
@@ -38,8 +38,14 @@ def test_estimates_follow_composable_and_rounded_credit_rules(endpoint, body, cr
 
 @pytest.mark.parametrize('credits,expected', [(3,30000),(0,0),(101,1010000),(-1,None),(True,None),('3',None),(1.5,None),(None,None)])
 def test_reported_usage_uses_frozen_rate(credits, expected):
-    mk=_mk('sumble',endpoint_id='sumble.organizations',unit_micro=10000)
+    mk=_mk('sumble',endpoint_id='sumble.organizations',unit_micro=10000,reported_charge_unit_micro=10000)
     assert settle._observed_cost_micro(mk,json.dumps({'credits_used':credits}).encode()) == expected
+
+
+def test_brief_reported_usage_is_credits_not_briefs():
+    # A brief is 50 credits per success, so its unit is the whole brief; usage is still in credits.
+    mk=_mk('sumble',endpoint_id='sumble.organizations.intelligence_brief',unit_micro=500000,reported_charge_unit_micro=10000)
+    assert settle._observed_cost_micro(mk,json.dumps({'credits_used':50}).encode()) == 500000
 
 
 @pytest.mark.parametrize('endpoint,body', [

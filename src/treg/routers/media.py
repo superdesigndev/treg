@@ -1,5 +1,6 @@
-"""`POST /media` hosts a reference file for a vendor to fetch; `GET /m/{token}` serves it."""
+"""`POST /media` hosts a reference file for a vendor to fetch; `GET /m/{token}[.ext]` serves it."""
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from .. import sandbox as demo_sandbox
 from ..application import media as media_app
@@ -31,7 +32,9 @@ async def host_media(request: Request, caller: Caller = Depends(require_member))
                                   content_type=request.headers.get("content-type", ""))
     except media_app.MediaRejected as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail) from None
-    url = f"{get_settings().public_url.rstrip('/')}/m/{row.token}"
+    # Path ends in a content-type extension so vendors that check the URL suffix (not
+    # Content-Type) accept the reference. The token itself stays extensionless in storage.
+    url = f"{get_settings().public_url.rstrip('/')}/m/{row.token}{media_app.extension_for(row.content_type)}"
     return {"url": url, "token": row.token, "content_type": row.content_type, "size": row.size,
             "expires_at": row.expires_at.isoformat() + "Z"}
 
@@ -39,13 +42,23 @@ async def host_media(request: Request, caller: Caller = Depends(require_member))
 @app.get("/m/{token}", include_in_schema=False)
 async def serve_media(token: str) -> Response:
     """Public by design: the vendor's fetcher holds no treg token. The token is 192 random bits
-    and the row names nothing about the org, so the URL is the only capability."""
-    row = await media_app.get(token)
+    and the row names nothing about the org, so the URL is the only capability. An optional
+    ".ext" suffix (added when hosting) is ignored for lookup so both shapes keep working."""
+    row = await media_app.get(media_app.token_from_path(token))
     if row is None:
         raise HTTPException(status_code=404, detail="no such media, or it expired")
-    # `sandbox` CSP + nosniff: user bytes served on the treg.to origin must be inert even if a
+    # `sandbox` CSP + nosniff: user bytes served on treg's origin must be inert even if a
     # scriptable type ever slips past the allow-list. Vendors' fetchers ignore both headers.
-    return Response(content=row.body, media_type=row.content_type, headers={
-        "Content-Length": str(row.size), "Cache-Control": "public, max-age=3600",
-        "X-Robots-Tag": "noindex", "Content-Disposition": "inline",
-        "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"})
+    headers = {"Content-Length": str(row.size), "Cache-Control": "public, max-age=3600",
+               "X-Robots-Tag": "noindex", "Content-Disposition": "inline",
+               "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
+    if row.object_key is None:
+        return Response(content=row.body, media_type=row.content_type, headers=headers)
+    try:
+        chunks = await media_app.open_body(row)
+    except media_app.MediaUnavailable:
+        raise HTTPException(status_code=503, detail="media storage is unavailable; try again",
+                            headers={"Retry-After": "5"}) from None
+    if chunks is None:
+        raise HTTPException(status_code=404, detail="no such media, or it expired")
+    return StreamingResponse(chunks, media_type=row.content_type, headers=headers)

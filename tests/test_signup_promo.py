@@ -9,11 +9,13 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlmodel import select
 
-from conftest import verified_identity
+from conftest import unproven_member, verified_identity
 from treg.config import get_settings
 from treg.domain import money
 from treg.infra.db import session_maker
-from treg.models import CreditBlock, Hold, LedgerEntry, Org, User
+from treg.domain.identity.access import _norm_email
+from treg.domain.identity.promotions import promo_inbox
+from treg.models import CreditBlock, Hold, LedgerEntry, Org, SignupPromoClaim, User
 
 
 async def _team(client, token, name):
@@ -33,21 +35,63 @@ async def _funding(ids):
     return sum(o.balance_micro for o in orgs), entries
 
 
-async def test_legacy_registration_cannot_mint_credit(clients):
-    r = await clients.post('/users', json={'email': 'unverified@example.org'})
-    assert r.status_code == 200
-    created = r.json()
-    teams = [created]
+async def test_an_unproven_identity_cannot_mint_credit(clients):
+    created = await unproven_member(clients, 'unverified@example.org')
+    teams = []
     for index in range(3):
         teams.append(await _team(clients, created['token'], f'unverified-{index}'))
     assert await _funding([t['org_id'] for t in teams]) == (0, [])
-    # A legacy token never becomes proof. A real inbox proof enables ONE future team.
+    # An invite-code token never becomes proof. A real inbox proof funds ONE team, once.
     token = await verified_identity(clients, 'unverified@example.org')
     teams.append(await _team(clients, token, 'after-proof'))
     teams.append(await _team(clients, created['token'], 'old-token-after-proof'))
+    await verified_identity(clients, 'unverified@example.org')
     balance, entries = await _funding([t['org_id'] for t in teams])
     assert balance == get_settings().promo_grant_micro
     assert len(entries) == 1
+
+
+async def test_verifying_after_making_a_team_funds_that_team(clients):
+    """An invite-code member can make a team before any inbox proof; proving the inbox later funds it."""
+    member = await unproven_member(clients, 'later@example.org')
+    registered = await _team(clients, member['token'], 'later-first')
+    assert await _funding([registered['org_id']]) == (0, [])
+    token = await verified_identity(clients, 'later@example.org')
+    balance, entries = await _funding([registered['org_id']])
+    assert balance == get_settings().promo_grant_micro
+    assert [e.meta['source'] for e in entries] == ['signup']
+    # The claim is spent: a second sign-in and a new team add nothing.
+    await verified_identity(clients, 'later@example.org')
+    second = await _team(clients, token, 'later-second')
+    assert await _funding([second['org_id']]) == (0, [])
+    assert (await _funding([registered['org_id']]))[0] == get_settings().promo_grant_micro
+
+
+async def test_only_one_of_two_racing_proofs_is_the_first(clients):
+    from treg.application import signup
+    async with session_maker() as db:
+        db.add(User(email='racing-proof@example.org'))
+        await db.commit()
+    proven = [set(), set()]
+    async with session_maker() as first, session_maker() as second:
+        # Both hold the user loaded while still unverified (as a door does), then prove it in turn.
+        held = [await signup.find_or_create_user(first, 'racing-proof@example.org'),
+                await signup.find_or_create_user(second, 'racing-proof@example.org')]
+        await signup.find_or_create_user(first, 'racing-proof@example.org', verified=True, proven=proven[0])
+        await first.commit()
+        await signup.find_or_create_user(second, 'racing-proof@example.org', verified=True, proven=proven[1])
+        await second.commit()
+    assert [len(p) for p in proven] == [1, 0]
+    assert held[0].email_verified_at is not None
+
+
+async def test_verifying_with_no_team_keeps_the_claim_for_the_first_team(clients):
+    token = await verified_identity(clients, 'no-team-yet@example.org')
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == 'no-team-yet@example.org'))).scalar_one()
+        assert user.signup_promo_available
+    first = await _team(clients, token, 'no-team-yet')
+    assert (await _funding([first['org_id']]))[0] == get_settings().promo_grant_micro
 
 
 @pytest.mark.parametrize('concurrent', [False, True])
@@ -76,18 +120,6 @@ async def test_deleting_funded_team_does_not_restore_claim(clients):
     assert deleted.status_code == 200, deleted.text
     recreated = await _team(clients, token, 'delete-me')
     assert await _funding([recreated['org_id']]) == (0, [])
-
-
-async def test_invite_code_is_not_an_email_proof(clients):
-    org = (await clients.get('/orgs')).json()[0]
-    invite = await clients.post(f"/orgs/{org['org_id']}/invites",
-        json={'email': 'invite-code@example.org', 'role': 'member'})
-    assert invite.status_code == 200
-    accepted = await clients.post('/invites/accept', json={
-        'email': 'invite-code@example.org', 'code': invite.json()['code']})
-    assert accepted.status_code == 200
-    team = await _team(clients, accepted.json()['token'], 'invite-code-team')
-    assert await _funding([team['org_id']]) == (0, [])
 
 
 async def test_legacy_user_remains_ineligible_after_verification(clients):
@@ -131,6 +163,95 @@ async def test_disabled_promo_does_not_consume_new_user_claim(clients, monkeypat
     assert (await _funding([second['org_id']]))[0] == get_settings().promo_grant_micro
 
 
+@pytest.mark.parametrize(('address', 'inbox'), [
+    ('Jane.Doe+promo@GMail.com', 'janedoe@gmail.com'),
+    ('j.a.n.e.d.o.e@googlemail.com', 'janedoe@gmail.com'),
+    ('jane.doe+a+b@example.org', 'jane.doe@example.org'),
+    (' ops@example.org ', 'ops@example.org'),
+    ('farmer@GMail.com.', 'farmer@gmail.com'),
+    ('ops@example.org..', 'ops@example.org'),
+    ('Far.Mer+x@GMail.com.', 'farmer@gmail.com'),
+])
+def test_promo_inbox_folds_aliases_of_one_mailbox(address, inbox):
+    assert promo_inbox(address) == inbox
+
+
+@pytest.mark.parametrize(('address', 'identity'), [
+    (' Bob@X.com. ', 'bob@x.com'),
+    ('bob+tag@x.com..', 'bob+tag@x.com'),   # login identity keeps the alias; only the gift folds it
+    ('a@.', 'a@.'),                          # a domain of dots alone is not emptied into `a@`
+    ('no-at-sign.', 'no-at-sign.'),
+])
+def test_login_identity_drops_only_a_trailing_domain_dot(address, identity):
+    assert _norm_email(address) == identity
+
+
+@pytest.mark.parametrize('concurrent', [False, True])
+async def test_aliases_of_one_inbox_share_one_grant(clients, concurrent):
+    aliases = ['farm.er+1@gmail.com', 'farmer+2@gmail.com', 'f.a.r.m.e.r@googlemail.com',
+               'farmer@gmail.com', 'farmer+3@gmail.com.']
+    tokens = [await verified_identity(clients, alias) for alias in aliases]
+    if concurrent:
+        teams = await asyncio.gather(*(_team(clients, t, f'alias-{i}') for i, t in enumerate(tokens)))
+    else:
+        teams = [await _team(clients, t, f'alias-{i}') for i, t in enumerate(tokens)]
+    balance, entries = await _funding([t['org_id'] for t in teams])
+    assert balance == get_settings().promo_grant_micro
+    assert len(entries) == 1
+    async with session_maker() as db:
+        claims = (await db.execute(select(SignupPromoClaim).where(
+            SignupPromoClaim.inbox == 'farmer@gmail.com'))).scalars().all()
+    assert [(c.inbox, c.user_id) for c in claims] == [('farmer@gmail.com', entries[0].meta['user_id'])]
+
+
+async def test_distinct_inboxes_on_one_domain_each_get_a_grant(clients):
+    teams = [await _team(clients, await verified_identity(clients, email), email)
+             for email in ('first@example.org', 'second@example.org')]
+    balance, entries = await _funding([t['org_id'] for t in teams])
+    assert balance == 2 * get_settings().promo_grant_micro
+    assert len(entries) == 2
+
+
+async def test_failed_grant_leaves_the_inbox_unclaimed(clients, monkeypatch):
+    token = await verified_identity(clients, 'retry+1@example.org')
+    original = money.grant
+
+    async def fail_after_staging(*args, **kwargs):
+        await original(*args, **kwargs)
+        raise RuntimeError('synthetic post-write failure')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(money, 'grant', fail_after_staging)
+        failed = await _team(clients, token, 'failed-grant')
+    alias = await _team(clients, await verified_identity(clients, 'retry+2@example.org'), 'alias')
+    balance, entries = await _funding([failed['org_id'], alias['org_id']])
+    assert balance == get_settings().promo_grant_micro
+    assert len(entries) == 1
+
+
+def test_claim_migration_backfills_consumed_inboxes(tmp_path):
+    path = Path(__file__).parents[1] / 'src/treg/alembic/versions/0071_signup_promo_claim.py'
+    spec = importlib.util.spec_from_file_location('promo_claim_migration', path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = create_engine(f"sqlite:///{tmp_path / 'claim.db'}")
+    with engine.begin() as db:
+        db.execute(text('CREATE TABLE "user" (id INTEGER PRIMARY KEY, email TEXT NOT NULL, '
+                        'email_verified_at DATETIME, signup_promo_available BOOLEAN NOT NULL)'))
+        db.execute(text(
+            "INSERT INTO \"user\" VALUES "
+            "(1, 'a.b+1@gmail.com', '2026-01-01', 0), "   # claimed
+            "(2, 'ab+2@gmail.com', '2026-01-02', 0), "    # a second alias that also claimed
+            "(3, 'fresh@example.org', '2026-01-03', 1), "  # verified, not yet claimed
+            "(4, 'legacy@example.org', NULL, 0)"           # never verified
+        ))
+        with Operations.context(MigrationContext.configure(db)):
+            migration.upgrade()
+        assert db.execute(text('SELECT inbox, user_id FROM signuppromoclaim')).all() == [('ab@gmail.com', 1)]
+    engine.dispose()
+    assert migration._inbox('x.y+z@googlemail.com') == promo_inbox('x.y+z@googlemail.com')
+
+
 def test_migration_disables_old_users_and_preserves_old_writer_default(tmp_path):
     path = Path(__file__).parents[1] / 'src/treg/alembic/versions/0033_signup_promo_eligibility.py'
     spec = importlib.util.spec_from_file_location('promo_migration', path)
@@ -147,3 +268,4 @@ def test_migration_disables_old_users_and_preserves_old_writer_default(tmp_path)
         assert db.execute(text('SELECT signup_promo_available, email_verified_at FROM "user"')).all() == [(0, None), (0, None)]
     assert User(email='new-code@example.org').signup_promo_available is True
     engine.dispose()
+

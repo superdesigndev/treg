@@ -5,7 +5,9 @@ import { storageGet, storageSet, storageRemove } from './storage.js'
 // both pages draw the wait on the first one. State lives in `find` (data.js); the in-flight request's
 // AbortController lives in `elements` because it is a handle, not state to render.
 // The state of no search; `high` is the server's strong cut and arrives with each answer.
-export const FIND_EMPTY = {q:'', scope:'', phase:'idle', candidates:[], rows:[], verdict:'', named:'', read:0, high:1, error:'', auto:false}
+// `reason` says why a `none` is empty (gap: the catalog lacks it; not_task; v2 only).
+export const FIND_EMPTY = {q:'', scope:'', phase:'idle', candidates:[], rows:[], verdict:'', named:'', read:0, high:1, error:'', auto:false,
+  reason:''}
 const FIND_OPEN = 'treg-find-open'
 // The Catalog box searches by itself once typing pauses this long: people did not discover Enter.
 const FIND_DEBOUNCE_MS = 700
@@ -34,9 +36,24 @@ export function groupBest(items, keyOf, make, field){
 
 // Rows grouped by job: one group per capability on a platform (an uncatalogued endpoint is its own
 // job), its providers in the server's order. Shared by the Catalog list and the /search cards.
+// `hidden` counts the providers the server folded away (a job under the strong cut shows one row
+// for each of its first five); `fitFrom` says whether the group's fit is the job's or one vendor's
+// own (`fit_from`).
 export function jobGroups(rows){
   return groupBest(rows, r=>(r.capability||r.id)+'|'+r.platform,
-    (r, key)=>({key, label:r.capability_description||r.name, platform:r.platform, platform_label:r.platform_label}), 'rows');
+    (r, key)=>({key, label:r.capability_description||r.name, platform:r.platform, platform_label:r.platform_label}), 'rows')
+    .map(g=>{
+      const best=g.rows.reduce((b, r)=>r.p!=null && (b==null || r.p>b.p) ? r : b, null);
+      return {...g, hidden:g.rows.reduce((n, r)=>n+(r.children_hidden||0), 0), fitFrom:best?.fit_from||''};
+    });
+}
+
+// Why an answer came back empty, in the person's terms: a gap is something treg does not carry yet;
+// anything else did not read as a job.
+export function findNoneText(reason){
+  return reason==='gap'
+    ? 'treg does not have this kind of data or action yet. We have noted it.'
+    : 'This does not read as a job. Try describing the data you want or the action to take.';
 }
 
 async function* ndjson(res){
@@ -55,9 +72,11 @@ export default {
   findIsJob(text){ return isJobQuery(text); },
 
   // Typing in the Catalog box: an answer for older text gives way at once (so a name filters the
-  // shelves as you type), and the finder runs when typing pauses. `findSoon` is true while one is
-  // scheduled, so the page does not call a half-typed job "no platform".
-  // `scope` is a platform slug when the box is a shelf's own: the finder then reads that shelf only.
+  // shelves as you type), and the finder runs when typing pauses on two characters or more. Its
+  // answer is `auto`: it sits above the still-filtered shelves instead of replacing them; Enter asks
+  // for the full answer. `findSoon` is true while one is scheduled, so the page does not call a
+  // half-typed job "no platform". `scope` is a platform slug when the box is a shelf's own: the
+  // finder then reads that shelf only.
   findSchedule(text, scope=''){
     this.findUnschedule();
     const q=String(text||'').trim();
@@ -99,9 +118,11 @@ export default {
         if(ctl.signal.aborted) return;
         if(ev.event==='candidates') this.find={...this.find, phase:'reading', candidates:ev.candidates||[]};
         else if(ev.event==='judged'){
-          this.find={...this.find, phase:'done', rows:ev.rows||[], verdict:ev.verdict, named:ev.named||'', read:ev.read||0, high:ev.high??1};
+          this.find={...this.find, phase:'done', rows:ev.rows||[], verdict:ev.verdict, named:ev.named||'', read:ev.read||0, high:ev.high??1,
+            reason:ev.reason||''};
           this.track('search_answered', {surface:this.findSurface(), verdict:ev.verdict, results:this.find.rows.length,
-            providers:new Set(this.find.rows.map(r=>r.provider)).size, top_fit:this.find.rows[0]?.p ?? null, auto});
+            providers:new Set(this.find.rows.map(r=>r.provider)).size, top_fit:this.find.rows[0]?.p ?? null, auto,
+            engine:ev.engine||'v1', reason:ev.reason||null, platform_choice:ev.platform?.choice ?? null});
         }
       }
       if(this.find.phase!=='done' && !ctl.signal.aborted) this.find={...this.find, phase:'error', error:'The answer was cut off. Try again.'};
@@ -109,6 +130,16 @@ export default {
       if(ctl.signal.aborted) return;
       this.find={...this.find, phase:'error', error:'Could not reach the catalog. Check your connection and try again.'};
     }
+  },
+
+  // From a shelf's answer to the whole catalog: the Catalog page, its box holding the same words,
+  // asked again unscoped. A shelf's find read that shelf only; this is how its reader asks everywhere.
+  findEverywhere(){
+    const q=this.find.q;
+    this.findExit();
+    this.q=q;
+    this.go('catalog');
+    this.findRun(q, {scope:''});
   },
 
   findExit(){
@@ -155,6 +186,21 @@ export default {
   // The distinct vendors selling one job.
   findProviders(g){ return [...new Set(g.rows.map(r=>r.provider))]; },
 
+  // "5 providers", or "5 of 23 providers" when the server folded the rest away.
+  findProvidersText(g){
+    const n=this.findProviders(g).length, all=n+(g.hidden||0);
+    return (g.hidden ? n+' of '+all : n)+' provider'+(all===1?'':'s');
+  },
+
+  // The fit's hover text: the job's fit, or one vendor's own words judged on their own.
+  findFitTitle(g){
+    if(g.p==null) return '';
+    const pct=Math.round(g.p*100)+'%';
+    return g.fitFrom==='endpoint' ? 'Fit of one provider\'s own tool: '+pct : 'Fit for this job: '+pct;
+  },
+
+  findNoneText(){ return findNoneText(this.find.reason); },
+
   // The cheapest line of a job, priced the way every other catalog price is (`capCheapest`).
   findPrice(g){ return this.capCheapest(g.rows)?.label || ''; },
 
@@ -168,20 +214,23 @@ export default {
       signed_in:!!this.authed, ...extra});
   },
 
-  // Open the platform shelf the row lives on, its search box filtered to this job.
-  // On a shelf's own search the answer is already on that shelf: a job several providers do opens its
-  // comparison, anything else opens in the tool drawer.
-  findOpen(group, rank){
+  // Open the job a row is: its comparison on its platform when that shelf compares it (several
+  // providers), else the tool itself in the drawer. From another page the shelf is opened first and
+  // the job chosen once its data is in, the comparison replacing the shelf's history entry so Back
+  // returns to where the answer was. The shelf's own box is never filled with the row's name.
+  async findOpen(group, rank){
     this.findTrackClick('job', group.platform, {provider:group.rows[0]?.provider, rank});
-    if(this.view==='platform' && group.platform===this.platSlug){
-      const cap=group.rows[0]?.capability;
-      const job=cap && this.platComparisons.find(j=>j.key===cap);
-      if(job) this.openComparison(job.slug);
-      else this.openTool(group.rows[0].id);
-      return;
+    const slug=group.platform, cap=group.rows[0]?.capability, id=group.rows[0]?.id;
+    const here=this.view==='platform' && slug===this.platSlug;
+    if(!here){
+      await this.openPlatform(slug);
+      if(this.view!=='platform' || this.platSlug!==slug) return;     // the person moved on meanwhile
     }
-    this.openPlatform(group.platform);
-    this.platQ=group.rows[0]?.name || group.label;
+    const job=cap && this.platComparisons.find(j=>j.key===cap);
+    if(!job){ this.openTool(id); return; }
+    if(here){ this.openComparison(job.slug); return; }
+    this.openPlatform(slug, true, job.slug);
+    history.replaceState({platform:slug}, '', this.platUrl(slug, job.slug));
   },
 
   // From /search into the dashboard: the platform's page. Signed

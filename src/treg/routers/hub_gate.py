@@ -18,8 +18,7 @@ from ..config import get_settings
 
 
 # Who a credential is, remembered briefly: while a list limits the hub, every open request that
-# carries a key asks, and each answer costs 3 to 5 database reads (review after the deploy,
-# 2026-09-26: catalog search had cost none). Only visibility rides on it, never access: a revoked
+# carries a key asks, and each answer costs several database reads. Only visibility rides on it, never access: a revoked
 # key still fails every route that checks it.
 _READER_TTL_S = 60.0
 _READER_MAX = 2048

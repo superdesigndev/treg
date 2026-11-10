@@ -41,6 +41,7 @@ source:
   - https://api.twitter.com/2/openapi.json
 endpoints:
 - id: x.x.get-account-activity-subscription-count
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -62,6 +63,7 @@ endpoints:
     note: X publishes no rate for this route's resource, so treg meters it at $0.005 per resource — the same figure the proxy falls back to
   docs_url: https://docs.x.com/x-api
 - id: x.x.validate-account-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -89,6 +91,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.create-account-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -121,6 +124,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.get-account-activity-subscriptions
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -147,6 +151,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.delete-account-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -176,6 +181,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.activity-stream
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -211,6 +217,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp from which the activities will be provided.
 - id: x.x.delete-activity-subscriptions-by-ids
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -237,6 +244,7 @@ endpoints:
         type: array
         required: true
 - id: x.x.get-activity-subscriptions
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -268,6 +276,7 @@ endpoints:
         required: false
         note: A base32hex-encoded pagination token.
 - id: x.x.create-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -295,6 +304,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.delete-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -321,6 +331,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.update-activity-subscription
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -352,6 +363,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.article-create-draft
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -380,6 +392,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.article.draft.create
 - id: x.x.article-publish
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -407,6 +420,7 @@ endpoints:
         required: true
   capability: x.article.publish
 - id: x.x.list-scheduled-broadcasts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -443,6 +457,7 @@ endpoints:
         required: false
   capability: x.broadcast.list
 - id: x.x.create-scheduled-broadcast
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -472,6 +487,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.broadcast.create
 - id: x.x.delete-scheduled-broadcast
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -504,6 +520,7 @@ endpoints:
         required: false
   capability: x.broadcast.delete
 - id: x.x.get-scheduled-broadcast
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -531,6 +548,7 @@ endpoints:
         required: true
   capability: x.broadcast.detail
 - id: x.x.update-scheduled-broadcast
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -564,6 +582,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.broadcast.update
 - id: x.x.go-live-scheduled-broadcast
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -592,6 +611,7 @@ endpoints:
         required: true
   capability: x.broadcast.go_live
 - id: x.x.send-broadcast-chat
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -625,6 +645,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.broadcast.chat.send
 - id: x.x.get-chat-conversations
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -655,6 +676,7 @@ endpoints:
         required: false
   capability: x.chat.conversations.list
 - id: x.x.create-chat-conversation
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -684,6 +706,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.group.create
 - id: x.x.initialize-chat-group
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -707,6 +730,7 @@ endpoints:
   scope_gap: 'treg''s OAuth app does not request this; needs: dm.write'
   capability: x.chat.group.initialize
 - id: x.x.get-chat-conversation
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -734,6 +758,7 @@ endpoints:
         required: true
   capability: x.chat.conversation.detail
 - id: x.x.get-chat-conversation-events
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -768,6 +793,7 @@ endpoints:
         required: false
   capability: x.chat.conversation.events
 - id: x.x.add-conversation-keys
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -800,6 +826,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.add-chat-group-members
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -833,6 +860,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.group.members.add
 - id: x.x.send-chat-message
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -866,6 +894,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.message.send
 - id: x.x.delete-chat-messages
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -899,6 +928,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.message.delete
 - id: x.x.mark-chat-conversation-read
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -931,6 +961,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.send-chat-typing-indicator
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -958,6 +989,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.chat-media-upload-initialize
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -987,6 +1019,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.media.upload
 - id: x.x.chat-media-upload-append
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -1020,6 +1053,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.media.upload
 - id: x.x.chat-media-upload-finalize
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -1053,6 +1087,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.chat.media.upload
 - id: x.x.chat-media-download
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1083,6 +1118,7 @@ endpoints:
         required: true
   capability: x.chat.media.download
 - id: x.x.search-communities
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1118,6 +1154,7 @@ endpoints:
         required: false
   capability: x.community.search
 - id: x.x.get-communities-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1145,6 +1182,7 @@ endpoints:
         required: true
   capability: x.community.detail
 - id: x.x.get-compliance-jobs
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1174,6 +1212,7 @@ endpoints:
         type: string
         required: false
 - id: x.x.create-compliance-jobs
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1201,6 +1240,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.get-compliance-jobs-by-id
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1227,6 +1267,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.delete-connections-by-uuids
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1254,6 +1295,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.get-connection-history
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1289,6 +1331,7 @@ endpoints:
         type: string
         required: false
 - id: x.x.delete-all-connections
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1310,6 +1353,7 @@ endpoints:
     note: X publishes no rate for this route's resource, so treg meters it at $0.015 per request — the same figure the proxy falls back to
   docs_url: https://docs.x.com/x-api
 - id: x.x.delete-connections-by-endpoint
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -1336,6 +1380,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.create-direct-messages-conversation
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1365,6 +1410,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.dm.conversation.create
 - id: x.x.dm-conversations-media-download
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1398,6 +1444,7 @@ endpoints:
         required: true
   capability: x.dm.media.download
 - id: x.x.get-direct-messages-events-by-participant-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1436,6 +1483,7 @@ endpoints:
         required: false
   capability: x.dm.events.list
 - id: x.x.create-direct-messages-by-participant-id
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1469,6 +1517,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.dm.message.send
 - id: x.x.create-direct-messages-by-conversation-id
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1502,6 +1551,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.dm.message.send
 - id: x.x.get-direct-messages-events-by-conversation-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1540,6 +1590,7 @@ endpoints:
         required: false
   capability: x.dm.events.list
 - id: x.x.get-direct-messages-events
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1574,6 +1625,7 @@ endpoints:
         required: false
   capability: x.dm.events.list
 - id: x.x.delete-direct-messages-events
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1602,6 +1654,7 @@ endpoints:
         required: true
   capability: x.dm.event.delete
 - id: x.x.get-direct-messages-events-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1629,6 +1682,7 @@ endpoints:
         required: true
   capability: x.dm.event.detail
 - id: x.x.stream-likes-compliance
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -1664,6 +1718,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp from which the Likes Compliance events will be provided.
 - id: x.x.stream-likes-firehose
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1722,6 +1777,7 @@ endpoints:
         required: false
         note: A comma separated list of Tweet fields to display.
 - id: x.x.stream-likes-sample10
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1780,6 +1836,7 @@ endpoints:
         required: false
         note: A comma separated list of Tweet fields to display.
 - id: x.x.create-lists
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1809,6 +1866,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.list.create
 - id: x.x.delete-lists
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1837,6 +1895,7 @@ endpoints:
         required: true
   capability: x.list.delete
 - id: x.x.get-lists-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1864,6 +1923,7 @@ endpoints:
         required: true
   capability: x.list.detail
 - id: x.x.update-lists
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -1897,6 +1957,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.list.update
 - id: x.x.get-lists-followers
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1932,6 +1993,7 @@ endpoints:
         note: A 64-bit signed integer.
   capability: x.list.followers
 - id: x.x.get-lists-members
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -1967,6 +2029,7 @@ endpoints:
         note: A 64-bit signed integer.
   capability: x.list.members
 - id: x.x.add-lists-member
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -2000,6 +2063,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.list.member.add
 - id: x.x.remove-lists-member-by-user-id
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -2031,6 +2095,7 @@ endpoints:
         required: true
   capability: x.list.member.remove
 - id: x.x.get-lists-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2066,6 +2131,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.list.posts
 - id: x.x.get-media-by-media-keys
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2092,6 +2158,7 @@ endpoints:
         required: true
   capability: x.media.detail
 - id: x.x.get-media-analytics
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2127,6 +2194,7 @@ endpoints:
         required: false
   capability: x.media.analytics
 - id: x.x.create-media-metadata
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2156,6 +2224,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.metadata.set
 - id: x.x.delete-media-subtitles
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2185,6 +2254,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.subtitles.delete
 - id: x.x.create-media-subtitles
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2214,6 +2284,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.subtitles.create
 - id: x.x.get-media-upload-status
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2245,6 +2316,7 @@ endpoints:
         required: false
   capability: x.media.upload.status
 - id: x.x.media-upload
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2274,6 +2346,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.upload
 - id: x.x.initialize-media-upload
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2303,6 +2376,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.upload
 - id: x.x.append-media-upload
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2336,6 +2410,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.media.upload
 - id: x.x.finalize-media-upload
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2364,6 +2439,7 @@ endpoints:
         required: true
   capability: x.media.upload
 - id: x.x.get-media-by-media-key
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2390,6 +2466,7 @@ endpoints:
         required: true
   capability: x.media.detail
 - id: x.x.search-news
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2422,6 +2499,7 @@ endpoints:
         required: false
   capability: x.search.news
 - id: x.x.get-news
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2448,6 +2526,7 @@ endpoints:
         required: true
   capability: x.news.detail
 - id: x.x.create-community-notes
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -2476,6 +2555,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.community_notes.create
 - id: x.x.evaluate-community-notes
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -2504,6 +2584,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.community_notes.evaluate
 - id: x.x.search-community-notes-written
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2536,6 +2617,7 @@ endpoints:
         required: false
   capability: x.community_notes.search_written
 - id: x.x.search-eligible-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2571,6 +2653,7 @@ endpoints:
         required: false
   capability: x.community_notes.eligible_posts
 - id: x.x.delete-community-notes
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -2598,6 +2681,7 @@ endpoints:
         required: true
   capability: x.community_notes.delete
 - id: x.x.get-open-api-spec
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2619,6 +2703,7 @@ endpoints:
     note: X publishes no rate for this route's resource, so treg meters it at $0.005 per resource — the same figure the proxy falls back to
   docs_url: https://docs.x.com/x-api
 - id: x.x.get-spaces-by-ids
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2646,6 +2731,7 @@ endpoints:
         required: true
   capability: x.space.detail
 - id: x.x.get-spaces-by-creator-ids
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2673,6 +2759,7 @@ endpoints:
         required: true
   capability: x.space.by_creator
 - id: x.x.search-spaces
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2706,6 +2793,7 @@ endpoints:
         required: false
   capability: x.search.spaces
 - id: x.x.get-spaces-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2733,6 +2821,7 @@ endpoints:
         required: true
   capability: x.space.detail
 - id: x.x.get-spaces-buyers
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2768,6 +2857,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.space.ticket_buyers
 - id: x.x.get-spaces-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2803,6 +2893,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.space.posts
 - id: x.x.get-trends-by-woeid
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2833,6 +2924,7 @@ endpoints:
         required: false
   capability: x.trending.topics
 - id: x.x.get-posts-by-ids
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2859,6 +2951,7 @@ endpoints:
         required: true
   capability: x.post.detail
 - id: x.x.get-posts-analytics
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2894,6 +2987,7 @@ endpoints:
         required: false
   capability: x.post.analytics
 - id: x.x.stream-posts-compliance
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -2933,6 +3027,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp from which the Post Compliance events will be provided.
 - id: x.x.get-posts-counts-all
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -2985,6 +3080,7 @@ endpoints:
         required: false
   capability: x.post.counts
 - id: x.x.get-posts-counts-recent
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3038,6 +3134,7 @@ endpoints:
         required: false
   capability: x.post.counts
 - id: x.x.stream-posts-firehose
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3100,6 +3197,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.stream-posts-firehose-en
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3162,6 +3260,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.stream-posts-firehose-ja
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3224,6 +3323,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.stream-posts-firehose-ko
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3286,6 +3386,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.stream-posts-firehose-pt
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3348,6 +3449,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.stream-labels-compliance
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -3383,6 +3485,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp from which the Post labels will be provided.
 - id: x.x.stream-posts-sample
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3433,6 +3536,7 @@ endpoints:
         required: false
         note: A comma separated list of Place fields to display.
 - id: x.x.stream-posts-sample10
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3495,6 +3599,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
 - id: x.x.search-posts-all
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3547,6 +3652,7 @@ endpoints:
         required: false
   capability: x.search.posts
 - id: x.x.search-posts-recent
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3600,6 +3706,7 @@ endpoints:
         required: false
   capability: x.search.posts
 - id: x.x.stream-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3659,6 +3766,7 @@ endpoints:
         note: A comma separated list of Place fields to display.
   capability: x.post.stream
 - id: x.x.get-rules
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3693,6 +3801,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.post.stream.rules
 - id: x.x.update-rules
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3728,6 +3837,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.post.stream.rules
 - id: x.x.get-rule-counts
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3754,6 +3864,7 @@ endpoints:
         type: string
         required: false
 - id: x.x.get-webhooks-stream-links
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3775,6 +3886,7 @@ endpoints:
     note: X publishes no rate for this route's resource, so treg meters it at $0.005 per resource — the same figure the proxy falls back to
   docs_url: https://docs.x.com/x-api
 - id: x.x.delete-webhooks-stream-link
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3801,6 +3913,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.create-webhooks-stream-link
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -3827,6 +3940,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.delete-posts
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -3854,6 +3968,7 @@ endpoints:
         required: true
   capability: x.post.delete
 - id: x.x.get-posts-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3880,6 +3995,7 @@ endpoints:
         required: true
   capability: x.post.detail
 - id: x.x.get-posts-liking-users
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3915,6 +4031,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.post.likers
 - id: x.x.get-posts-quoted-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3952,6 +4069,7 @@ endpoints:
         required: false
   capability: x.post.quotes
 - id: x.x.get-posts-reposted-by
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -3986,6 +4104,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.post.reposters
 - id: x.x.get-posts-reposts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4020,6 +4139,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.post.reposters
 - id: x.x.hide-posts-reply
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4053,6 +4173,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.post.reply.hide
 - id: x.x.get-usage
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -4079,6 +4200,7 @@ endpoints:
         type: integer
         required: false
 - id: x.x.get-users-by-ids
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4105,6 +4227,7 @@ endpoints:
         required: true
   capability: x.user.profile
 - id: x.x.get-users-by-usernames
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4131,6 +4254,7 @@ endpoints:
         required: true
   capability: x.user.profile
 - id: x.x.stream-users-compliance
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -4170,6 +4294,7 @@ endpoints:
         required: false
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp from which the User Compliance events will be provided.
 - id: x.x.get-trends-personalized-trends
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4191,6 +4316,7 @@ endpoints:
   docs_url: https://docs.x.com/x-api
   capability: x.trending.personalized
 - id: x.x.get-users-public-keys
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -4218,6 +4344,7 @@ endpoints:
         type: array
         required: true
 - id: x.x.get-users-reposts-of-me
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4249,6 +4376,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.reposts_of_me
 - id: x.x.search-users
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4281,6 +4409,7 @@ endpoints:
         required: false
   capability: x.search.users
 - id: x.x.get-users-by-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4307,6 +4436,7 @@ endpoints:
         required: true
   capability: x.user.profile
 - id: x.x.get-users-affiliates
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4341,6 +4471,7 @@ endpoints:
         note: A 64-bit signed integer.
   capability: x.user.affiliates
 - id: x.x.get-users-blocking
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4375,6 +4506,7 @@ endpoints:
         required: false
   capability: x.user.blocking
 - id: x.x.get-users-bookmarks
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4410,6 +4542,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.bookmarks
 - id: x.x.create-users-bookmark
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4443,6 +4576,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.post.bookmark.add
 - id: x.x.get-users-bookmark-folders
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4478,6 +4612,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.bookmark_folders
 - id: x.x.create-users-bookmark-folder
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4511,6 +4646,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.bookmark_folder.create
 - id: x.x.get-users-bookmarks-by-folder-id
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4549,6 +4685,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.bookmarks
 - id: x.x.delete-users-bookmark
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4580,6 +4717,7 @@ endpoints:
         required: true
   capability: x.post.bookmark.remove
 - id: x.x.block-users-dms
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4608,6 +4746,7 @@ endpoints:
         required: true
   capability: x.user.dm.block
 - id: x.x.unblock-users-dms
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4636,6 +4775,7 @@ endpoints:
         required: true
   capability: x.user.dm.block
 - id: x.x.get-users-followed-lists
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4671,6 +4811,7 @@ endpoints:
         note: A 64-bit signed integer.
   capability: x.user.followed_lists
 - id: x.x.follow-list
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4704,6 +4845,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.list.follow
 - id: x.x.unfollow-list
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4735,6 +4877,7 @@ endpoints:
         required: true
   capability: x.list.follow
 - id: x.x.get-users-followers
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4770,6 +4913,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.followers
 - id: x.x.get-users-following
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4805,6 +4949,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.following
 - id: x.x.follow-user
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4838,6 +4983,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.user.follow
 - id: x.x.get-users-liked-posts
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4873,6 +5019,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
   capability: x.user.liked_posts
 - id: x.x.like-post
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4906,6 +5053,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.post.like
 - id: x.x.unlike-post
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -4937,6 +5085,7 @@ endpoints:
         required: true
   capability: x.post.like
 - id: x.x.get-users-list-memberships
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -4971,6 +5120,7 @@ endpoints:
         required: false
   capability: x.user.list_memberships
 - id: x.x.get-users-mentions
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -5019,6 +5169,7 @@ endpoints:
         required: false
   capability: x.user.mentions
 - id: x.x.get-users-muting
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -5053,6 +5204,7 @@ endpoints:
         required: false
   capability: x.user.muting
 - id: x.x.mute-user
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5086,6 +5238,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.user.mute
 - id: x.x.get-users-owned-lists
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -5121,6 +5274,7 @@ endpoints:
         note: A 64-bit signed integer.
   capability: x.user.owned_lists
 - id: x.x.get-users-pinned-lists
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -5148,6 +5302,7 @@ endpoints:
         required: true
   capability: x.user.pinned_lists
 - id: x.x.pin-list
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5181,6 +5336,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.list.pin
 - id: x.x.unpin-list
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5212,6 +5368,7 @@ endpoints:
         required: true
   capability: x.list.pin
 - id: x.x.get-users-public-key
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -5239,6 +5396,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.add-user-public-key
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: x
@@ -5271,6 +5429,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.repost-post
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5303,6 +5462,7 @@ endpoints:
       note: JSON body; see the operation's reference for its fields
   capability: x.post.repost
 - id: x.x.unrepost-post
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5333,6 +5493,7 @@ endpoints:
         required: true
   capability: x.post.repost
 - id: x.x.get-users-timeline
+  added: '2026-07-28'
   tier: extended
   platform: x
   method: GET
@@ -5384,6 +5545,7 @@ endpoints:
         required: false
   capability: x.user.timeline
 - id: x.x.unfollow-user
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5415,6 +5577,7 @@ endpoints:
         required: true
   capability: x.user.follow
 - id: x.x.unmute-user
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: x
@@ -5446,6 +5609,7 @@ endpoints:
         required: true
   capability: x.user.mute
 - id: x.x.get-webhooks
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -5467,6 +5631,7 @@ endpoints:
     note: X publishes no rate for this route's resource, so treg meters it at $0.005 per resource — the same figure the proxy falls back to
   docs_url: https://docs.x.com/x-api
 - id: x.x.create-webhooks
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -5494,6 +5659,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.create-webhook-replay-job
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -5521,6 +5687,7 @@ endpoints:
       required: true
       note: JSON body; see the operation's reference for its fields
 - id: x.x.delete-webhooks
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x
@@ -5547,6 +5714,7 @@ endpoints:
         type: string
         required: true
 - id: x.x.validate-webhooks
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: x

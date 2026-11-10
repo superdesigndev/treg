@@ -98,6 +98,7 @@ endpoints:
     test_request:
       queryParams: {engine: "google", q: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.google.serp.organic.json
     docs_url: https://serpapi.com/search-api
 
@@ -137,6 +138,7 @@ endpoints:
     test_request:
       queryParams: {engine: "google_ads_transparency_center", text: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.google.ads.transparency.json
     docs_url: https://serpapi.com/google-ads-transparency-center-api
 
@@ -170,6 +172,7 @@ endpoints:
     test_request:
       queryParams: {engine: "youtube", search_query: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.youtube.search.videos.json
     docs_url: https://serpapi.com/youtube-search-api
 
@@ -211,6 +214,7 @@ endpoints:
     test_request:
       queryParams: {engine: "apple_app_store", term: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.app-store.search.apps.json
     docs_url: https://serpapi.com/apple-app-store
 
@@ -255,6 +259,7 @@ endpoints:
     test_request:
       queryParams: {engine: "google_play", q: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.google-play.search.apps.json
     docs_url: https://serpapi.com/google-play-api
 
@@ -295,6 +300,7 @@ endpoints:
     test_request:
       queryParams: {engine: "google_autocomplete", q: "coffee"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.google.keywords.ideas.json
     docs_url: https://serpapi.com/google-autocomplete-api
 
@@ -326,5 +332,6 @@ endpoints:
     test_request:
       queryParams: {}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/serpapi.account.usage.json
     docs_url: https://serpapi.com/account-api

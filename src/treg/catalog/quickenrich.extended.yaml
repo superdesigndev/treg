@@ -31,6 +31,7 @@ endpoints:
     note: Public lookup; no credits or upstream key required.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
+  added: '2026-09-09'
   example_response: examples/quickenrich.x.country-codes.json
 - id: quickenrich.x.industries
   tier: extended
@@ -58,6 +59,7 @@ endpoints:
     note: Public lookup; no credits or upstream key required.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
+  added: '2026-09-09'
   example_response: examples/quickenrich.x.industries.json
 - id: quickenrich.x.employee-ranges
   tier: extended
@@ -85,6 +87,7 @@ endpoints:
     note: Public lookup; no credits or upstream key required.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
+  added: '2026-09-09'
   example_response: examples/quickenrich.x.employee-ranges.json
 - id: quickenrich.x.revenue-ranges
   tier: extended
@@ -112,6 +115,7 @@ endpoints:
     note: Public lookup; no credits or upstream key required.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
+  added: '2026-09-09'
   example_response: examples/quickenrich.x.revenue-ranges.json
 - id: quickenrich.x.company-services
   tier: extended
@@ -144,4 +148,5 @@ endpoints:
     note: Public lookup; no credits or upstream key required.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
+  added: '2026-09-09'
   example_response: examples/quickenrich.x.company-services.json

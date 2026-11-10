@@ -13,6 +13,7 @@ async:
     path: status
     success: [completed]
     failure: [failed]
+    progress: [processing]
   result:
     path: output.video_urls
     ttl_note: "7d"
@@ -36,6 +37,7 @@ endpoints:
     test_request: {pathParams: {id: "task_01a09ddf13f8745c85ee3aaea0529e2a"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume credits."}
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.tasks.get.json
     docs_url: https://reapi.ai/docs/api/tasks
 
@@ -83,6 +85,7 @@ endpoints:
       confidence: verified
       note: "Billed per second of output; failed or moderated tasks are refunded in full. 480p and 720p rates are the credits observed live on 2026-09-14 (593 credits for 5 s at 480p; 4,803 for 18 s at 720p), which sit just under the pricing page's rounded $0.119 / $0.267. Video references (video_urls) add their own length to the billable seconds and are deliberately not listed so the table stays exact."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.video-gen.seedance-2-5.json
     docs_url: https://reapi.ai/docs/seedance-2-5
 
@@ -130,6 +133,7 @@ endpoints:
       confidence: verified
       note: "Same meter as the default row: per second of output, refunded on failure. Live 2026-09-14: an 18 s 720p clip from one face image plus one voice clip settled 4,803 credits ($4.80); the 5 s 480p probe from a reference image settled 593."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.video-gen.seedance-2-5.unrestricted.json
     docs_url: https://reapi.ai/docs/seedance-2-5
 
@@ -151,6 +155,7 @@ endpoints:
         path: status
         success: [completed]
         failure: [failed]
+        progress: [processing]
       result:
         path: output.image_urls
         ttl_note: "7d"
@@ -204,6 +209,7 @@ endpoints:
       confidence: verified
       note: "Official channel cells are the credits observed live on 2026-09-14 (5/4/4 low, 10/8/8 medium, 40/31/31 high for 1024x1024 / 1024x1536 / 1536x1024; Flare and Sunburst meter identically). Upstream is token-metered, so a very long prompt adds a fraction of a cent the table does not carry. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.image-gen.gpt-image-2-5.json
     docs_url: https://reapi.ai/docs/gpt-image-2-5
 
@@ -225,6 +231,7 @@ endpoints:
         path: status
         success: [completed]
         failure: [failed]
+        progress: [processing]
       result:
         path: output.image_urls
         ttl_note: "7d"
@@ -254,6 +261,7 @@ endpoints:
       confidence: verified
       note: "One image per request (n is fixed at 1). Failed or moderated requests are not charged. Live 2026-09-14: one 1k image settled 30 credits; 2k and 4k are documented only."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.image-gen.gpt-image-2.json
     docs_url: https://reapi.ai/docs/gpt-image-2
 
@@ -275,6 +283,7 @@ endpoints:
         path: status
         success: [completed]
         failure: [failed]
+        progress: [processing]
       result:
         path: output.image_urls
         ttl_note: "7d"
@@ -304,5 +313,6 @@ endpoints:
       confidence: verified
       note: "Default channel; live 2026-09-14 one 1K image settled 30 credits (4K documented only). The -official Google channel ($0.108 / $0.192) is token-metered and not listed. One image per request."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/reapi.image-gen.gemini-3-pro-image.json
     docs_url: https://reapi.ai/docs/gemini-3-pro-image-preview

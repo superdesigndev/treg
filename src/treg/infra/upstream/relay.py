@@ -5,8 +5,11 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
   1. transport/hop-by-hop headers — re-derived for the new hop (forwarding stale ones corrupts
      the stream); httpx sets them correctly upstream.
   2. treg's own control/infra headers + the edge's forwarding headers (`x-treg-*`,
-     `ngrok-skip-browser-warning`, `x-forwarded-*`, `x-real-ip`, `forwarded`, `via`) — stripped so
-     they never leak upstream. treg's own cookies (`treg_session`, `treg_oauth_state`) are scrubbed
+     `ngrok-skip-browser-warning`, `x-forwarded-*`, `x-real-ip`, `forwarded`, `via`, Cloudflare's
+     `cf-connecting-ip` family and whatever `TREG_CLIENT_IP_HEADER` names) — stripped so they never
+     leak upstream. A Cloudflare-fronted provider refuses any request still carrying one with 403
+     error 1000 ("DNS points to prohibited IP"), and the MCP layer forwards the caller's address
+     to treg's own API in that header, so every MCP call to such a provider would fail. treg's own cookies (`treg_session`, `treg_oauth_state`) are scrubbed
      from the Cookie header too (the dashboard's `credentials:'include'` Try-it would otherwise leak
      our session token to the upstream); any other caller cookies are preserved.
   3. the credential(s) the tool's bindings inject — overwrite only their target header, query
@@ -18,6 +21,17 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      under the same label — and the ownership record would then make B its owner (reproduced live
      against LeadsForge, 2026-09-09). The caller loses nothing: treg's own idempotency table already
      replays their answer for the same label. A team's own key relays the header verbatim.
+  5. on treg's SHARED key only, the caller's `User-Agent` is replaced by treg's own
+     (`TREG_USER_AGENT`, by `identify_as_treg`). The provider sees treg's account there, and a
+     library default such as Python's is read as bot traffic: Cloudflare rules answered 403 (error
+     1010) to every `Python-urllib` call on LimaData, and to Wiza's phone reveals for a day, both on
+     treg's key. A team's own key relays the caller's header verbatim.
+  6. on treg's SHARED key only, when the provider's catalog file names a `client_header` and
+     `TREG_CLIENT_ID_SECRET` is set, that header carries treg's opaque code for the calling team
+     (`tag_shared_client`): HMAC-SHA256 of the secret over (provider, team), so the provider can
+     split usage, errors and cost per customer on treg's one account without learning who the
+     customer is, and two providers' codes for one team do not match. Any value the caller sent
+     under that name is replaced. A team's own key relays the caller's headers verbatim.
 
 Except for that explicit JSON-binding contract, it never buffers the body (rule 5: stream, don't
 duplicate) and uses the shared long-lived httpx client (rule 1: keepalive). Secrets are passed
@@ -28,14 +42,16 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 
 import httpx
 
-from ... import crypto
+from ... import crypto, jsontext, oauth_providers
 from ...application.call.types import GatewayFailed, UpstreamRequest, UpstreamResponse
-from ...config import get_settings
+from ...config import TREG_USER_AGENT, get_settings
 from ...models import Secret, Tool
 from . import injectors
 
@@ -47,15 +63,15 @@ _HOP_BY_HOP = frozenset(
     }
 )
 # The edge's forwarding headers + third-party infra — never leak to the upstream. treg's OWN headers
-# are handled by the `x-treg-` PREFIX rule below, not by name: this set used to enumerate them and the
-# enumeration silently failed. `x-treg-client` was never listed, so every provider we relay to has been
-# receiving the caller's runtime name; `x-treg-meta` would have leaked a builder's customer ids the same
-# way. A prefix is the only form of this rule that stays correct when the next header is added.
+# are handled by the `x-treg-` PREFIX rule below, not by name, so the next one added is covered too.
 _CONTROL = frozenset(
     {
         "ngrok-skip-browser-warning",
         "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-forwarded-port",
         "x-real-ip", "forwarded", "via",
+        # The headers Cloudflare's edge adds on the way in (and the MCP layer re-sends in process).
+        "cf-connecting-ip", "cf-connecting-ipv6", "cf-pseudo-ipv4", "true-client-ip",
+        "cf-ipcountry", "cf-ray", "cf-visitor", "cf-worker", "cf-ew-via", "cdn-loop",
     }
 )
 _TREG_PREFIX = "x-treg-"
@@ -64,7 +80,8 @@ _DROP_REQUEST = _HOP_BY_HOP | _CONTROL
 
 def _is_dropped_request_header(name: str, extra: frozenset[str]) -> bool:
     """Whether a caller header is ours/hop-by-hop and must not reach the upstream."""
-    return name in _DROP_REQUEST or name in extra or name.startswith(_TREG_PREFIX)
+    return (name in _DROP_REQUEST or name in extra or name.startswith(_TREG_PREFIX)
+            or name == get_settings().client_ip_header.strip().lower())
 
 
 _IDEMPOTENCY_HEADER = b"idempotency-key"
@@ -78,6 +95,34 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
             raise ValueError(f"duplicate JSON object key: {name}")
         result[name] = value
     return result
+
+
+def identify_as_treg(raw_headers: tuple[tuple[bytes, bytes], ...]) -> tuple[tuple[bytes, bytes], ...]:
+    """Rewrite 5 of the faithfulness contract: on treg's shared key the caller's User-Agent becomes
+    treg's own (see the module docstring for the providers that blocked library defaults)."""
+    kept = tuple((k, v) for k, v in raw_headers if k.lower() != b"user-agent")
+    return kept + ((b"user-agent", TREG_USER_AGENT.encode()),)
+
+
+def shared_client_code(secret: str, provider: str, org_id: int) -> str:
+    """treg's opaque code for one team at one provider: stable per (provider, team), not reversible
+    without the secret, and different at every provider."""
+    mac = hmac.new(secret.encode(), f"{provider}\x1f{org_id}".encode(), hashlib.sha256)
+    return "t_" + mac.hexdigest()[:24]
+
+
+def tag_shared_client(
+    raw_headers: tuple[tuple[bytes, bytes], ...], header: str | None, provider: str, org_id: int,
+) -> tuple[tuple[bytes, bytes], ...]:
+    """Rewrite 6 of the faithfulness contract: on treg's shared key, the provider's declared client
+    header carries treg's code for the team. Nothing changes when the provider declares no header
+    or the secret is unset."""
+    secret = get_settings().client_id_secret
+    if not header or not secret:
+        return raw_headers
+    name = header.lower().encode()
+    kept = tuple((k, v) for k, v in raw_headers if k.lower() != name)
+    return kept + ((name, shared_client_code(secret, provider, org_id).encode()),)
 
 
 def scope_shared_idempotency_key(
@@ -119,6 +164,11 @@ def _scrub_treg_cookies(headers: httpx.Headers) -> None:
         del headers["cookie"]
 
 
+
+# Set by a caller that needs to know the request actually left: called once every local check
+# above has passed, immediately before the send. Not called for a request refused here.
+ON_SEND: ContextVar[Callable[[], None] | None] = ContextVar("relay_on_send", default=None)
+
 async def relay(
     request: UpstreamRequest,
     upstream_url: str,
@@ -127,6 +177,7 @@ async def relay(
     client: httpx.AsyncClient,
     drop_params: set[str] | None = None,
     force_identity: bool = False,
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> UpstreamResponse:
     # Headers: preserve everything (incl. duplicates / cookies) except hop-by-hop + our token.
     # `.raw` is the original (bytes, bytes) pairs; httpx.Headers is a multidict, so binding
@@ -138,22 +189,20 @@ async def relay(
          if not _is_dropped_request_header(k.decode("latin-1").lower(), req_drop)]
     )
     _scrub_treg_cookies(headers)  # keep caller cookies, drop treg's own session cookie
-    # Mirror the caller's compression choice. We relay the upstream body RAW (aiter_raw), so if the
-    # upstream compresses, the caller receives compressed bytes. httpx supplies its own
-    # `Accept-Encoding: gzip,…` whenever the request doesn't carry one — which would make us hand
-    # gzip to a caller who never asked for it (binary garbage to any plain HTTP client or agent).
-    # Asking for identity keeps what the caller gets matching what the caller requested.
+    # The body is relayed RAW (aiter_raw), and httpx adds its own `Accept-Encoding: gzip,...` when
+    # the request has none: ask for identity so a caller never gets gzip it did not ask for.
     if "accept-encoding" not in headers:
         headers["accept-encoding"] = "identity"
     # Metered marketplace calls OVERRIDE the caller's choice: the settle path must json-parse the
     # buffered body for the provider's own reported charge, and a caller-requested gzip would hand
-    # it ciphertext — the charge silently falls back to the estimate (real bug: dataforseo billed
-    # $0.003 instead of its reported $0.00015 whenever the caller was httpx/a browser).
+    # it compressed bytes, and the charge would silently fall back to the estimate.
     if force_identity:
         headers["accept-encoding"] = "identity"
     # Query: a list of pairs preserves duplicate keys verbatim (?tag=a&tag=b). A marketplace
     # endpoint-id call may have CONSUMED some params into the path (`{siteUrl}` placeholders) —
-    # those must not also reach the upstream as query noise.
+    # those must not also reach the upstream as query noise. The call application may already
+    # have appended a catalog ceiling_param the caller did not send; it is forwarded like any
+    # other query param.
     params: list[tuple[str, str]] = [
         (k, v) for k, v in request.query_items
         if not drop_params or k not in drop_params
@@ -186,7 +235,7 @@ async def relay(
         # extractable through a local run.
         setting = binding.get("platform_setting")
         if setting:
-            value = getattr(get_settings(), setting, "") or ""
+            value = get_settings().platform_credential(setting, binding.get("account"))
             if not value:
                 raise GatewayFailed(
                     "injection_failed", status_code=502,
@@ -199,24 +248,28 @@ async def relay(
                     detail=f"credential injection failed: {exc}") from exc
             continue
         secret = secrets[binding["secret_id"]]
+        raw = crypto.decrypt(secret.value)
         try:
-            injectors.inject(headers, params, binding, crypto.decrypt(secret.value),
-                             json_body=json_body)
+            injectors.inject(headers, params, binding, raw, json_body=json_body)
         except ValueError as exc:
             raise GatewayFailed(
                 "injection_failed", status_code=502,
                 detail=f"credential injection failed: {exc}") from exc
+        # Part of the injected credential on treg's Meta app: the HMAC pairing its token with the app.
+        if proof := oauth_providers.connection_appsecret_proof(secret, binding, raw, upstream_url):
+            params[:] = [(k, v) for (k, v) in params if k != "appsecret_proof"]
+            params.append(("appsecret_proof", proof))
 
     # Only carry a body when the caller actually sent one — otherwise passing an (unsized) stream
     # makes httpx frame the request `Transfer-Encoding: chunked`, putting a bogus body-frame on a
     # GET/HEAD/OPTIONS (which strict upstreams reject).
-    content = (json.dumps(json_body, separators=(",", ":"), ensure_ascii=False).encode()
+    content = (jsontext.dumps_bytes(json_body, separators=(",", ":"))
                if json_body is not None else request.body_stream() if request.has_body else None)
     # A streamed body with no length makes httpx frame it `Transfer-Encoding: chunked`. The bytes are
     # the caller's, unaltered, so the caller's own Content-Length is exact — carry it, and httpx
     # frames the upstream request with it instead. Meta's Graph API edge does not read a chunked
     # request body: every JSON/form/multipart POST arrived as a bodyless request, and an ad creative
-    # sent that way failed "Ad incomplete" (live 2026-09-19). A caller who streamed chunked stays chunked.
+    # sent that way failed "Ad incomplete". A caller who streamed chunked stays chunked.
     if json_body is not None:
         headers["content-length"] = str(len(content))
     elif content is not None and (cl := _header_value(request.raw_headers, "content-length")):
@@ -231,11 +284,15 @@ async def relay(
     upstream_req = client.build_request(request.method, url, headers=headers, content=content)
     # Call-time SSRF guard: resolve the upstream host NOW and refuse an internal target — defeats DNS
     # rebinding (base_url was public at registration, its DNS now points at 169.254.169.254 / localhost).
-    from . import health  # local: health imports proxy-adjacent modules, so keep the cycle lazy
+    from . import health
     if get_settings().proxy_ssrf_check and not health.host_is_public(upstream_req.url.host):
         raise GatewayFailed(
             "ssrf_refused", status_code=502,
             detail="upstream host resolves to a non-public address")
+    if before_outbound is not None:
+        await before_outbound()
+    if (on_send := ON_SEND.get()) is not None:
+        on_send()
     upstream_resp = await client.send(upstream_req, stream=True)
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection
@@ -252,10 +309,8 @@ async def relay(
         for k, v in upstream_resp.headers.multi_items()
         if k.lower() not in drop_resp and not _is_treg_setcookie(k, v)
     ]
-    # The proxy is for API calls, but a browser could navigate to /call/… (authorized by the session
-    # cookie) and render arbitrary upstream text/html AS AN ACTIVE DOCUMENT under treg's own origin —
-    # reflected XSS with access to the operator's same-origin session. Neutralize it: nosniff + a
-    # sandbox CSP (no script execution, no same-origin) on every relayed response. Agents ignore these.
+    # A browser navigating to /call/... must not render upstream HTML as an active document under
+    # treg's origin (reflected XSS with the session cookie). Agents ignore both headers.
     raw_headers.append((b"x-content-type-options", b"nosniff"))
     raw_headers.append((b"content-security-policy", b"sandbox"))
     return UpstreamResponse(

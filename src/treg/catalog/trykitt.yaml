@@ -85,6 +85,7 @@ endpoints:
       back to the base rate after miss detection. remainingCredits is a delayed balance,
       never per-call cost.
   verified: '2026-09-09'
+  added: '2026-09-08'
   example_response: examples/trykitt.people.email.find.json
   docs_url: https://documenter.getpostman.com/view/479833/2s93m62NHf
 - id: trykitt.people.email.verify
@@ -96,7 +97,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /job/verify_email
-  name: Verify an email address
+  name: Verify B2B email — catch-all result
   summary: Verify an existing B2B email address, including catch-all domains
   input:
     body:
@@ -151,5 +152,6 @@ endpoints:
       rate after miss detection. remainingCredits is a delayed balance, never per-call
       cost.
   verified: '2026-09-09'
+  added: '2026-09-08'
   example_response: examples/trykitt.people.email.verify.json
   docs_url: https://documenter.getpostman.com/view/479833/2s93m62NHf

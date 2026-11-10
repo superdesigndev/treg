@@ -51,6 +51,7 @@ def _configure_test_environment() -> None:
         "PLATFORM_KEY_TIKHUB",
         "PLATFORM_KEY_DATAFORSEO",
         "PLATFORM_KEY_SCRAPECREATORS",
+        "PLATFORM_KEY_SEARCH1API",
     ):
         os.environ[f"TREG_{key}"] = ""
 
@@ -58,6 +59,7 @@ def _configure_test_environment() -> None:
 _configure_test_environment()
 
 from treg.api import app  # noqa: E402
+from treg.bootstrap_http import _DevTitleMiddleware  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,9 +105,13 @@ def _composition_value(value: Any) -> Any:
 
 
 def _composition() -> dict[str, Any]:
-    """Capture ordered middleware and exception-handler registration."""
+    """Capture the deployment-independent middleware and exception handlers."""
     middleware = []
     for item in app.user_middleware:
+        # The local-only title marker is covered by test_dev_title.py. Including it here
+        # makes this snapshot depend on the caller's TREG_PUBLIC_URL.
+        if item.cls is _DevTitleMiddleware:
+            continue
         middleware.append(
             {
                 "args": [_composition_value(value) for value in item.args],

@@ -25,17 +25,17 @@ source:
 #       - the envelope `status_code` (20000 = OK)
 #       - the per-task `tasks[0].status_code` (20000 = OK; 40501/40400/... = this task failed)
 #     A task can fail inside an HTTP 200 + envelope-20000 response, so validity is checked with
-#     `expect: {json_path: tasks.0.status_code, equals: 20000}` on every endpoint.
+#     the `expect` in `defaults:` below, on every endpoint that does not declare its own.
 #  3. Every response carries its own price: envelope `cost` and per-task `tasks[0].cost`, both USD.
 #     That is the authoritative number — an agent can read what a call actually cost straight off
-#     the response. The `cost:` blocks below are the published list prices (see each docs_url and
+#     the response. The `price:` blocks below are the published list prices (see each docs_url and
 #     https://dataforseo.com/pricing); most endpoints price as base-per-request PLUS per-row, so a
 #     larger `limit` costs more than the recorded base.
 #  4. The `/v3` in the docs' URLs is already part of the provider's base_url, so `path` starts at
 #     the segment after it (e.g. `/backlinks/summary/live`).
 #  5. DataForSEO ships a machine-readable rate card: the FREE `GET /appendix/user_data` returns
 #     `result[0].price`, a tree mirroring the API paths where each leaf is a list of
-#     {cost_type: per_request|per_result, cost: <usd>} entries per priority level. Every `cost:`
+#     {cost_type: per_request|per_result, cost: <usd>} entries per priority level. Every `price:`
 #     value below was read from that rate card on 2026-07-28, so the prices here are verified even
 #     though the endpoints are not. Prefer it over the public pricing page: for
 #     keywords_data/google_ads/search_volume/live the rate card said $0.09 while the pricing page
@@ -68,6 +68,13 @@ source:
 
 limits: "2000 requests/min; Live routes (every core endpoint here): exactly one task per POST — extra tasks return status 40000. Standard /task_post (extended catalog only) batches up to 100."
 pricing_url: https://dataforseo.com/pricing  # A billable 'SERP' is 10 results, not a whole page. Credits never expire; pay-as-you-go after the minimum top-up. Live mode is ~3x Standard.; free tier: 1 USD trial credit on si
+# Both tiers. The envelope `cost` is the bill, zero included, whatever the task status says; an
+# answer without a readable one settles at the hold. An async task is billed what its task_post
+# reported.
+defaults:
+  expect: {path: response.tasks.0.status_code, op: equals, value: 20000}
+  settle: {reported: {path: response.cost, unit: usd}}
+  bill: {miss: charged, error: charged}
 endpoints:
   # --- Backlinks (the Moz overlap group) --------------------------------------------------------
   # re-run catalog_verify.py once verified
@@ -94,9 +101,21 @@ endpoints:
     test_request:
       body:
         - {target: "moz.com", internal_list_limit: 10}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.tasks.0.result.0, op: absent}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.summary.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/summary/live/
 
@@ -125,9 +144,24 @@ endpoints:
     test_request:
       body:
         - {target: "moz.com", limit: 2, mode: "one_per_domain"}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when:
+        - {path: response.tasks.0.result.0.items, op: present}
+        - {path: response.tasks.0.result.0.items, op: empty}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/backlinks/live/
 
@@ -156,9 +190,19 @@ endpoints:
     test_request:
       body:
         - {target: "moz.com", limit: 2}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.linking_domains.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/referring_domains/live/
 
@@ -186,9 +230,24 @@ endpoints:
     test_request:
       body:
         - {target: "moz.com", limit: 2}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when:
+        - {path: response.tasks.0.result.0.items, op: present}
+        - {path: response.tasks.0.result.0.items, op: empty}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.anchors.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/anchors/live/
 
@@ -215,9 +274,24 @@ endpoints:
     test_request:
       body:
         - {targets: ["moz.com"], rank_scale: "one_hundred"}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when:
+        - {path: response.tasks.0.result.0.items, op: present}
+        - {path: response.tasks.0.result.0.items, op: empty}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.url.metrics.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/bulk_ranks/live/
 
@@ -244,9 +318,19 @@ endpoints:
     test_request:
       body:
         - {target: "moz.com", limit: 2}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
+    price:
+      value: '0.024'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.024 per request + $0.000036 per returned row; confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.competitors.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/competitors/live/
 
@@ -278,13 +362,30 @@ endpoints:
     test_request:
       body:
         - {keyword: "coffee", location_code: 2840, language_code: "en", depth: 10}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.002, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.002 per request; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price), which quotes the same $0.002 for live/advanced — the advanced premium shows up via depth (billed per 10 results) and via advanced search operators, which multiply the price by 5'}
+    price:
+      value: '0.002'
+      currency: USD
+      per: 1
+      unit: call
+      display: {unit: call, variable: true}
+      note: '$0.002 is the floor: one SERP page of up to 10 results, no advanced operators. The charge is $0.002 per started 10 results of `depth` (depth 30 = $0.006, depth 100 = $0.02), and advanced search operators (site:, inurl: and the like) multiply it by 5. Confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price), which quotes the same $0.002 for live/advanced. The response `cost` is the exact charge and settles the call'
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when:
+        - {path: response.tasks.0.result.0.items, op: present}
+        - {path: response.tasks.0.result.0.items, op: empty}
     # trailing slash deliberately omitted: with it, the path is a 40-char run of [A-Za-z0-9/] and
     # catalog_validate.py's credential-leak regex false-positives on it. Both forms serve HTTP 200.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.serp.organic.json
     docs_url: https://docs.dataforseo.com/v3/serp/google/organic/live/regular
+    note: "When an organic item's domain is google.com, its url is a google.com/goto wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination host; any other breadcrumb means the answer does not hold it."
 
   # re-run catalog_verify.py once verified
   - id: dataforseo.google.keywords.volume
@@ -306,13 +407,25 @@ endpoints:
         date_to: {type: string, required: false, note: "yyyy-mm-dd, cannot be later than last month"}
         include_adult_keywords: {type: boolean, required: false, note: "default false"}
         sort_by: {type: string, required: false, note: "relevance (default) | search_volume | competition_index | low_top_of_page_bid | high_top_of_page_bid"}
-      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays); the task is billed as one call regardless of keyword count, so batch keywords within a single task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays); the task is billed as one call regardless of keyword count, so batch keywords within a single task. A very large task (hundreds of keywords over a multi-year date_from range) can answer more than treg's 8 MiB response limit: that call is refused with 502 response_buffer_limit and not charged, so split the keywords or narrow the date range"
     test_request:
       body:
         - {keywords: ["coffee"], location_code: 2840, language_code: "en"}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.09, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.09 flat per Live request, confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). Note this is HIGHER than the $0.075 quoted on the public pricing page — trust the rate card. The price covers 1 or 1000 keywords alike, so always batch'}
+    price:
+      value: '0.09'
+      currency: USD
+      per: 1
+      unit: call
+      note: $0.09 flat per Live request, confirmed against the account's own machine-readable rate card (GET /appendix/user_data -> result[0].price). Note this is HIGHER than the $0.075 quoted on the public pricing page — trust the rate card. The price covers 1 or 1000 keywords alike, so always batch
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.tasks.0.result, op: present}, {path: response.tasks.0.result, op: empty}]}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.keywords.volume.json
     docs_url: https://docs.dataforseo.com/v3/keywords_data/google_ads/search_volume/live/
 
@@ -329,8 +442,8 @@ endpoints:
       bodyType: json
       body:
         keyword: {type: string, required: true, note: "seed keyword, lowercased by the API", example: "coffee"}
-        location_code: {type: integer, required: true, note: "one of location_code | location_name; 2840 = United States", example: 2840}
-        language_code: {type: string, required: true, note: "one of language_code | language_name", example: "en"}
+        location_code: {type: integer, required: true, note: "one of location_code | location_name; codes from the Labs locations list (GET /v3/dataforseo_labs/locations_and_languages, free). 2840 = United States", example: 2840}
+        language_code: {type: string, required: true, note: "one of language_code | language_name; must be a language Labs supports for that location (pairs from GET /v3/dataforseo_labs/locations_and_languages, free). An unsupported pair returns 40501 Invalid Field, e.g. Mexico or Colombia with en (both take es) or Brazil with en (pt)", example: "en"}
         depth: {type: integer, required: false, note: "0-4, default 1. Breadth of the related-search crawl: 0 = seed only, 1 = ~8 keywords, 2 = ~72, 3 = ~584, 4 = ~4680", example: 1}
         limit: {type: integer, required: false, note: "1-1000; default 100", example: 2}
         offset: {type: integer, required: false, note: "default 0"}
@@ -342,9 +455,25 @@ endpoints:
     test_request:
       body:
         - {keyword: "coffee", location_code: 2840, language_code: "en", depth: 1, limit: 2}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.012, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.012 per request + $0.00012 per returned keyword; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). include_clickstream_data doubles it'}
+    price:
+      value: '0.012'
+      currency: USD
+      per: 1
+      unit: call
+      display: {unit: call, variable: true}
+      note: '$0.012 per request + $0.00012 per returned keyword, so the quoted $0.012 is the floor: a full default page (limit 100) is about $0.024 and limit 1000 about $0.132. include_clickstream_data doubles it. Confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The response `cost` is the exact charge and settles the call'
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when:
+        - {path: response.tasks.0.result.0.items, op: present}
+        - {path: response.tasks.0.result.0.items, op: empty}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.keywords.ideas.json
     docs_url: https://docs.dataforseo.com/v3/dataforseo_labs/google/related_keywords/live/
 
@@ -369,14 +498,25 @@ endpoints:
         historical_serp_mode: {type: string, required: false, note: "live (default) | lost | all"}
         load_rank_absolute: {type: boolean, required: false, note: "include absolute SERP position; default false"}
         filters: {type: array, required: false, note: "max 8 conditions"}
-        order_by: {type: array, required: false, note: "max 3 rules"}
-      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays). Supported location+language pairs: https://docs.dataforseo.com/v3/dataforseo_labs/locations_and_languages/"
+        order_by: {type: array, required: false, note: "max 3 rules. Flat array of comma-separated \"field,direction\" strings (asc or desc). Field names match filters. Nested [[\"field\",\"desc\"]] (the filters-array shape) returns 40501 Invalid Field: 'order_by'.", example: ["keyword_data.keyword_info.search_volume,desc"]}
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays). Supported location+language pairs: https://docs.dataforseo.com/v3/dataforseo_labs/locations_and_languages/. A limit near 1000 on a large domain can answer more than treg's 8 MiB response limit: that call is refused with 502 response_buffer_limit and not charged, so page with a smaller limit and offset"
     test_request:
       body:
         - {target: "moz.com", location_code: 2840, language_code: "en", limit: 2}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_call, value: 0.012, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.012 per request + $0.00012 per returned keyword; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price)'}
+    price:
+      value: '0.012'
+      currency: USD
+      per: 1
+      unit: call
+      display: {unit: call, variable: true}
+      note: '$0.012 per request + $0.00012 per returned keyword, so the quoted $0.012 is the floor: a full default page (limit 100) is about $0.024 and limit 1000 about $0.132. Confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The response `cost` is the exact charge and settles the call'
+    provenance:
+      source: rate_card_api
+      source_url: https://api.dataforseo.com/v3/appendix/user_data
+      checked: '2026-07-28'
+      confidence: verified
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.domain.ranked_keywords.json
     docs_url: https://docs.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live/
 
@@ -388,7 +528,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /on_page/instant_pages
-    name: "Instant on-page audit of a URL — timings, meta, score"
+    name: "On-page audit"
     summary: "Crawl one URL on demand — status code, load timings, on-page score, meta and content"
     input:
       bodyType: json
@@ -404,9 +544,13 @@ endpoints:
     test_request:
       body:
         - {url: "https://moz.com/"}
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: per_result, value: 0.00015, currency: USD, per: 1, unit: page, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.00015 per crawled PAGE (the rate card lists it as per_result, not per_request); confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). enable_javascript raises it to ~$0.0015 (10x) and enable_browser_rendering to ~$0.0051 (34x)'}
+    price: {value: '0.00015', currency: USD, per: 1, unit: page, display: {unit: page, variable: true},
+            note: '$0.00015 per crawled PAGE without rendering (the rate card lists it as per_result, not per_request); confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). enable_javascript raises it to ~$0.0015 (10x) and enable_browser_rendering to ~$0.0051 (34x). The response `cost` is the exact charge and settles the call'}
+    provenance: {source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28',
+                 confidence: verified}
+    reserve: {entities: {from: body.*, max: 100}}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.page.audit.json
     docs_url: https://docs.dataforseo.com/v3/on_page/instant_pages/
 
@@ -427,8 +571,8 @@ endpoints:
     input:
       note: "no parameters; GET with HTTP Basic auth only. Unlike every other endpoint here it is GET, takes no task array, and costs nothing (`cost: 0`)"
     test_request: {queryParams: {}}   # no params; the empty mapping keeps the validator happy
-    expect: {json_path: tasks.0.status_code, equals: 20000}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: free — the response's own `cost` field is 0}
+    price: {value: '0', currency: USD, unit: call, note: free — the response's own `cost` field is 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.account.usage.json
     docs_url: https://docs.dataforseo.com/v3/appendix/user_data/

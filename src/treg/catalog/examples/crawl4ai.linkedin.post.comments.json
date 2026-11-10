@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 284,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "linkedin-post-comments",
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://www.linkedin.com/feed/update/urn:li:activity:7502080571335155713/"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 175,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "author_headline": null,
+      "author_url": null,
+      "likes": 63,
+      "posted_at": "2026-09-05T23:33:14Z",
+      "replies": null,
+      "text": "Wrong question. \nRight questions:\n1- Which Diseases Should Have Been Eradicated? \nAnswer:\n- Cholera\nWater chlorination and modern sewage systems kill the bacteria instantly.\n- Typhoid Fever\nClean plumbing completely stops its spread through contaminated water.\n- Polio\nSafe, highly effective vaccines…"
+    },
+    {
+      "author": "[redacted]",
+      "author_headline": null,
+      "author_url": null,
+      "likes": 30,
+      "posted_at": "2026-09-05T19:35:36Z",
+      "replies": null,
+      "text": "I don't see COVID on the list, so it needs to be added; at the start of the pandemic, the use of hygiene measures was underestimated, yet they ended up becoming the standard for preventing infection and spread.\nBest regards!"
+    }
+  ]
+}

@@ -41,6 +41,7 @@ endpoints:
       confidence: verified
       note: Two consecutive billed sandbox responses increased Phone Validation usage by two and, after the delayed wallet refresh, reduced the provider balance by exactly $0.03 — $0.015 each. Trestle documents that every HTTP 200 is billable, including invalid numbers and no-match results; HTTP 4xx and 5xx responses are free.
     verified: '2026-09-21'
+    added: '2026-09-21'
     example_response: examples/trestleiq.people.phone.verify.json
     docs_url: https://docs.trestleiq.com/api-reference/phone-validation-api
 
@@ -89,6 +90,7 @@ endpoints:
       confidence: verified
       note: A controlled live run made one billable missing-input call to each product. Together with Phone Validation's separately verified $0.015 price, the portal's rounded $0.06 wallet decrease matched the exact expected $0.055 total and confirmed the documented $0.03 Real Contact and $0.01 Address prices. Every HTTP 200 is billable; HTTP 4xx and 5xx responses are free.
     verified: '2026-09-21'
+    added: '2026-09-21'
     example_response: examples/trestleiq.people.contact.verify.json
     docs_url: https://docs.trestleiq.com/api-reference/real-contact-api
 
@@ -123,5 +125,6 @@ endpoints:
       confidence: verified
       note: A controlled live run made one billable missing-input call to each product. Together with Phone Validation's separately verified $0.015 price, the portal's rounded $0.06 wallet decrease matched the exact expected $0.055 total and confirmed the documented $0.03 Real Contact and $0.01 Address prices. Every HTTP 200 is billable; HTTP 4xx and 5xx responses are free.
     verified: '2026-09-21'
+    added: '2026-09-21'
     example_response: examples/trestleiq.people.address.verify.json
     docs_url: https://docs.trestleiq.com/api-reference/address-validation-api

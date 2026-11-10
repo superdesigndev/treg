@@ -21,6 +21,7 @@ source:
   - https://tagmanager.googleapis.com/$discovery/rest?version=v2
 endpoints:
 - id: google-tag-manager.x.tagmanager-accounts-containers-lookup
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -45,6 +46,7 @@ endpoints:
         required: false
         note: Tag ID for a GTM Container, e.g. GTM-123456789. Only one of destination_id or tag_id should be set.
 - id: google-tag-manager.x.tagmanager-accounts-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -60,6 +62,7 @@ endpoints:
         required: true
         note: Atomic accountsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -86,6 +89,7 @@ endpoints:
       required: true
       note: JSON body — the Account resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -106,6 +110,7 @@ endpoints:
       required: true
       note: JSON body — the Container resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -126,6 +131,7 @@ endpoints:
         required: true
         note: Atomic containersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -145,6 +151,7 @@ endpoints:
         required: true
         note: Atomic containersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -174,6 +181,7 @@ endpoints:
       required: true
       note: JSON body — the Container resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-destinations-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -193,6 +201,7 @@ endpoints:
         required: true
         note: Atomic containersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-destinations-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -216,6 +225,7 @@ endpoints:
         required: true
         note: Atomic destinationsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-destinations-link
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -244,6 +254,7 @@ endpoints:
         required: false
         note: Destination ID to be linked to the current container.
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -268,6 +279,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -292,6 +304,7 @@ endpoints:
       required: true
       note: JSON body — the Environment resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -315,6 +328,7 @@ endpoints:
         required: true
         note: Atomic environmentsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -338,6 +352,7 @@ endpoints:
         required: true
         note: Atomic environmentsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -371,6 +386,7 @@ endpoints:
       required: true
       note: JSON body — the Environment resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-environments-reauthorize
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -399,6 +415,7 @@ endpoints:
       required: true
       note: JSON body — the Environment resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-version-headers-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -427,6 +444,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-version-headers-latest
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -446,6 +464,7 @@ endpoints:
         required: true
         note: Atomic containersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-versions-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -469,6 +488,7 @@ endpoints:
         required: true
         note: Atomic versionsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-versions-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -497,6 +517,7 @@ endpoints:
         required: false
         note: The GTM ContainerVersion ID. Specify published to retrieve the currently published version.
 - id: google-tag-manager.x.tagmanager-accounts-containers-versions-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -530,6 +551,7 @@ endpoints:
       required: true
       note: JSON body — the ContainerVersion resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-versions-set-latest
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -553,6 +575,7 @@ endpoints:
         required: true
         note: Atomic versionsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-versions-undelete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -576,6 +599,7 @@ endpoints:
         required: true
         note: Atomic versionsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -600,6 +624,7 @@ endpoints:
       required: true
       note: JSON body — the Workspace resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -624,6 +649,7 @@ endpoints:
         required: true
         note: Atomic workspacesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -647,6 +673,7 @@ endpoints:
         required: true
         note: Atomic workspacesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -680,6 +707,7 @@ endpoints:
       required: true
       note: JSON body — the Workspace resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-built-in-variables-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -826,6 +854,7 @@ endpoints:
         - analyticsSessionId
         - analyticsSessionNumber
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-built-in-variables-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -854,6 +883,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-built-in-variables-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1000,6 +1030,7 @@ endpoints:
         - analyticsSessionId
         - analyticsSessionNumber
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-built-in-variables-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1146,6 +1177,7 @@ endpoints:
         - analyticsSessionId
         - analyticsSessionNumber
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-bulk-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1174,6 +1206,7 @@ endpoints:
       required: true
       note: JSON body — the ProposedChange resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1202,6 +1235,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1230,6 +1264,7 @@ endpoints:
       required: true
       note: JSON body — the Client resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -1257,6 +1292,7 @@ endpoints:
         required: true
         note: Atomic clientsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1284,6 +1320,7 @@ endpoints:
         required: true
         note: Atomic clientsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -1321,6 +1358,7 @@ endpoints:
       required: true
       note: JSON body — the Client resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-clients-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1353,6 +1391,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the client in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1381,6 +1420,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1409,6 +1449,7 @@ endpoints:
       required: true
       note: JSON body — the Folder resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -1436,6 +1477,7 @@ endpoints:
         required: true
         note: Atomic foldersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1463,6 +1505,7 @@ endpoints:
         required: true
         note: Atomic foldersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -1500,6 +1543,7 @@ endpoints:
       required: true
       note: JSON body — the Folder resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-entities
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1532,6 +1576,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-move-entities-to-folder
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1577,6 +1622,7 @@ endpoints:
       required: true
       note: JSON body — the Folder resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-folders-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1609,6 +1655,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the tag in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-gtag-config-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1637,6 +1684,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-gtag-config-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1665,6 +1713,7 @@ endpoints:
       required: true
       note: JSON body — the GtagConfig resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-gtag-config-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -1692,6 +1741,7 @@ endpoints:
         required: true
         note: Atomic gtag_configId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-gtag-config-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1719,6 +1769,7 @@ endpoints:
         required: true
         note: Atomic gtag_configId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-gtag-config-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -1756,6 +1807,7 @@ endpoints:
       required: true
       note: JSON body — the GtagConfig resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-getstatus
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1779,6 +1831,7 @@ endpoints:
         required: true
         note: Atomic workspacesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-tags-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1807,6 +1860,7 @@ endpoints:
       required: true
       note: JSON body — the Tag resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-tags-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -1834,6 +1888,7 @@ endpoints:
         required: true
         note: Atomic tagsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-tags-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1861,6 +1916,7 @@ endpoints:
         required: true
         note: Atomic tagsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-tags-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -1898,6 +1954,7 @@ endpoints:
       required: true
       note: JSON body — the Tag resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-tags-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1930,6 +1987,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of thetag in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -1958,6 +2016,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -1986,6 +2045,7 @@ endpoints:
       required: true
       note: JSON body — the CustomTemplate resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -2013,6 +2073,7 @@ endpoints:
         required: true
         note: Atomic templatesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2040,6 +2101,7 @@ endpoints:
         required: true
         note: Atomic templatesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -2077,6 +2139,7 @@ endpoints:
       required: true
       note: JSON body — the CustomTemplate resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2109,6 +2172,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the template in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-templates-import-from-gallery
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2149,6 +2213,7 @@ endpoints:
         required: false
         note: SHA version of the Gallery template to import. Defaulted to the latest SHA version if not provided.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2177,6 +2242,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2205,6 +2271,7 @@ endpoints:
       required: true
       note: JSON body — the Transformation resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -2232,6 +2299,7 @@ endpoints:
         required: true
         note: Atomic transformationsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2259,6 +2327,7 @@ endpoints:
         required: true
         note: Atomic transformationsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -2296,6 +2365,7 @@ endpoints:
       required: true
       note: JSON body — the Transformation resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-transformations-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2328,6 +2398,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the transformation in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2356,6 +2427,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2384,6 +2456,7 @@ endpoints:
       required: true
       note: JSON body — the Trigger resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -2411,6 +2484,7 @@ endpoints:
         required: true
         note: Atomic triggersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2438,6 +2512,7 @@ endpoints:
         required: true
         note: Atomic triggersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -2475,6 +2550,7 @@ endpoints:
       required: true
       note: JSON body — the Trigger resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-triggers-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2507,6 +2583,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the trigger in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2535,6 +2612,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2563,6 +2641,7 @@ endpoints:
       required: true
       note: JSON body — the Variable resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -2590,6 +2669,7 @@ endpoints:
         required: true
         note: Atomic variablesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2617,6 +2697,7 @@ endpoints:
         required: true
         note: Atomic variablesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -2654,6 +2735,7 @@ endpoints:
       required: true
       note: JSON body — the Variable resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-variables-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2686,6 +2768,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the variable in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2714,6 +2797,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2742,6 +2826,7 @@ endpoints:
       required: true
       note: JSON body — the Zone resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -2769,6 +2854,7 @@ endpoints:
         required: true
         note: Atomic zonesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -2796,6 +2882,7 @@ endpoints:
         required: true
         note: Atomic zonesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT
@@ -2833,6 +2920,7 @@ endpoints:
       required: true
       note: JSON body — the Zone resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-zones-revert
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2865,6 +2953,7 @@ endpoints:
         required: false
         note: When provided, this fingerprint must match the fingerprint of the zone in storage.
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-quick-preview
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2888,6 +2977,7 @@ endpoints:
         required: true
         note: Atomic workspacesId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-containers-workspaces-resolve-conflict
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2921,6 +3011,7 @@ endpoints:
       required: true
       note: JSON body — the Entity resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-containers-combine
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -2957,6 +3048,7 @@ endpoints:
         - current
         - other
 - id: google-tag-manager.x.tagmanager-accounts-containers-move-tag-id
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -3001,6 +3093,7 @@ endpoints:
         required: false
         note: The name for the newly created tag.
 - id: google-tag-manager.x.tagmanager-accounts-containers-snippet
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -3020,6 +3113,7 @@ endpoints:
         required: true
         note: Atomic containersId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-user-permissions-list
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -3041,6 +3135,7 @@ endpoints:
         required: false
         note: Continuation token for fetching the next page of results.
 - id: google-tag-manager.x.tagmanager-accounts-user-permissions-create
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: POST
@@ -3062,6 +3157,7 @@ endpoints:
       required: true
       note: JSON body — the UserPermission resource; see the method's API reference for its fields
 - id: google-tag-manager.x.tagmanager-accounts-user-permissions-delete
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: DELETE
@@ -3082,6 +3178,7 @@ endpoints:
         required: true
         note: Atomic user_permissionsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-user-permissions-get
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: GET
@@ -3102,6 +3199,7 @@ endpoints:
         required: true
         note: Atomic user_permissionsId path segment from Google's expanded resource name; do not pass a slash-delimited parent/path value
 - id: google-tag-manager.x.tagmanager-accounts-user-permissions-update
+  added: '2026-08-28'
   tier: extended
   platform: google-tag-manager
   method: PUT

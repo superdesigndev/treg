@@ -1,48 +1,46 @@
 {
   "detail": "OK",
-  "total": 15286,
-  "searchAfter": "NoRgrAbAzATAdABgDQCIDGBDAzgCwGYBOApkXGgPYC2KAukA",
-  "creditsUsed": 0.4,
+  "total": 1,
+  "searchAfter": "NoZgdADANARAzgFwE4EsAOBTMBjA9gWxgF0g",
+  "creditsUsed": 0.2,
   "companies": [
     {
       "company": {
-        "domain": "razorpay.com",
-        "name": "Razorpay",
-        "primaryCountry": "in",
-        "countries": [],
-        "companySize": null,
-        "industryCategories": null,
-        "industries": ["FinTech", "Financial Services", "Mobile Payments", "Payments", "Transaction Processing"],
-        "linkedinIndustry": null,
-        "keywords": [],
-        "employeeCountOcean": 3664,
-        "employeeCountLinkedin": null,
-        "revenue": null,
-        "yearFounded": null,
-        "description": "Online Payments India: Start Accepting Payments Instantly with Razorpay's Payment Suite, which Supports Netbanking, Credit Card & Debit Cards, UPI etc.",
-        "technologies": ["Google Analytics", "YouTube", "Google Tag Manager", "Linkedin Insight Tag", "Google Ads Conversion Tracking", "Sentry"],
-        "technologyCategories": [],
+        "domain": "stripe.com",
+        "primaryCountry": "us",
+        "industries": [
+          "Payments",
+          "Financial Services",
+          "FinTech",
+          "Mobile Payments"
+        ],
+        "employeeCountOcean": 14348,
+        "description": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+        "technologies": [
+          "Stripe",
+          "PayPal",
+          "Afterpay",
+          "Next.js",
+          "Cart Functionality",
+          "Sentry"
+        ],
         "webTraffic": {
-          "visits": 39524764,
-          "pageViews": 114179138,
-          "pagesPerVisit": 2.8887999057769775,
-          "bounceRate": 0.3932
+          "visits": 117011212,
+          "pageViews": 386920974,
+          "pagesPerVisit": 3.3066999912261963,
+          "bounceRate": 0.5483
         },
+        "name": "Stripe",
         "headcountGrowth": {
-          "threeMonths": -78,
-          "threeMonthsPercentage": -0.022,
-          "sixMonths": 27,
-          "sixMonthsPercentage": 0.008,
-          "twelveMonths": -95,
-          "twelveMonthsPercentage": -0.027
-        },
-        "departmentSizes": null,
-        "fundingRound": null,
-        "locations": [],
-        "updatedAt": null
-      },
-      "relevance": "A"
+          "threeMonths": -155,
+          "threeMonthsPercentage": -0.011,
+          "sixMonths": 617,
+          "sixMonthsPercentage": 0.047,
+          "twelveMonths": 1817,
+          "twelveMonthsPercentage": 0.152
+        }
+      }
     }
   ],
-  "_truncated": "1 of the 2 returned rows shown, out of 15,286 lookalike matches for stripe.com; lists shortened"
+  "_truncated": "includeDomains filter for stripe.com: 1 of 1 match; lists shortened"
 }

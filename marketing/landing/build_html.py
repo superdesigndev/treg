@@ -16,7 +16,10 @@ document at the ad-kit heading and refuses to emit anything after it.
 Needs `markdown` (pip install markdown) — a build-time dependency only, never imported by
 the shipped package.
 """
-import re, pathlib, html
+import re
+import pathlib
+import html
+import json as json_mod
 import markdown as md
 
 HERE = pathlib.Path(__file__).parent
@@ -442,8 +445,6 @@ def render_faq(title, body, label=None):
     lab = f'<div class="seclab">{label}</div>' if label else ""
     return (f'<section><div class="wrap">{lab}<h2>{html.escape(title)}</h2>{inner}</div></section>')
 
-
-import json as json_mod
 
 
 def generate_jsonld(slug, h1, category):

@@ -1,10 +1,12 @@
-"""Step E of docs/PROVIDER-CAPACITY-PLAN.md — the overflow child cycle: the same vendor endpoint
+"""Provider capacity: the overflow child cycle: the same vendor endpoint
 served through a treg-owned aggregator account when treg's own account fails a tier-4 call.
 Off by default; shadow mode never changes the caller's answer."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -13,11 +15,13 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from datetime import timedelta
+from treg.domain.capacity import marks as capacity_marks
 from treg.domain.capacity import routes as R
 from treg import audit, ratestore
 from treg.application.call import overflow as O
 from treg.application.call import service as call_service
 from treg.config import get_settings
+from treg.infra import org_traffic
 from treg.infra.db import session_maker
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.routes_view import view as routes_view
@@ -81,7 +85,19 @@ async def test_off_by_default_the_vendor_402_is_relayed_unchanged(clients: Async
     assert r.status_code == 402 and seen == [] and "X-Treg-Served-Via" not in r.headers
 
 
-async def test_findymail_shaped_402_on_tier4_runs_one_child_cycle(clients: AsyncClient, overflow_on, monkeypatch):
+@pytest.fixture
+def request_log(caplog):
+    caplog.set_level(logging.INFO, logger=org_traffic.log.name)
+    org_traffic.log.addHandler(caplog.handler)
+    try:
+        yield lambda: [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+                       if r.name == org_traffic.log.name and r.getMessage().startswith("request ")]
+    finally:
+        org_traffic.log.removeHandler(caplog.handler)
+
+
+async def test_findymail_shaped_402_on_tier4_runs_one_child_cycle(clients: AsyncClient, overflow_on, monkeypatch,
+                                                                  request_log):
     await _route(price_micro=3_000)
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"Insufficient balance"}'))
     seen = []
@@ -114,6 +130,51 @@ async def test_findymail_shaped_402_on_tier4_runs_one_child_cycle(clients: Async
     assert len(mine) == 2, "primary attempt + child, sharing call_ref"
     tiers = {x.get("credential_tier") for x in mine}
     assert tiers == {"platform", "platform-overflow"}
+    [line] = request_log()
+    assert (line["status"], line["credential_tier"], line["refused_by"]) == (200, "platform-overflow", None)
+
+
+@pytest.mark.parametrize("endpoint,operation,params,price,unit", [
+    ("pdl.people.enrich", "person_enrich", {"email": "sean@peopledatalabs.com"}, 280_000, "call"),
+    ("pdl.companies.enrich", "company_enrich", {"website": "peopledatalabs.com"}, 100_000, "call"),
+    ("pdl.companies.search", "company_search", {"sql": "SELECT * FROM company WHERE name='people data labs'", "size": "1"}, 100_000, "result"),
+])
+async def test_pdl_operation_quota_402_uses_monid_for_eligible_routes(
+    clients: AsyncClient, overflow_on, monkeypatch, endpoint, operation, params, price, unit,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PDL", "PLATFORM-PDL-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", get_settings().platform_providers + ",pdl")
+    get_settings.cache_clear()
+    path = "/" + endpoint.split(".")[1].replace("people", "person").replace("companies", "company")
+    path += "/" + endpoint.split(".")[2]
+    async with session_maker() as db:
+        db.add(OverflowRoute(endpoint_id=endpoint, aggregator="monid", provider="pdl", method="GET", path=path,
+                             agg_slug="pdl", agg_path="/v5" + path, agg_price_micro=price, agg_unit=unit,
+                             ratio=1.0, enabled=True, last_verified_at=utcnow_naive()))
+        await db.commit()
+    routes_view.invalidate()
+    capacity_view.invalidate()
+    exhausted = json.dumps({"status": 402, "error": {"message":
+        f"You have hit your account maximum for {operation} (all matches used)"}}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, exhausted))
+    output = {"data": [{"id": "company"}], "total": 1} if unit == "result" else {"id": "matched"}
+    envelope = {"runId": "pdl-test", "status": "COMPLETED", "output": output,
+                "providerResponse": {"httpStatus": 200},
+                "billing": {"reportedCost": {"value": price, "unit": "MICRO_DOLLAR"}}}
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, envelope)], seen))
+
+    response = await clients.get(f"/call/{endpoint}", params=params)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == output
+    assert response.headers["X-Treg-Served-Via"] == "overflow:monid"
+    assert response.headers["X-Treg-Cost-Micro"] == str(price)
+    assert len(seen) == 1
+    assert seen[0].json["endpoint"] == "/v5" + path
+    assert seen[0].json["input"]["queryParams"] == {}
+    assert seen[0].json["input"]["body"] == {k: int(v) if k == "size" else v for k, v in params.items()}
+    assert await _holds() == []
 
 
 async def test_overflow_budget_reconciles_the_estimate_to_the_actual_cost(
@@ -343,7 +404,8 @@ async def test_cancellation_cleanup_releases_both_holds_exactly_once(clients: As
     assert len(await _holds()) == 2
     mk = MarketplaceCall(tool=Tool(org_id=org_id, name=EP, owner="x", base_url="https://x", host="x"),
                          upstream="https://x", consumed=set(), endpoint_id=EP, provider="tikhub",
-                         tier="platform", estimate_micro=1_000, call_id="REF")
+                         tier="platform", estimate_micro=1_000, call_id="REF",
+                         payer_org_id=org_id, reserved_micro=1_000)
     await _finish_cancelled_call(None, mk, "REF")
     assert await _holds() == []
     releases = [e for e in await _rows(LedgerEntry) if e.kind == "release"]
@@ -352,7 +414,98 @@ async def test_cancellation_cleanup_releases_both_holds_exactly_once(clients: As
     assert len([e for e in await _rows(LedgerEntry) if e.kind == "release"]) == 2
 
 
-async def test_an_exhausted_account_with_a_route_skips_the_direct_attempt(clients: AsyncClient, overflow_on, monkeypatch):
+def _exhaust_tikhub():
+    now = utcnow_naive()
+    return LatestState(
+        "tikhub", 0.0, "USD", now, "exact", exhausted_until=now + timedelta(hours=1),
+        health="exhausted",
+    )
+
+
+async def _watch_cancel(monkeypatch):
+    """Record the parent payer and the trusted org the real cancel path actually used."""
+    observed: dict = {}
+    original = call_service.finish_cancelled_call
+
+    async def spy(claim, mk, call_ref, response=None, *, trusted_org_id=None, sent=False):
+        observed["payer_org_id"] = None if mk is None else mk.payer_org_id
+        observed["trusted_org_id"] = trusted_org_id
+        return await original(claim, mk, call_ref, response, trusted_org_id=trusted_org_id, sent=sent)
+
+    monkeypatch.setattr(call_service, "finish_cancelled_call", spy)
+    return observed
+
+
+async def test_skip_direct_cancel_releases_the_child_hold_without_a_parent_payer(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """Empty parent payer, real skip-direct path. The test must not invent that payer."""
+    await _route(price_micro=3_000)
+    state = _exhaust_tikhub()
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "tikhub", state.to_json(), ttl_s=3600)
+        await db.commit()
+    capacity_view.invalidate()
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+
+    async def never(*_a, **_k):
+        raise AssertionError("the direct relay must not run")
+
+    async def cancelled(_client, _req):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(call_service, "relay", never)
+    monkeypatch.setattr(O, "_send", cancelled)
+    observed = await _watch_cancel(monkeypatch)
+    before = await _balance(clients)
+    with pytest.raises(asyncio.CancelledError):
+        await clients.get(f"/call/{EP}?aweme_id=skip-direct-cancel")
+    assert observed["payer_org_id"] is None
+    assert observed["trusted_org_id"] == org_id
+    assert await _balance(clients) == before
+    assert await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    assert len(entries) == 2
+    overflow_id = next(e.call_id for e in entries if e.kind == "reserve")
+    assert overflow_id.endswith(":overflow")
+    assert sorted((e.kind, e.call_id) for e in entries) == [
+        ("release", overflow_id), ("reserve", overflow_id),
+    ]
+    assert not any(e.call_id == overflow_id.removesuffix(":overflow") for e in entries)
+
+
+async def test_overflow_cancel_uses_the_trusted_caller_for_both_holds(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """Parent reserve captures the caller. This test does not construct a payer."""
+    await _route(price_micro=3_000)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"Insufficient balance"}'))
+
+    async def cancelled(_client, _req):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(O, "_send", cancelled)
+    observed = await _watch_cancel(monkeypatch)
+    before = await _balance(clients)
+    with pytest.raises(asyncio.CancelledError):
+        await clients.get(f"/call/{EP}?aweme_id=trusted-cancel")
+    assert observed["trusted_org_id"] == org_id
+    assert observed["payer_org_id"] == org_id
+    assert await _balance(clients) == before
+    assert await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    ids = {e.call_id for e in entries}
+    assert len(ids) == 2
+    parent = next(call_id for call_id in ids if not str(call_id).endswith(":overflow"))
+    assert sorted((e.kind, e.call_id) for e in entries) == sorted([
+        ("reserve", parent), ("release", parent),
+        ("reserve", f"{parent}:overflow"), ("release", f"{parent}:overflow"),
+    ])
+
+
+async def test_an_exhausted_account_with_a_route_skips_the_direct_attempt(clients: AsyncClient, overflow_on, monkeypatch,
+                                                                          request_log):
     """The ladder (plan §4): view says exhausted → no direct attempt, no parent hold → child cycle."""
     await _route(price_micro=3_000)
     now = utcnow_naive()
@@ -377,6 +530,9 @@ async def test_an_exhausted_account_with_a_route_skips_the_direct_attempt(client
     parent = r.headers["X-Treg-Call-Id"]
     kinds = sorted((e.kind, e.call_id or "") for e in await _rows(LedgerEntry) if e.kind != "grant")
     assert kinds == [("reserve", f"{parent}:overflow"), ("settle", f"{parent}:overflow")], "no parent hold at all"
+    [line] = request_log()
+    assert (line["provider"], line["credential_tier"], line["refused_by"]) == ("tikhub", "platform-overflow", None), \
+        "an answered request is not a capacity refusal"
     replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "k1"})
     assert replay.status_code == 200 and replay.headers.get("X-Treg-Idempotent-Replay") == "true"
     assert len(seen) == 1, "the replay never touched the aggregator"
@@ -469,7 +625,7 @@ async def test_child_with_no_reported_cost_settles_at_the_aggregator_reserve(
     assert 3_000 != EP_MICRO, "the fixture must price the aggregator differently from direct"
 
 
-# --- Apollo: "out of credits" is a 422, not a 402 (ops/capacity.md, 2026-09-01) --------------
+# --- Apollo: "out of credits" is a 422, not a 402 -----------------------------------------------
 
 APOLLO_EP = "apollo.people.enrich"           # POST /people/match, 1 credit = $0.026 per hit
 APOLLO_PATH = "/people/match"
@@ -858,11 +1014,9 @@ async def test_orthogonals_own_422_on_the_skip_direct_ladder_is_a_typed_503_nami
     aggregator stays healthy for the next caller."""
     await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
                  price_micro=2_000, ratio=None)
-    now = utcnow_naive()
-    async with session_maker() as db:
-        await ratestore.kv_put(db, STATE_NS, "apollo", LatestState(
-            "apollo", 0.0, "USD", now, "exact", exhausted_until=now + timedelta(hours=1), health="exhausted").to_json(), ttl_s=3600)
-        await db.commit()
+    # The search is free, so only its own quota can hold it (a balance mark never refuses it).
+    await capacity_marks.strike("apollo", endpoint_id=APOLLO_SEARCH_EP, kind="quota",
+                                resets_at=utcnow_naive() + timedelta(hours=1), immediate=True)
     capacity_view.invalidate()
 
     async def never(*a, **k):
@@ -972,6 +1126,29 @@ async def test_icypeas_out_of_credits_200_is_never_billed_and_strikes_the_breake
     async with session_maker() as db:
         lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "icypeas"))
     assert lock.strikes == 1
+
+
+async def test_hlrlookup_insufficient_credit_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, monkeypatch):
+    """HLR Lookup's empty account answers 200 with `results[0].error: INSUFFICIENT_CREDIT`. The
+    `expect` rule already kept it unbilled; the signature also counts it as our account failing."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HLRLOOKUP", "PLATFORM-HLR-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HLRLOOKUP_SECRET", "PLATFORM-HLR-SECRET")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hlrlookup")
+    get_settings.cache_clear()
+    out = b'{"body":"OK","results":[{"error":"INSUFFICIENT_CREDIT","telephone_number":"447540822872"}]}'
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
+    before = await _balance(clients)
+    r = await clients.post("/call/hlrlookup.people.phone.verify", json={
+        "telephone_number": "447540822872", "save_to_cache": "PRIVATE", "cache_days_global": 0, "cache_days_private": 0})
+    assert r.status_code == 200 and r.content == out, "the vendor's answer, relayed as is"
+    assert await _balance(clients) == before and await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    assert sorted(e.kind for e in entries) == ["release", "reserve"]
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "hlrlookup"))
+    assert lock.strikes == 1
+    get_settings.cache_clear()
 
 
 async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(

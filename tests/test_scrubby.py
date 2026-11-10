@@ -16,7 +16,7 @@ def _mk(*, endpoint_id="scrubby.people.email.verify", unit_micro=8_000):
         tool=None, upstream="https://api.scrubby.io/validate_email", consumed=set(),
         provider="scrubby", endpoint_id=endpoint_id, tier="platform",
         estimate_micro=unit_micro, cost_type="per_success", unit_micro=unit_micro,
-        request_data={},
+        reported_charge_unit_micro=8_000, request_data={},
     )
 
 

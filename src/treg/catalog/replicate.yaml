@@ -64,10 +64,12 @@ endpoints:
       confidence: documented
       note: "Replicate lists FLUX Schnell at $3 per thousand output images."
     verified: 2026-09-01
+    added: '2026-09-04'
     example_response: examples/replicate.image-gen.flux-schnell.json
     docs_url: https://replicate.com/black-forest-labs/flux-schnell/api
 
   - id: replicate.video-gen.seedance-1-lite
+    added: '2026-09-04'
     capability: video-gen.seedance-1-lite.from_text
     platform: video-gen
     domain: models
@@ -107,6 +109,7 @@ endpoints:
     docs_url: https://replicate.com/bytedance/seedance-1-lite/api
 
   - id: replicate.video-gen.veo-3.1-fast
+    added: '2026-09-04'
     capability: video-gen.veo-3-1-fast.generate
     platform: video-gen
     domain: models
@@ -163,6 +166,7 @@ endpoints:
     test_request: {pathParams: {id: "j5swnw9ghhrzw0d0c3csppxamg"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Prediction status checks are free."}
     verified: 2026-09-02
+    added: '2026-09-04'
     example_response: examples/replicate.predictions.get.json
     docs_url: https://replicate.com/docs/reference/http#predictions.get
 
@@ -205,6 +209,7 @@ endpoints:
       confidence: documented
       note: "Replicate's model page prices per output image: $0.15 at 1K or 2K, $0.30 at 4K. One image per prediction. A fallback-model run (allow_fallback_model, not listed) is priced differently."
     verified: 2026-09-14
+    added: '2026-09-04'
     example_response: examples/replicate.image-gen.nano-banana-pro.json
     docs_url: https://replicate.com/google/nano-banana-pro/api
 
@@ -248,6 +253,7 @@ endpoints:
       confidence: documented
       note: "Replicate's model page prices per output image by quality tier; times number_of_images."
     verified: 2026-09-14
+    added: '2026-09-04'
     example_response: examples/replicate.image-gen.gpt-image-2.json
     docs_url: https://replicate.com/openai/gpt-image-2/api
 
@@ -293,6 +299,7 @@ endpoints:
       confidence: documented
       note: "Replicate's model page prices per output image by quality tier; times number_of_images."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/replicate.image-gen.gpt-image-2-5-flare.json
     docs_url: https://replicate.com/openai/gpt-image-2.5-flare/api
 
@@ -338,5 +345,6 @@ endpoints:
       confidence: documented
       note: "Replicate's model page prices per output image by quality tier; times number_of_images."
     verified: 2026-09-14
+    added: '2026-09-14'
     example_response: examples/replicate.image-gen.gpt-image-2-5-sunburst.json
     docs_url: https://replicate.com/openai/gpt-image-2.5-sunburst/api

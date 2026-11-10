@@ -36,5 +36,6 @@ endpoints:
       confidence: verified
       note: One credit for a fresh verification. The response's credits_used is authoritative, including zero for a cached retry within 24 hours.
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/scrubby.people.email.verify.json
     docs_url: https://docs.scrubby.io/

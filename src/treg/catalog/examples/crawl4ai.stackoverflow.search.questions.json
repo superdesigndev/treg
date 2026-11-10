@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: stackoverflow-questions: [rust] activity · 20 questions · API quota left 298"
+    ]
+  },
+  "recipe": "stackoverflow-questions",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 184,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "answered": true,
+      "answers": 3,
+      "author": "fptech20",
+      "created": "2021-10-18T11:18:08Z",
+      "id": 69615120,
+      "score": 10,
+      "tags": [
+        "rust"
+      ],
+      "text": "Is there any option to extract a mutable reference out of an Option&lt;&amp;mut Foo&gt;? All I found was as_ref() which extracts an immutable reference.",
+      "title": "Extracting a mutable reference from an Option",
+      "url": "https://stackoverflow.com/questions/69615120/extracting-a-mutable-reference-from-an-option",
+      "views": 11908
+    },
+    {
+      "answered": false,
+      "answers": 3,
+      "author": "TheHiddenDev",
+      "created": "2026-02-22T09:33:28Z",
+      "id": 79893894,
+      "score": 0,
+      "tags": [
+        "rust",
+        "input"
+      ],
+      "text": "I tried doing user input in Rust, but it's hard to understand. I would like examples and an explanation other than &quot;Because that's what you do&quot;. Here is my attempt: use std::io fn main() { let input = String::new; io::stdin().read_line(input).expect(&quot;err&quot;); println!(&quot;{}&quot…",
+      "title": "User input in Rust",
+      "url": "https://stackoverflow.com/questions/79893894/user-input-in-rust",
+      "views": 629
+    }
+  ]
+}

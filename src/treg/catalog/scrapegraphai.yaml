@@ -6,14 +6,8 @@ source:
 pricing_url: https://scrapegraphai.com/pricing
 limits: "The shared account is configured for 500 requests/minute, one concurrent crawl and one monitor. Live responses returned no usable X-RateLimit-* or Retry-After headers, so treg enforces the supplied 500 requests/minute ceiling directly. Platform extraction and search accept HTML only, and platform Crawl is fixed to one Markdown page so every hold is bounded. Monitor tools require the team's own key because scheduled ticks spend credits outside a foreground treg call."
 proposed_capabilities:
-  web.monitor.create: "Create a scheduled web-page change monitor"
-  web.monitor.list: "List scheduled web-page monitors"
-  web.monitor.get: "Read one scheduled web-page monitor"
-  web.monitor.update: "Update a scheduled web-page monitor"
   web.monitor.pause: "Pause a scheduled web-page monitor"
   web.monitor.resume: "Resume a scheduled web-page monitor"
-  web.monitor.activity: "Read a scheduled monitor's tick activity"
-  web.monitor.delete: "Delete a scheduled web-page monitor"
 async:
   id_from: id
   poll:
@@ -62,6 +56,7 @@ endpoints:
       confidence: verified
       note: "A Markdown-only HTML scrape costs one credit. A live call reduced the account balance by exactly one credit; failed requests are documented as free."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/scrape
     example_response: examples/scrapegraphai.web.scrape.json
 
@@ -103,6 +98,7 @@ endpoints:
       confidence: verified
       note: "HTML extraction costs five credits without stealth. A live call reduced the balance by exactly five credits; failed requests are documented as free."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/extract
     example_response: examples/scrapegraphai.web.extract.json
 
@@ -142,6 +138,7 @@ endpoints:
       confidence: verified
       note: "Search without a prompt costs two credits per requested result. A one-result live call returned one result and reduced the balance by exactly two credits."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/search
     example_response: examples/scrapegraphai.web.search.json
 
@@ -188,6 +185,7 @@ endpoints:
       confidence: verified
       note: "Search with a prompt costs five credits per requested result. A one-result live call returned a structured answer and reduced the balance by exactly five credits."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/search
     example_response: examples/scrapegraphai.web.search.extract.json
 
@@ -226,6 +224,7 @@ endpoints:
       confidence: verified
       note: "A crawl costs two startup credits plus the selected scrape-format cost for each page. A completed one-page Markdown crawl reduced the balance by exactly three credits."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/start
     example_response: examples/scrapegraphai.web.crawl.json
 
@@ -247,6 +246,7 @@ endpoints:
     test_request: {pathParams: {id: "b1e1f0cc-30a8-442a-b9ec-5c893b336c7f"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling an existing crawl consumes no credits and does not count toward the documented request limit."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/get-status
     example_response: examples/scrapegraphai.web.crawl.status.json
 
@@ -274,6 +274,7 @@ endpoints:
       queryParams: {limit: 10, cursor: 0}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading pages from an existing crawl consumes no credits and does not count toward the documented request limit."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/pages
     example_response: examples/scrapegraphai.web.crawl.pages.json
 
@@ -312,6 +313,7 @@ endpoints:
       confidence: verified
       note: "Each tick costs the selected format total, plus five credits when a change is detected. The live create triggered an immediate changed Markdown tick and used six credits. Future unchanged Markdown ticks cost one."
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/create
     example_response: examples/scrapegraphai.web.monitor.create.json
 
@@ -329,6 +331,7 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Listing monitors consumes no credits."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.list.json
 
@@ -348,6 +351,7 @@ endpoints:
     test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a monitor consumes no credits."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.get.json
 
@@ -377,6 +381,7 @@ endpoints:
       body: {interval: "0 */6 * * *"}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Updating monitor configuration consumes no credits; later ticks remain billable."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.update.json
 
@@ -396,6 +401,7 @@ endpoints:
     test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Pausing consumes no credits."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.pause.json
 
@@ -415,6 +421,7 @@ endpoints:
     test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Resuming consumes no credits; subsequent ticks are billable."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.resume.json
 
@@ -436,6 +443,7 @@ endpoints:
     test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading tick activity consumes no credits."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.activity.json
 
@@ -455,5 +463,6 @@ endpoints:
     test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Deleting a monitor consumes no credits."}
     verified: '2026-09-24'
+    added: '2026-09-24'
     docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
     example_response: examples/scrapegraphai.web.monitor.delete.json

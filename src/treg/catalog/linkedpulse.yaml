@@ -2,9 +2,12 @@ provider: linkedpulse
 source:
   docs: https://linkedpulse.ai/docs
   openapi: null
-  curated: '2026-09-29'
+  curated: '2026-11-10'
 pricing_url: https://linkedpulse.ai/pricing
 limits: "Up to 10 concurrent requests is vendor guidance, not a documented enforced limit or requests-per-minute guarantee."
+defaults:
+  provenance: {source: docs, source_url: 'https://linkedpulse.ai/pricing', checked: '2026-11-10', confidence: documented}
+  expect: {path: response.result.status_code, op: equals, value: 200}
 proposed_capabilities:
   linkedin.user.activity.check: Check observable activity evidence for a LinkedIn member across recent time windows
   linkedin.user.activity.intelligence: Analyze a LinkedIn member's observable engagement for topics and outreach context
@@ -14,6 +17,7 @@ proposed_capabilities:
 # resale arrangement was offered; confirm BYOK-only eligibility under the current contribution rules.
 endpoints:
   - id: linkedpulse.linkedin.user.activity.check
+    added: '2026-11-10'
     capability: linkedin.user.activity.check
     platform: linkedin
     scope: any_account
@@ -27,22 +31,17 @@ endpoints:
       note: "No LinkedIn login or cookies required. Evidence does not establish exact login or usage; absence of observed activity is not proof of inactivity."
     test_request: &profile_request
       body: {linkedin_url: "https://www.linkedin.com/in/williamhgates"}
-    expect: {json_path: result.status_code, equals: 200}
-    cost: &check_cost
-      type: per_success
-      value: 0.02
+    price:
+      value: '0.02'
       currency: USD
       per: 1
       unit: result
-      source: observed
-      source_url: https://linkedpulse.ai/pricing
-      checked: '2026-09-29'
-      confidence: verified
       note: "Shared prepaid wallet; no subscription required. Backend-declared failed/not-found requests cost $0. Transport failures can be ambiguous; check the outcome before retrying."
     docs_url: https://linkedpulse.ai/docs#activity-check
     note: "Deterministic analysis of observable evidence, including recent reactions, with active_7d, active_30d and active_90d windows. Does not classify people as real, fake, human or bot."
 
   - id: linkedpulse.linkedin.user.activity.intelligence
+    added: '2026-11-10'
     capability: linkedin.user.activity.intelligence
     platform: linkedin
     scope: any_account
@@ -52,10 +51,11 @@ endpoints:
     summary: Activity Intelligence adds context from observable engagement.
     input: *profile_input
     test_request: *profile_request
-    expect: {json_path: result.status_code, equals: 200}
-    cost:
-      <<: *check_cost
-      value: 0.05
+    price:
+      value: '0.05'
+      currency: USD
+      per: 1
+      unit: result
       note: "Shared prepaid wallet; no subscription required. Backend-declared failed/not-found/degraded Intelligence requests cost $0. Transport failures can be ambiguous; check the outcome before retrying."
     docs_url: https://linkedpulse.ai/docs#activity-intelligence
     note: "Includes Activity Check analysis plus AI-generated engagement_topics, engagement_summary and outreach_signals. Observable engagement does not establish private behavior, buying intent, beliefs or endorsements."

@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 
 import httpx
 
-from ...config import get_settings, platform_setting_name
+from ...config import TREG_USER_AGENT, get_settings, platform_setting_name
 
 # provider → coroutine(client, key) → {"value": float|None, "unit": str, "note": str}.
 # `unit` says what the number IS ("USD", "credits", "units left", "rows used") — the one lesson of
@@ -26,6 +26,27 @@ async def _get(c: httpx.AsyncClient, url: str, **kw) -> dict:
     r = await c.get(url, **kw)
     r.raise_for_status()
     return r.json()
+
+
+async def _orbisearch(c, key):
+    d = await _get(c, "https://api.orbisearch.com/v1/credits",
+                   headers={"X-API-Key": key})
+    balance = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if balance is None or balance < 0:
+        raise ValueError("OrbiSearch returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
+
+
+def _finite(raw):
+    """A finite JSON number, sign kept; None for anything else (Booleans and strings included)."""
+    return raw if type(raw) in (int, float) and math.isfinite(raw) else None
+
+
+def _overdrawn(row: dict) -> dict:
+    """An `OVERDRAFT_SERVED` reading at or past zero: informational, so it never refuses calls."""
+    return {**row, "informational": True, "overdrawn": True,
+            "note": "; ".join(filter(None, (
+                row.get("note"), "informational: overdrawn, the vendor still serves and bills the overage")))}
 
 
 async def _dataforseo(c, key):
@@ -92,6 +113,15 @@ async def _fishaudio(c, key):
     }
 
 
+async def _search1api(c, key):
+    d = await _get(c, "https://api.search1api.com/usage",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = d.get("usage") if isinstance(d, dict) else None
+    if type(balance) is not int or balance < 0:
+        raise ValueError("Search1API returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "prepaid account balance"}
+
+
 async def _tavily(c, key):
     d = await _get(c, "https://api.tavily.com/usage",
                    headers={"Authorization": f"Bearer {key}"})
@@ -150,8 +180,8 @@ async def _litescrape(c, key):
     if type(raw) is not int or raw < 0:
         raise ValueError("Litescrape status returned an invalid remaining_calls")
     limit = d.get("concurrency_limit")
-    note = (f"key concurrency limit {limit}" if type(limit) is int and limit > 0
-            else "key concurrency limit unavailable")
+    note = (f"concurrency limit {limit}" if type(limit) is int and limit > 0
+            else "concurrency limit unavailable")
     return {"value": raw, "unit": "calls", "note": note}
 
 
@@ -172,8 +202,8 @@ async def _firecrawl(c, key):
     d = await _get(c, "https://api.firecrawl.dev/v2/team/credit-usage",
                    headers={"Authorization": f"Bearer {key}"})
     data = d.get("data") if isinstance(d, dict) else None
-    remaining = data.get("remainingCredits") if isinstance(data, dict) else None
-    if not isinstance(d, dict) or d.get("success") is not True or type(remaining) is not int or remaining < 0:
+    remaining = _finite(data.get("remainingCredits")) if isinstance(data, dict) else None
+    if not isinstance(d, dict) or d.get("success") is not True or remaining is None:
         raise ValueError("Firecrawl returned no valid remaining-credit balance")
     return {"value": remaining, "unit": "credits",
             "note": f"billing period ends {data.get('billingPeriodEnd') or 'unknown'}"}
@@ -333,9 +363,8 @@ async def _moltsets(c, key):
 async def _openmart(c, key):
     d = await _get(c, "https://api.openmart.ai/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
-    balance = d.get("balance") if isinstance(d, dict) else None
-    if type(balance) is not int or balance < 0:
-        balance = None
+    # Negative is real: Openmart refuses with 402 once spent, so it exhausts like zero.
+    balance = _finite(d.get("balance")) if isinstance(d, dict) else None
     period_end = d.get("period_end") if isinstance(d, dict) else None
     return {"value": balance, "unit": "credits",
             "note": f"Monthly subscription balance; current period ends {period_end or 'at the account renewal date'}."}
@@ -373,6 +402,58 @@ async def _fetchinio(c, key):
     }
 
 
+async def _sixtyfour(c, key):
+    d = await _get(c, "https://api.sixtyfour.ai/check-balance",
+                   headers={"x-api-key": key})
+    remaining = d.get("credits") if isinstance(d, dict) else None
+    if type(remaining) not in (int, float) or not math.isfinite(remaining) or remaining < 0:
+        raise ValueError("Sixtyfour returned no valid credit balance")
+    return {"value": remaining, "unit": "credits", "note": "Organization credit balance"}
+
+
+async def _leadocean(c, key):
+    d = await _get(c, "https://api.leadocean.io/v1/usage", headers={"x-api-key": key})
+    pace = (d.get("data") or {}).get("pace") if isinstance(d, dict) else None
+    if not isinstance(pace, dict):
+        raise ValueError("LeadOcean returned no pace counters")
+    remaining = []
+    for group in ("search", "enrich"):
+        windows = pace.get(group)
+        if not isinstance(windows, list) or not windows:
+            raise ValueError(f"LeadOcean returned no {group} counters")
+        for window in windows:
+            used, limit = window.get("used"), window.get("limit")
+            if type(used) is not int or type(limit) is not int or used < 0 or limit < 0:
+                raise ValueError("LeadOcean returned an invalid pace counter")
+            remaining.append(max(0, limit - used))
+    return {"value": min(remaining), "unit": "records", "informational": True,
+            "note": "Smallest remaining search/enrichment window; pools are independent"}
+
+
+async def _blitzapi(c, key):
+    d = await _get(c, "https://api.blitz-api.ai/v2/account/key-info",
+                   headers={"x-api-key": key})
+    remaining = d.get("records_remaining") if isinstance(d, dict) and d.get("valid") is True else None
+    if type(remaining) is not int or remaining < 0:
+        raise ValueError("BlitzAPI returned no valid remaining-record balance")
+    reset = d.get("next_reset_at")
+    rps = d.get("max_requests_per_seconds")
+    return {"value": remaining, "unit": "records",
+            "note": f"Monthly allowance resets {reset if isinstance(reset, str) else 'unknown'}; "
+                    f"per-endpoint limit {rps if type(rps) is int else 'unknown'} requests/s"}
+
+
+async def _mobiusengine_jobs(c, key):
+    # Free: GET /v1/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
+    # dollars; an account on a monthly plan answers mode "plan" and no balance, which is not a usable slot.
+    d = await _get(c, "https://jobs-api.arihaan.ai/v1/balance", headers={"x-api-key": key})
+    left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
+    if left is None or left < 0:
+        raise ValueError("MobiusEngine.ai Jobs Data returned no pay-per-job balance")
+    return {"value": left, "unit": "USD left",
+            "note": "prepaid pay-per-job balance; HTTP 402 insufficient_balance at zero"}
+
+
 async def _dropleads(c, key):
     d = await _get(c, "https://prime.dropleads.io/api/v2/prime-db/credits/balance",
                    headers={"X-API-Key": key})
@@ -390,23 +471,6 @@ async def _dropleads(c, key):
         "note": f"subscription {subscription}, PAYG {payg}, use PAYG {use_payg}; "
                 "totalAvailable is the spendable balance",
     }
-
-
-async def _quickenrich(c, key):
-    # Free discovery carries the remaining subscription allowance; no account endpoint exists.
-    r = await c.post("https://app.quickenrich.io/api/employees/contact-finder",
-                     headers={"Authorization": f"Bearer {key}"},
-                     json={"company_url": {"include": ["treg-probe-nonexistent.invalid"], "exclude": []},
-                           "per_page": 1})
-    r.raise_for_status()
-    doc = r.json()
-    meta = doc.get("meta") if isinstance(doc, dict) else None
-    remaining = meta.get("remaining_credits") if isinstance(meta, dict) else None
-    # Missing or unclear allowance data is unknown, never evidence of an unlimited plan.
-    if not isinstance(doc, dict) or doc.get("success") is not True or type(remaining) is not int or remaining < 0:
-        return {"value": None, "unit": "credits", "note": "No finite subscription allowance reported; check QuickEnrich plan"}
-    return {"value": remaining, "unit": "credits",
-            "note": "Subscription allowance; resets at renewal, no auto-top-up. Reset date not reported."}
 
 
 async def _prospeo(c, key):
@@ -456,18 +520,35 @@ async def _wiza(c, key):
 
 
 async def _getleadsio(c, key):
+    # A credit plan answers `credits_remaining`; an Unlimited plan omits it and answers fair-use
+    # `daily`/`monthly` windows instead, where the smaller `remaining` is what the account can
+    # still serve.
     d = await _get(c, "https://app.getleads.io/api/v1/usage/fair-use",
                    headers={"Authorization": f"Bearer {key}"})
-    remaining = d.get("credits_remaining") if isinstance(d, dict) and d.get("ok") is True else None
-    if isinstance(remaining, bool) or not isinstance(remaining, (int, float)) \
-            or not math.isfinite(remaining) or remaining < 0:
+    if not isinstance(d, dict) or d.get("ok") is not True:
         raise ValueError("GetLeads.io returned no valid remaining-credit balance")
-    return {
-        "value": remaining,
-        "unit": "credits",
-        "note": ("Promotional database-credit allocation; no published USD replacement price. "
-                 "The separate Live Leads wallet is not included."),
-    }
+
+    def valid(n):
+        return type(n) in (int, float) and math.isfinite(n)
+
+    if "credits_remaining" in d:
+        remaining = d["credits_remaining"]
+        if not valid(remaining) or remaining < 0:
+            raise ValueError("GetLeads.io returned no valid remaining-credit balance")
+        return {
+            "value": remaining,
+            "unit": "credits",
+            "note": ("Promotional database-credit allocation; no published USD replacement price. "
+                     "The separate Live Leads wallet is not included."),
+        }
+    windows = {name: w for name in ("daily", "monthly")
+               if isinstance(w := d.get(name), dict) and valid(w.get("remaining"))}
+    if not windows:
+        raise ValueError("GetLeads.io returned no valid remaining-credit balance or fair-use window")
+    detail = ", ".join(f"{name} {w['remaining']}/{w.get('cap')}" for name, w in windows.items())
+    return {"value": max(0, min(w["remaining"] for w in windows.values())),
+            "unit": "rows (fair-use)",
+            "note": f"Unlimited plan fair-use: {detail}; binding {d.get('binding', '?')}"}
 
 
 async def _hunter(c, key):
@@ -539,6 +620,20 @@ async def _bounceban(c, key):
             or not math.isfinite(credits) or credits < 0):
         raise ValueError("BounceBan returned no valid verification-credit balance")
     return {"value": credits, "unit": "verification credits", "note": ""}
+
+
+async def _dropcontact(c, key):
+    response = await c.post(
+        "https://api.dropcontact.com/v1/enrich/all",
+        headers={"X-Access-Token": key}, json={"data": [{}]},
+    )
+    response.raise_for_status()
+    data = response.json()
+    credits = data.get("credits_left") if isinstance(data, dict) and not data.get("error") else None
+    if (isinstance(credits, bool) or not isinstance(credits, (int, float))
+            or not math.isfinite(credits) or credits < 0):
+        raise ValueError("Dropcontact returned no valid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
 
 
 async def _zerobounce(c, key):
@@ -637,21 +732,27 @@ async def _thecompaniesapi(c, key):
     return {"value": team.get("credits"), "unit": "credits", "note": ""}
 
 
+def _number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
 async def _apollo(c, key):
-    # api_profile with include_credit_usage returns the caller's remaining balances directly.
-    # `num_credits_remaining` is the LEGACY field and went stale at 0 on 2026-08-24 while the
-    # account was still fine: a live 1-credit /people/match returned a verified email (200) with
-    # the field still reading 0, and only `total_unified_credits_used` moved. Apollo has moved
-    # this account to unified credits, so derive what is left from the granted lead pool minus
-    # unified usage, and keep the legacy field as a fallback for accounts still on the old model.
+    # api_profile with include_credit_usage meters each pool. The one that runs out is the LEAD
+    # pool (Apollo's 422 names `credit_type: lead credits`, `credit_balance: 0`), which every enrich
+    # match and search page draws on, and `num_credits_remaining` counts it down.
+    # `total_unified_credits_used` moves with `num_direct_dial_credits_used` (phone reveals) only:
+    # the granted pool minus it stays high while Apollo refuses every enrich. The legacy field has
+    # read a stale 0 on a healthy account before; that costs a minute of refusals per sweep (a
+    # probe's 2xx lifts the reading), where a stale high reading relays every call into the 422.
+    # Without the lead field there is no reading (stale): the unified meter is no stand-in for it.
     d = await _get(c, "https://api.apollo.io/api/v1/users/api_profile",
                    params={"include_credit_usage": "true"}, headers={"X-Api-Key": key})
-    granted, used = d.get("effective_num_lead_credits"), d.get("total_unified_credits_used")
-    left = (granted - used if isinstance(granted, (int, float)) and isinstance(used, (int, float))
-            else d.get("num_credits_remaining"))
+    lead = d.get("num_credits_remaining")
+    left = lead if _number(lead) else None
+    dial, dial_used = d.get("effective_num_direct_dial_credits"), d.get("num_direct_dial_credits_used")
+    dial_left = dial - dial_used if _number(dial) and _number(dial_used) else dial
     return {"value": left, "unit": "credits",
-            "note": f"lead pool {granted} granted / {used} unified credits used, "
-                    f"direct-dial {d.get('effective_num_direct_dial_credits')}, "
+            "note": f"lead pool {d.get('effective_num_lead_credits')} granted, direct-dial {dial_left} left, "
                     f"ai {d.get('effective_num_ai_credits')}"}
 
 
@@ -687,6 +788,24 @@ async def _tomba(c, key):
                     f"plan {((d.get('pricing') or {}).get('name', '?'))}"}
 
 
+async def _hlrlookup(c, key):
+    # Free. Both halves of the pair ride in the JSON body; the secret has its own platform slot
+    # (HLRLOOKUP.platform_extra_setting). Credits can be fractional (cache hits cost half a credit).
+    secret = get_settings().platform_key_hlrlookup_secret or ""
+    r = await c.post("https://api.hlrlookup.com/apiv2/balance",
+                     json={"api_key": key, "api_secret": secret})
+    r.raise_for_status()
+    d = r.json()
+    raw = d.get("Credits") if isinstance(d, dict) and d.get("Status") == "OK" else None
+    try:
+        balance = Decimal(str(raw)) if not isinstance(raw, bool) and raw is not None else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite():
+        raise ValueError("HLR Lookup balance returned an invalid credit count")
+    return {"value": float(balance), "unit": "credits", "note": ""}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -703,6 +822,31 @@ async def _findymail(c, key):
                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
     return {"value": d.get("credits"), "unit": "finder credits",
             "note": f"verifier {d.get('verifier_credits')} left (separate pool)"}
+
+
+async def _anymailfinder(c, key):
+    d = await _get(c, "https://api.anymailfinder.com/v5.1/account",
+                   headers={"Authorization": key})
+    credits = d.get("credits_left")
+    if isinstance(credits, bool) or not isinstance(credits, int) or credits < 0:
+        raise ValueError("Anymail Finder account returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
+async def _enrow(c, key):
+    d = await _get(c, "https://api.enrow.io/account/info", headers={"x-api-key": key})
+    credits = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Enrow account returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
+async def _filtrat(c, key):
+    d = await _get(c, "https://filtrat.io/v1/credits/balance", headers={"Authorization": f"Bearer {key}"})
+    credits = _finite(d.get("balance")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Filtrat returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
 
 
 async def _branddev(c, key):
@@ -725,13 +869,19 @@ async def _leadsforge(c, key):
 
 async def _fiber_ai(c, key):
     # GET /v1/get-org-credits is Fiber's free registry probe (documented in catalog/fiber-ai.yaml);
-    # it is not a catalog endpoint. `usagePeriodResetsOn` sits a century out on the trial pool, so
-    # treat `available` as a prepaid balance, not a monthly quota.
+    # it is not a catalog endpoint. `output` lists one entry per credit pool, and the first can be a
+    # spent trial pool while a paid pool still has credits, so the balance is the sum over pools.
+    # `usagePeriodResetsOn` sits a century out on the trial pool, so treat `available` as a prepaid
+    # balance, not a monthly quota.
     d = await _get(c, "https://api.fiber.ai/v1/get-org-credits", headers={"x-api-key": key})
-    org = (d.get("output") or [{}])[0]
-    resets = (org.get("usagePeriodResetsOn") or "")[:10]
-    return {"value": org.get("available"), "unit": "credits",
-            "note": f"{org.get('used')} of {org.get('max')} used; period resets {resets}"}
+    pools = [p for p in (d.get("output") or []) if isinstance(p, dict)]
+    counts = [p.get("available") for p in pools]
+    if not counts or any(type(n) not in (int, float) or not math.isfinite(n) or n < 0 for n in counts):
+        raise ValueError("Fiber AI returned no valid credit pools")
+    detail = ", ".join(f"{p.get('available')}/{p.get('max')} (resets "
+                       f"{(p.get('usagePeriodResetsOn') or '')[:10]})" for p in pools)
+    return {"value": sum(counts), "unit": "credits",
+            "note": f"{len(pools)} pool(s) available/max: {detail}"}
 
 
 async def _coingecko(c, key):
@@ -764,16 +914,23 @@ async def _influencersclub(c, key):
 
 async def _spyfu(c, key):
     # The Account API was missed on the 2026-08-12 sweep; it reports the month's included units
-    # (rows) against usage, plus the overage cost in USD. Month is UTC.
+    # (rows) against usage, plus the overage cost in USD. Month is UTC. Units past the allowance are
+    # billed as overage, not refused, so a spent allowance is informational: reading it as an empty
+    # balance would make the sweep refuse calls the account still serves.
     from datetime import datetime, timezone
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     d = await _get(c, f"https://api.spyfu.com/apis/accounts_api/v2/usage/month/{month}",
                    params={"api_key": key})
     base, used = d.get("baseUnits"), d.get("unitsUsed")
-    left = (base - used) if isinstance(base, (int, float)) and isinstance(used, (int, float)) else None
-    return {"value": left, "unit": "units left this month",
-            "note": f"{used}/{base} used, {d.get('requestCount')} requests, "
-                    f"overage ${d.get('finalCost', 0)} ({d.get('serviceLevelName')})"}
+    if type(base) not in (int, float) or type(used) not in (int, float):
+        raise ValueError("SpyFu returned no valid monthly usage")
+    note = (f"{used}/{base} used, {d.get('requestCount')} requests, "
+            f"overage ${d.get('finalCost', 0)} ({d.get('serviceLevelName')})")
+    row = {"value": base - used, "unit": "units left this month", "note": note}
+    if used >= base:
+        row |= {"informational": True,
+                "note": note + "; informational: allowance spent, further units bill as overage"}
+    return row
 
 
 async def _icypeas(c, key):
@@ -806,7 +963,7 @@ async def _brightdata(c, key):
     # GET /customer/balance returns account balance and pending charges (USD).
     # Requires billing permission on the API token — if the token lacks it, the request
     # returns 403 and the exception path surfaces the permission issue as a note.
-    # Response: {balance, credit, prepayment, pending_costs}
+    # The response carries balance, credit, prepayment and pending_costs.
     d = await _get(c, "https://api.brightdata.com/customer/balance",
                    headers={"Authorization": f"Bearer {key}"})
     return {"value": d.get("balance"), "unit": "USD",
@@ -825,9 +982,29 @@ async def _crustdata(c, key):
     return {"value": acct.get("credits"), "unit": "credits", "note": note}
 
 
+async def _theirstack(c, key):
+    d = await _get(c, "https://api.theirstack.com/v0/billing/credit-balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    total = d.get("api_credits") if isinstance(d, dict) else None
+    used = d.get("used_api_credits") if isinstance(d, dict) else None
+    if type(total) is not int or total < 0 or type(used) is not int or used < 0:
+        raise ValueError("TheirStack returned no valid API credit balance")
+    return {"value": max(total - used, 0), "unit": "API credits", "note": "Available API credits"}
+
+
+async def _enrichlayer(c, key):
+    d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = d.get("credit_balance") if isinstance(d, dict) else None
+    if isinstance(balance, bool) or not isinstance(balance, (int, float)) \
+            or not math.isfinite(balance) or balance < 0:
+        raise ValueError("Enrichlayer returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "pay-as-you-go balance"}
+
+
 async def _akta(c, key):
     # GET /mcp/account is free — returns plan tier and remaining credit balance.
-    # Response: {credit_balance, balance_amount, currency, package_type, is_enterprise, ...}
+    # The response carries credit_balance, balance_amount, currency, package_type, is_enterprise and more.
     d = await _get(c, "https://api.akta.pro/api/v1/mcp/account",
                    headers={"x-api-key": key})
     tier = d.get("package_type", "unknown")
@@ -837,7 +1014,75 @@ async def _akta(c, key):
             "note": f"tier {tier}{enterprise}, lifetime {d.get('lifetime_consumed_credits', 0)} used"}
 
 
+def _balance(raw, vendor: str, *, signed: bool = False):
+    value = _finite(raw)
+    if value is None or (value < 0 and not signed):
+        raise ValueError(f"{vendor} returned no valid balance")
+    return value
+
+
+async def _openrouter(c, key):
+    # GET /api/v1/credits is free but takes a management key; the inference key held in the slot
+    # gets 401 there, and GET /api/v1/key reports only that key's own spending cap.
+    management = get_settings().platform_openrouter_management_key.strip()
+    if not management:
+        return {"value": None, "unit": "", "no_api": True,
+                "note": "no OpenRouter management credential configured; account credits are in the dashboard"}
+    d = await _get(c, "https://openrouter.ai/api/v1/credits",
+                   headers={"Authorization": f"Bearer {management}"})
+    data = d.get("data") if isinstance(d, dict) and isinstance(d.get("data"), dict) else {}
+    total = _balance(data.get("total_credits"), "OpenRouter")
+    used = _balance(data.get("total_usage"), "OpenRouter")
+    return {"value": total - used, "unit": "USD", "note": f"{used:g} used of {total:g} purchased"}
+
+
+async def _anyapi(c, key):
+    # GET /v1/balance is documented as free; `usd` is the prepaid wallet (api.getanyapi.com/openapi.json).
+    d = await _get(c, "https://api.getanyapi.com/v1/balance", headers={"X-API-Key": key})
+    return {"value": _balance(d.get("usd"), "AnyAPI"), "unit": "USD", "note": "prepaid wallet"}
+
+
+async def _cloro(c, key):
+    # GET /v1/credits charges 0 credits (cloro.dev/docs/api-reference/endpoint/get-credits).
+    d = await _get(c, "https://api.cloro.dev/v1/credits", headers={"Authorization": f"Bearer {key}"})
+    return {"value": _balance(d.get("remaining"), "cloro", signed=True), "unit": "credits",
+            "note": f"{d.get('perCycle')} per cycle; cycle resets {(d.get('cycleResetsAt') or '?')[:10]}"}
+
+
+async def _crawl4ai(c, key):
+    d = await _get(c, "https://api.crawl4ai.com/v1/billing/balance", headers={"Authorization": f"Bearer {key}"})
+    mc = d.get("credit_mc")
+    return {"value": _balance(mc / 1000 if type(mc) in (int, float) else None, "Crawl4AI"), "unit": "credits",
+            "note": f"plan {d.get('tier')}"}
+
+
+async def _reapi(c, key):
+    # GET /api/v1/balance does not consume credits; 1 credit = $0.001 (reapi.ai/docs/api/balance).
+    d = await _get(c, "https://reapi.ai/api/v1/balance", headers={"Authorization": f"Bearer {key}"})
+    return {"value": _balance(d.get("balance"), "reAPI"), "unit": "credits",
+            "note": "1 credit = $0.001"}
+
+
+async def _piapi(c, key):
+    # GET /account/info names `equivalent_in_usd` as the valid balance (piapi.ai/docs/account-info-api)
+    # but publishes no response schema, so accept it top-level or under `data` and fail otherwise.
+    d = await _get(c, "https://api.piapi.ai/account/info", headers={"x-api-key": key})
+    body = d.get("data") if isinstance(d.get("data"), dict) else d
+    return {"value": _balance(body.get("equivalent_in_usd"), "PiAPI"), "unit": "USD",
+            "note": "equivalent_in_usd from account info"}
+
+
 BALANCE_ROUTES = {
+    "orbisearch": _orbisearch,
+    "dropcontact": _dropcontact,
+    "theirstack": _theirstack,
+    "anyapi": _anyapi,
+    "cloro": _cloro,
+    "openrouter": _openrouter,
+    "crawl4ai": _crawl4ai,
+    "piapi": _piapi,
+    "reapi": _reapi,
+    "enrichlayer": _enrichlayer,
     "akta": _akta,
     "brightdata": _brightdata,
     "crustdata": _crustdata,
@@ -853,15 +1098,20 @@ BALANCE_ROUTES = {
     "branddev": _branddev,
     "companyenrich": _companyenrich,
     "findymail": _findymail,
+    "anymailfinder": _anymailfinder,
+    "enrow": _enrow,
+    "filtrat": _filtrat,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
     "tomba": _tomba,
+    "hlrlookup": _hlrlookup,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
     "fishaudio": _fishaudio,
     "tavily": _tavily,
+    "search1api": _search1api,
     "linkup": _linkup,
     "you": _you,
     "serper": _serper,
@@ -877,7 +1127,10 @@ BALANCE_ROUTES = {
     "hunter": _hunter,
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
-    "quickenrich": _quickenrich,
+    "sixtyfour": _sixtyfour,
+    "leadocean": _leadocean,
+    "blitzapi": _blitzapi,
+    "mobiusengine_jobs": _mobiusengine_jobs,
     "prospeo": _prospeo,
     "aiark": _aiark,
     "wiza": _wiza,
@@ -904,6 +1157,19 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
+                "field; the prepaid USD balance is visible in the Corpo API dashboard",
+    "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
+    "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
+                   "Contact Finder miss or hit and a billed employee search all return a meta without "
+                   "remaining_credits (or no meta), despite the published docs; the subscription "
+                   "allowance is visible in the QuickEnrich dashboard only",
+    "octen": "no account balance or usage endpoint in the published OpenAPI; "
+             "PAYG USD balance and usage are visible in the provider dashboard",
+    "parallel": "GET /account/service/v1/balance needs an Account API OAuth access token, "
+                "not an API key; the USD balance is visible in the Parallel Platform",
+    "valyu": "no documented API endpoint for remaining credits or account usage; "
+             "the subscription balance is visible in Valyu's dashboard",
     "perplexity": "no API credit-balance endpoint in the published API reference; "
                   "the prepaid USD balance is visible in the Perplexity API console",
     "adyntel": "no public balance or usage endpoint in the official API reference "
@@ -924,7 +1190,7 @@ NO_BALANCE_API = {
                          "prepaid Credits are visible in the vendor dashboard only",
     "justoneapi": "balance available only via MCP server (get_account_balance tool), no public REST "
                   "endpoint documented (checked docs.justoneapi.com 2026-08-31) — dashboard only",
-    "google-ai": "no balance endpoint: the Gemini API bills the key's Google Cloud project "
+    "google_ai": "no balance endpoint: the Gemini API bills the key's Google Cloud project "
                  "postpaid, and Cloud Billing reads need OAuth, not the API key (checked "
                  "ai.google.dev 2026-09-29) — spend and budgets live in the Cloud console",
     "keenable": "no public REST balance or usage endpoint in the official OpenAPI document "
@@ -939,13 +1205,23 @@ NO_BALANCE_API = {
     "scrubby": "no free standalone balance or usage endpoint in the official API "
                "(checked docs.scrubby.io 2026-09-16) — remaining_credits appears only on "
                "verification responses; do not spend a verification merely to collect capacity",
+    "minimax": "no balance or quota endpoint in the international API reference (checked "
+               "platform.minimax.io/docs 2026-10-01) — usage is on the console page only",
+    "replicate": "no balance, credit or billing endpoint; GET /v1/account returns identity only "
+                 "(checked replicate.com/docs/reference/http 2026-10-01) — dashboard only",
     "tiingo": "no usage API (api/account/usage 404s, checked 2026-08-31) — tiingo.com/account/usage is "
               "a logged-in HTML page only",
 }
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of
 # their own (see OAuthProvider.platform_extra_setting) — they must not become report rows.
-AUX_SLOTS = {"tomba_secret"}
+AUX_SLOTS = {"tomba_secret", "hlrlookup_secret"}
+
+# Vendors that keep answering calls past a zero balance and bill the overage. A reading below
+# `EMPTY_BELOW` from one of them is `_overdrawn`, never exact: exact, it would refuse calls the
+# account still serves. Each needs a balance or quota signature for its eventual refusal
+# (`test_every_overdraft_vendor_has_a_refusal_signature`). Every other collector's negative is exact.
+OVERDRAFT_SERVED = frozenset({"cloro", "firecrawl", "hlrlookup"})
 
 
 def all_platform_providers() -> list[str]:
@@ -977,11 +1253,15 @@ async def provider_balance(provider: str, client: httpx.AsyncClient | None = Non
                 "note": "no fetcher written yet"}
     try:
         if client is None:
-            async with httpx.AsyncClient(timeout=30) as c:
+            async with httpx.AsyncClient(timeout=30, headers={"User-Agent": TREG_USER_AGENT}) as c:
                 row = await fetch(c, key)
         else:
             row = await fetch(client, key)
     except Exception as exc:  # noqa: BLE001 — a sweep must report, not crash
         return {"provider": provider, "value": None, "unit": "",
                 "note": f"{type(exc).__name__}: {exc}"}
+    from .policy import EMPTY_BELOW  # policy imports this module
+    value = row.get("value")
+    if provider in OVERDRAFT_SERVED and isinstance(value, (int, float)) and value < EMPTY_BELOW:
+        row = _overdrawn(row)
     return {"provider": provider, **row}

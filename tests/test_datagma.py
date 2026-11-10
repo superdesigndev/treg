@@ -11,12 +11,12 @@ from treg.application.call.resolve import MarketplaceCall
 from treg.domain.capacity import collectors, policy
 
 
-def _mk(unit_micro=22_580):
+def _mk(unit_micro=22_580, endpoint_id="datagma.people.email.find"):
     return MarketplaceCall(
         tool=None, upstream="https://gateway.datagma.net/api/ingress/v8/findEmail",
-        consumed=set(), provider="datagma", endpoint_id="datagma.people.email.find",
+        consumed=set(), provider="datagma", endpoint_id=endpoint_id,
         tier="platform", estimate_micro=unit_micro, cost_type="per_success",
-        unit_micro=unit_micro, request_data={},
+        unit_micro=unit_micro, reported_charge_unit_micro=22_580, request_data={},
     )
 
 
@@ -27,6 +27,13 @@ def _mk(unit_micro=22_580):
 def test_datagma_settles_from_reported_credit_burn(raw, expected):
     assert call_settle._observed_cost_micro(
         _mk(), json.dumps({"creditBurn": raw}).encode()) == expected
+
+
+def test_datagma_phone_converts_credit_burn_at_one_credit_not_the_call_price():
+    # Phone find costs 30 credits a call, so its unit is the whole call: `creditBurn: 30` once
+    # settled as 30 x 30 credits ($20.32 for a $0.68 lookup).
+    mk = _mk(unit_micro=677_400, endpoint_id="datagma.people.phone.find")
+    assert call_settle._observed_cost_micro(mk, b'{"creditBurn": "30"}') == 677_400
 
 
 async def test_datagma_internal_balance_exposes_only_credit_count(monkeypatch):

@@ -48,6 +48,7 @@ endpoints:
       note: One credit for each result whose success field is true. Live balance moved by one for one such result. A reserved .invalid email also returned success=true and was billed; treat that as an upstream data-quality observation, not a validity guarantee.
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-email
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.enrich.from_email.json
 
   - id: getleadsio.people.enrich.from_linkedin
@@ -78,6 +79,7 @@ endpoints:
       source_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-linkedin
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-linkedin
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.enrich.from_linkedin.json
 
   - id: getleadsio.people.enrich.from_person
@@ -107,6 +109,7 @@ endpoints:
       source_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.enrich.from_person.json
 
   - id: getleadsio.people.phone.lookup
@@ -138,6 +141,7 @@ endpoints:
       note: One credit when success is true; a live synthetic-number miss returned success=false and used zero credits. Platform access is a $0 limited treg trial, not the vendor's database-credit price.
     docs_url: https://www.getleads.io/docs/#get-apiv1contactslookupphone
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.phone.lookup.json
   - id: getleadsio.people.colleagues
     capability: people.organization_contacts
@@ -171,6 +175,7 @@ endpoints:
       note: One credit per returned record. A live zero-row miss reported query_credits_used=0 and did not move the balance.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactslookupcolleagues
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.colleagues.json
 
   - id: getleadsio.people.decision_makers
@@ -197,6 +202,7 @@ endpoints:
       source_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
     docs_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.decision_makers.json
 
   - id: getleadsio.people.search
@@ -229,6 +235,7 @@ endpoints:
       note: One credit per returned record. Live one-row pages each reported and consumed one credit; a zero-row page reported and consumed zero.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactssearch
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.search.json
 
   - id: getleadsio.people.search.count
@@ -256,6 +263,7 @@ endpoints:
       note: Live request reported credits_used=0 and did not reduce plan credits.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactssearchcount
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.search.count.json
 
   - id: getleadsio.people.search.filters
@@ -282,6 +290,7 @@ endpoints:
     cost: *free_cost
     docs_url: https://www.getleads.io/docs/#get-apiv1contactsfilter-values
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.people.search.filters.json
 
   - id: getleadsio.companies.funding.feed
@@ -308,6 +317,7 @@ endpoints:
       note: One credit per returned record; a live limit=1 request returned one record and reported queryCreditsUsed=1.
     docs_url: https://www.getleads.io/docs/#get-apiv1fundingsignals
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.companies.funding.feed.json
 
   - id: getleadsio.companies.acquisitions.feed
@@ -337,4 +347,5 @@ endpoints:
       note: One credit per returned record; a live zero-record response reported queryCreditsUsed=0.
     docs_url: https://www.getleads.io/docs/#get-apiv1acquisitionssignals
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/getleadsio.companies.acquisitions.feed.json

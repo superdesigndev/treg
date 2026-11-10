@@ -5,6 +5,10 @@ sources:
   - src/treg/bootstrap.py
   - src/treg/bootstrap_handlers.py
   - src/treg/bootstrap_http.py
+  - src/treg/worker.py
+  - src/treg/infra/money_trace_runner.py
+  - src/treg/infra/loop_stall.py
+  - src/treg/infra/money_admission_reporting.py
   - src/treg/call_surface.py
   - src/treg/application/connect.py
   - src/treg/domain/identity/mcp_oauth.py
@@ -30,147 +34,81 @@ related:
 
 # Application composition
 
-The standalone [Enrich Arena](../interface/enrich-arena.md) pages (`/enrich-arena` and
-`/enrich-arena/leaderboard`) and `/arena/*` routes are control-role
-surfaces. Paid interactive runs use the ordinary call application internally. Shutdown drains their
-in-process owners before closing the shared upstream client.
-The `/agent-setup.js` browser asset (compiled from the Dashboard source for Arena) and the compiled Dashboard assets at
-`/app/ui/assets/{name}` also belong to the control role.
+`bootstrap.create_app(role)` is the composition root; `api.py` calls it once so the deployed
+`treg.api:app` import path stays the `all` role. Installed [policy extensions](policy-extensions.md)
+load last, so an extension's `install` sees the finished app.
 
-`bootstrap.create_app(role)` is the FastAPI composition root. `api.py` hosts the ordered route table,
-attaches concern routers at compatibility-sensitive registration points, and calls the factory once at
-EOF so the deployed `treg.api:app` import path remains the default `all` role.
+Registration order (middleware, exception handlers, mounts, routes) is part of the compatibility
+surface: `scripts/dump_surface.py` snapshots it, and a change to the snapshot for `role="all"` must be
+intentional.
 
-The factory owns concrete assembly: the three core pure-ASGI middleware registrations, the optional
-V2 path normalizer, five exception handlers, static mounts, optional MCP mounts and lifespans,
-GET-to-HEAD widening, the OpenAPI wrapper that hides
-implied HEAD operations and gives each method of a multi-method route its own operation id, shared HTTP client creation, startup work, shutdown drains, and the Ads
-conversion worker. Registration order is compatibility behavior. The four stage-0 snapshots stay
-byte-identical for `role="all"` unless that composition intentionally changes.
+## Roles
 
-When archive settings select R2, the lifespan validates object-store configuration before DB
-verification, then owns the asynchronous client until archive and analytics drains finish. This
-conditional resource setup does no object I/O at startup and adds no worker. Tests can supply
-`create_app(..., archive_object_store=...)`; `configure_archive_object_store` is the shared
-in-memory injection seam. See [archive](archive.md) for switches and queue behavior.
-The same `archive_object_store` context owns the client for the Arena insights worker; that command
-does not start a web lifespan or its background tasks.
+`app.state.role_manifest` lists each role's routes, background tasks and startup checks;
+`tests/test_app_roles.py` pins them. `dataplane` serves the calling surfaces (`/call/`,
+`/catalog/call/`, [`/table/`](table.md), [`/tasks/`](tasks.md)) and MCP; `control` serves everything else, including OAuth
+issuance; `all` serves both. Every `api.router` route belongs to exactly one of
+`_CONTROL_ROUTE_KEYS` or `_DATAPLANE_ROUTE_KEYS`, and app creation fails on an unclassified, stale,
+duplicate or doubly owned key, so a new route cannot silently widen the dataplane.
 
-For every role, the factory wires the Catalog observation port to one process-local
-`CachedEndpointObservationReader` backed by short `background_session_maker` reads — the cache never
-awaits the source on the request path (a miss returns empty and schedules a refresh), so those
-`callrecord` aggregates are off-request work and belong off the API's pool. `all` and `dataplane`
-lifespans inject that exact instance into both mounted MCP catalog surfaces; the HTTP catalog routes
-and the observed-stats prose pages (use-case and workflow) on `all` and `control` read the instance
-from app state. This keeps one cache and one refresh Task per
-process even when HTTP and MCP search concurrently. The refresh Task starts lazily on a miss rather
-than appearing in the role's always-running background-task manifest. The lifespan still owns it:
-shutdown first unbinds it from MCP, then calls `aclose()`, which refuses new refreshes and cancels the
-shared Task before database and HTTP resources disappear. Once the fault handler is installed the
-lifespan emits `analytics.capture_service_started(role)`, one `service_started` event per process
-carrying the `build` and `archive_config` fingerprints every server event has (see
-[data-model](data-model.md#product-analytics-writer-analyticspy)).
+MCP is calling traffic and stays on the dataplane; it only validates tokens. Token issuance (consent
+pages, `/oauth/*`) stays on control. `domain.identity.session` is therefore used by both roles.
 
-`bootstrap_handlers.py` owns the app-wide pool-saturation and HTTP-exception adapters.
-`call_surface.split_call_path`
-classifies both `/call/` and `/catalog/call/` so those adapters share the same call-id, audit and
-idempotency-release contract while retaining `call` versus `catalog_call` ingress attribution. The
-composition root supplies the call-specific `_stamp_call_exit` callback from `routers/call.py` before registration;
-the callback owns call ids, refusal classification, audit fallback, exceptional call telemetry, and
-idempotency-label release. After caller identity exists, the pool adapter reports
-`failure_kind=db_pool` in the `tool_called` funnel. A timeout during identity resolution instead emits
-`call_intake_failed`, with no team or target attribution, so it does not change the admitted-call
-population. Both also send the infrastructure exception to `analytics.capture_fault` before returning
-the typed 503; normal HTTP refusals remain responses, not server faults.
+No role lifespan writes schema, backfills data or provisions the local single user. Backfills run in
+`python -m treg upgrade`; `python -m treg` adds single-user provisioning before Uvicorn starts. An
+operator serving the raw ASGI app must run the upgrade command on every release.
 
-`bootstrap_http.py` owns the app-wide middleware implementations. The middleware stack is
-`_BodyDecodeMiddleware` -> `_SecurityHeadersMiddleware` ->
-`_LegacyHostRedirectMiddleware` -> routes/mounts. All three are pure ASGI. The security wrapper adds
-headers at `http.response.start` with case-insensitive setdefault semantics, and the redirect wrapper
-either sends the same 301/302 response as before or calls its child directly. Keeping
-`BaseHTTPMiddleware.call_next()` out of this stack matters for streaming and disconnects: an MCP
-client may close while its stateless transport terminates without sending a response, which is a
-normal end to an already-dead connection rather than a server 500.
+## Lifespan
 
-Pure ASGI does not make a genuine missing-response defect silent. Uvicorn's
-`RequestResponseCycle.run_asgi` checks an app that returns while the connection is still live, logs
-`ASGI callable returned without starting response.`, and sends a 500. It skips that error only when
-the protocol has already marked the client disconnected, when no response can be delivered. Response
-completion also remains responsible for Starlette background tasks: the `/call` relay's
-`StreamingResponse` runs `BackgroundTask(upstream_resp.aclose)` after its body, and an assertion test
-pins that the shared httpx connection is released exactly once. Removing the two AnyIO memory-stream
-hops changes streaming backpressure and scheduling but not interruption semantics, which the
-callmatrix stream-failure case pins.
+- Shutdown cancels and awaits every started background worker before draining Arena, audit and
+  analytics or closing the shared HTTP client, so database rollback and close finish before
+  event-loop teardown.
+- The catalog's endpoint-observation reader is one process-local `CachedEndpointObservationReader`
+  per app, shared by the HTTP catalog routes and both MCP surfaces, reading through
+  `background_session_maker`. It never awaits its source on the request path (a miss returns empty and
+  schedules a refresh), so `callrecord` aggregates stay off the API pool.
+- When the archive uses R2, object-store configuration is validated before DB verification and does
+  no object I/O at startup (see [archive](archive.md)). Tests inject a store through
+  `create_app(..., archive_object_store=...)`.
+- `infra.money_trace_runner` runs on every role regardless of analytics settings; it stops after
+  money-producing background work drains. Its records are defined in
+  [data-model](data-model.md#product-analytics-writer-analyticspy).
+- `infra.loop_stall` runs in every web worker's lifespan. The loop only stamps a heartbeat and,
+  when a beat comes `STALL_SECONDS` after the last, queues that gap: every such gap is one
+  `loop_stall_end`, measured on the loop's own clock (the stall plus at most one heartbeat), even
+  when nothing saw it in progress. A daemon thread writes `loop_stall` with the loop thread's stack
+  once the stamp is `STALL_SECONDS` old. Lines go straight to the stderr descriptor, not through
+  `logging`, so a full pipe blocks only that thread and holds no lock that request logs or
+  interpreter shutdown need. It does not use the process-wide faulthandler timer. A watcher that
+  woke late (C code held the GIL) marks its stack `stack_reliable: false`. It never raises into
+  startup or shutdown.
 
-## Role manifests
+## HTTP middleware
 
-Every created app exposes `app.state.role_manifest` with explicit `routes`, `background_tasks`, and
-`startup_checks` lists. `tests/test_app_roles.py` pins all three lists for every role, while the call
-architecture test separately pins the dataplane/control startup split and background-task ownership.
+Every app-wide middleware in `bootstrap_http.py` is pure ASGI. Do not reintroduce
+`BaseHTTPMiddleware.call_next()`: an MCP client may disconnect while its stateless transport ends
+without a response, which must stay a normal end of a dead connection rather than a 500. Uvicorn
+still sends a 500 when an app returns without starting a response on a live connection, so pure ASGI
+does not hide a genuine missing-response bug. `_DevTitleMiddleware` is registered only when
+`Settings.local_dev` is true; the surface snapshot omits it.
 
-| Role | HTTP routes and mounts | Background tasks | Startup checks |
-|---|---|---|---|
-| `all` | The complete surface, including `/run`, static files, `/mcp`, and the flagged `/mcp/v2` | Ads conversion worker when enabled | Read-only DB verify, HTTP client, enabled MCP lifespans |
-| `dataplane` | `/call/{rest:path}`, `/catalog/call/{rest:path}`, MCP mounts, and their resource metadata; no `/run`, static files, docs, or OpenAPI | None | Read-only DB verify, HTTP client, enabled MCP lifespans |
-| `control` | Everything except the calling surfaces; includes OAuth issuance, `/run`, and static files | Ads conversion worker when enabled | Read-only DB verify, HTTP client |
+`call_surface.split_call_path` lets the pool-saturation and HTTP-exception handlers in
+`bootstrap_handlers.py` treat `/call/`, `/catalog/call/` and `/table/` alike (call id, audit,
+idempotency release). A pool timeout before caller identity is resolved emits `call_intake_failed`
+rather than a `tool_called` failure, so it does not change the admitted-call population.
 
-No role lifespan writes schema, performs a data backfill, or provisions the local single user. The explicit
-`python -m treg upgrade` release phase owns content-driven backfills; the default `python -m treg`
-serve path adds single-user provisioning before Uvicorn starts. Raw ASGI operators must run the
-upgrade command separately on every release. `verify_db()` only checks revision compatibility and the
-Fernet-key guard; the exact startup manifests are pinned to a read-only allowlist.
+## MCP V2 path
 
-Every role lifespan calls `analytics.install_fault_handler` after the read-only DB verification. With no
-PostHog key it is a no-op; otherwise ERROR+ root logs and Uvicorn ASGI exception records feed the bounded
-analytics queue until the lifespan removes the handler in its outer `finally`. This is logging-only
-observability: it adds no middleware, background task, or database access.
-
-MCP is calling traffic (the refactor plan's role table assigns `mcp.py` to the dataplane), so a future
-dataplane deployment serves agents on both entry points. OAuth token issuance - consent pages and the
-`/oauth/*` endpoints - stays on control; the MCP surface only validates tokens, which is a read.
-`domain.identity.session` is therefore a both-role primitive: control signs browser and identity
-tokens, while both roles share its signing-key validation through `domain.identity.mcp_oauth`.
-
-`_CONTROL_ROUTE_KEYS` and `_DATAPLANE_ROUTE_KEYS` assign every `api.router` route to exactly one
-owner. App creation fails on an unclassified, stale, duplicate, or multiply-owned key, so adding a
-route cannot silently expand the dataplane. Role separation is preparatory in stage 1; only the
-`all` role is deployed.
-
-`TREG_CLAUDE_CONNECTOR_ENABLED=true` adds `/mcp/v2` and starts its lifespan. When the flag is false
-or missing, only the team `/mcp` mount starts. The nested V2 mount is registered first so the
-parent `/mcp` mount cannot consume it.
-
-When V2 is enabled, `NormalizeDirectoryMCPPath` rewrites the exact `/mcp/v2` path to `/mcp/v2/`
-before route matching. Claude can remove the final slash from a custom-connector URL. Both spellings
-must stay on the V2 transport and OAuth audience.
+`TREG_CLAUDE_CONNECTOR_ENABLED=true` mounts `/mcp/v2`, registered before `/mcp` so the parent mount
+cannot consume it. Claude can strip the final slash from a custom-connector URL, so
+`NormalizeDirectoryMCPPath` rewrites exactly `/mcp/v2` to `/mcp/v2/` before route matching; both
+spellings must reach the V2 transport and OAuth audience.
 
 ## Route cloning
 
-Each factory call must produce an independent app whose dependency overrides belong to that app.
-`_include_routes` therefore shallow-clones every `APIRoute`, points its dependency override provider
-at the new FastAPI instance, and rebuilds its request handler. This also avoids the internal
-`_IncludedRouter` wrapper added by the current FastAPI `include_router()` implementation, which would
-otherwise change route inspection and the committed surface snapshot.
-
-Public routes added since: `/{INDEXNOW_KEY}.txt` (`indexnow_key`, `routers/web.py`) — the IndexNow
-key file; listed in the ownership table beside `/sitemap.xml`. See `interface/seo.md` § IndexNow.
-
-The [tool hub](hub.md)'s management and browse surface (`/hub/tools*`, `/hub/run`, `/hub/runs/{run_id}`,
-`/hub/{tool_id}`, `/app/runs/{run_id}`, and the `/admin/hub/listings*` + `/admin/hub/updates*` review
-routes) joins `_CONTROL_ROUTE_KEYS` alongside the rest of the management surface; `/call/` and
-`/catalog/call/` remain the only dataplane routes a hub run's own steps go through. The legacy
-dashboard's `/app/legacy/assets/{path:path}` mount is gone — see [dashboard](../interface/dashboard.md).
-
-No web process collects Arena statistics any more: `treg-worker arena insights` (a cron) does,
-and `/arena/insights`, a control route, only reads the last published snapshot. `ROLE_BACKGROUND_TASKS`
-therefore lists `adsconv.worker` alone for control/all.
-Shutdown cancels and awaits every started background worker before draining Arena, audit and
-analytics or closing the shared client, so database rollback/close finishes before event-loop teardown.
-
-`POST /reviews` and `GET /admin/reviews` belong to control, alongside feedback intake and reads,
-as do `POST /media` and the public `GET /m/{token}` that serves a hosted reference file.
-
-The archive object-store lifespan normalizes configuration once, chooses an R2 factory or
-injected in-memory context, and resets the store on exit. R2 validation runs before DB startup
-verification; an obsolete comparison-mode environment variable no longer blocks migration CLI
-settings construction.
+Each `create_app` call must produce an independent app whose dependency overrides belong to it.
+`_include_routes` shallow-clones every `APIRoute`, points its override provider at the new app and
+rebuilds its handler. FastAPI's `include_router()` is avoided because its `_IncludedRouter` wrapper
+would change route inspection and the surface snapshot. A route with a server-rendered view gets
+its ASGI app wrapped there too (`routers.view.wrap`, [api](../interface/api.md) "Views"); the route
+object, and so the snapshot, is unchanged.

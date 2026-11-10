@@ -34,27 +34,66 @@ from the repository that owns the task; the sibling path supplies the other half
 Everything else in this file is guidance; these are the contract, and they win over any other passage.
 
 1. A team's own key always wins over treg's, is never metered, and is never routed or overflowed.
+   An operator's exact org/endpoint protective call allowance applies to every credential tier;
+   it counts admitted logical calls, not money or provider credits.
+   This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
 3. A request holds zero database connections while upstream or object-storage I/O is in flight.
    Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
-4. Plain `/call/` is a faithful relay: the injected credential, the transport headers listed in
+4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
+   accounts for the provider, chosen per call and fixed for anything an account created; on a
+   connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
+   token with the app secret, replacing any caller value), the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
-   agents, per-pin re-scoping of the caller's `Idempotency-Key` are the only rewrites. A credential
+   agents, per-pin re-scoping of the caller's `Idempotency-Key`, treg's own `User-Agent` in place
+   of the caller's, and, where the provider file names a `client_header`, treg's opaque per-team code
+   in that header (HMAC of `TREG_CLIENT_ID_SECRET` over provider and team, never a team id, name or
+   email) are the only rewrites of what the caller sent. One addition is allowed: when the
+   catalog declares `ceiling_param` (`{in: query, name, unit: usd}` on the provider file or on that
+   endpoint's `cost`), the call carries a caller ceiling, and the caller did not already send that
+   query name, the call application appends `name=<remaining ceiling in USD>` to the outbound query
+   before `relay()`. An explicit caller value is never rewritten. The appended pair is absent from
+   the inbound query, so it does not enter `params_hash` or the archive key. A credential
    binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
    is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
    Never add upstream-specific modeling.
+   One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
+   back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
+   row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
+   call one that cannot be scanned is replaced whole, never relayed as a prefix.
+   One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
+   (off by default): the member the row's settlement reads the provider's own charge from
+   (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
+   settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
+   or an idempotent replay sees it. The archive keeps the answer whole; a call sending
+   `X-Treg-Keep-Reported-Charge: true` keeps the member.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. Responses needing settlement or ownership evidence are buffered by the application
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
+   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
+   same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
+   returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps
+   asking providers until one answers valid or invalid, each attempt billed as usual, and reports it
+   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. Responses needing settlement or ownership evidence are buffered by the application
    up to 8 MiB; exceeding that limit fails without charging, never returns a successful prefix.
    An endpoint declaring `spooled_response` (inline media) instead reads its metered 2xx to an
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
    Authorized free final fetches needing no body evidence stream in full.
-5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+   `/table/` runs the same call through the same road and returns it as rows and columns; it never
+   changes what `/call/` returns (docs/context/architecture/table.md).
+   A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
+   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   through the same road and reads the answer with the descriptor; it never changes what `/call/`
+   returns (docs/context/architecture/tasks.md).
+5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
+   revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
+   bonus, in proportion), never another payment's block and never below the unheld balance.
+   There is no adjustment entry; an ops correction is a grant.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";
@@ -63,16 +102,16 @@ agents then built against a constitution that was wrong.
 ## Where the truth lives
 
 - **Design docs are fragments.** `docs/context/` holds one per subsystem, each naming its
-  `src/treg/*` sources in frontmatter; `docs/context/README.md` is the generated index and
-  `docs/context/foundation/charter.md` the start. Read the fragment before changing an area (the
-  `tools-registry-context` skill in `.agents/skills/` loads it).
+  `src/treg/*` sources in frontmatter; `docs/context/README.md` is the generated index and the
+  start. Read the fragment before changing an area (the `tools-registry-context` skill in
+  `.agents/skills/` loads it).
 - **Before pushing:** `bash .agents/skills/tools-registry-context/scripts/drift.sh` maps changed
   sources to fragments. Update them and commit the docs **in the same commit as the code**.
 - **Agent-facing files are the product's front door**, not documentation: `src/treg/web/llms.txt`
   and `src/treg/web/skill.md` (installed into every agent by `install.sh`). They, `README.md` and
   this file must agree on how treg works; a behavior change asks whether all four move.
-- **Three files move together** or they drift: `src/treg/web/tutorial.js` (the only interactive
-  source) and its hand-kept prose mirrors `src/treg/web/tutorial.md` and `docs/TUTORIAL.md`.
+- **Two files move together** or they drift: `src/treg/web/tutorial.js` (the only interactive
+  source) and its hand-kept prose mirror `src/treg/web/tutorial.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
 - If available, `../treg-internal` holds private operational configuration and tools; read its
@@ -88,11 +127,12 @@ agents then built against a constitution that was wrong.
 |---|---|---|
 | `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
 | `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
-| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph) | routers, application, concrete SDKs |
+| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits), `plugins` (a provider's pure functions a catalog row names, resolved by import) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
-- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
-  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+- Domains do not import each other, with four sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only), `catalog -> plugins` (the functions its
+  rows name). `identity` and `money` are leaves.
   import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
   `docs/context/architecture/import-boundaries.md` explains each contract.
 - `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role
@@ -111,15 +151,28 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Referral affiliates.** `domain/referrals.py` alone writes `User.referral_affiliate`, its
+  version and `ReferralAffiliateEvent`; the private admin calls the authenticated API. The flag
+  exempts only future qualification from the per-referrer cap, never abuse gates or historical
+  capped records. See `docs/context/architecture/money.md`.
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
+- **Showcase leaderboard and pictures.** `application/showcase.py` is the only writer of
+  `ShowcaseApp`, `ShowcaseAppEvent`, `ShowcaseAppKey`, `ShowcaseWeek`, `ShowcaseCursor` and `ShowcaseVote` (team
+  deletion removes them with the team, as it does every team's rows); the private admin acts
+  through its staff API (`/admin/showcase/*`), never the tables. `application/images.py` is the
+  only writer of `user.avatar_key` and `org.avatar_key`. The public leaderboard never returns a
+  team, an exact count or money. See `docs/context/architecture/showcase.md`.
 - **The call runtime is self-contained.** `src/treg/application/call/` depends on no management
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
-  credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
+  credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
+  the team's first owner and whether it ever bought credit), and writes only what
+  `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, and durable provider-resource ownership). Extend the
+  archive-question marks, durable provider-resource ownership, the task an async answer names,
+  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -127,14 +180,22 @@ agents then built against a constitution that was wrong.
   `earned` block in one transaction (`money.settle_to_in_transaction`, the only cross-team money
   movement). A steps recipe has one fixed price (`price_usd`); a script declares `max_price_usd` and
   prices itself with `ctx.charge(usd, note)` lines, so the cap is held and the sum of the lines is
-  settled, the rest refunded (`docs/hub-pricing-decisions.md`). A script runs in a separate process
+  settled, the rest refunded (hub.md "ctx.charge: a script's price"). A script runs in a separate process
   with no network; `ctx.call` is its only road out and `uses` in the manifest names every host it
   may reach. A hub tool is out of catalog search until its maker asks and treg approves (`HubListing`); once
   approved it stays under review for good, unlisted or not, and its share
   page shows a run log of outcomes only unless the maker turns `public_log` off
-  (`docs/hub-listing-decisions.md`). See `docs/context/architecture/hub.md`.
-- **Signup credit.** Once per new verified user, enforced by a user-level atomic claim committed
-  with the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
+- **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
+  share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
+  the grant. Team deletion never restores eligibility; an invitation code is not email proof.
+  An installed policy extension may defer it through the `signup_credit` decision point
+  (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
+- **Call admission.** Before treg's own money pays for a call (its key or its pay-per-use OAuth
+  app), an installed policy extension may refuse it through the `call_admission` decision point: a
+  403 before any hold and before the provider is reached, `funds_required` for a team that never
+  bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
+  slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
@@ -143,13 +204,18 @@ agents then built against a constitution that was wrong.
   an `own_account` endpoint, and reach other teams only where the endpoint itself declares
   `cache.sharing: public`; a provider's storage licence never decides that. A hit on an own key
   is free; a metered hit settles through the same hold, at `archive_hit_repeat_price_percent`
-  once the team has paid for that question. See `docs/context/architecture/archive.md`.
+  once the team has paid for that question. A team that has opted out (`Org.archive_opt_out_at`)
+  is neither served from nor recorded into the archive on any tier; erasing what it stored is a
+  separate act (team deletion, `treg-worker admin erase-archive`), never a side effect of the
+  switch. See `docs/context/architecture/archive.md`.
 
 ### Security guards that look redundant on purpose
 
 `expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
-(`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and the
-`treg run` allow-list and rlimits (`runner.py`). Read the fragment before touching any of them.
+(`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and
+the unconditional `POST /run` denial (`api.py`). Server-side CLI execution is disabled for every
+caller; an executable allow-list and rlimits are not an isolation boundary. Read the fragment before
+touching any of them.
 
 ## Development
 
@@ -159,7 +225,10 @@ uv run --frozen python -m pytest -q            # serial: debugging one test, or 
 uv run treg --help                             # the CLI from this checkout
 uv run python -m treg                          # the server
 uv run lint-imports                            # the import-linter contracts (CI runs this too)
+uv run ruff check                              # lint, config in pyproject.toml (CI runs this too)
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
+(cd cli && go vet ./... && go test ./...)      # the binary CLI (Go)
+TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
 xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
@@ -168,6 +237,10 @@ so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
+  a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
+  proved by `tests/cli_go`, except the differences `cli-binary.md` names ("Compatibility with the
+  Python CLI") and the harness's `normalize` spells out. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
@@ -182,23 +255,43 @@ so parallel runs and side-by-side runs never share one.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.
+- **No new foreign keys.** Keep referential rules in domain and application code, where a reader
+  sees them, not in database triggers that fire on every write. A foreign key adds a share lock on
+  the parent row to every child insert, and a lookup of every referencing table to every parent
+  delete; on an unindexed referencing column that lookup is a scan of the whole child table, per
+  deleted row. Do not drop existing ones in passing, but a delete path over a table that is still
+  referenced must have every referencing column indexed.
+- **Count the rows a query scans before it runs on the primary.** Run `EXPLAIN` against the replica
+  and read the plan, not the size of the result: a query returning a few thousand rows can scan
+  a whole large table once per candidate row. Write `NOT EXISTS`, never `NOT IN (subquery)`, against
+  a large table; past `work_mem` the latter cannot be hashed and rescans the subquery per row. A
+  statement that runs long on the primary holds back vacuum for every table, the hottest included.
 
 ## Working agreement
 
-- Keep the suite green; add tests for new behavior. Conventional Commits (`feat(scope): ...`,
+- Keep the suite green. Conventional Commits (`feat(scope): ...`,
   `fix: ...`, `docs: ...`); one logical change per commit; the PR says what changed and why and
   names the fragments it updated.
+- **Comments only for external constraints and public contracts**: behavior a vendor, platform
+  or protocol forces on us, or a public API contract. History goes in the commit message, an
+  invariant goes in a test, design goes in `docs/context` (`.agents/skills/code-quality`).
 - `/mcp/` and `/mcp/v2/` differ on purpose. A change to either or to shared MCP code is reviewed
-  against both; do not unify them in passing.
+  against both; do not unify them in passing. `/mcp/v2/`'s tools and hidden platforms match the
+  Claude directory submission: change them only with a resubmission. New features go to `/mcp/`.
+- **Every tool row carries `added:`**, the UTC day it reached main (`scripts/catalog_added.py`
+  writes today's where it is missing). Never change an existing one without the
+  `added-date-change` label; CI compares every tool id with the base branch.
 - **A catalog data PR is a few rows and a PR body.** Cache admission, comparison declarations,
   adapters and contracts are rows in `src/treg/catalog/`; each declaration carries a one-line
   reason and nothing more. The evidence (traffic, byte sizes, change observations, bodies read)
   goes in the PR body, never into a fragment or a comment. A fragment moves only when a mechanism
   changes; `drift.sh` naming one is a prompt to check it, not an obligation to write. No dated
   per-provider sections in `docs/context/architecture/catalog.md`: a provider's quirk lives on
-  its row as a `note`. No per-endpoint tests: the round-trip test over every shipped adapter and
-  the validator already judge the rows, and a test that restates a list of declarations is
-  deleted, not extended. Code that a data PR needs is its own PR, merged first.
+  its row, in the most specific note. Write and review every summary and note against
+  `docs/context/architecture/catalog-schema.md` ("Summary and note"). No per-endpoint tests: the
+  round-trip test over every shipped adapter and the validator already judge the rows, and a test
+  that restates a list of declarations is deleted, not extended. Code a data change needs ships in
+  the same PR as its first rows.
 
 ## When writing user-facing copy
 
@@ -214,6 +307,12 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 **Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
 changes weekly and every stale number is a lie.
+
+**A new public page: offer it a share image.** When you add a public page, ask the person driving
+the session whether it should get its own `og:image` from `scripts/og_images.py` (add the page to a
+group in `GROUPS`, then run the script for that one page). Tell them that if they do not like the
+current look, a new style is one more template in `LAYOUTS`. Without a card the page keeps the
+site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") has the details.
 
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and

@@ -36,6 +36,9 @@ aliases:
   # (logged miss 2026-08-28: `find leads` matched only the provider names leadsforge/predictleads)
   lead: [leads]
   prospect: [leads, prospects]
+  # email verification vocabulary — providers call the same domain behavior catch-all or accept-all
+  catchall: [catch-all]
+  acceptall: [catch-all]
   # market data
   cryptocurrency: [crypto]
   cryptocurrencies: [crypto]

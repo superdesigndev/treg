@@ -55,6 +55,7 @@ endpoints:
       note: Platform fixes size to one. A non-empty one-row page costs 0.5 credit; an empty page is free.
     docs_url: https://docs.wiza.co/api-reference/prospect/prospect-search
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/wiza.people.search.json
 
   - id: wiza.companies.search
@@ -90,6 +91,7 @@ endpoints:
       source_url: https://docs.wiza.co/api-reference/prospect/company-search
     docs_url: https://docs.wiza.co/api-reference/prospect/company-search
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/wiza.companies.search.json
 
   - id: wiza.companies.enrich
@@ -124,6 +126,7 @@ endpoints:
       note: Two API credits when company data is found. A miss or invalid request is free. The response reports credits.api_credits.total.
     docs_url: https://docs.wiza.co/api-reference/company-enrichment/company-enrichment
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/wiza.companies.enrich.json
 
   - id: wiza.meta.locations.search
@@ -137,11 +140,11 @@ endpoints:
     name: Find accepted locations
     summary: Find location names and boundary types accepted by Wiza search filters.
     input:
-      query:
+      queryParams:
         query: {type: string, required: true, minLength: 3, example: tor}
       note: The prefix must contain at least three characters.
     test_request:
-      query: {query: tor}
+      queryParams: {query: tor}
     cost: &free_lookup
       type: free
       value: 0
@@ -155,6 +158,7 @@ endpoints:
       note: The authenticated helper did not reduce the API credit balance.
     docs_url: https://docs.wiza.co/api-reference/prospects/search-locations
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/wiza.meta.locations.search.json
 
   - id: wiza.meta.technologies.search
@@ -168,16 +172,17 @@ endpoints:
     name: Find accepted technologies
     summary: Find technology names and slugs accepted by Wiza search filters.
     input:
-      query:
+      queryParams:
         query: {type: string, required: true, minLength: 3, example: aws}
       note: The prefix must contain at least three non-blank characters.
     test_request:
-      query: {query: aws}
+      queryParams: {query: aws}
     cost:
       <<: *free_lookup
       source_url: https://docs.wiza.co/api-reference/prospects/search-technologies
     docs_url: https://docs.wiza.co/api-reference/prospects/search-technologies
     verified: '2026-09-16'
+    added: '2026-09-16'
     example_response: examples/wiza.meta.technologies.search.json
 
   - id: wiza.people.email.find
@@ -248,6 +253,7 @@ endpoints:
       note: Reserves three credits and settles the exact terminal credit total; a miss is free.
     docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
     verified: '2026-09-16'
+    added: '2026-09-24'
     example_response: examples/wiza.people.email.find.json
     terminal_example_response: examples/wiza.people.email.find.terminal.json
     cache: forbidden
@@ -297,11 +303,13 @@ endpoints:
       note: Reserves six credits and settles the exact terminal credit total; a miss is free.
     docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
     verified: '2026-09-16'
+    added: '2026-09-24'
     example_response: examples/wiza.people.phone.find.json
     terminal_example_response: examples/wiza.people.phone.find.terminal.json
     cache: forbidden
 
   - id: wiza.people.reveal.start
+    added: '2026-09-16'
     capability: people.enrich
     platform: people
     scope: any_account
@@ -345,6 +353,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.people.reveal.get
+    added: '2026-09-16'
     kind: utility
     capability: people.enrich
     platform: people
@@ -377,6 +386,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.lists.create
+    added: '2026-09-16'
     capability: people.enrich.bulk
     platform: people
     scope: any_account
@@ -410,6 +420,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.lists.get
+    added: '2026-09-16'
     capability: people.enrich.bulk
     platform: people
     scope: any_account
@@ -438,6 +449,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.lists.contacts
+    added: '2026-09-16'
     capability: people.enrich.bulk
     platform: people
     scope: any_account
@@ -449,7 +461,7 @@ endpoints:
     input:
       pathParams:
         id: {type: integer, required: true, min: 1}
-      query:
+      queryParams:
         segment: {type: string, required: true, enum: [people, valid, risky], example: people}
       note: JSON is returned. Wiza also supports a CSV path variant, which is not a separate catalog tool.
     cost:
@@ -469,6 +481,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.prospect-lists.create
+    added: '2026-09-16'
     capability: people.search
     platform: people
     scope: any_account
@@ -503,6 +516,7 @@ endpoints:
     cache: forbidden
 
   - id: wiza.prospect-lists.continue
+    added: '2026-09-16'
     capability: people.search
     platform: people
     scope: any_account

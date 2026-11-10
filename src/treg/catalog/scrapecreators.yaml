@@ -6,6 +6,18 @@ source:
 limits: "billed per credit, 100 free credits on signup"
 pricing_url: https://scrapecreators.com/pricing
 
+# Both tiers. ScrapeCreators bills the call whether or not it finds anything: the answer's
+# `credits_charged` is the bill, zero included, on a 2xx or a 4xx; a 2xx without a readable one
+# settles at the hold, a miss or an embedded error envelope included.
+defaults:
+  settle: {reported: {path: response.credits_charged, unit: credit}}
+  bill: {miss: charged, error: charged}
+  provenance:
+    source: rate_card_api
+    source_url: https://docs.scrapecreators.com/openapi.json
+    checked: '2026-07-28'
+    confidence: verified
+
 endpoints:
   # --- Account ------------------------------------------------------------------------------
   - id: scrapecreators.account.usage
@@ -21,8 +33,10 @@ endpoints:
       queryParams: {}
     test_request:
       queryParams: {}
-    cost: {type: free, value: 0, currency: USD, unit: call}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.account.usage.json
     docs_url: https://docs.scrapecreators.com/account/credit-balance
 
@@ -42,8 +56,11 @@ endpoints:
       note: "one of handle | user_id"
     test_request:
       queryParams: {handle: "stoolpresidente"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.user.uniqueId, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.user.profile.json
     docs_url: https://docs.scrapecreators.com/tiktok/profile
 
@@ -61,8 +78,11 @@ endpoints:
         get_transcript: {type: boolean, required: false, note: "Get transcript of the video"}
     test_request:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.aweme_detail, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.detail.json
     docs_url: https://docs.scrapecreators.com/tiktok/video
 
@@ -80,8 +100,11 @@ endpoints:
         cursor: {type: number, required: false, note: "Cursor to get more comments. Get 'cursor' from previous response.", example: 20}
     test_request:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.comments.json
     docs_url: https://docs.scrapecreators.com/tiktok/video/comments
 
@@ -92,19 +115,23 @@ endpoints:
     method: GET
     path: /v1/tiktok/search/keyword
     name: "Search TikTok videos by keyword"
-    summary: "Searches for TikTok videos by keyword or phrase — the general video search across all of TikTok."
+    summary: "Searches for TikTok videos by keyword or phrase — the general video search across all of TikTok. date_posted and sort_by are forwarded upstream but are not reliably enforced; treat create_time / digg_count as authoritative and post-filter when a window or order matters."
     input:
       queryParams:
         query: {type: string, required: true, note: "Keyword to search for", example: "ai"}
-        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Time frame", example: "all-time"}
-        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Sort by", example: "relevance"}
+        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Requested publish window forwarded upstream. Not reliably enforced — responses can include create_time outside the window (or match an unscoped call). When recency matters, filter create_time locally.", example: "all-time"}
+        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Requested order forwarded upstream. Not reliably enforced — most-liked / date-posted may leave digg_count or create_time unsorted. When order matters, sort locally.", example: "relevance"}
         region: {type: string, required: false, note: "Does NOT filter results to that region only — it places the proxy there (use for geo-restricted posts). 2-letter codes like US, GB, FR"}
         cursor: {type: number, required: false, note: "Pagination cursor from previous response cursor field", example: 10}
         trim: {type: boolean, required: false, note: "Set to true for a trimmed response"}
     test_request:
       queryParams: {query: "ai", date_posted: "all-time"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when: [{path: response.search_item_list, op: present}, {path: response.search_item_list, op: empty}]
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.search.videos.json
     docs_url: https://docs.scrapecreators.com/tiktok/search/keyword
 
@@ -122,8 +149,11 @@ endpoints:
         handle: {type: string, required: true, note: "Instagram handle", example: "natgeo"}
     test_request:
       queryParams: {handle: "natgeo"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.user.username, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.profile.json
     docs_url: https://docs.scrapecreators.com/instagram/profile
 
@@ -141,8 +171,11 @@ endpoints:
         next_max_id: {type: string, required: false, note: "Cursor to get next page of results."}
     test_request:
       queryParams: {handle: "natgeo"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.items, op: present}, {path: response.items, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.posts.json
     docs_url: https://docs.scrapecreators.com/instagram/user/posts
 
@@ -160,8 +193,11 @@ endpoints:
         cursor: {type: string, required: false, note: "The cursor to get more comments. Get 'cursor' from previous response."}
     test_request:
       queryParams: {url: "https://www.instagram.com/reel/DOq6eV6iIgD"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.post.comments.json
     docs_url: https://docs.scrapecreators.com/instagram/post/comments
 
@@ -182,8 +218,11 @@ endpoints:
       note: "one of channelId | handle | url"
     test_request:
       queryParams: {channelId: "UC-9-kyTW8ZkZNDHQJ6FgpwQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.name, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.channel.profile.json
     docs_url: https://docs.scrapecreators.com/youtube/channel
 
@@ -200,8 +239,11 @@ endpoints:
         url: {type: string, required: true, note: "YouTube video or short URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
     test_request:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.id, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.detail.json
     docs_url: https://docs.scrapecreators.com/youtube/video
 
@@ -219,8 +261,11 @@ endpoints:
         order: {type: string, required: false, note: "Order of comments", example: "top"}
     test_request:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.comments, op: present}, {path: response.comments, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.comments.json
     docs_url: https://docs.scrapecreators.com/youtube/video/comments
 
@@ -238,8 +283,11 @@ endpoints:
         handle: {type: string, required: true, note: "Twitter handle", example: "levelsio"}
     test_request:
       queryParams: {handle: "levelsio"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.core.screen_name, op: absent}}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.profile.json
     docs_url: https://docs.scrapecreators.com/twitter/profile
 
@@ -256,17 +304,17 @@ endpoints:
         handle: {type: string, required: true, note: "Twitter handle", example: "levelsio"}
     test_request:
       queryParams: {handle: "levelsio"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.tweets, op: present}, {path: response.tweets, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.posts.json
     docs_url: https://docs.scrapecreators.com/twitter/user-tweets
 
   # --- LinkedIn -----------------------------------------------------------------------------------
   - id: scrapecreators.linkedin.user.profile
     capability: linkedin.user.profile
-    miss:
-      status: 404
-      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     platform: linkedin
     scope: any_account
     method: GET
@@ -278,8 +326,13 @@ endpoints:
         url: {type: string, required: true, note: "The URL of the LinkedIn profile to get", example: "https://www.linkedin.com/in/parrsam/"}
     test_request:
       queryParams: {url: "https://www.linkedin.com/in/parrsam/"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, {path: response.name, op: absent}]}}
+    miss:
+      status: [404]
+      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.linkedin.user.profile.json
     docs_url: https://docs.scrapecreators.com/linkedin/profile
 
@@ -298,8 +351,11 @@ endpoints:
         sort: {type: string, required: false, note: "Sort order"}
     test_request:
       queryParams: {subreddit: "news"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.subreddit.posts.json
     docs_url: https://docs.scrapecreators.com/reddit/subreddit
 
@@ -327,8 +383,9 @@ endpoints:
       note: "Prefer sort=relevance for posts matching the query. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts — not \"recent posts about X\". Brand/token queries may also match colloquial substrings under new."
     test_request:
       queryParams: {query: "ai", sort: "relevance"}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.search.posts.json
     docs_url: https://docs.scrapecreators.com/reddit/search
 
@@ -348,8 +405,14 @@ endpoints:
         cache_max_age: {type: string, required: false, note: "Return a cached result if one is at most this old (0 credits): 1d | 3d | 7d | 14d | 30d", example: "7d"}
     test_request:
       queryParams: {platform: "x", handle: "adrian_horning_"}
-    cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
-    call_note: "Uncharged 503 when every declared link-in-bio page fails and nothing else resolves — retry later rather than treating it as a miss."
+    price: {value: '10', currency: credit, per: 1, unit: call}
+    provenance:
+      source: rate_card_api
+      source_url: https://docs.scrapecreators.com/openapi.json
+      checked: '2026-08-27'
+      confidence: verified
+    note: "An uncharged 503 means every declared link-in-bio page failed and nothing else resolved: retry later rather than treat it as a miss."
     verified: '2026-08-27'
+    added: '2026-08-26'
     example_response: examples/scrapecreators.creators.socials.connected.json
     docs_url: https://docs.scrapecreators.com/v1/find-social-profiles

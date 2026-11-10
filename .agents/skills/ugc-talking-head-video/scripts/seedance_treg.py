@@ -16,7 +16,13 @@ Rules baked in (from the first two builds):
 - a failed task is not charged; a moderation failure on the standard tier -> rerun on the relaxed tier.
 - reAPI is the default: same model, same voice clip accepted, 24% cheaper at 720p, and it has 1080p.
 """
-import argparse, json, os, subprocess, sys, time, urllib.request
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # USD per second of output, from the catalog price tables (treg catalog get <id>).

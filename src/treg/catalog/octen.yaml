@@ -1,0 +1,165 @@
+provider: octen
+source:
+  docs: https://docs.octen.ai/
+  openapi: https://docs.octen.ai/api-reference/openapi.json
+  curated: '2026-09-30'
+pricing_url: https://octen.ai/pricing
+limits: "Web and Broad Search share the Base plan's 20 QPS. Extract allows 2,000 standard, 500 auto, or 200 advanced URLs/minute. HTTP 429 signals rate limiting."
+proposed_capabilities:
+  web.search.broad: "Search the open web through generated subqueries for multiple angles of one question"
+
+endpoints:
+  - id: octen.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    name: Search the web by query — ranked pages and highlights
+    summary: Search the live web for ranked pages, highlights, and optional full page content.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Octen API documentation"}
+        count: {type: integer, required: false, default: 5, min: 1, max: 100}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        include_text: {type: "array[string]", required: false}
+        exclude_text: {type: "array[string]", required: false}
+        time_basis: {type: string, required: false, default: auto, enum: [auto, published, crawled]}
+        time_range: {type: string, required: false, enum: [day, week, month, year, d, w, m, y]}
+        start_time: {type: string, required: false}
+        end_time: {type: string, required: false}
+        language: {type: "array[string]", required: false}
+        highlight: {type: object, required: false, note: "Optional enable and max_tokens controls; highlights do not incur the full-content surcharge."}
+        full_content: {type: object, required: false, note: "Set enable=true for full page content. Only returned full-content results beyond 10 cost extra."}
+        format: {type: string, required: false, default: text, enum: [markdown, text]}
+        safesearch: {type: string, required: false, default: strict, enum: [off, strict]}
+        include_images: {type: boolean, required: false, default: false}
+    test_request: {body: {query: "Octen API documentation", count: 1}}
+    cost:
+      type: per_call
+      value: 5
+      currency: USD
+      per: 1000
+      unit: call
+      octen_rates: {call: 0.005, full_content_extra: 0.0005}
+      source: docs
+      source_url: https://octen.ai/pricing
+      checked: '2026-09-30'
+      confidence: documented
+      note: "Conservative original price: $0.005 per call, plus $0.0005 per returned full-content result beyond 10. More ordinary results alone cost nothing extra. Shared-key calls reserve the request maximum and settle from this response's meta.usage."
+    verified: '2026-10-02'
+    added: '2026-09-29'
+    example_response: examples/octen.web.search.json
+    docs_url: https://docs.octen.ai/api-reference/search
+
+  - id: octen.web.search.broad
+    added: '2026-09-29'
+    capability: web.search.broad
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /broad-search
+    name: "Multi-angle web search"
+    summary: Generate subqueries from a question and return ranked web results grouped by subquery.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Octen search and extract features"}
+        max_queries: {type: integer, required: false, default: 5, min: 1, max: 30, note: "Upper bound on generated subqueries, which are the billing unit."}
+        search_options: {type: object, required: false, note: "Web Search options applied to each subquery, including count and optional full_content."}
+    test_request: {body: {query: "Octen search and extract features", max_queries: 1, search_options: {count: 1}}}
+    cost:
+      type: per_result
+      value: 5
+      currency: USD
+      per: 1000
+      unit: result
+      octen_rates: {subquery: 0.005, full_content_extra: 0.0005}
+      source: docs
+      source_url: https://octen.ai/pricing
+      checked: '2026-09-30'
+      confidence: documented
+      note: "Conservative original price: $0.005 per generated subquery, not per top-level call, plus $0.0005 per returned full-content result beyond 10 per subquery. Shared-key calls reserve max_queries and settle from this response's meta.usage."
+    docs_url: https://docs.octen.ai/api-reference/broad-search
+
+  - id: octen.web.search.news
+    added: '2026-09-29'
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news-search
+    name: Search news by query — articles and subjects
+    summary: Search recent news articles and related subject groups.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Octen AI"}
+        count: {type: integer, required: false, default: 5, min: 1, max: 100}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        time_basis: {type: string, required: false, default: auto, enum: [auto, published, crawled]}
+        time_range: {type: string, required: false, enum: [day, week, month, year, d, w, m, y]}
+        start_time: {type: string, required: false}
+        end_time: {type: string, required: false}
+        language: {type: "array[string]", required: false}
+        highlight: {type: object, required: false}
+        full_content: {type: object, required: false, note: "Set enable=true for full page content. Only returned full-content results beyond 10 cost extra."}
+        subjects: {type: object, required: false, note: "Subject grouping is enabled by default; accepts enable, count, and max_sub_news."}
+    test_request: {body: {query: "Octen AI", count: 1}}
+    cost:
+      type: per_call
+      value: 3
+      currency: USD
+      per: 1000
+      unit: call
+      octen_rates: {call: 0.003, full_content_extra: 0.0005}
+      source: docs
+      source_url: https://octen.ai/pricing
+      checked: '2026-09-30'
+      confidence: documented
+      note: "Conservative original price: $0.003 per call, plus $0.0005 per returned full-content result beyond 10. More ordinary results alone cost nothing extra. Shared-key calls settle from this response's meta.usage."
+    docs_url: https://docs.octen.ai/api-reference/news-search
+
+  - id: octen.web.extract
+    added: '2026-09-29'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /extract
+    name: Extract pages by URL — content and classification
+    summary: Extract clean content or highlights from up to twenty URLs, with per-URL status and mode.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        mode: {type: string, required: false, default: standard, enum: [standard, advanced, auto]}
+        query: {type: string, required: false, note: "Return intent-focused highlights instead of complete page content."}
+        max_age_seconds: {type: integer, required: false, default: 86400, min: 300, max: 31536000}
+        format: {type: string, required: false, default: markdown, enum: [markdown, text]}
+        timeout: {type: integer, required: false, default: 30, min: 1, max: 60}
+        include_images: {type: boolean, required: false, default: false}
+        include_videos: {type: boolean, required: false, default: false}
+        include_audio: {type: boolean, required: false, default: false}
+        include_links: {type: object, required: false}
+    test_request: {body: {urls: ["https://example.com"], mode: standard}}
+    cost:
+      type: per_success
+      value: 2.5
+      currency: USD
+      per: 1000
+      unit: page
+      octen_rates: {standard: 0.001, advanced: 0.0025}
+      source: docs
+      source_url: https://octen.ai/pricing
+      checked: '2026-09-30'
+      confidence: documented
+      note: "Conservative original prices: $0.001 per successful standard URL or $0.0025 per successful advanced URL. Failed URLs are free. Shared-key calls hold the advanced maximum and settle from this response's meta.usage.successful_by_mode, including auto-resolved modes."
+    docs_url: https://docs.octen.ai/api-reference/extract

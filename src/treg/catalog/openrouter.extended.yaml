@@ -11,31 +11,9 @@ source:
   spec_urls:
   - https://openrouter.ai/api/v1/videos/models
   ingested: '2026-09-02'
-async:
-  id_from: id
-  poll:
-    endpoint: openrouter.video-gen.task.status
-    param:
-      in: pathParams
-      name: id
-  status:
-    path: status
-    success:
-    - completed
-    failure:
-    - failed
-    - cancelled
-    - expired
-  result:
-    fetch: openrouter.video-gen.result.retrieve
-    fetch_param:
-      in: pathParams
-      name: id
-      value_from: id
-  interval: 30
 endpoints:
 - id: openrouter.x.alibaba-happyhorse-1-0
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -79,35 +57,26 @@ endpoints:
         - '21:9'
         - '9:21'
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: alibaba/happyhorse-1.0
-        body.resolution: 1080p
-      value: 0.1694
-      times: body.duration
-    - when:
-        body.model: alibaba/happyhorse-1.0
-        body.resolution: 720p
-      value: 0.0988
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/happyhorse-1.0}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.1694'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/happyhorse-1.0}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.0988'
+        times: body.duration
     fallback:
-      value: 2.541000001
+      value: '2.541000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/alibaba/happyhorse-1.0
 - id: openrouter.x.alibaba-happyhorse-1-1
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -151,35 +120,26 @@ endpoints:
         - '21:9'
         - '9:21'
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: alibaba/happyhorse-1.1
-        body.resolution: 1080p
-      value: 0.1278
-      times: body.duration
-    - when:
-        body.model: alibaba/happyhorse-1.1
-        body.resolution: 720p
-      value: 0.0988
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/happyhorse-1.1}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.1278'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/happyhorse-1.1}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.0988'
+        times: body.duration
     fallback:
-      value: 1.917000001
+      value: '1.917000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/alibaba/happyhorse-1.1
 - id: openrouter.x.alibaba-wan-2-6
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -222,39 +182,27 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: alibaba/wan-2.6
-        body.resolution: 1080p
-      value: 0.15
-      times: body.duration
-    - when:
-        body.model: alibaba/wan-2.6
-        body.resolution: 720p
-      value: 0.1
-      times: body.duration
-    - when:
-        body.model: alibaba/wan-2.6
-      value: 0.04
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/wan-2.6}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.15'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/wan-2.6}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.1'
+        times: body.duration
+      - {when: [{path: body.model, op: equals, value: alibaba/wan-2.6}], value: '0.04', times: body.duration}
     fallback:
-      value: 1.500000001
+      value: '1.500000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/alibaba/wan-2.6
 - id: openrouter.x.alibaba-wan-2-7
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -300,29 +248,17 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: alibaba/wan-2.7
-      value: 0.1
-      times: body.duration
+      - {when: [{path: body.model, op: equals, value: alibaba/wan-2.7}], value: '0.1', times: body.duration}
     fallback:
-      value: 1.000000001
+      value: '1.000000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/alibaba/wan-2.7
 - id: openrouter.x.alibaba-wan-3-0-prime
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -369,40 +305,31 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: alibaba/wan-3.0-prime
-        body.resolution: 1080p
-      value: 0.28
-      times: body.duration
-    - when:
-        body.model: alibaba/wan-3.0-prime
-        body.resolution: 480p
-      value: 0.068
-      times: body.duration
-    - when:
-        body.model: alibaba/wan-3.0-prime
-        body.resolution: 720p
-      value: 0.14
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/wan-3.0-prime}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.28'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/wan-3.0-prime}
+          - {path: body.resolution, op: equals, value: 480p}
+        value: '0.068'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: alibaba/wan-3.0-prime}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.14'
+        times: body.duration
     fallback:
-      value: 8.400000001
+      value: '8.400000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/alibaba/wan-3.0-prime
 - id: openrouter.x.black-forest-labs-flux-3-video
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -449,39 +376,29 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: black-forest-labs/flux-3-video
-        body.resolution: 1080p
-      value: 0.53
-      times: body.duration
-    - when:
-        body.model: black-forest-labs/flux-3-video
-        body.resolution: 720p
-      value: 0.41
-      times: body.duration
-    - when:
-        body.model: black-forest-labs/flux-3-video
-      value: 0.17
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: black-forest-labs/flux-3-video}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.53'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: black-forest-labs/flux-3-video}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.41'
+        times: body.duration
+      - when: [{path: body.model, op: equals, value: black-forest-labs/flux-3-video}]
+        value: '0.17'
+        times: body.duration
     fallback:
-      value: 10.600000001
+      value: '10.600000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/black-forest-labs/flux-3-video
 - id: openrouter.x.black-forest-labs-flux-video-upscale
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -510,20 +427,18 @@ endpoints:
         required: false
         default: false
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      cents_per_megapixel_second_creative: '10.5'
-      cents_per_megapixel_second_precise: '7.5'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/black-forest-labs/flux-video-upscale
 - id: openrouter.x.bytedance-seedance-1-5-pro
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -572,20 +487,18 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      video_tokens: '0.0000024'
-      video_tokens_without_audio: '0.0000012'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/bytedance/seedance-1-5-pro
 - id: openrouter.x.bytedance-seedance-2-0
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -635,25 +548,18 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      video_tokens: '0.000007'
-      video_tokens_1080p: '0.0000077'
-      video_tokens_1080p_with_video_input: '0.0000047'
-      video_tokens_4k: '0.000004'
-      video_tokens_4k_with_video_input: '0.0000024'
-      video_tokens_with_video_input: '0.0000043'
-      video_tokens_without_audio: '0.000007'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/bytedance/seedance-2.0
 - id: openrouter.x.bytedance-seedance-2-0-fast
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -701,21 +607,18 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      video_tokens: '0.0000042'
-      video_tokens_with_video_input: '0.000002475'
-      video_tokens_without_audio: '0.0000042'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/bytedance/seedance-2.0-fast
 - id: openrouter.x.bytedance-seedance-2-0-mini
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -763,21 +666,18 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      video_tokens: '0.0000035'
-      video_tokens_with_video_input: '0.0000021'
-      video_tokens_without_audio: '0.0000035'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/bytedance/seedance-2.0-mini
 - id: openrouter.x.google-veo-3-1
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -821,47 +721,38 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: google/veo-3.1
-        body.resolution: 4K
-        body.generate_audio: false
-      value: 0.4
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1
-        body.resolution: 4K
-        body.generate_audio: true
-      value: 0.6
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1
-        body.generate_audio: false
-      value: 0.2
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1
-        body.generate_audio: true
-      value: 0.4
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1}
+          - {path: body.resolution, op: equals, value: 4K}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.4'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1}
+          - {path: body.resolution, op: equals, value: 4K}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.6'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.2'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.4'
+        times: body.duration
     fallback:
-      value: 4.800000001
+      value: '4.800000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/google/veo-3.1
 - id: openrouter.x.google-veo-3-1-fast
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -905,59 +796,50 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: google/veo-3.1-fast
-        body.resolution: 4K
-        body.generate_audio: false
-      value: 0.25
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-fast
-        body.resolution: 720p
-        body.generate_audio: false
-      value: 0.08
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-fast
-        body.resolution: 4K
-        body.generate_audio: true
-      value: 0.3
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-fast
-        body.resolution: 720p
-        body.generate_audio: true
-      value: 0.1
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-fast
-        body.generate_audio: false
-      value: 0.1
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-fast
-        body.generate_audio: true
-      value: 0.12
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.resolution, op: equals, value: 4K}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.25'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.resolution, op: equals, value: 720p}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.08'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.resolution, op: equals, value: 4K}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.3'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.resolution, op: equals, value: 720p}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.1'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.1'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-fast}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.12'
+        times: body.duration
     fallback:
-      value: 2.400000001
+      value: '2.400000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/google/veo-3.1-fast
 - id: openrouter.x.google-veo-3-1-lite
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1000,47 +882,38 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: google/veo-3.1-lite
-        body.resolution: 720p
-        body.generate_audio: false
-      value: 0.03
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-lite
-        body.resolution: 720p
-        body.generate_audio: true
-      value: 0.05
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-lite
-        body.generate_audio: false
-      value: 0.05
-      times: body.duration
-    - when:
-        body.model: google/veo-3.1-lite
-        body.generate_audio: true
-      value: 0.08
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-lite}
+          - {path: body.resolution, op: equals, value: 720p}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.03'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-lite}
+          - {path: body.resolution, op: equals, value: 720p}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.05'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-lite}
+          - {path: body.generate_audio, op: equals, value: false}
+        value: '0.05'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: google/veo-3.1-lite}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.08'
+        times: body.duration
     fallback:
-      value: 0.640000001
+      value: '0.640000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/google/veo-3.1-lite
 - id: openrouter.x.heygen-avatar-iv
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1148,29 +1021,22 @@ endpoints:
                         type: string
                         required: false
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: heygen/avatar-iv
-      value: 0.05
-      times: body.duration
+      - {when: [{path: body.model, op: equals, value: heygen/avatar-iv}], value: '0.05', times: body.duration}
     fallback:
-      value: 1.500000001
+      value: '1.500000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
+    note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-18'
     confidence: documented
-    note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/heygen/avatar-iv
 - id: openrouter.x.kwaivgi-kling-v3-0-pro
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1213,39 +1079,29 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: kwaivgi/kling-v3.0-pro
-        body.generate_audio: true
-      value: 0.168
-      times: body.duration
-    - when:
-        body.model: kwaivgi/kling-v3.0-pro
-        body.resolution: 720p
-      value: 0.112
-      times: body.duration
-    - when:
-        body.model: kwaivgi/kling-v3.0-pro
-      value: 0.112
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: kwaivgi/kling-v3.0-pro}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.168'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: kwaivgi/kling-v3.0-pro}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.112'
+        times: body.duration
+      - when: [{path: body.model, op: equals, value: kwaivgi/kling-v3.0-pro}]
+        value: '0.112'
+        times: body.duration
     fallback:
-      value: 2.520000001
+      value: '2.520000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/kwaivgi/kling-v3.0-pro
 - id: openrouter.x.kwaivgi-kling-v3-0-std
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1288,39 +1144,29 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: kwaivgi/kling-v3.0-std
-        body.generate_audio: true
-      value: 0.126
-      times: body.duration
-    - when:
-        body.model: kwaivgi/kling-v3.0-std
-        body.resolution: 720p
-      value: 0.084
-      times: body.duration
-    - when:
-        body.model: kwaivgi/kling-v3.0-std
-      value: 0.084
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: kwaivgi/kling-v3.0-std}
+          - {path: body.generate_audio, op: equals, value: true}
+        value: '0.126'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: kwaivgi/kling-v3.0-std}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.084'
+        times: body.duration
+      - when: [{path: body.model, op: equals, value: kwaivgi/kling-v3.0-std}]
+        value: '0.084'
+        times: body.duration
     fallback:
-      value: 1.890000001
+      value: '1.890000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/kwaivgi/kling-v3.0-std
 - id: openrouter.x.kwaivgi-kling-video-o1
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1363,29 +1209,19 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: kwaivgi/kling-video-o1
-      value: 0.112
-      times: body.duration
+      - when: [{path: body.model, op: equals, value: kwaivgi/kling-video-o1}]
+        value: '0.112'
+        times: body.duration
     fallback:
-      value: 1.120000001
+      value: '1.120000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/kwaivgi/kling-video-o1
 - id: openrouter.x.minimax-hailuo-2-3
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1426,29 +1262,19 @@ endpoints:
         required: false
         default: false
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: minimax/hailuo-2.3
-      value: 0.0817
-      times: body.duration
+      - when: [{path: body.model, op: equals, value: minimax/hailuo-2.3}]
+        value: '0.0817'
+        times: body.duration
     fallback:
-      value: 0.817000001
+      value: '0.817000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/minimax/hailuo-2.3
 - id: openrouter.x.minimax-hailuo-3
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1494,20 +1320,18 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      duration_seconds: '0.13'
-      reference_images: '0.04'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/minimax/hailuo-3
 - id: openrouter.x.openai-sora-2-pro
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1550,39 +1374,27 @@ endpoints:
         required: false
         default: true
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: openai/sora-2-pro
-        body.resolution: 1080p
-      value: 0.5
-      times: body.duration
-    - when:
-        body.model: openai/sora-2-pro
-        body.resolution: 720p
-      value: 0.3
-      times: body.duration
-    - when:
-        body.model: openai/sora-2-pro
-      value: 0.5
-      times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: openai/sora-2-pro}
+          - {path: body.resolution, op: equals, value: 1080p}
+        value: '0.5'
+        times: body.duration
+      - when:
+          - {path: body.model, op: equals, value: openai/sora-2-pro}
+          - {path: body.resolution, op: equals, value: 720p}
+        value: '0.3'
+        times: body.duration
+      - {when: [{path: body.model, op: equals, value: openai/sora-2-pro}], value: '0.5', times: body.duration}
     fallback:
-      value: 10.000000001
+      value: '10.000000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/openai/sora-2-pro
 - id: openrouter.x.runway-aleph-2
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1624,29 +1436,17 @@ endpoints:
         required: false
         default: false
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: runway/aleph-2
-      value: 0.28
-      times: body.duration
+      - {when: [{path: body.model, op: equals, value: runway/aleph-2}], value: '0.28', times: body.duration}
     fallback:
-      value: 8.400000001
+      value: '8.400000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/runway/aleph-2
 - id: openrouter.x.runway-gen-4-5
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1688,29 +1488,17 @@ endpoints:
         required: false
         default: false
     bodyType: json
-  cost:
-    type: per_success
+  price:
     table:
-    - when:
-        body.model: runway/gen-4.5
-      value: 0.12
-      times: body.duration
+      - {when: [{path: body.model, op: equals, value: runway/gen-4.5}], value: '0.12', times: body.duration}
     fallback:
-      value: 1.200000001
+      value: '1.200000001'
       note: The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.
     currency: USD
-    settle: usage
-    usage:
-      path: usage.cost
-      unit: usd
-    source: rate_card_api
-    source_url: https://openrouter.ai/api/v1/videos/models
-    checked: '2026-09-02'
-    confidence: documented
     note: Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).
   docs_url: https://openrouter.ai/runway/gen-4.5
 - id: openrouter.x.x-ai-grok-imagine-video
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1754,21 +1542,18 @@ endpoints:
         - '3:2'
         - '2:3'
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      cents_per_image_input: '0.2'
-      cents_per_video_output_second_480p: '5'
-      cents_per_video_output_second_720p: '7'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/x-ai/grok-imagine-video
 - id: openrouter.x.x-ai-grok-imagine-video-1-5
-  tier: extended
+  added: '2026-09-04'
   platform: video-gen
   domain: models
   method: POST
@@ -1813,17 +1598,13 @@ endpoints:
         - '3:2'
         - '2:3'
     bodyType: json
-  cost:
-    type: per_success
+  price:
     value: null
-    confidence: unknown
+    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+  provenance:
     source: rate_card_api
     source_url: https://openrouter.ai/api/v1/videos/models
     checked: '2026-09-02'
-    rate_card:
-      cents_per_image_input: '1'
-      cents_per_video_output_second_1080p: '25'
-      cents_per_video_output_second_480p: '8'
-      cents_per_video_output_second_720p: '14'
-    note: The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.
+    confidence: unknown
+  settle: null
   docs_url: https://openrouter.ai/x-ai/grok-imagine-video-1.5

@@ -72,6 +72,7 @@ endpoints:
       checked: 2026-09-01
       confidence: documented
     verified: 2026-09-02
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.from_text.json
     docs_url: https://platform.minimax.io/docs/api-reference/video-generation-t2v
 
@@ -119,6 +120,7 @@ endpoints:
       confidence: documented
       note: "MiniMax charges only successful Hailuo video generations."
     verified: 2026-09-01
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.from_image.json
     docs_url: https://platform.minimax.io/docs/api-reference/video-generation-i2v
 
@@ -142,6 +144,7 @@ endpoints:
     test_request: {queryParams: {task_id: "437021055357229"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
     verified: 2026-09-01
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.task.status.json
     docs_url: https://platform.minimax.io/docs/api-reference/video-generation-query
 
@@ -163,6 +166,7 @@ endpoints:
     test_request: {queryParams: {file_id: "437019583025452"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Generated file metadata retrieval is free."}
     verified: 2026-09-01
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.result.retrieve.json
     docs_url: https://platform.minimax.io/docs/api-reference/file-management-retrieve
 
@@ -226,6 +230,7 @@ endpoints:
       confidence: documented
       note: "Billed per second of output video; only successful generations are charged."
     verified: 2026-09-02
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.h3.generate.json
     docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
   - id: minimax.video-gen.v2.task.status
@@ -246,10 +251,12 @@ endpoints:
     test_request: {pathParams: {task_id: "312409584736256"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
     verified: 2026-09-02
+    added: '2026-09-04'
     example_response: examples/minimax.video-gen.v2.task.status.json
     docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-query
 
   - id: minimax.image-gen.from_text
+    added: '2026-09-04'
     capability: image-gen.image-01.from_text
     platform: image-gen
     domain: models
@@ -289,6 +296,7 @@ endpoints:
     docs_url: https://platform.minimax.io/docs/api-reference/image-generation-t2i
 
   - id: minimax.voice-gen.speech-2-8-hd
+    added: '2026-09-17'
     capability: voice-gen.speech-2-8-hd.generate
     platform: voice-gen
     domain: models
@@ -410,6 +418,7 @@ endpoints:
     docs_url: https://platform.minimax.io/docs/api-reference/speech-t2a-http
 
   - id: minimax.voice-gen.speech-2-8-turbo
+    added: '2026-09-17'
     capability: voice-gen.speech-2-8-turbo.generate
     platform: voice-gen
     domain: models
@@ -550,5 +559,6 @@ endpoints:
     expect: {json_path: base_resp.status_code, equals: 0}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Voice discovery is a free account-management read."}
     verified: 2026-09-18
+    added: '2026-09-17'
     example_response: examples/minimax.voice-gen.voices.list.json
     docs_url: https://platform.minimax.io/docs/api-reference/voice-management-get

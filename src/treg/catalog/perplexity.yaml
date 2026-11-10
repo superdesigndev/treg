@@ -41,6 +41,7 @@ endpoints:
       confidence: verified
       note: "Search bills each successful POST once, including a no-result response; there are no token charges."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://docs.perplexity.ai/docs/search/quickstart
     example_response: examples/perplexity.web.search.json
 
@@ -77,6 +78,7 @@ endpoints:
       confidence: verified
       note: "Fast Search bills each successful POST once; there are no token charges."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://docs.perplexity.ai/docs/search/fast-search
     example_response: examples/perplexity.web.search.fast.json
 
@@ -113,6 +115,7 @@ endpoints:
       confidence: verified
       note: "Variable token and tool charge. A bounded live request reported $0.00125, including one $0.001 Fast Search invocation."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://docs.perplexity.ai/docs/agent-api/quickstart
     example_response: examples/perplexity.web.answer.fast.json
 
@@ -149,10 +152,12 @@ endpoints:
       confidence: verified
       note: "Variable token and tool charge. A bounded live request reported $0.00303, including one $0.0025 standard Search invocation."
     verified: '2026-09-29'
+    added: '2026-09-29'
     docs_url: https://docs.perplexity.ai/docs/agent-api/quickstart
     example_response: examples/perplexity.web.answer.low.json
 
   - id: perplexity.web.research.medium
+    added: '2026-09-29'
     capability: web.answer.research
     platform: web
     domain: answer
@@ -199,6 +204,7 @@ endpoints:
       interval: 3
 
   - id: perplexity.web.research.status
+    added: '2026-09-29'
     kind: utility
     capability: web.answer.status
     platform: web
@@ -220,6 +226,7 @@ endpoints:
     example_response: examples/perplexity.web.research.status.json
 
   - id: perplexity.web.research.cancel
+    added: '2026-09-29'
     kind: utility
     capability: web.answer.cancel
     platform: web

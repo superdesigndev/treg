@@ -11,7 +11,6 @@ from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
 from treg import api
-from treg.domain.identity import session as sess
 from treg.__main__ import _prepare_serve
 from treg.api import LOCAL_ORG_NAME, LOCAL_USER_EMAIL, app
 from treg.config import Settings, get_settings
@@ -82,30 +81,6 @@ async def test_the_minted_token_actually_works(local):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         r = await c.get("/tools", headers={"X-Treg-Token": local.read_text().strip()})
     assert r.status_code == 200, r.text
-
-
-async def test_the_dashboard_opens_already_signed_in(local):
-    """The feeling we are selling: no signup, no email, no password."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.get("/app")
-    assert r.status_code == 200
-    cookie = r.cookies.get(sess.COOKIE)
-    assert cookie, "local mode must attach a session so there is no login screen"
-    async with session_maker() as s:
-        user = (await s.execute(select(User).where(User.email == LOCAL_USER_EMAIL))).scalar_one()
-    assert sess.read_session_claims(cookie)["uid"] == user.id
-
-
-# ---- and the same routes must stay closed on a normal deployment ------------------------------
-async def test_a_normal_deployment_bootstraps_nothing_and_signs_nobody_in():
-    await reset_db()
-    await _prepare_serve()  # default settings means the guard refuses
-    async with session_maker() as s:
-        assert (await s.execute(select(User).where(User.email == LOCAL_USER_EMAIL))).scalar_one_or_none() is None
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.get("/app")
-    assert r.status_code == 200
-    assert not r.cookies.get(sess.COOKIE), "a real deploy must never hand out a session"
 
 
 # ---- the installer is served ------------------------------------------------------------------

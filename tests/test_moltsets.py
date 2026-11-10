@@ -4,11 +4,16 @@ import json
 import httpx
 import pytest
 
+from sqlalchemy import select
+
+from treg import audit
 from treg.application.call import service
 from treg.config import get_settings
+from treg.infra.db import session_maker
 from treg.domain.capacity import collectors
+from treg.domain.catalog.results import classify, fails_expect
 from treg.domain.capacity.policy import default_policy
-from test_marketplace_call import _balance, _entries, _fake_relay, platform_on
+from test_marketplace_call import _balance, _entries, _fake_relay, platform_on  # noqa: F401 - pytest fixtures
 
 
 @pytest.fixture
@@ -39,6 +44,40 @@ async def test_platform_success_charges_and_miss_or_error_does_not(clients, molt
     money = [e["kind"] for e in await _entries(clients) if e["kind"] in ("reserve", "settle", "release")]
     assert money.count("reserve") == 4
     assert money.count("settle") + money.count("release") == 4
+
+
+FIND = "moltsets.people.email.find.name"
+NOT_FOUND = {"results": {"email": None, "risk_score": None, "linkedin_url": None},
+             "status": "not_found", "metadata": {}}
+
+
+def test_not_found_is_a_miss_not_a_provider_failure():
+    # MoltSets answers a miss with HTTP 200 `status: not_found`: an answer, not a provider failure.
+    raw = json.dumps(NOT_FOUND).encode()
+    assert fails_expect(FIND, raw) is None
+    result = classify(FIND, 200, raw)
+    assert result.state == "empty" and result.hit is False
+    found = classify(FIND, 200, json.dumps({"results": {"email": "alex@example.com"}, "status": "ok"}).encode())
+    assert found.state == "found" and found.hit is True
+    # Any other status is still the provider failing inside a 200: undecided, never a miss.
+    odd = json.dumps({"results": {}, "status": "error"}).encode()
+    assert fails_expect(FIND, odd) == 'status="error"'
+    assert classify(FIND, 200, odd).hit is None
+
+
+async def test_not_found_call_records_a_free_miss(clients, moltsets_on, monkeypatch):
+    from treg.models import CallRecord
+
+    before = await _balance(clients)
+    monkeypatch.setattr(service, "relay", _fake_relay(200, json.dumps(NOT_FOUND).encode()))
+    response = await clients.post("/call/" + FIND, json={"name": "Alex Example", "company_domain": "example.com"})
+    assert response.status_code == 200
+    assert "x-treg-upstream-failed" not in response.headers, "a miss is an answer, not a failure"
+    assert await _balance(clients) == before
+    await audit.drain()
+    async with session_maker() as db:
+        hits = (await db.execute(select(CallRecord.hit).where(CallRecord.endpoint_id == FIND))).scalars().all()
+    assert hits == [False]
 
 
 @pytest.mark.parametrize("endpoint,body", [

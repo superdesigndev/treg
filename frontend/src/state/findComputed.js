@@ -2,6 +2,9 @@ import { jobGroups } from './find.js'
 
 export default {
   findActive(){ return this.find.phase!=='idle'; },
+  // The full answer (Enter, or a click on the suggestion): it owns the page, shelves lit rather than
+  // filtered. An auto answer (a typing pause) is a section above the still-filtered shelves.
+  findFull(){ return this.findActive && !this.find.auto; },
   findBusy(){ return this.find.phase==='recall' || this.find.phase==='reading'; },
   // The judge scores endpoints, but one job is usually sold by several providers (the Meta ad
   // library by three), so the answer is grouped by capability: the job is the card, the providers

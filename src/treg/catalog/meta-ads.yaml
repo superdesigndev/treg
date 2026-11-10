@@ -39,6 +39,7 @@ endpoints:
     test_request:
       queryParams: {limit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/meta-ads.accounts.json
     docs_url: https://developers.facebook.com/docs/marketing-api/reference/ad-account
 
@@ -64,6 +65,7 @@ endpoints:
       pathParams: {ad_account_id: "act_1203093248302225"}
       queryParams: {limit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/meta-ads.campaigns.json
     docs_url: https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-group
 
@@ -92,6 +94,7 @@ endpoints:
       pathParams: {object_id: "act_1203093248302225"}
       queryParams: {date_preset: "last_7d", limit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/meta-ads.insights.json
     docs_url: https://developers.facebook.com/docs/marketing-api/insights
 

@@ -31,6 +31,7 @@ source:
 pricing_url: https://business-api.tiktok.com/portal/docs
 endpoints:
   - id: tiktok-ads.accounts
+    added: '2026-07-28'
     capability: tiktok-ads.accounts
     platform: tiktok-ads
     scope: own_account
@@ -47,6 +48,7 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1738455508553729
 
   - id: tiktok-ads.query
+    added: '2026-07-28'
     capability: tiktok-ads.query
     platform: tiktok-ads
     scope: own_account
@@ -74,6 +76,7 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1740302848100353
 
   - id: tiktok-ads.campaigns
+    added: '2026-07-28'
     capability: tiktok-ads.campaigns
     platform: tiktok-ads
     scope: own_account
@@ -93,6 +96,7 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1739315828649986
 
   - id: tiktok-ads.adgroups
+    added: '2026-07-28'
     capability: tiktok-ads.adgroups
     platform: tiktok-ads
     scope: own_account
@@ -112,6 +116,7 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1739314558673922
 
   - id: tiktok-ads.ads
+    added: '2026-07-28'
     capability: tiktok-ads.ads
     platform: tiktok-ads
     scope: own_account

@@ -53,6 +53,7 @@ endpoints:
         metrics: [{name: "sessions"}]
         limit: 3
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-analytics.report.json
     docs_url: https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport
 
@@ -82,6 +83,7 @@ endpoints:
         metrics: [{name: "activeUsers"}]
         limit: 3
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-analytics.realtime.json
     docs_url: https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runRealtimeReport
 
@@ -101,6 +103,7 @@ endpoints:
     test_request:
       pathParams: {property_id: "483566226"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/google-analytics.metadata.json
     docs_url: https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/getMetadata
 

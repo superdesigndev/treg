@@ -1,0 +1,693 @@
+"""Call events: off by default, never in the call's way, pseudonymous, and joinable."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import replace
+from pathlib import Path
+
+import httpx
+import pytest
+from httpx import AsyncClient
+
+from treg import call_events as sink
+from treg.application import asynctasks as async_task_app
+from treg.application import call_events as ev
+from treg.application.call import route as call_route
+from treg.application.call import service as call_service
+from treg.config import get_settings
+from treg.domain.arena import safe_output
+from treg.domain.catalog import store as catalog_store
+from treg.domain.catalog.routing import contracts as C
+from treg.domain.catalog.routing import paths as P
+
+from test_bounceban_async import (  # noqa: F401
+    EMAIL, STATUS, VERIFY, VERIFYING, Upstream, _finished, _tasks, bounceban_on, fast_polls)
+from test_marketplace_call import platform_on  # noqa: F401
+from test_routing import ROUTED, _relay_by_provider, enrichment_on  # noqa: F401
+
+SECRET = "test-hmac-secret"
+
+
+@pytest.fixture
+def events_on(monkeypatch):
+    """Events on, with the POST captured instead of sent."""
+    monkeypatch.setenv("TREG_CALL_EVENTS_URL", "https://stream.example.invalid")
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    sink.reset()
+    sent: list[dict] = []
+
+    async def capture(batch, **_):
+        sent.extend(json.loads(b"[" + b",".join(batch) + b"]"))
+        sink.counters["sent"] += len(batch)
+
+    monkeypatch.setattr(sink, "_post", capture)
+    yield sent
+    sink.reset()
+    get_settings.cache_clear()
+
+
+async def _flushed(sent: list[dict]) -> list[dict]:
+    await sink.drain()
+    return sent
+
+
+# ---- the sink ----------------------------------------------------------------------------------
+
+async def test_off_by_default_and_a_call_queues_nothing(clients: AsyncClient, enrichment_on, monkeypatch):
+    get_settings.cache_clear()
+    sink.reset()
+    assert get_settings().call_events_url == "" and not sink.enabled()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "A Person", "domain": "sample.example"})
+    assert r.status_code == 200, r.text
+    assert len(sink._queue) == 0 and sink.counters["queued"] == 0
+
+
+async def test_overflow_drops_and_counts_without_blocking(events_on, monkeypatch):
+    monkeypatch.setattr(sink, "_MAX_PENDING", 3)
+    started = time.perf_counter()
+    for i in range(50):
+        sink.emit({"call_ref": f"c{i}"})
+    assert time.perf_counter() - started < 0.05  # synchronous, no I/O
+    assert len(sink._queue) == 3 and sink.counters["dropped_overflow"] == 47
+    events = await _flushed(events_on)
+    assert [e["call_ref"] for e in events] == ["c0", "c1", "c2"]
+
+
+async def test_a_body_budget_keeps_the_event_and_drops_its_builder(events_on, monkeypatch):
+    monkeypatch.setattr(sink, "_MAX_RETAINED_BYTES", 10)
+    sink.emit({"call_ref": "big"}, lambda: {"extra": 1}, retained_bytes=11)
+    sink.emit({"call_ref": "small"}, lambda: {"extra": 2}, retained_bytes=5)
+    events = await _flushed(events_on)
+    assert events == [{"call_ref": "big"}, {"call_ref": "small", "extra": 2}]
+    assert sink.counters["unbuilt"] == 1 and sink._retained == 0
+
+
+async def test_a_failing_builder_still_sends_the_generic_columns(events_on):
+    def broken():
+        raise RuntimeError("bad body")
+    sink.emit({"call_ref": "x", "status_code": 200}, broken)
+    assert await _flushed(events_on) == [{"call_ref": "x", "status_code": 200}]
+    assert sink.counters["build_failed"] == 1
+
+
+async def test_a_serialized_batch_carries_no_nulls(events_on):
+    # A null in a `json` column is stored as the string 'null'; an omitted one reads as NULL.
+    sink.emit({"call_ref": "x", "hit": None, "answer_values": None},
+              lambda: {"input_meta": None, "verdict": "valid"})
+    batch = sink._next_batch()
+    assert [json.loads(line) for line in batch] == [{"call_ref": "x", "verdict": "valid"}]
+    assert all(b"null" not in line for line in batch)
+
+
+async def test_a_failed_post_drops_the_batch_and_never_raises(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_URL", "https://stream.example.invalid")
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    monkeypatch.setenv("TREG_CALL_EVENTS_TOKEN", "stream-token")
+    get_settings.cache_clear()
+    sink.reset()
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.headers.get("authorization"), json.loads(request.content)))
+        return httpx.Response(503)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(sink.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    try:
+        sink.emit({"call_ref": "a"})
+        sink.emit({"call_ref": "b"})
+        await sink.drain()
+        assert seen == [("Bearer stream-token", [{"call_ref": "a"}, {"call_ref": "b"}])]
+        assert sink.counters["dropped_failed"] == 2 and sink.counters["sent"] == 0
+    finally:
+        sink.reset()
+        get_settings.cache_clear()
+
+
+@pytest.fixture
+def scripted_stream(monkeypatch):
+    """Events on, the real `_post`, and a stream that answers from a script (a status code, or
+    an exception to raise). Retries wait no time."""
+    monkeypatch.setenv("TREG_CALL_EVENTS_URL", "https://stream.example.invalid")
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    monkeypatch.setattr(sink, "_RETRY_DELAYS_S", (0.0, 0.0))
+    get_settings.cache_clear()
+    sink.reset()
+    script: list = []
+    seen: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        step = script.pop(0) if script else 200
+        if isinstance(step, Exception):
+            raise step
+        return httpx.Response(step)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(sink.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    yield script, seen
+    sink.reset()
+    get_settings.cache_clear()
+
+
+async def test_a_transient_failure_is_retried_until_it_lands(scripted_stream):
+    script, seen = scripted_stream
+    script.extend([503, httpx.ReadTimeout("slow")])   # then 200
+    sink.emit({"call_ref": "a"})
+    await sink._flush_all()
+    assert seen == [[{"call_ref": "a"}]] * 3
+    assert sink.counters["sent"] == 1 and sink.counters["retried"] == 2
+    assert sink.counters["dropped_failed"] == 0
+
+
+async def test_a_refusal_is_not_retried(scripted_stream):
+    script, seen = scripted_stream
+    script.append(400)
+    sink.emit({"call_ref": "a"})
+    await sink._flush_all()
+    assert len(seen) == 1 and sink.counters["dropped_failed"] == 1 and sink.counters["retried"] == 0
+
+
+async def test_an_outage_costs_one_try_per_batch_until_a_batch_lands(scripted_stream, monkeypatch):
+    script, seen = scripted_stream
+    monkeypatch.setattr(sink, "_BATCH_MAX", 1)
+    script.extend([503, 503, 503, 503, 503])          # batch a: 3 tries; b: 1; c: 1
+    for ref in "abc":
+        sink.emit({"call_ref": ref})
+    await sink._flush_all()
+    assert [b[0]["call_ref"] for b in seen] == ["a", "a", "a", "b", "c"]
+    assert sink.counters["dropped_failed"] == 3
+    sink.emit({"call_ref": "d"})                      # the stream is back
+    script.extend([503])                              # d: one try (still marked unhealthy), dropped
+    sink.emit({"call_ref": "e"})                      # e lands and restores retries
+    await sink._flush_all()
+    assert sink.counters["sent"] == 1
+    script.extend([503])
+    sink.emit({"call_ref": "f"})                      # f gets its retries again
+    await sink._flush_all()
+    assert sink.counters["sent"] == 2 and [b[0]["call_ref"] for b in seen][-2:] == ["f", "f"]
+
+
+async def test_drain_never_retries(scripted_stream):
+    script, seen = scripted_stream
+    script.append(503)
+    sink.emit({"call_ref": "a"})
+    await sink.drain()
+    assert len(seen) == 1 and sink.counters["dropped_failed"] == 1
+
+
+async def test_counters_reach_the_log(scripted_stream, caplog, monkeypatch):
+    # A freshly booted host: monotonic time is still smaller than the interval.
+    monkeypatch.setattr(sink.time, "monotonic", lambda: 5.0)
+    sink.emit({"call_ref": "a"})
+    with caplog.at_level("INFO", logger="treg.call_events"):
+        await sink._flush_all()
+    assert "call events stats:" in caplog.text and "sent=1" in caplog.text
+    caplog.clear()
+    with caplog.at_level("INFO", logger="treg.call_events"):
+        sink.emit({"call_ref": "b"})
+        await sink._flush_all()                       # within the interval: no second line
+    assert "call events stats:" not in caplog.text
+
+
+async def test_the_flusher_sends_on_its_own(events_on, monkeypatch):
+    monkeypatch.setattr(sink, "_FLUSH_INTERVAL_S", 0.01)
+    sink.emit({"call_ref": "auto"})
+    for _ in range(100):
+        if events_on:
+            break
+        await asyncio.sleep(0.01)
+    assert events_on == [{"call_ref": "auto"}]
+
+
+# ---- the columns ---------------------------------------------------------------------------------
+
+def test_one_spelling_per_subject():
+    assert ev.normalize("email", " A.Person@Sample.EXAMPLE ") == "a.person@sample.example"
+    assert ev.normalize("domain", "https://www.Sample.example/about") == "sample.example"
+    assert (ev.normalize("linkedin_url", "https://www.linkedin.com/in/APerson/")
+            == ev.normalize("linkedin_handle", "aperson") == "aperson")
+    assert ev.normalize("full_name", "  A   Person ") == "a person"
+    assert ev.normalize("phone", "+44 7700 900123") == ev.normalize("phone", "0044 7700-900123") == "447700900123"
+    assert ev.domain_class("gmail.com") == "webmail"
+    assert ev.domain_class("cs.mit.edu") == "edu" and ev.domain_class("ox.ac.uk") == "edu"
+    assert ev.domain_class("nasa.gov") == "gov" and ev.domain_class("sample.example") == "company"
+
+
+def test_derived_names_give_one_input_id():
+    contract = catalog_store.load().contracts["people.email.find"]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        a, _ = ev.input_columns(contract, {"full_name": "A Person", "domain": "sample.example"})
+        b, _ = ev.input_columns(contract, {"first_name": "a", "last_name": "PERSON",
+                                           "domain": "www.sample.example"})
+    get_settings.cache_clear()
+    assert a["input_id"] == b["input_id"] and a["input_type"] == "domain+full_name"
+    assert a["input_meta"] == {"domain_class": "company", "tld": "example"}
+
+
+def test_an_array_body_identity_reads_back_through_a_bare_expression():
+    cat = catalog_store.load()
+    adapter = cat.adapters["brightdata.linkedin.user.profile"]
+    contract = cat.contracts[cat.by_id["brightdata.linkedin.user.profile"]["capability"]]
+    assert adapter.in_expr == {"body.url": "linkedin_url"} and not adapter.in_map
+    body = json.dumps([{"url": "https://www.linkedin.com/in/aperson/"}]).encode()
+    given = ev.vendor_identity(adapter, contract, [("dataset_id", "x"), ("format", "json")], body)
+    assert given == {"linkedin_url": "https://www.linkedin.com/in/aperson/"}
+    # A computed expression (`e164_digits(phone)`) is not inverted; only `in_read` reads it back.
+    adapter = C.Adapter(endpoint_id="x", accepts=(("phone",),), in_map={}, out_map={}, miss="",
+                        in_expr={"body.telephone_number": "e164_digits(phone)"})
+    body = json.dumps({"telephone_number": "15550100"}).encode()
+    assert ev.vendor_identity(adapter, cat.contracts["people.phone.live"], [], body) == {}
+
+
+def test_a_verifier_records_the_number_it_checked_in_the_finders_spelling():
+    cat = catalog_store.load()
+    live = cat.contracts["people.phone.live"]
+    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    digits = json.dumps({"telephone_number": "16175550142", "usa_status": "YES"}).encode()
+    national = json.dumps({"telephone_number": "6175550142", "input_format": "USA"}).encode()
+    assert ev.vendor_identity(hlr, live, [], digits) == {"phone": "+16175550142"}
+    # A national number is the provider's to read with input_format; treg does not guess it.
+    assert ev.vendor_identity(hlr, live, [], national) == {}
+    validate = cat.adapters["hlrlookup.people.phone.validate"]
+    assert ev.vendor_identity(validate, cat.contracts["people.phone.verify"], [], digits) == {"phone": "+16175550142"}
+    owner = cat.contracts["people.contact.verify"]
+    trestle = cat.adapters["trestleiq.people.contact.verify"]
+    given = ev.vendor_identity(trestle, owner, [("name", "Ann Lee"), ("phone", "(617) 555-0142")], None)
+    assert given == {"phone": "+16175550142", "full_name": "Ann Lee"}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        checked, _ = ev.input_columns(owner, given)
+        live_cols, _ = ev.input_columns(live, ev.vendor_identity(hlr, live, [], digits))
+        found = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "+1 617 555 0142"})
+    get_settings.cache_clear()
+    assert checked["input_keys"]["phone"] == live_cols["input_keys"]["phone"] == found["answer_keys"]["phone"]
+    assert checked["input_type"] == "full_name+phone"
+    assert checked["input_meta"] == live_cols["input_meta"] == {"calling_code": "1"}
+    assert found["answer_values"] == {"phone_calling_code": "1"}
+
+
+def _built(endpoint_id: str, query=(), body: dict | None = None, answer: dict | None = None) -> dict:
+    """The columns the sink's flusher builds for one direct call, through the real path."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        # `emit` resolves the capability from the endpoint before the builder runs.
+        capability = catalog_store.load().by_id[endpoint_id]["capability"]
+        out = ev._derived(endpoint_id, capability, tuple(query), json.dumps(body).encode() if body else None,
+                          None, 200, json.dumps(answer).encode(), None, True)
+    get_settings.cache_clear()
+    return out
+
+
+def _example(endpoint_id: str) -> dict:
+    examples = Path(catalog_store.__file__).parents[2] / "catalog" / "examples"
+    return json.loads((examples / f"{endpoint_id}.json").read_text())
+
+
+def test_phone_verifiers_record_their_verdicts_in_the_event():
+    cat = catalog_store.load()
+    owner = _built("trestleiq.people.contact.verify", [("name", "Ann Lee"), ("phone", "+16175550142")],
+                   answer=_example("trestleiq.people.contact.verify"))
+    assert owner["answer_values"] == {"name_match": "true", "contact_grade": "A", "phone_valid": "true",
+                                      "line_type": "Mobile", "activity_score": "100"}
+    assert set(owner["input_keys"]) == {"phone", "full_name"}
+    live = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"},
+                  answer=_example("hlrlookup.people.phone.verify"))
+    assert live["answer_values"] == {"live_status": "LIVE", "line_type": "MOBILE", "ported": "true"}
+    assert live["input_meta"] == {"calling_code": "44"}
+    # The Arena's own filter is unchanged: it still blanks a boolean it does not rank on.
+    core = cat.adapters["hlrlookup.people.phone.verify"].from_upstream(_example("hlrlookup.people.phone.verify"))
+    assert safe_output(core, capability="people.phone.live")["ported"] is None
+
+
+@pytest.mark.parametrize("is_ported,ported", [("YES", "true"), ("NO", "false"), ("UNKNOWN", None), (None, None)])
+def test_hlr_live_keeps_an_unknown_porting_status_unknown(is_ported, ported):
+    answer = _example("hlrlookup.people.phone.verify")
+    answer["results"][0]["is_ported"] = is_ported
+    built = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"}, answer=answer)
+    assert built["answer_values"].get("ported") == ported
+
+
+@pytest.mark.parametrize("number_type,error,valid", [
+    ("BAD_FORMAT", "NONE", "false"), ("MOBILE", "NONE", "true"), ("UNKNOWN", "NONE", None),
+    (None, "INTERNAL_ERROR", None)])
+def test_hlr_validate_reads_a_bad_format_number_as_invalid(number_type, error, valid):
+    answer = {"results": [{"error": error, "telephone_number_type": number_type, "credits_spent": 0}]}
+    built = _built("hlrlookup.people.phone.validate", body={"telephone_number": "447540822872"},
+                   answer=answer)
+    assert (built.get("answer_values") or {}).get("valid") == valid
+
+
+def test_a_trestle_country_hint_reads_a_national_number_in_that_country():
+    def key(query):
+        return (_built("trestleiq.people.phone.verify", query,
+                       answer=_example("trestleiq.people.phone.verify")).get("input_keys") or {}).get("phone")
+    us = key([("phone", "6175550142")])
+    assert us and us == key([("phone", "+16175550142")]) == key([("phone", "6175550142"), ("phone.country_hint", "CA")])
+    # A national number in a country treg cannot place gets no key rather than a +1 one.
+    assert key([("phone", "2079460958"), ("phone.country_hint", "GB")]) is None
+    assert key([("phone", "+442079460958"), ("phone.country_hint", "GB")]) not in (None, us)
+
+
+def test_a_read_back_rule_is_part_of_the_adapter_fingerprint():
+    hlr = catalog_store.load().adapters["hlrlookup.people.phone.verify"]
+    assert ev.adapter_fingerprint(hlr) != ev.adapter_fingerprint(replace(hlr, in_read={}))
+    assert ev.adapter_fingerprint(replace(hlr, in_read={"phone": "fmt('+{}', body.telephone_number)"})) \
+        != ev.adapter_fingerprint(hlr)
+
+
+@pytest.mark.parametrize("number,code", [("+1 617 555 0142", "1"), ("+7 912 345 6789", "7"),
+                                         ("+44 7700 900123", "44"), ("+353 85 123 4567", "353"),
+                                         ("+86 138 0013 8000", "86"), ("+971 50 123 4567", "971"),
+                                         ("6175550142", None)])
+def test_calling_code(number, code):
+    assert P.calling_code(number) == code
+
+
+def test_ref_parts():
+    assert ev.ref_parts("abc") == (None, None, None)
+    assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
+    assert ev.ref_parts("abc:v") == ("abc", "v", None)
+    assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
+
+
+def test_an_unknown_analytics_mode_fails_the_contract():
+    with pytest.raises(ValueError, match="analytics"):
+        C.parse_contracts({"contracts": {"x.find": {
+            "identity": [{"email": "str"}], "output": {"email": {"type": "str", "analytics": "raw"}}}}})
+    with pytest.raises(ValueError, match="analytics"):
+        C.parse_contracts({"contracts": {"x.find": {
+            "identity": [{"email": "str"}], "filters": {"q": {"type": "str", "analytics": "key"}},
+            "output": {"email": {"type": "str"}}}}})
+
+
+def test_the_shipped_catalog_uses_only_known_modes_and_keeps_its_routes():
+    # An unknown mode raises at load and every `treg.*` capability disappears, so the shipped
+    # file is checked here, not only the parser.
+    cat = catalog_store.load()
+    used = {(s or {}).get("analytics", "skip") for c in cat.contracts.values()
+            for s in [*(c.output or {}).values(), *(c.filters or {}).values()]}
+    assert used <= {"key", "value", "skip"}
+    for cap in ("people.email.find", "companies.enrich", "linkedin.company.profile", "people.enrich",
+                "linkedin.user.profile", "people.phone.find", "people.search", "companies.search"):
+        assert f"treg.{cap}" in cat.by_id, cap
+
+
+@pytest.mark.parametrize("endpoint_id,location", [
+    ("apollo.people.enrich", "San Francisco United States"),
+    ("fetchinio.linkedin.user.profile", "Seattle, Washington, United States"),
+    ("apollo.companies.enrich", "South San Francisco United States"),
+    ("wiza.companies.enrich", "Toronto, Ontario, Canada"),
+])
+def test_a_shipped_adapter_answer_lands_its_location_as_written(endpoint_id, location):
+    # The adapter's own fixture through `from_upstream`, as the builder reads a live answer:
+    # the place is kept as the provider wrote it, for analysis to parse.
+    cat = catalog_store.load()
+    adapter, ep = cat.adapters[endpoint_id], cat.by_id[endpoint_id]
+    assert adapter.verified, adapter.verify_note
+    output = adapter.from_upstream(json.loads(catalog_store.example_path(endpoint_id).read_text()))
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        cols = ev.answer_columns(cat.contracts[ep["capability"]], output)
+    get_settings.cache_clear()
+    assert cols["answer_values"]["location"] == location
+
+
+def test_company_segments_land_as_values_and_the_domain_joins_the_find():
+    cat = catalog_store.load()
+    output = {"name": "Acme Example Corp", "domain": "www.acme.example", "website": "https://acme.example",
+              "description": "A long free-text description of what the company does.",
+              "industry": "Software", "employees": "51-200", "founded": 2010,
+              "location": "San Francisco, CA, United States", "linkedin_url": "https://linkedin.com/company/acme"}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        cols = ev.answer_columns(cat.contracts["companies.enrich"], output)
+        page = ev.answer_columns(cat.contracts["linkedin.company.profile"],
+                                 {"name": "Acme Example Corp", "website": "acme.example", "employees": "51-200",
+                                  "location": "San Francisco, California, United States", "followers": 1200})
+        find, _ = ev.input_columns(cat.contracts["people.email.find"],
+                                   {"full_name": "A Person", "domain": "acme.example"})
+        search, _ = ev.input_columns(cat.contracts["companies.search"], {"q": "robots", "country": "DE"})
+        person = ev.answer_columns(cat.contracts["people.enrich"], {
+            "full_name": "A Person", "title": "Head of Sales", "location": "Berlin, Germany",
+            "company_domain": "acme.example"})
+    get_settings.cache_clear()
+    assert cols["answer_values"] == {"industry": "Software", "employees": "51-200", "founded": "2010",
+                                     "location": "San Francisco, CA, United States"}
+    # the company's name, description and URLs never leave; its domain only as the shared key
+    assert set(cols["answer_keys"]) == {"domain"}
+    assert cols["answer_keys"]["domain"] == page["answer_keys"]["website"] == find["input_keys"]["domain"]
+    assert page["answer_values"] == {"employees": "51-200",
+                                     "location": "San Francisco, California, United States"}
+    assert search["input_meta"]["country"] == "DE"
+    # a person's place as written; the person's name and title never leave
+    assert person["answer_values"] == {"location": "Berlin, Germany"}
+    assert person["answer_keys"] == {"company_domain": find["input_keys"]["domain"]}
+
+
+def test_a_found_phone_joins_its_live_check_in_one_spelling():
+    cat = catalog_store.load()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        found = ev.answer_columns(cat.contracts["people.phone.find"],
+                                  {"phone": "+1 (617) 555-0142", "line_type": "mobile", "country_code": "US"})
+        other = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "0016175550142"})
+        national = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "(617) 555-0142"})
+        live, _ = ev.input_columns(cat.contracts["people.phone.live"], {"phone": "+16175550142"})
+    get_settings.cache_clear()
+    assert found["answer_keys"]["phone"] == other["answer_keys"]["phone"] == live["input_keys"]["phone"]
+    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US", "phone_calling_code": "1"}
+    # without a country code the digits could be another country's number, so no key
+    assert national["answer_keys"] is None
+    assert ev.normalize("phone", "6175550142") is None
+
+
+def test_a_long_value_is_capped():
+    contract = catalog_store.load().contracts["companies.enrich"]
+    cols = ev.answer_columns(contract, {"name": "Acme", "location": "x" * 1000})
+    assert cols["answer_values"]["location"] == "x" * 256
+
+
+def test_the_public_contract_does_not_carry_the_event_mapping():
+    import inspect
+    from treg.routers import catalog as catalog_router
+    assert '!= "analytics"' in inspect.getsource(catalog_router)
+
+
+# ---- through the call path -------------------------------------------------------------------------
+
+def _no_pii(events: list[dict], *values: str) -> None:
+    text = json.dumps(events).lower()
+    for v in values:
+        assert v.lower() not in text, v
+
+
+async def test_find_then_verify_join_on_the_email_hash(clients: AsyncClient, enrichment_on,
+                                                       events_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "A.Person@Sample.example", "score": 96,
+                                   "verification": {"status": "accept_all"}}}),
+                   (200, {"data": {"email": "a.person@sample.example", "score": 92,
+                                   "verification": {"status": "valid"}}}),
+                   (200, {"data": {"email": {"status": "accept_all", "result": "risky",
+                                             "score": 50, "accept_all": True}}})]}, []))
+    routed = await clients.post(f"/call/{ROUTED}", json={"first_name": "A", "last_name": "Person",
+                                                         "domain": "sample.example"})
+    assert routed.status_code == 200, routed.text
+    parent_ref = routed.headers["x-treg-call-id"]
+    direct = await clients.get("/call/tomba.people.email.find",
+                               params={"full_name": "A Person", "domain": "sample.example"})
+    assert direct.status_code == 200, direct.text
+    checked = await clients.get("/call/tomba.people.email.verify",
+                                params={"email": "a.person@SAMPLE.example"})
+    assert checked.status_code == 200, checked.text
+    events = await _flushed(events_on)
+    _no_pii(events, "sample.example", "a person", "a.person", "person@")
+
+    by_ref = {e["call_ref"]: e for e in events}
+    parent, child = by_ref[parent_ref], by_ref[f"{parent_ref}:r0"]
+    assert set(parent) <= set(ev.COLUMNS) and None not in parent.values()
+    assert {"schema_version", "event_id", "event_time", "event_kind"} <= set(parent)
+    assert parent["endpoint_id"] == ROUTED and parent["credential_tier"] == "routed"
+    assert parent["served_by"] == "tomba.people.email.find" and parent["tried_count"] == 1
+    assert parent["hit"] is True and parent.get("step") is None
+    assert child["parent_ref"] == parent_ref and child["step"] == "r0"
+    assert child["waterfall_position"] == 0 and child["hit"] is True
+    assert child["verdict"] == "unverified" and child["capability"] == "people.email.find"
+    assert len(child["adapter_fingerprint"]) == 12
+    assert child["answer_values"] == {"confidence": "0.96", "verified": "false"}
+    assert child["answer_flags"] == {"is_role": False, "free_mail": False, "domain_match": True}
+
+    [verify] = [e for e in events if e["endpoint_id"] == "tomba.people.email.verify"]
+    [found] = [e for e in events if e["endpoint_id"] == "tomba.people.email.find"
+               and e["call_ref"] == direct.headers["x-treg-call-id"]]
+    # The routed parent, its child and the direct call asked one question.
+    assert parent["input_id"] == child["input_id"] == found["input_id"]
+    assert parent["input_type"] == "domain+full_name"
+    # A find's answer joins the verify that checked it.
+    email_key = verify["input_keys"]["email"]
+    assert parent["answer_keys"]["email"] == child["answer_keys"]["email"] == email_key
+    assert found["answer_keys"]["email"] == email_key
+    assert verify["input_type"] == "email"
+    assert verify["input_meta"] == {"domain_class": "company", "tld": "example"}
+    assert verify["answer_values"] == {"valid": "false", "status": "accept_all", "score": "50"}
+    assert verify["verdict"] == "catch_all" and verify.get("answer_keys") is None
+
+
+async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,
+                                                 monkeypatch):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    r = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+    assert r.status_code == 200, r.text
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "A Person", "domain": "sample.example"})
+    assert r.status_code == 200, r.text
+    events = await _flushed(events_on)
+    assert len(events) == 2
+    for e in events:
+        assert e["input_id"] and e["hit"] is True
+        assert not {"answer_keys", "answer_values", "answer_flags"} & set(e)
+
+
+async def test_a_refused_catalog_call_is_one_event(clients: AsyncClient, events_on):
+    r = await clients.get("/call/tomba.people.email.verify", params={"email": "x@sample.example"})
+    assert r.status_code >= 400
+    [e] = await _flushed(events_on)
+    assert e["endpoint_id"] == "tomba.people.email.verify" and e["refused_by"]
+    assert e["status_code"] == r.status_code and e.get("input_id") is None
+
+
+# ---- asynchronous endpoints --------------------------------------------------------------------------
+
+async def test_a_polled_answer_is_one_terminal_event_on_the_submission_ref(
+        clients: AsyncClient, monkeypatch, bounceban_on, events_on):
+    monkeypatch.setattr(call_service, "relay", Upstream(VERIFYING, [VERIFYING, _finished("deliverable")]))
+    submitted = await clients.get(f"/call/{VERIFY}", params={"email": EMAIL})
+    call_ref = submitted.headers["x-treg-call-id"]
+    for _ in range(3):  # still verifying, done, and a late reread
+        assert (await clients.get(f"/call/{STATUS}", params={"id": "bb-task-1"})).status_code == 200
+    events = await _flushed(events_on)
+    mine = [e for e in events if e["call_ref"] == call_ref]
+    assert [e["event_kind"] for e in mine] == ["async_submit", "async_terminal"]
+    submit, terminal = mine
+    assert submit.get("hit") is None and submit.get("answer_values") is None
+    assert submit["input_keys"] == {"email": ev.keyed(EMAIL.lower())}
+    assert terminal["hit"] is True and terminal["verdict"] == "valid"
+    assert terminal["async_outcome"] == "success" and terminal["endpoint_id"] == VERIFY
+    assert terminal["answer_values"]["status"] == "deliverable"
+    [task] = await _tasks()
+    assert terminal["cost_charged_micro"] == task.settled_micro > 0
+    assert submit.get("cost_charged_micro") is None   # the submission's charge is not settled yet
+    # The polls are calls of their own, never a second terminal event.
+    assert sum(e["event_kind"] == "async_terminal" for e in events) == 1
+    _no_pii(events, EMAIL)
+
+
+async def test_the_worker_emits_the_terminal_event_of_a_routed_child(
+        clients: AsyncClient, monkeypatch, bounceban_on, fast_polls, events_on):
+    monkeypatch.setattr(call_service, "relay", Upstream(VERIFYING))
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.05)
+    result = await clients.post("/call/treg.people.email.verify",
+                                headers={"X-Treg-Route-Prefer": "bounceban"}, json={"email": EMAIL})
+    assert result.status_code == 202, result.text
+    parent_ref = result.headers["x-treg-call-id"]
+    [task] = await _tasks()
+    from treg.infra.db import session_maker
+    from treg.models import AsyncTaskRecord
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, task.call_id)
+        row.next_check_at = row.created_at
+        await db.commit()
+
+    async def finished_poll(row, client):
+        return 200, json.dumps(_finished("deliverable")).encode()
+
+    monkeypatch.setattr(async_task_app, "_poll", finished_poll)
+    assert (await async_task_app.settle_due()).settled == 1
+    assert (await async_task_app.settle_due()).claimed == 0
+    events = await _flushed(events_on)
+    [terminal] = [e for e in events if e["event_kind"] == "async_terminal"]
+    assert terminal["call_ref"] == task.call_id == f"{parent_ref}:r0"
+    assert terminal["parent_ref"] == parent_ref and terminal["hit"] is True
+    assert terminal["answer_values"]["status"] == "deliverable"
+    [parent] = [e for e in events if e["call_ref"] == parent_ref]
+    assert parent["status_code"] == 202 and parent.get("hit") is None
+    assert parent["served_by"] == VERIFY and parent.get("cost_charged_micro") is None
+    submit = next(e for e in events if e["call_ref"] == task.call_id and e["event_kind"] == "async_submit")
+    assert submit["input_id"] == parent["input_id"]
+
+
+async def test_a_routed_identity_counts_against_the_body_budget(
+        clients: AsyncClient, enrichment_on, events_on, monkeypatch):
+    monkeypatch.setattr(sink, "_MAX_RETAINED_BYTES", 1024)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "A Person", "domain": "sample.example",
+                                                    "padding": "x" * 8192})
+    assert r.status_code == 200, r.text
+    assert sink.counters["unbuilt"] >= 1
+    events = await _flushed(events_on)
+    [parent] = [e for e in events if e["call_ref"] == r.headers["x-treg-call-id"]]
+    assert "input_id" not in parent   # generic columns only
+    assert parent["served_by"] == "tomba.people.email.find"
+
+
+async def test_first_and_last_name_sent_directly_join_the_full_name_question(
+        clients: AsyncClient, enrichment_on, events_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}}),
+                   (200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
+    split = await clients.get("/call/tomba.people.email.find",
+                              params={"first_name": "A", "last_name": "Person", "domain": "sample.example"})
+    joined = await clients.get("/call/tomba.people.email.find",
+                               params={"full_name": "a person", "domain": "Sample.example"})
+    assert split.status_code == joined.status_code == 200
+    events = {e["call_ref"]: e for e in await _flushed(events_on)}
+    a, b = events[split.headers["x-treg-call-id"]], events[joined.headers["x-treg-call-id"]]
+    assert a["input_id"] and a["input_id"] == b["input_id"]
+    assert a["input_type"] == "domain+full_name"
+
+
+async def test_an_unreadable_opt_out_never_stops_a_release(
+        clients: AsyncClient, monkeypatch, bounceban_on, events_on, caplog):
+    from datetime import timedelta
+    from treg.infra.db import session_maker
+    from treg.models import AsyncTaskRecord
+    monkeypatch.setattr(call_service, "relay", Upstream(VERIFYING))
+    submitted = await clients.get(f"/call/{VERIFY}", params={"email": EMAIL})
+    call_ref = submitted.headers["x-treg-call-id"]
+    async with session_maker() as db:   # past its window: the worker's next look releases it
+        row = await db.get(AsyncTaskRecord, call_ref)
+        row.created_at = row.created_at - timedelta(days=2)
+        row.next_check_at = row.created_at
+        await db.commit()
+
+    # The opt-out read itself fails: the event loses its answers, the release still runs.
+    class _Unmapped:
+        pass
+    monkeypatch.setattr(async_task_app, "Org", _Unmapped)   # db.get on an unmapped class raises
+    with caplog.at_level("WARNING", logger="treg.asynctasks"):
+        await async_task_app.settle_due()
+    assert "could not read the archive opt-out" in caplog.text
+    [task] = await _tasks()
+    assert task.status == "timed_out" and task.settled_micro == 0
+    events = await _flushed(events_on)
+    [terminal] = [e for e in events if e["event_kind"] == "async_terminal"]
+    assert terminal["call_ref"] == call_ref and terminal["async_outcome"] == "timed_out"
+    assert terminal["cost_charged_micro"] == 0 and terminal.get("answer_values") is None

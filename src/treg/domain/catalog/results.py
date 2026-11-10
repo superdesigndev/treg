@@ -1,9 +1,14 @@
 """Conservative result evidence for cache admission. Never rewrites provider bytes."""
 from dataclasses import dataclass
 import json
+import logging
 import math
 import re
 from typing import Literal
+
+from .. import plugins
+from . import outcome
+from .schema.v2 import is_v2
 
 
 STRICT_ENDPOINTS = frozenset({
@@ -20,9 +25,17 @@ STRICT_ENDPOINTS = frozenset({
 class Result:
     state: Literal["found", "empty", "error", "unknown"]
     reason: str
+    # A 2xx that names its own error AND that the adapter judges empty: nothing was found. Kept
+    # beside `state` so cache admission still reads `error`, while the hit verdict reads a miss.
+    empty: bool = False
 
     @property
     def hit(self) -> bool | None:
+        # A 200 whose body names its own error (`errors: [{"error": "page_not_found"}]`) and carries
+        # nothing found is a miss for the hit verdict; one that names an error beside real results
+        # (one failed page of several) stays undecided. The state stays `error` for cache admission.
+        if self.state == "error" and self.empty:
+            return False
         return {"found": True, "empty": False}.get(self.state)
 
 
@@ -35,15 +48,125 @@ def _email(value) -> bool:
 
 
 def has_result_rules(endpoint_id: str) -> bool:
-    """Only verified, configured hit/miss adapters opt into result-aware cache behavior."""
+    """Only verified, configured hit/miss adapters opt into result-aware cache behavior; on a v2
+    row the miss is the row's own rule, for a 2xx or a 4xx status, beside a verified adapter."""
     from .store import load
 
     adapter = load().adapters.get(endpoint_id)
-    return adapter is not None and adapter.verified and bool(adapter.miss.strip())
+    if adapter is None or not adapter.verified:
+        return False
+    endpoint = load().by_id.get(endpoint_id)
+    if endpoint is not None and is_v2(endpoint):
+        return isinstance(endpoint.get("miss"), dict)
+    return bool(adapter.miss.strip())
+
+
+def verdict(endpoint_id: str, status: int, body: bytes) -> str | None:
+    """The contract's verdict word for one answer (`valid`, `catch_all`, `verified`...), or None.
+
+    None when the endpoint's verified adapter records no verdict, the call failed, the body is not
+    JSON, or the answer does not fill the contract's required output. A provider word the adapter
+    does not map is also None, logged so the gap is seen rather than counted as something else.
+    """
+    if not 200 <= status < 300:
+        return None
+    from .store import load
+
+    # Runs inside the call's audit step: whatever goes wrong here costs the word, never the call.
+    try:
+        adapter = load().adapters.get(endpoint_id)
+        if adapter is None or not adapter.verified or not adapter.records_verdict:
+            return None
+        doc = json.loads(body)
+        raw = adapter.verdict_raw(doc) if isinstance(doc, (dict, list)) else None
+        word = adapter.verdict_word(raw)
+    except Exception:  # noqa: BLE001 - an unreadable body or a failing expression is no verdict
+        return None
+    if raw is not None and word is None:
+        logging.getLogger("treg.catalog").warning(
+            "unmapped verdict word %r from %s; add it to the adapter's `verdicts`", raw[:40], endpoint_id)
+    return word
+
+
+def _dotted(document: object, dotted: str) -> object:
+    """The `expect` rule's path reader, the same reading settle and the async rules give it:
+    `tasks.0.status_code` walks dict keys and list indexes; anything absent is None."""
+    current = document
+    for part in dotted.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            return None
+    return current
+
+
+def _expect_failure(endpoint_id: str, doc: object) -> str | None:
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return outcome.expect_failure(endpoint, doc)
+    rule = endpoint.get("expect")
+    if not isinstance(rule, dict) or not rule.get("json_path"):
+        return None
+    path = str(rule["json_path"])
+    actual = _dotted(doc, path)
+    # `misses` lists the values that mean "looked, found nothing": an answer for the adapter to
+    # judge, not a failure that leaves the hit verdict undecided.
+    if actual == rule.get("equals") or actual in (rule.get("misses") or ()):
+        return None
+    return f"{path}={json.dumps(actual, ensure_ascii=True, default=str)[:80]}"
+
+
+def fails_expect(endpoint_id: str, body: bytes) -> str | None:
+    """`path=value` when a 2xx body fails the endpoint's own `expect` success rule, else None.
+
+    The provider said, inside a 2xx, that this request failed (a DataForSEO task status other than
+    20000 under a 20000 envelope). The caller is told, the answer is never archived or called
+    found, and the charge is untouched: settle still bills what the provider reported. An endpoint
+    without a rule, or a body that is not JSON, is not judged here."""
+    try:
+        doc = json.loads(body)
+    except (ValueError, RecursionError, UnicodeDecodeError, TypeError):
+        return None
+    return _expect_failure(endpoint_id, doc)
+
+
+def _declared_miss(endpoint_id: str, status: int, body: bytes) -> bool:
+    """The endpoint's own `miss: {status, when?}` block: the error status a provider answers when
+    it looked and found nothing (limadata 404, prospeo 400 NO_MATCH). The router reads the same
+    block through the same function, so a waterfall's miss and the recorded hit agree."""
+    from .routing.contracts import declared_miss
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id)
+    try:
+        return endpoint is not None and declared_miss(endpoint, status, body)
+    except Exception:  # noqa: BLE001 - a predicate failure is no verdict
+        return False
+
+
+def _judged(endpoint: dict, status: int, body: bytes, doc: object) -> Result:
+    """A v2 row's 2xx answer through its one outcome declaration, in the result vocabulary."""
+    answer = plugins.Answer(status=status, headers={}, raw=body, body=doc)
+    judged = outcome.judge(endpoint, status, doc, answer=answer)
+    if judged.cause == "expect":
+        return Result("error", "expect_failed")
+    if judged.cause == "error":
+        return Result("error", "provider_error", empty=outcome.miss_holds(endpoint, doc, answer=answer))
+    if not isinstance(doc, (dict, list)):
+        return Result("unknown", "invalid_shape")
+    return Result("empty", "adapter_miss") if judged.state == "miss" else Result("found", "adapter_hit")
 
 
 def classify(endpoint_id: str, status: int, body: bytes) -> Result:
     if not 200 <= status < 300:
+        # A declared miss is an answer ("nobody has it"), not a failure: without this every miss
+        # of a provider that errors its misses stayed undecided, and its hit rate read 100%.
+        if _declared_miss(endpoint_id, status, body):
+            return Result("empty", "declared_miss")
         return Result("error", "http_error")
     if not has_result_rules(endpoint_id):
         return Result("unknown", "unsupported_endpoint")
@@ -51,8 +174,24 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         doc = json.loads(body)
     except (ValueError, RecursionError):
         return Result("unknown", "invalid_json")
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return _judged(endpoint, status, body, doc)
+    if _expect_failure(endpoint_id, doc) is not None:
+        # The provider's own success rule failed: whatever the adapter reads off the remains, this
+        # is not an answer to the question, found or empty. Neither cached nor counted.
+        return Result("error", "expect_failed")
     if isinstance(doc, dict) and (doc.get("error") or doc.get("errors")):
-        return Result("error", "provider_error")
+        empty = False
+        if endpoint_id not in STRICT_ENDPOINTS:
+            from .store import load
+            try:
+                empty = bool(load().adapters[endpoint_id].is_miss(doc))
+            except Exception:  # noqa: BLE001 - a predicate failure is no verdict
+                empty = False
+        return Result("error", "provider_error", empty=empty)
     if endpoint_id not in STRICT_ENDPOINTS:
         from .store import load
 
@@ -60,7 +199,7 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
             return Result("unknown", "invalid_shape")
         try:
             miss = load().adapters[endpoint_id].is_miss(doc)
-        except Exception:  # a predicate failure is not evidence of a business change
+        except Exception:  # noqa: BLE001 - a predicate failure is not evidence of a business change
             return Result("unknown", "predicate_error")
         return Result("empty", "adapter_miss") if miss else Result("found", "adapter_hit")
     if endpoint_id == "leadsforge.people.email.find":

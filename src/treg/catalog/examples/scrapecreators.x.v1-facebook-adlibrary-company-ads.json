@@ -1,0 +1,260 @@
+{
+  "success": true,
+  "credits_remaining": 0,
+  "credits_charged": 1,
+  "results": [
+    {
+      "ad_archive_id": "1837076116930801",
+      "collation_count": 1,
+      "collation_id": "1306280041427029",
+      "is_active": true,
+      "page_id": "367152833370567",
+      "page_is_deleted": false,
+      "snapshot": {
+        "branded_content": null,
+        "page_id": "367152833370567",
+        "page_is_deleted": false,
+        "page_profile_uri": "https://www.facebook.com/instag…",
+        "root_reshared_post": null,
+        "byline": null,
+        "disclaimer_label": null,
+        "page_name": "Instagram",
+        "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcd…",
+        "event": null,
+        "caption": "play.google.com",
+        "cta_text": "Download",
+        "cards": [
+          {
+            "body": "Har din ke palon ke liye Storiz…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Bina Edit ke",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          {
+            "body": "Har din ke palon ke liye Storiz…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Chote-Chote Plao se na Chukein",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          "… 1 more item(s) truncated"
+        ],
+        "body": {
+          "text": "Har din ke palon ke liye Storiz…"
+        },
+        "cta_type": "DOWNLOAD",
+        "display_format": "DCO",
+        "link_description": null,
+        "link_url": "http://play.google.com/store/ap…",
+        "images": [],
+        "page_categories": [
+          "App page"
+        ],
+        "page_like_count": 68201268,
+        "title": "Bina Edit ke",
+        "videos": [],
+        "is_reshared": false,
+        "extra_links": [],
+        "extra_texts": [],
+        "extra_images": [],
+        "extra_videos": [],
+        "country_iso_code": null,
+        "brazil_tax_id": null,
+        "additional_info": null,
+        "ec_certificates": []
+      },
+      "has_user_reported": false,
+      "report_count": null,
+      "menu_items": [],
+      "state_media_run_label": null,
+      "page_name": "Instagram",
+      "impressions_with_index": {
+        "impressions_text": null,
+        "impressions_index": -1
+      },
+      "gated_type": "ELIGIBLE",
+      "categories": [
+        "UNKNOWN"
+      ],
+      "is_aaa_eligible": false,
+      "contains_digital_created_media": false,
+      "reach_estimate": null,
+      "currency": "",
+      "spend": null,
+      "end_date": 1792393200,
+      "publisher_platform": [
+        "FACEBOOK",
+        "MESSENGER"
+      ],
+      "start_date": 1776754800,
+      "contains_sensitive_content": false,
+      "total_active_time": null,
+      "regional_regulation_data": {
+        "finserv": {
+          "is_deemed_finserv": false,
+          "is_limited_delivery": false
+        },
+        "tw_anti_scam": {
+          "is_limited_delivery": false
+        }
+      },
+      "hide_data_status": "NONE",
+      "fev_info": null,
+      "ad_id": null,
+      "targeted_or_reached_countries": [],
+      "url": "https://www.facebook.com/ads/li…",
+      "start_date_string": "2026-04-21T07:00:00.000Z",
+      "end_date_string": "2026-10-19T07:00:00.000Z"
+    },
+    {
+      "ad_archive_id": "2014137892782073",
+      "collation_count": 1,
+      "collation_id": "620763980948640",
+      "is_active": true,
+      "page_id": "367152833370567",
+      "page_is_deleted": false,
+      "snapshot": {
+        "branded_content": null,
+        "page_id": "367152833370567",
+        "page_is_deleted": false,
+        "page_profile_uri": "https://www.facebook.com/instag…",
+        "root_reshared_post": null,
+        "byline": null,
+        "disclaimer_label": null,
+        "page_name": "Instagram",
+        "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcd…",
+        "event": null,
+        "caption": "play.google.com",
+        "cta_text": "Download",
+        "cards": [
+          {
+            "body": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Instagram डाउनलोड करा",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          {
+            "body": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Instagram डाउनलोड करा",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          }
+        ],
+        "body": {
+          "text": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…"
+        },
+        "cta_type": "DOWNLOAD",
+        "display_format": "DCO",
+        "link_description": null,
+        "link_url": "http://play.google.com/store/ap…",
+        "images": [],
+        "page_categories": [
+          "App page"
+        ],
+        "page_like_count": 68201268,
+        "title": "Instagram डाउनलोड करा",
+        "videos": [],
+        "is_reshared": false,
+        "extra_links": [],
+        "extra_texts": [],
+        "extra_images": [],
+        "extra_videos": [],
+        "country_iso_code": null,
+        "brazil_tax_id": null,
+        "additional_info": null,
+        "ec_certificates": []
+      },
+      "has_user_reported": false,
+      "report_count": null,
+      "menu_items": [],
+      "state_media_run_label": null,
+      "page_name": "Instagram",
+      "impressions_with_index": {
+        "impressions_text": null,
+        "impressions_index": -1
+      },
+      "gated_type": "ELIGIBLE",
+      "categories": [
+        "UNKNOWN"
+      ],
+      "is_aaa_eligible": false,
+      "contains_digital_created_media": false,
+      "reach_estimate": null,
+      "currency": "",
+      "spend": null,
+      "end_date": 1792393200,
+      "publisher_platform": [
+        "FACEBOOK",
+        "MESSENGER"
+      ],
+      "start_date": 1776754800,
+      "contains_sensitive_content": false,
+      "total_active_time": null,
+      "regional_regulation_data": {
+        "finserv": {
+          "is_deemed_finserv": false,
+          "is_limited_delivery": false
+        },
+        "tw_anti_scam": {
+          "is_limited_delivery": false
+        }
+      },
+      "hide_data_status": "NONE",
+      "fev_info": null,
+      "ad_id": null,
+      "targeted_or_reached_countries": [],
+      "url": "https://www.facebook.com/ads/li…",
+      "start_date_string": "2026-04-21T07:00:00.000Z",
+      "end_date_string": "2026-10-19T07:00:00.000Z"
+    }
+  ],
+  "searchResultsCount": 1920,
+  "cursor": "AQHT29776fWHPjctmwSm-JqRDWI53Ow…"
+}

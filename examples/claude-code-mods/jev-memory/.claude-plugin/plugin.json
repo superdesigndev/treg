@@ -1,0 +1,31 @@
+{
+  "name": "jev-memory",
+  "version": "0.1.0",
+  "description": "Remembers the preferences you state in prompts: Jev (via treg) judges each prompt's sentences after the turn and saves lasting ones to .claude/jev-memory.md.",
+  "author": {
+    "name": "Shawn Esquivel"
+  },
+  "homepage": "https://treg.to/skills/jev-memory/SKILL.md",
+  "repository": "https://github.com/superdesigndev/treg",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "tregPath": {
+      "type": "string",
+      "title": "treg binary",
+      "description": "Path to the treg CLI. Leave empty to use $HOME/.local/bin/treg.",
+      "default": ""
+    },
+    "takeOverMemory": {
+      "type": "boolean",
+      "title": "Replace Claude Code's own memory",
+      "description": "Drop Claude Code's built-in memory instructions so preferences are saved only by jev-memory.",
+      "default": false
+    },
+    "playSound": {
+      "type": "boolean",
+      "title": "Coin sound",
+      "description": "Play a short coin sound when a preference is saved.",
+      "default": true
+    }
+  }
+}

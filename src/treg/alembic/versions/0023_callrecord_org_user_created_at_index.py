@@ -8,11 +8,7 @@ Create Date: 2026-09-06
 `governance/usage.count_today` backs the per-user daily call cap and runs on every capped call:
 `count(*) WHERE org_id = ? AND user_email = ? AND created_at >= today`. With 0020's
 `(org_id, created_at)` and the single-column `ix_callrecord_user_email` the planner BitmapAnd-ed
-the two, and the `user_email` half read the member's WHOLE history. Measured on prod 2026-09-06,
-after 0021, for the busiest member (287k rows, 104k of them today):
-
-    Bitmap Index Scan on ix_callrecord_user_email   rows=287,527   2,621 ms of 3,016 ms
-    seen in the activity sample 96 times, longest 45.8 s cold
+the two, and the `user_email` half read the member's WHOLE history.
 
 The triple is one tight range: this org, this member, since midnight. Built with the 0020
 discipline (raised `lock_timeout` for the CONCURRENT build only, INVALID-debris check, `env.py`

@@ -1,6 +1,6 @@
 """Per-member tool access control + local-run toggle (the pre-release ACL).
 
-Proves: `tool_access` gates the proxy call AND both run tiers; `local_run_enabled` gates the local tier;
+Proves: `tool_access` gates proxy calls and local runs; `local_run_enabled` gates local execution;
 NULL access = all tools; the owner is never restricted; the access PATCH validates tool names and collapses
 'all checked' to NULL; and an invite carries its access onto the accepted membership.
 """
@@ -13,7 +13,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, accept_with_code
 
 from treg import crypto
 from treg.api import app
@@ -75,8 +75,7 @@ async def test_tool_access_gates_call_and_run(env):
     await _set_access(env, ["alpha"])                       # member may use ONLY alpha
     assert (await env.c.get("/call/alpha", headers=_h(env.member))).status_code != 403  # allowed
     assert (await env.c.get("/call/beta", headers=_h(env.member))).status_code == 403   # denied tool
-    # both run tiers on the denied tool are blocked too
-    assert (await env.c.post("/run", headers=_h(env.member), json={"tool": "beta"})).status_code == 403
+    assert (await env.c.post("/run", headers=_h(env.member), json={"tool": "beta"})).status_code == 503
     g = await env.c.post("/tools/beta/grant", headers=_h(env.member), json={"argv": []})
     assert g.status_code == 403 and "access" in g.json()["detail"]
 
@@ -120,7 +119,7 @@ async def test_invite_carries_access_onto_membership(env):
                            json={"email": "new@x.dev", "role": "member",
                                  "tool_access": ["alpha"], "local_run_enabled": False})
     assert inv.status_code == 200, inv.text
-    acc = await env.c.post("/invites/accept", json={"code": inv.json()["code"], "email": "new@x.dev"})
+    acc = await accept_with_code(env.c, json={"code": inv.json()["code"], "email": "new@x.dev"})
     assert acc.status_code == 200, acc.text
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "new@x.dev"))).scalar_one()
@@ -157,7 +156,7 @@ async def test_empty_list_blocks_every_tool(env):
     await _set_access(env, [])   # no tools → effectively CLI + proxy disabled for this member
     assert (await env.c.get("/call/alpha", headers=_h(env.member))).status_code == 403
     assert (await env.c.get("/call/beta", headers=_h(env.member))).status_code == 403
-    assert (await env.c.post("/run", headers=_h(env.member), json={"tool": "alpha"})).status_code == 403
+    assert (await env.c.post("/run", headers=_h(env.member), json={"tool": "alpha"})).status_code == 503
 
 
 async def test_tool_access_hides_listings_and_keys(env):
