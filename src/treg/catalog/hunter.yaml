@@ -6,7 +6,7 @@ source:
 # VERIFIED 2026-07-31 — all 6 endpoints below were live-called against a real free-plan key and
 # returned 2xx with real data; params and prices were originally transcribed from Hunter's official
 # v2 documentation 2026-07-28 and the two marked `source: observed` are now confirmed by a measured
-# charge (see their cost.note).
+# charge (see their price.note).
 #
 # TWO THINGS LEARNED FROM THE LIVE RUN, both about the meter rather than the routes:
 #   - GET /account's `requests.credits.used` IS the money meter. Its sibling counters
@@ -26,7 +26,7 @@ source:
 #   - Email Verifier is 0.5 verification credits, i.e. HALF a credit — two verifications to a credit.
 #   - The three ENRICHMENT routes (/people/find, /companies/find, /combined/find) are 0.2 credits
 #     and are billed CONDITIONALLY: you are charged only if the response is complete enough to be
-#     useful (see each entry's cost.note for the exact field set). At a fifth of a credit they are
+#     useful (see each entry's price.note for the exact field set). At a fifth of a credit they are
 #     still the cheapest enrichment in this catalog by a wide margin. Hunter's v2 reference page
 #     labels these "free"; its pricing material states the 0.2 rate. The conditional 0.2 is
 #     encoded here as the safer of the two readings — budget for it, and be pleasantly surprised.
