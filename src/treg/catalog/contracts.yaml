@@ -404,7 +404,7 @@ contracts:
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
-        summary: {type: str, max: 2000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 2000 characters: what to check the brief against"}
+        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
       # A semantic search matches the whole work history: a former holder of the asked role ranks
       # with the current ones unless the rows are ordered by the role held now.
       rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
