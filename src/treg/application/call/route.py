@@ -166,8 +166,12 @@ _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "c
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
                               "platform_daily_cap_reached", "daily_cap_reached"})
+# treg's own transient refusals for the whole team (or tag), answered before any hold: every
+# candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
+_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
 
 
+MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or budget read is busy
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
@@ -880,6 +884,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
+    team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -967,10 +972,24 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      exc.status_code, 0, "treg's money is not available to this team here"))
                 admission_refusals.append(exc)
                 continue
-            if exc.kind in _GLOBAL_REFUSALS or (
-                exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
-            ):
-                raise  # the same refusal everywhere; nothing to fall back to
+            if exc.kind in _GLOBAL_REFUSALS or exc.kind in _TEAM_BUSY:
+                if unconfirmed or undecided or best is not None:
+                    # An answer is already paid for: keep it, and say the next ask was refused.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                         exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                    break
+                if exc.kind in _GLOBAL_REFUSALS:
+                    raise  # the same refusal everywhere; nothing to fall back to
+                # Transient and the team's own: the next candidate may find it clear, but nothing
+                # here is a provider's failure, so it spends no error allowance.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                team_busy.append(exc)
+                if len(team_busy) >= MAX_TEAM_BUSY_TRIES:
+                    break
+                continue
+            if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
+                raise
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1240,6 +1259,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
+        if team_busy and all(t.outcome == "skipped" for t in tried):
+            # Only treg's own busy refusals stopped the call: answer that, with its Retry-After,
+            # rather than a route_failed that blames the providers.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, team_busy[-1].status_code, 0, audit_client)
+            raise team_busy[-1]
         if admission_refusals and all(t.outcome == "skipped" for t in tried):
             # Nothing ran: the refusal names a remedy, unlike a cost ceiling the caller may never have set.
             _summarize(parent, tried_count=len(tried))

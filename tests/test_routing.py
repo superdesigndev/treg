@@ -1339,6 +1339,79 @@ async def test_routed_insufficient_balance_still_stops_before_fallback(
     assert seen == []
 
 
+def _money_queue_busy_after(monkeypatch, admitted: int) -> None:
+    """The team's money queue admits `admitted` reserves, then times out every later one."""
+    from contextlib import asynccontextmanager
+
+    from treg.infra import money_admission
+
+    real, reserves = money_admission.admit, []
+
+    def admit(orgs, *, operation, **kwargs):
+        if operation != "reserve":
+            return real(orgs, operation=operation, **kwargs)
+        reserves.append(1)
+        if len(reserves) <= admitted:
+            return real(orgs, operation=operation, **kwargs)
+
+        @asynccontextmanager
+        async def refuse():
+            raise money_admission.ReserveAdmissionTimeout("wait_timeout")
+            yield  # pragma: no cover - makes this an async context manager
+        return refuse()
+    monkeypatch.setattr(money_admission, "admit", admit)
+
+
+async def test_routed_busy_money_queue_is_treg_refusal_not_a_provider_failure(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 0)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "should-not-run@example.com"}})],
+    }, seen))
+    before = await _balance(clients)
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,findymail"},
+    )
+
+    assert response.status_code == 429, response.text
+    assert response.json()["detail"]["error"] == "money_admission_timeout"
+    assert int(response.headers["Retry-After"]) >= 1
+    assert seen == [], "no provider is asked against the same busy queue"
+    assert await _balance(clients) == before
+
+
+async def test_routed_refusal_after_a_paid_hit_keeps_the_answer(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 1)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 99,
+                                  "verification": {"status": "valid"}}})],
+    }, seen))
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,hunter", "X-Treg-Route-Confirm": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["output"]["email"] == "patrick@stripe.com"
+    assert doc["_treg"]["served_by"] == "tomba.people.email.find"
+    assert doc["_treg"]["confirmation"] == {"field": "email", "confirmed": False, "confirmed_by": None}
+    assert [(t["outcome"], t["provider"]) for t in doc["_treg"]["tried"]] == [("hit", "tomba"), ("skipped", "hunter")]
+    assert doc["_treg"]["tried"][1]["detail"] == "refused by treg: money_admission_timeout"
+    assert int(response.headers["X-Treg-Cost-Micro"]) == doc["_treg"]["charged_micro"] > 0
+    assert [provider for provider, *_ in seen] == ["tomba"]
+
+
 async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cost(clients: AsyncClient, enrichment_on, monkeypatch):
     miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
     seen = []
