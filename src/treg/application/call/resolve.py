@@ -2247,11 +2247,13 @@ class Pricing:
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
     """Price one catalog call from the caller's query (path params included, named by `consumed`)
-    and body, with the catalog of this checkout. Pure: no session, no network."""
+    and body, with the catalog of this checkout. Pure: no session, no network. A v2 row refuses a
+    request its pricing cannot read (`call.cost.require_request`) here, on every tier."""
     cat = catalog_store.load()
     service = ep["provider"]
     if schema.is_v2(ep):
         request_data = settlement_basis.request_evidence(query.multi_items(), body, path_names=consumed)
+        call_cost.require_request(ep, request_data)
         hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
         return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
                        settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
