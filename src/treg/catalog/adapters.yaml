@@ -494,7 +494,8 @@ adapters:
     test_identity: {phone: "+447540822872"}
     out: {live_status: "results[0].live_status", phone: "results[0].detected_telephone_number",
           line_type: "results[0].telephone_number_type", current_network: "results[0].current_network_details.name",
-          ported: "results[0].is_ported == 'YES'"}
+          # YES / NO / UNKNOWN: an unknown porting status is not "not ported".
+          ported: "choose(results[0].is_ported == 'YES', true, choose(results[0].is_ported == 'NO', false, null))"}
     # A per-result error is free and says nothing about the line.
     miss: "at_least(results[0].error != 'NONE', coalesce(results[0].live_status) == null)"
     # Only LIVE and DEAD are answers about the line; the rest say HLR could not tell.

@@ -332,6 +332,14 @@ def test_phone_verifiers_record_their_verdicts_in_the_event():
     assert safe_output(core, capability="people.phone.live")["ported"] is None
 
 
+@pytest.mark.parametrize("is_ported,ported", [("YES", "true"), ("NO", "false"), ("UNKNOWN", None), (None, None)])
+def test_hlr_live_keeps_an_unknown_porting_status_unknown(is_ported, ported):
+    answer = _example("hlrlookup.people.phone.verify")
+    answer["results"][0]["is_ported"] = is_ported
+    built = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"}, answer=answer)
+    assert built["answer_values"].get("ported") == ported
+
+
 @pytest.mark.parametrize("number_type,error,valid", [
     ("BAD_FORMAT", "NONE", "false"), ("MOBILE", "NONE", "true"), ("UNKNOWN", "NONE", None),
     (None, "INTERNAL_ERROR", None)])
