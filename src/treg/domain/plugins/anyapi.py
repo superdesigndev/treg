@@ -18,3 +18,11 @@ def scrape_miss(request: Request | None, answer: Answer) -> bool:
     except (TypeError, ValueError):
         failed = False
     return failed or data.get("markdown") in (None, "", [])
+
+
+def scrape_error(request: Request | None, answer: Answer) -> bool:
+    """A 2xx error envelope (a non-null `error` or `errors`) beside a page. One beside a scrape miss
+    is the miss, so it stays free."""
+    body = answer.body
+    enveloped = isinstance(body, dict) and (body.get("error") is not None or body.get("errors") is not None)
+    return enveloped and not scrape_miss(request, answer)

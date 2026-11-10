@@ -142,6 +142,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/twitter.search
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -173,14 +179,20 @@ endpoints:
     value: '0.00022'
     currency: USD
     unit: call
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 'The listed price is the cheapest source''s; a failover to a dearer one costs more. 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.profile
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.output.found, op: equals, value: false}}
-  note: 'A handle that does not exist answers 200 with `output.found: false`, and the call is still charged.'
+  note: 'A handle that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.x.user.profile.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -223,6 +235,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.reels_search
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
@@ -320,6 +338,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/google.search
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
@@ -426,6 +450,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_tweets
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
@@ -561,14 +591,20 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.output.found, op: equals, value: false}}
-  note: 'A handle that does not exist answers 200 with `output.found: false`, and the call is still charged.'
+  note: 'A handle that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.tiktok.user.profile.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -605,6 +641,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile_thin
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.output.found, op: equals, value: false}}
   note: 'The cheap tier of the LinkedIn profile read: core profile fields only; `anyapi.linkedin.user.profile.full` returns the full record. A profile that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.user.profile.json
@@ -836,14 +878,20 @@ endpoints:
     value: '0.0015'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.post
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.output.found, op: equals, value: false}}
-  note: 'A post that does not exist answers 200 with `output.found: false`, and the call is still charged.'
+  note: 'A post that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.instagram.post.detail.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -887,6 +935,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_reels
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
@@ -929,6 +983,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_posts
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -969,6 +1029,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.output.found, op: equals, value: false}}
   note: 'The full tier of the LinkedIn profile read: experience, education, skills and recommendations; `anyapi.linkedin.user.profile` returns core fields only. A profile that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.user.profile.full.json
@@ -1011,6 +1077,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_posts
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
@@ -1080,6 +1152,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.search_hashtag
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -1162,6 +1240,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.post_comments
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any:
@@ -1257,6 +1341,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_comments
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any:
@@ -1353,6 +1443,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile_posts
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -1459,6 +1555,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_keyword
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.videos, op: absent}, {path: response.output.data.videos, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.videos, op: absent}, {path: response.output.data.videos, op: empty}]
@@ -1564,6 +1666,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/google.news
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -1614,6 +1722,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/twitter.replies
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -1660,13 +1774,13 @@ endpoints:
     value: '0.105'
     currency: USD
     unit: call
-    note: 'Billed per employee returned, about $0.011 each, so the charge follows `limit`: the maximum of 10 costs up to $0.11. One source serves this. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.'
+    note: 'Billed per employee returned, about $0.011 each, so the charge follows `limit`: the maximum of 10 costs up to $0.11. One source serves this. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A company that does not exist reports `costUsd: 0` and costs nothing.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_employees
     checked: '2026-09-11'
     confidence: verified
-  note: 'A company that does not exist answers 200 with `output.found: false` and `costUsd: 0`, so it costs nothing.'
+  note: 'A company that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.company.people.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1696,13 +1810,13 @@ endpoints:
     value: '0.011'
     currency: USD
     unit: call
-    note: One source serves this, at up to $0.011 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 'One source serves this, at up to $0.011 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A profile with no work email is charged in full.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.email
     checked: '2026-09-11'
     confidence: verified
-  note: 'A profile with no work email answers 200 with `output.found: false` and is charged in full; it is not an API failure.'
+  note: 'A profile with no work email answers 200 with `output.found: false`; it is not an API failure.'
   docs_url: https://getanyapi.com/api/linkedin/email
   untestable: Returns a named individual's work email; no automated verification request or stored
     example under the catalog PII rule. Price observed once on 2026-09-19 (costUsd 0.011, exact).
@@ -1909,6 +2023,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_users
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.users, op: absent}, {path: response.output.data.users, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.users, op: absent}, {path: response.output.data.users, op: empty}]
@@ -1985,6 +2105,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/maps.reviews
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -2067,6 +2193,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/maps.place
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -2116,6 +2248,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/google.autocomplete
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.suggestions, op: absent}, {path: response.output.data.suggestions, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any:

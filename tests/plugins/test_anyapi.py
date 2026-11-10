@@ -38,3 +38,19 @@ def _scrape(**data: object) -> dict:
 ])
 def test_scrape_miss_reads_the_target_status_and_the_markdown(body, missed):
     assert anyapi.scrape_miss(None, _answer(body)) is missed
+
+
+@pytest.mark.parametrize("body,errored", [
+    (_scrape(statusCode=200, markdown="# Example Domain") | {"error": {"code": "upstream"}}, True),
+    (_scrape(statusCode=200, markdown="# Example Domain") | {"errors": ["partial"]}, True),
+    (_scrape(statusCode=200, markdown="# Example Domain") | {"error": ""}, True),
+    (_scrape(statusCode=200, markdown="# Example Domain") | {"error": None, "errors": None}, False),
+    (_scrape(statusCode=200, markdown="# Example Domain"), False),
+    (_scrape(statusCode=404, markdown="# Not Found") | {"error": {"code": "upstream"}}, False),
+    (_scrape(statusCode=200) | {"errors": ["no page"]}, False),
+    ({"error": {"code": "upstream"}}, False),
+    ([{"error": "x"}], False),
+    (None, False),
+])
+def test_scrape_error_is_an_envelope_beside_a_page(body, errored):
+    assert anyapi.scrape_error(None, _answer(body)) is errored

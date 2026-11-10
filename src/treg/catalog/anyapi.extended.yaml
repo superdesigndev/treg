@@ -341,6 +341,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/facebook.company_ads
     checked: '2026-10-02'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.ads, op: absent}, {path: response.output.data.ads, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when: {any: [{path: response.output.data.ads, op: absent}, {path: response.output.data.ads, op: empty}]}
   docs_url: https://getanyapi.com/api/facebook/company-ads
@@ -5227,6 +5233,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/web.crawl
     checked: '2026-10-02'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -5287,6 +5299,12 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/web.map
     checked: '2026-09-11'
     confidence: verified
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss:
     when:
       any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
@@ -5365,6 +5383,8 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/web.scrape
     checked: '2026-10-02'
     confidence: verified
+  bill: {error: charged}
+  error: {plugin: anyapi.scrape_error}
   miss: {plugin: anyapi.scrape_miss}
   docs_url: https://getanyapi.com/api/web/scrape
   test_request:

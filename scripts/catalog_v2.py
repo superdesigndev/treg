@@ -237,21 +237,23 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
         out.adapter_miss = True
     if rules:
         keys["miss"] = {"when": rules[0] if len(rules) == 1 else {"any": rules}}
-    bill_rule = (defaults or {}).get("bill") or bill
-    envelope_charged = bill_rule.get("miss") == "charged" and bill_rule.get("error") == "charged"
-    if adapter_miss and kind == "per_success" and (expect is not None or not envelope_charged):
-        # Today a per_success row frees a miss (and a failed `expect`) and charges every other 2xx,
-        # a 2xx error envelope included unless the adapter reads it as a miss. One `bill.error`
-        # cannot say that, so the envelope stays out of the error rule: billing and routing read it
-        # as today, by the miss rule.
-        out.warnings.append("the error envelope is not an error rule (a miss or a failed expect is "
-                            "free, an envelope is charged unless it misses); stats and archive "
-                            "admission stop calling a truthy `error` or `errors` an error")
+    if adapter_miss and kind == "per_success" and expect is not None:
+        # Today a failed `expect` is free while billing charges a 2xx error envelope unless the
+        # adapter reads it as a miss. One `bill.error` cannot say both, so the envelope stays out of
+        # the error rule: billing and routing read it as today, by the miss rule.
+        out.warnings.append("the error envelope is not an error rule (a failed expect is free, an "
+                            "envelope is charged unless it misses); stats and archive admission "
+                            "stop calling a truthy `error` or `errors` an error")
     elif adapter_miss:
         # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
-        # charges it, as it charges a miss.
+        # charges it unless the adapter reads it as a miss.
         keys["error"] = {"when": ENVELOPE}
         out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
+        if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
+            bill["error"] = "charged"
+        elif kind == "per_success":
+            out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
+                                "it an error, which is free")
     nf = row.get("not_found")
     if isinstance(nf, dict):
         rule = {"status": nf["status"] if isinstance(nf["status"], list) else [nf["status"]]}

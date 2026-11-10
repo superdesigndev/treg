@@ -103,11 +103,10 @@ behavior, not a wished one: a per_result or per_call row bills misses and errors
 row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Two
 adapter spellings are read as today's evaluator reads them: `x == []` is `x` present and empty (a
 null list stays a hit), and `coalesce(a, b, []) == []`, whose coalesce skips null, `''` and `[]`,
-is one absent-or-empty rule per path. A per_success row keeps its error envelope out of the `error`
-rule unless its provider's `bill` default charges both a miss and an error and it has no `expect`:
-today its miss (and a failed `expect`) is free while an envelope is charged unless it misses, which
-one `bill.error` cannot say, so billing and routing read the envelope by the miss rule and stats and
-archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
+is one absent-or-empty rule per path. A per_success row with an `expect` keeps its error envelope
+out of the `error` rule: today its failed `expect` is free while an envelope is charged unless it
+misses, which one `bill.error` cannot say, so billing and routing read the envelope by the miss rule
+and stats and archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
 an answer shape differently, and lists the rows it cannot rewrite with the reason (a provider
 decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
 `value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
