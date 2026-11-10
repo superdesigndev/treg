@@ -79,6 +79,7 @@ from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
+from ...domain.money import settlement as settlement_basis
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
@@ -88,6 +89,7 @@ from ...domain.catalog.routing.plan import (
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
+from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -440,6 +442,25 @@ def _above(value: object, cap: int) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
 
 
+def _unreadable_count(endpoint: dict, adapter, identity: dict, variant) -> str | None:
+    """The `reserve.rows` count a v2 child would send that its own pricing refuses
+    (`call.cost.require_request`), named for the drop; the router skips that candidate when it plans,
+    before any candidate is held."""
+    rule = (endpoint.get("reserve") or {}).get("rows") or {}
+    if not is_v2(endpoint) or not rule.get("param"):
+        return None
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+    except Exception:  # noqa: BLE001 - the attempt itself reports an adapter that cannot build a request
+        return None
+    request = settlement_basis.request_evidence(list(query.items()), json.dumps(body).encode() if body else b"")
+    try:
+        call_cost.require_request(endpoint, request)
+    except ResolutionFailed:
+        return f"{rule['param']} as a whole number from 1 to {rule['max']}"
+    return None
+
+
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
@@ -569,6 +590,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                 if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
+        elif unreadable := _unreadable_count(e, ad, identity, v):
+            dropped.append({"endpoint_id": e["id"], "why": "needs " + unreadable})
         else:
             capped.append((e, ad, v))
     raw = capped

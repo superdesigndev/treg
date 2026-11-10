@@ -1067,9 +1067,11 @@ the contract's; `verdict` is an expression for a provider that reports the word 
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
 to a mapped word. `cost_units` gives an upper bound in catalog-priced units, used by both the quote
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
-request (a number, or a string of ASCII digits) rather than letting it answer less than asked.
-`verified` is filled only from an explicit mailbox deliverability verdict, never a lookup-success
-flag.
+request (a number, or a string of ASCII digits) rather than letting it answer less than asked; a
+v2 child whose own pricing would refuse the count it is handed (a `reserve.rows` value that is not a
+whole number from 1 to its max) is dropped the same way when the route is planned, before any
+candidate is held. `verified` is filled only from an explicit mailbox deliverability verdict, never
+a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that

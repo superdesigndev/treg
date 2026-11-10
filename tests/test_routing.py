@@ -3321,6 +3321,32 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
         (f"{call_id}:r1", "reserve"), (f"{call_id}:r1", "settle")]
 
 
+@pytest.mark.parametrize("limit", [0, 50.0])
+async def test_a_child_whose_count_its_pricing_refuses_is_dropped_before_any_hold(
+    clients: AsyncClient, monkeypatch, platform_on, limit,
+):
+    """A routed child whose own pricing would refuse the count the router hands it (Hunter's
+    `reserve.rows` limit must be a whole number from 1 to 100) is dropped when the route is
+    planned, so a miss before it still ends the call as a routed miss, not as a 400 after the
+    earlier candidate was held and called."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
+    get_settings.cache_clear()
+    hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
+                                                                  "last_name": "B", "position": "CTO"}]}})
+    for asked, served in ((limit, False), (10, True)):
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"icypeas": [(200, {"leads": [], "total": 0})], "hunter": [hunter]}, seen))
+        r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": asked},
+                               headers={"X-Treg-Route-Prefer": "icypeas,hunter"})
+        assert r.status_code == 200, r.text
+        assert [provider for provider, *_ in seen] == (["icypeas", "hunter"] if served else ["icypeas"])
+        tried = [t["endpoint_id"] for t in r.json()["_treg"]["tried"]]
+        assert ("hunter.companies.emails" in tried) is served
+
+
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
     """`max: {limit: N}` on an adapter: a request asking for more than N skips that provider with a
     named drop instead of answering less than was asked; at or under N it stays a candidate."""
