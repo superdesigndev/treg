@@ -12,7 +12,7 @@ from ..domain.feedback import reviews
 from ..domain.governance.access import pinned_tag_predicates
 from ..models import Feedback
 from ..domain.identity.access import Caller, require_member, require_superadmin
-from ..feedback_contract import FeedbackCategory, ReviewReason, ReviewUsefulness
+from ..feedback_contract import FeedbackCategory, ReviewUsefulness
 from ..infra.db import get_admin_session, get_session
 from . import view
 from .views import account as account_views
@@ -86,7 +86,7 @@ class ReviewIn(BaseModel):
 
     call_id: CallReference
     usefulness: ReviewUsefulness
-    reason: ReviewReason | None = None
+    reason: reviews.ReviewReason | None = None
 
 
 @app.post("/reviews", status_code=201)

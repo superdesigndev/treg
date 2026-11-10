@@ -65,7 +65,8 @@ from .domain.catalog import store as catalog_store
 from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
-from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewReason, ReviewUsefulness, REVIEW_DESCRIPTION
+from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
+from .domain.feedback.reviews import ReviewReason
 from .domain.catalog.stats import EndpointObservationReader
 from .infra import org_traffic
 
