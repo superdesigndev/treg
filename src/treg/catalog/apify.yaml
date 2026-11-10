@@ -553,5 +553,34 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.companies.jobs.workday
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/outscope~workday-jobs-scraper/run-sync-get-dataset-items
+    name: "A company's open jobs from its Workday career site"
+    summary: "List every open job on a company's Workday career site (myworkdayjobs.com) — title, locations, remote flag, posting date, job ID, link and the full description as clean text — filtered by keyword and posting date"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "[{\"url\": \"…\"}] — one Workday career site per company, as it opens in the browser (https://<tenant>.wd<N>.myworkdayjobs.com/<Site>). A job link works too: the actor reads that job's whole site. A bare tenant URL is resolved through the site's robots.txt; myworkdaysite.com is not supported", example: [{"url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"}]}
+        searchText: {type: string, required: false, note: "only jobs matching these words, searched by Workday itself; empty for every job", example: "sales"}
+        postedWithinDays: {type: integer, required: false, note: "1-365; only jobs posted in this many days. Jobs whose date Workday doesn't give are left out when set", example: 7}
+        includeDescription: {type: boolean, required: false, note: "default true: opens each job for its description, exact date and every location. false returns title, link and the listing date only, much faster on large sites; a job posted in several places then comes back with an empty locations list", example: true}
+        maxJobsPerBoard: {type: integer, required: false, note: "1-5000, default 500: stops each career site at this many jobs. This is the row limit; every row bills one job event", example: 20}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, url, jobId, tenant, boardUrl, locations, remote, postedAt, description, source and scrapedAt. A site that fails or has no jobs returns no rows and bills only the start. Emails and phone numbers are stripped from descriptions"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {startUrls: [{url: "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"}], maxJobsPerBoard: 1, includeDescription: false}
+    cost: {type: per_result, value: 0.0008, call_fee: 0.00005, currency: USD, per: 1, unit: job, source: docs, source_url: 'https://api.apify.com/v2/acts/outscope~workday-jobs-scraper', checked: '2026-11-10', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers): one `job` event per dataset row, $0.0008, PLUS the apify-actor-start event of $0.00005 per GB of run memory (min 1 GB); the test_request pins memory=1024, so the call_fee is $0.00005. No platform usage charge on top. Read 2026-11-10 from the actor pricingInfos. Event COUNTS observed 2026-11-09 on the test_request input (run bdVTcP24fs433oCAu, from the owner account, which Apify does not bill): Actor Start 1 + job 1 for 1 row. Charged per job produced — cap every call with maxTotalChargeUsd and maxJobsPerBoard'}
+    added: '2026-11-10'
+    docs_url: https://apify.com/outscope/workday-jobs-scraper
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
