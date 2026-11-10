@@ -1053,6 +1053,10 @@ contracts:
     # an empty list that looks like a page with no ads. Every child is free on an empty answer
     # except a per_call one, which bills it.
     miss: "ads == []"
+    # A non-empty ads list can still be the wrong page: name-only or name-first children drop a
+    # supplied domain or Facebook URL, and a domain-capable child can still return a near-match.
+    # Off-identity ads are a miss so the route can try a later provider. Empty ads stay a miss.
+    question_miss: "advertiser_identity_miss(company_domain, facebook_url, company_name, page_name, ads)"
     idempotent: true
     prefer: [crawl4ai]
 

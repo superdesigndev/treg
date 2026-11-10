@@ -3617,7 +3617,7 @@ adapters:
   crawl4ai.meta-ads.library.advertiser:
     accepts: [[page_id], [company_name], [company_domain], [facebook_url]]
     in: {}
-    in_expr: {body.page: "coalesce(page_id, company_name, company_domain, facebook_url)"}
+    in_expr: {body.page: "coalesce(page_id, facebook_url, company_domain, company_name)"}
     test_identity: {page_id: "15087023444"}
     out: {ads: rows, page_id: "rows[0].page_id", page_name: "rows[0].page_name", count: "len(rows)"}
     miss: "coalesce(rows, []) == []"
