@@ -1,6 +1,8 @@
 """Feedback vocabulary shared by the light CLI, HTTP and MCP."""
 
-from typing import Literal, get_args
+from typing import Annotated, Literal, get_args
+
+from pydantic import StringConstraints
 
 FeedbackCategory = Literal["quality", "pricing", "friction", "other"]
 FEEDBACK_CATEGORIES = get_args(FeedbackCategory)
@@ -19,6 +21,10 @@ FEEDBACK_DESCRIPTION = (
 
 ReviewUsefulness = Literal["useful", "partly", "not_useful", "not_sure"]
 REVIEW_USEFULNESS = get_args(ReviewUsefulness)
+REVIEW_REASON_MAX = 200
+# Trimmed before it is measured, as the CLI does; published in the MCP schema as minLength/maxLength.
+ReviewReason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
+                                                max_length=REVIEW_REASON_MAX)]
 REVIEW_DESCRIPTION = (
     "Rate a catalog call after you have used its result; not_sure is fine when you cannot tell. "
     "The reason may be quoted on the endpoint's catalog page without naming your team, so write "
