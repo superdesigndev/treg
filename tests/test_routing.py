@@ -3322,29 +3322,44 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
 
 
 @pytest.mark.parametrize("limit", [0, 50.0])
-async def test_a_child_whose_count_its_pricing_refuses_is_dropped_before_any_hold(
+async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_is_called(
     clients: AsyncClient, monkeypatch, platform_on, limit,
 ):
-    """A routed child whose own pricing would refuse the count the router hands it (Hunter's
-    `reserve.rows` limit must be a whole number from 1 to 100) is dropped when the route is
-    planned, so a miss before it still ends the call as a routed miss, not as a 400 after the
-    earlier candidate was held and called."""
+    """A routed filter a v2 child prices its hold by (Hunter's `reserve.rows` limit, a whole number
+    from 1 to 100) refuses the routed call itself when the route is planned, naming the routed
+    call's own parameter, before any candidate is held or called. A whole number above the child's
+    cap only drops that child."""
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
     get_settings.cache_clear()
     hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
                                                                   "last_name": "B", "position": "CTO"}]}})
-    for asked, served in ((limit, False), (10, True)):
+
+    async def post(asked):
         seen = []
         monkeypatch.setattr(call_service, "relay", _relay_by_provider(
             {"icypeas": [(200, {"leads": [], "total": 0})], "hunter": [hunter]}, seen))
         r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": asked},
                                headers={"X-Treg-Route-Prefer": "icypeas,hunter"})
+        return r, [provider for provider, *_ in seen]
+
+    r, called = await post(limit)
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "catalog_parameter_invalid"
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
+    assert called == []
+    r, called = await post(10)
+    assert r.status_code == 200, r.text
+    assert called == ["icypeas", "hunter"]
+    assert r.json()["_treg"]["served_by"] == "hunter.companies.emails"
+    for above in (150, "150"):
+        r, called = await post(above)
         assert r.status_code == 200, r.text
-        assert [provider for provider, *_ in seen] == (["icypeas", "hunter"] if served else ["icypeas"])
-        tried = [t["endpoint_id"] for t in r.json()["_treg"]["tried"]]
-        assert ("hunter.companies.emails" in tried) is served
+        assert called == ["icypeas"]
+        assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
 
 
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):

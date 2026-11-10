@@ -79,7 +79,6 @@ from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
-from ...domain.money import settlement as settlement_basis
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
@@ -442,23 +441,22 @@ def _above(value: object, cap: int) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
 
 
-def _unreadable_count(endpoint: dict, adapter, identity: dict, variant) -> str | None:
-    """The `reserve.rows` count a v2 child would send that its own pricing refuses
-    (`call.cost.require_request`), named for the drop; the router skips that candidate when it plans,
-    before any candidate is held."""
-    rule = (endpoint.get("reserve") or {}).get("rows") or {}
-    if not is_v2(endpoint) or not rule.get("param"):
-        return None
-    try:
-        query, body = adapter.to_upstream(identity, variant)
-    except Exception:  # noqa: BLE001 - the attempt itself reports an adapter that cannot build a request
-        return None
-    request = settlement_basis.request_evidence(list(query.items()), json.dumps(body).encode() if body else b"")
-    try:
-        call_cost.require_request(endpoint, request)
-    except ResolutionFailed:
-        return f"{rule['param']} as a whole number from 1 to {rule['max']}"
-    return None
+def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
+    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
+    number from 1 to that row's max when the caller sends it, or the routed call is refused before
+    any candidate is held. Neither the child nor the value is named."""
+    for e, ad, _v in candidates:
+        rule = (e.get("reserve") or {}).get("rows") or {}
+        if not is_v2(e) or not rule.get("param"):
+            continue
+        param = rule["param"]
+        target = "queryParams." + param.removeprefix("query.") if param.startswith("query.") else param
+        names = {k for k, t in ad.in_map.items() if t == target} | {
+            n for t, expr in (ad.in_expr or {}).items() if t == target for n in re.findall(r"[A-Za-z_]\w*", expr)}
+        for name in sorted(names & set(filters or {})):
+            value = (given or {}).get(name)
+            if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
 
 
 def _empty_output(contract) -> dict:
@@ -590,11 +588,10 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                 if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
-        elif unreadable := _unreadable_count(e, ad, identity, v):
-            dropped.append({"endpoint_id": e["id"], "why": "needs " + unreadable})
         else:
             capped.append((e, ad, v))
     raw = capped
+    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
