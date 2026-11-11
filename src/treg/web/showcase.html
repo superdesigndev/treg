@@ -705,7 +705,7 @@ function el(tag, attrs, html) {
   if (html != null) n.innerHTML = html;
   return n;
 }
-function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function host(u) { return u.replace(/^https?:\/\//, '').replace(/\/$/, ''); }
 
 /* ---- hero fan: positions spread evenly, centre cards on top ---- */

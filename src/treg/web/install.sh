@@ -51,6 +51,8 @@ PH_KEY="{POSTHOG_KEY}"
 PH_HOST="{POSTHOG_HOST}"
 case "$(printf '%s' "${TREG_TELEMETRY:-}" | tr '[:upper:]' '[:lower:]')" in 0|false|off) PH_KEY="" ;; esac
 [ "${DO_NOT_TRACK:-}" = "1" ] && PH_KEY=""
+BINARY_PERCENT="{BINARY_PERCENT}"
+BINARY_TRIED=""
 METHOD=""
 VERSION=""
 ON_PATH=false
@@ -85,7 +87,7 @@ report() {  # report <step> [reason]
   [ -n "$PH_KEY" ] && [ -n "$INSTALL_ID" ] && command -v curl >/dev/null 2>&1 || return 0
   props="\"install_step\":\"$1\",\"reason\":\"${2:-}\",\"method\":\"$METHOD\",\"prior_version\":\"$PRIOR_VERSION\""
   props="$props,\"version\":\"$VERSION\",\"on_path\":$ON_PATH,\"os\":\"$OS\",\"arch\":\"$ARCH\""
-  props="$props,\"ad_link\":$AD,\"with_token\":$TOK,\"\$process_person_profile\":false,\"\$geoip_disable\":true"
+  props="$props,\"ad_link\":$AD,\"with_token\":$TOK,\"arm\":\"$ARM\",\"\$process_person_profile\":false,\"\$geoip_disable\":true"
   curl -fsS --connect-timeout 2 --max-time 3 -H 'Content-Type: application/json' \
     -d "{\"api_key\":\"$PH_KEY\",\"event\":\"cli_install_step\",\"distinct_id\":\"$INSTALL_ID\",\"properties\":{$props}}" \
     "$PH_HOST/i/v0/e/" >/dev/null 2>&1 || true
@@ -95,17 +97,23 @@ leave_ad_link() {
     mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
   fi
 }
-fail() {  # fail <reason>
-  report failed "$1"
-  [ -z "$PRIOR_VERSION" ] || exit 1
-  script=$(curl -fsSL "$BASE/install.sh?channel=beta" 2>/dev/null) || exit 1
-  case "$script" in "#!/bin/sh"*) ;; *) exit 1 ;; esac
-  printf '\nInstalling the treg binary instead, which needs no Python…\n\n'
+install_binary() {  # install_binary [note]: the binary CLI's installer on its stable channel
+  note="${1:-}"
+  BINARY_TRIED=1
+  script=$(curl -fsSL "$BASE/install.sh?channel=beta" 2>/dev/null) || return 1
+  case "$script" in "#!/bin/sh"*) ;; *) return 1 ;; esac
+  [ -z "$note" ] || printf '\n%s\n\n' "$note"
   leave_ad_link
   set -- --channel stable
   if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
   if [ -n "$SKILLS" ]; then set -- "$@" --skills "$SKILLS"; fi
-  exec sh -c "$script" install-bin "$@"
+  sh -c "$script" install-bin "$@"
+}
+fail() {  # fail <reason>
+  report failed "$1"
+  [ -z "$PRIOR_VERSION" ] && [ -z "$BINARY_TRIED" ] || exit 1
+  install_binary "Installing the treg binary instead, which needs no Python…"
+  exit $?
 }
 INSTALL_ID=""
 [ -n "$PH_KEY" ] && INSTALL_ID=$(install_id || true)
@@ -114,9 +122,23 @@ ARCH=$(clean "$(uname -m 2>/dev/null)")
 PRIOR_VERSION=$(treg_version || true)
 AD=false; [ -n "$AD_LINK" ] && AD=true
 TOK=false; [ -n "$TOKEN" ] && TOK=true
+ARM=python
+if [ -z "$PRIOR_VERSION" ] && [ "$BINARY_PERCENT" -gt 0 ] 2>/dev/null; then
+  if [ -n "$INSTALL_ID" ]; then
+    slot=$(printf '%s' "$INSTALL_ID" | cksum | cut -d' ' -f1)
+  else
+    slot=$(od -An -N4 -tu4 /dev/urandom | tr -d ' \n')
+  fi
+  if [ $((slot % 100)) -lt "$BINARY_PERCENT" ]; then ARM=binary; fi
+fi
 report started
 
 printf '\n\033[38;5;173m▚ tools-registry\033[0m - installing the treg CLI…\n\n'
+
+if [ "$ARM" = binary ]; then
+  install_binary && exit 0
+  printf '\nInstalling the Python CLI instead…\n\n'
+fi
 
 if command -v uv >/dev/null 2>&1; then
   METHOD=uv

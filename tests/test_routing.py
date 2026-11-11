@@ -387,6 +387,56 @@ def test_current_role_is_the_open_role_not_the_first_listed():
     assert P.current_role([]) is None and P.current_role(None) is None
 
 
+def test_past_titles_are_the_ended_roles_latest_first():
+    from treg.domain.catalog.routing import paths as P
+    hist = [{"title": "Video Engineer", "dates": {"from": "2026-01-01", "to": None}},
+            {"title": "Developer Evangelist", "dates": {"from": "2017-02-01", "to": "2025-12-01"}},
+            {"title": "Intern", "dates": {"from": "2012", "to": "2013"}},
+            {"title": "Developer Evangelist", "dates": {"from": "2014", "to": "2016"}}]
+    assert P.past_titles(hist) == ["Developer Evangelist", "Intern"], "ended roles only, each once"
+    assert P.past_titles([hist[0]]) is None and P.past_titles(None) is None
+
+
+def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
+    """`row.rank_by_role`: a semantic search matches the whole history, so a former holder of the
+    role came back beside current ones; the router puts the role held now first and flags each."""
+    c = catalog_store.load().contracts["people.search"]
+    cfg = c.row_rank
+    now = {"name": "A", cfg["now"]: "Senior Developer Evangelist", cfg["since"]: "2023-01"}
+    left = {"name": "B", cfg["now"]: "Support Engineer", cfg["past"]: ["Developer Evangelist"]}
+    other = {"name": "C", cfg["now"]: "Developer Advocate"}
+    retired = {"name": "D", cfg["now"]: "Consultant", cfg["ended"]: "2024-01"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelists"}, [left, retired, other, now])
+    assert [r["name"] for r in out] == ["A", "C", "B", "D"], "now, then unknown, then past, provider order within"
+    assert out[0][cfg["flag"]] == "current" and out[2][cfg["flag"]] == "past" and cfg["flag"] not in out[1]
+    held_then_left = {"name": "E", cfg["now"]: "Developer Evangelist", cfg["ended"]: "2025-12"}
+    assert c.rank_rows({cfg["asked"]: "developer evangelist"}, [held_then_left])[0][cfg["flag"]] == "past"
+    rows = [left, now]
+    assert c.rank_rows({"q": "developer evangelists"}, rows) is rows, "no asked role: the provider's order"
+    headline = {"name": "F", cfg["now"]: "Former Developer Evangelist; now advisor"}
+    out = c.rank_rows({cfg["asked"]: "Developer Evangelist"}, [left, headline])
+    assert out[0] is headline and out[1][cfg["flag"]] == "past", \
+        "a title with no work history may be a headline: unmarked, not current"
+    dated = lambda t: {"name": t, cfg["now"]: t, cfg["since"]: "2024"}  # noqa: E731
+    marked = lambda asked, *ts: [r.get(cfg["flag"]) for r in c.rank_rows({cfg["asked"]: asked}, [dated(t) for t in ts])]  # noqa: E731
+    assert marked("C++ Developer", "C# Developer", "C Developer", "Senior C++ Developer") == ["current", None, None], \
+        "C++, C# and C are different roles"
+    assert marked("AI 产品经理", "AI 产品经理", "AI 工程师") == ["current", None]
+    assert marked("产品经理", "产品经理", "高级产品经理") == ["current", None], "a word without spaces holds only itself"
+
+
+def test_a_malformed_rank_by_role_fails_the_load():
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    base = {"identity": [{"title": "str"}], "output": {"people": {"type": "list"}},
+            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}, "title": {"type": "str"},
+                                                                   "past": {"type": "list"}, "until": {"type": "str"}, "m": {"type": "str"}}}}
+    ok = {"asked": "title", "now": "title", "since": "title", "past": "past", "ended": "until", "flag": "m"}
+    assert parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": ok}}}})["y"].row_rank == ok
+    for bad in ({**ok, "asked": "q"}, {**ok, "flag": "nope"}, {"asked": "title"}):
+        with pytest.raises(ValueError, match="rank_by_role"):
+            parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": bad}}}})
+
+
 def test_in_rollout_is_stable_per_team_and_never_without_one():
     from treg.domain.catalog.routing.contracts import in_rollout
     picked = [o for o in range(1, 1001) if in_rollout("people.search", o, 50)]
@@ -1289,6 +1339,79 @@ async def test_routed_insufficient_balance_still_stops_before_fallback(
     assert seen == []
 
 
+def _money_queue_busy_after(monkeypatch, admitted: int) -> None:
+    """The team's money queue admits `admitted` reserves, then times out every later one."""
+    from contextlib import asynccontextmanager
+
+    from treg.infra import money_admission
+
+    real, reserves = money_admission.admit, []
+
+    def admit(orgs, *, operation, **kwargs):
+        if operation != "reserve":
+            return real(orgs, operation=operation, **kwargs)
+        reserves.append(1)
+        if len(reserves) <= admitted:
+            return real(orgs, operation=operation, **kwargs)
+
+        @asynccontextmanager
+        async def refuse():
+            raise money_admission.ReserveAdmissionTimeout("wait_timeout")
+            yield  # pragma: no cover - makes this an async context manager
+        return refuse()
+    monkeypatch.setattr(money_admission, "admit", admit)
+
+
+async def test_routed_busy_money_queue_is_treg_refusal_not_a_provider_failure(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 0)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "should-not-run@example.com"}})],
+    }, seen))
+    before = await _balance(clients)
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,findymail"},
+    )
+
+    assert response.status_code == 429, response.text
+    assert response.json()["detail"]["error"] == "money_admission_timeout"
+    assert int(response.headers["Retry-After"]) >= 1
+    assert seen == [], "no provider is asked against the same busy queue"
+    assert await _balance(clients) == before
+
+
+async def test_routed_refusal_after_a_paid_hit_keeps_the_answer(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 1)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 99,
+                                  "verification": {"status": "valid"}}})],
+    }, seen))
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,hunter", "X-Treg-Route-Confirm": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["output"]["email"] == "patrick@stripe.com"
+    assert doc["_treg"]["served_by"] == "tomba.people.email.find"
+    assert doc["_treg"]["confirmation"] == {"field": "email", "confirmed": False, "confirmed_by": None}
+    assert [(t["outcome"], t["provider"]) for t in doc["_treg"]["tried"]] == [("hit", "tomba"), ("skipped", "hunter")]
+    assert doc["_treg"]["tried"][1]["detail"] == "refused by treg: money_admission_timeout"
+    assert int(response.headers["X-Treg-Cost-Micro"]) == doc["_treg"]["charged_micro"] > 0
+    assert [provider for provider, *_ in seen] == ["tomba"]
+
+
 async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cost(clients: AsyncClient, enrichment_on, monkeypatch):
     miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
     seen = []
@@ -2137,6 +2260,22 @@ async def test_a_q_search_fills_to_the_limit_the_caller_sent(clients: AsyncClien
     assert [p for p, *_ in seen] == ["exa"] and "merged_from" not in r2.json()["_treg"]
 
 
+async def test_a_title_search_answers_with_current_holders_first(clients: AsyncClient, people_search_on, monkeypatch):
+    def person(i, history):
+        return {"url": f"https://linkedin.com/in/p{i}", "entities": [{"properties": {"name": f"P{i}", "workHistory": history}}]}
+    left = person(0, [{"title": "Support Engineer", "dates": {"from": "2026-01", "to": None}},
+                      {"title": "Developer Evangelist", "dates": {"from": "2016", "to": "2025-12"}}])
+    now = person(1, [{"title": "Developer Evangelist", "dates": {"from": "2023-01", "to": None}}])
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": [left, now]})] * 4}, seen))
+    r = await clients.post("/call/treg.people.search", json={"title": "Developer Evangelist", "limit": 2},
+                           headers={"X-Treg-Route-Prefer": "exa", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    people = r.json()["output"]["people"]
+    assert [(p["name"], p.get("title_match")) for p in people] == [("P1", "current"), ("P0", "past")]
+    assert people[1]["past_titles"] == ["Developer Evangelist"]
+
+
 async def test_a_company_scoped_q_never_falls_back_to_a_company_only_answer(
         clients: AsyncClient, people_search_on, monkeypatch):
     """{company_domain, q}: exa and parallel send both; crawl4ai and icypeas would answer by company
@@ -2976,6 +3115,68 @@ async def test_google_organic_asks_crawl4ai_first_and_falls_back_when_it_is_empt
     assert seen[0][0] == "crawl4ai" and seen[0][2] == {"q": "pizza", "country": "pl", "language": "pl", "num": "30"}
     assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
     assert r.json()["_treg"]["provider"] == "anyapi"
+    get_settings.cache_clear()
+
+
+
+def test_empty_output_uses_list_and_count_defaults_not_null():
+    """A routed miss must keep list-typed contract fields as [] (and count as 0), never null.
+
+    Other ints (followers, likes, …) stay null — a miss must not look like a measured zero.
+    """
+    from treg.application.call.route import _empty_output
+    from types import SimpleNamespace
+    contract = SimpleNamespace(output={
+        "results": {"type": "list", "required": True},
+        "count": {"type": "int"},
+        "email": {"type": "str"},
+        "followers": {"type": "int"},
+    })
+    assert _empty_output(contract) == {
+        "results": [], "count": 0, "email": None, "followers": None,
+    }
+
+
+async def test_routed_web_search_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    """Catalog contract: results is a required list. An all-miss waterfall used to return
+    output.results=null / count=null; callers then mistook HTTP 200 for a broken/usable hit shape.
+    Empty answers stay outcome=miss with results=[] and count=0."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TINYFISH", "PLATFORM-TINYFISH")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,tinyfish")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "n": 0})],
+        "tinyfish": [(200, {"results": [], "total_results": 0})],
+    }, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "site:example.invalid nonexistent-xyzzy-12345", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai,tinyfish", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["_treg"]["served_by"] is None
+    assert body["output"] == {"results": [], "count": 0}
+    assert isinstance(body["output"]["results"], list) and body["output"]["results"] == []
+    assert all(t["outcome"] in ("miss", "skipped") for t in body["_treg"]["tried"])
+    assert [s[0] for s in seen] == ["crawl4ai", "tinyfish"]
+    get_settings.cache_clear()
+
+
+async def test_routed_google_serp_organic_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "empty_reason": "rescue_no_results"})],
+    }, seen))
+    r = await clients.post("/call/treg.google.serp.organic", json={"q": "site:example.invalid xyzzy-no-hits", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["output"] == {"results": [], "count": 0}
     get_settings.cache_clear()
 
 

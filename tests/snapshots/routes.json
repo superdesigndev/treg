@@ -2111,6 +2111,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "team_first_call",
+    "path": "/orgs/{org_id}/first-call"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "agent_checkin",
