@@ -330,6 +330,76 @@ class TestOwnKeyErrorBodyIsScannedWhole:
         r = await clients.get("/call/whole-tool/x")
         assert r.content == call_evidence.UNSCANNABLE_ERROR_BODY
 
+    async def test_a_brotli_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        brotli = pytest.importorskip("brotli")
+        await self._tool(clients)
+        raw = brotli.compress(json.dumps({"got": f"Bearer {self.KEY}", "msg": "ad set refused"}).encode())
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "br", "content-length": str(len(raw))}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "br"})
+        assert r.status_code == 400
+        assert "content-encoding" not in r.headers
+        assert r.json() == {"got": "***", "msg": "ad set refused"}
+
+    async def test_a_zstd_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        zstandard = pytest.importorskip("zstandard")
+        await self._tool(clients)
+        raw = zstandard.ZstdCompressor().compress(
+            json.dumps({"got": f"Bearer {self.KEY}", "msg": "ad set refused"}).encode())
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "zstd", "content-length": str(len(raw))}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "zstd"})
+        assert r.status_code == 400
+        assert "content-encoding" not in r.headers
+        assert r.json() == {"got": "***", "msg": "ad set refused"}
+
+    async def test_a_charset_content_encoding_is_scanned(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        body = json.dumps({"got": self.KEY, "message": "Unsupported get request"}).encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "utf-8"}))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.status_code == 400
+        assert r.json() == {"got": "***", "message": "Unsupported get request"}
+
+    async def test_a_utf16le_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        body = json.dumps({"got": self.KEY, "message": "Unsupported get request"}).encode("utf-16-le")
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "utf-16le"}))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.status_code == 400
+        assert self.KEY not in r.text
+        assert r.json() == {"got": "***", "message": "Unsupported get request"}
+
+    async def test_a_latin1_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        password = "pässword1234"
+        secret = (await clients.post("/secrets", json={"name": "latin1-key", "value": password})).json()
+        await clients.post("/tools", json={
+            "name": "latin1-tool", "base_url": "https://api.latin1.test",
+            "bindings": [{"secret_id": secret["id"], "injector": "env", "location": "header",
+                          "name": "Authorization", "format": "Bearer {secret}"}],
+        })
+        body = json.dumps(
+            {"received_password": password, "message": "refused"}, ensure_ascii=False,
+        ).encode("latin-1")
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, body, headers={"content-encoding": "iso-8859-1"}))
+        r = await clients.get("/call/latin1-tool/x")
+        assert r.status_code == 400
+        assert password not in r.text
+        assert password.encode("latin-1") not in r.content
+        assert r.json() == {"received_password": "***", "message": "refused"}
+
+    async def test_gzip_unscanned_trailing_bytes_are_replaced(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        raw = gzip.compress(b'{"error":"refused"}') + self.KEY.encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, raw, headers={"content-encoding": "gzip"}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "gzip"})
+        assert r.content == call_evidence.UNSCANNABLE_ERROR_BODY
+        assert self.KEY.encode() not in r.content
+
     def test_benign_key_shaped_fields_are_not_rewritten(self):
         body = b'{"key":"uniqueId","message":"auth: required"}'
         assert call_evidence._redact_caller_response(body, [self.KEY]) == (body, False)
@@ -396,3 +466,100 @@ class TestEvidenceModuleDirectly:
         body, was_redacted = call_evidence._redact_caller_response(original, [])
         assert body == original
         assert not was_redacted
+
+    def test_decompress_charset_and_plaintext_mislabels(self):
+        body = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(body, "utf-8") == body
+        assert call_evidence._decompress_for_scan(body, "UTF-8") == body
+        assert call_evidence._decompress_for_scan(body, "not-a-codec") == body
+        assert call_evidence._decompress_for_scan(bytes([0x1b, 0x00]) + b"opaque", "not-a-codec") is None
+
+    def test_decompress_brotli_and_gzip_trailing_padding(self):
+        brotli = pytest.importorskip("brotli")
+        plain = b'{"error":{"message":"ad set refused","code":100}}'
+        assert call_evidence._decompress_for_scan(brotli.compress(plain), "br") == plain
+        padded = gzip.compress(plain) + bytes([0, 0])
+        assert call_evidence._decompress_for_scan(padded, "gzip") == plain
+
+    def test_decompress_gzip_rejects_unscanned_trailing_bytes(self):
+        plain = b'{"error":"refused"}'
+        sneaky = gzip.compress(plain) + b"secret_token_123456"
+        assert call_evidence._decompress_for_scan(sneaky, "gzip") is None
+        second = gzip.compress(plain) + gzip.compress(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(second, "gzip") is None
+
+    def test_decompress_utf16_is_decoded_for_scan(self):
+        plain = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-le"), "utf-16le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-be"), "utf-16be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16"), "utf-16") == plain
+        assert call_evidence._decompress_for_scan(b"\x00", "utf-16le") is None
+
+    def test_decompress_latin1_is_decoded_for_scan(self):
+        text = '{"received_password":"pässword1234"}'
+        raw = text.encode("latin-1")
+        plain = text.encode()
+        assert raw != plain
+        assert call_evidence._decompress_for_scan(raw, "latin-1") == plain
+        assert call_evidence._decompress_for_scan(raw, "iso-8859-1") == plain
+        assert call_evidence._decompress_for_scan(raw, "ISO-8859-1") == plain
+
+    def test_redact_error_response_masks_latin1_echoed_password(self, monkeypatch):
+        from types import SimpleNamespace
+
+        password = "pässword1234"
+        monkeypatch.setattr(call_evidence, "_safe_secret_renderings", lambda tool, secrets: [password])
+        body = json.dumps(
+            {"received_password": password, "message": "refused"}, ensure_ascii=False,
+        ).encode("latin-1")
+        assert password.encode("latin-1") in body
+        assert password.encode() not in body
+        redacted, was_redacted = call_evidence.redact_error_response(
+            body, SimpleNamespace(bindings=[]), {}, content_encoding="iso-8859-1")
+        assert was_redacted
+        assert password.encode("latin-1") not in redacted
+        assert password.encode() not in redacted
+        assert json.loads(redacted) == {"received_password": "***", "message": "refused"}
+
+    def test_decompress_brotli_output_is_bounded(self):
+        brotli = pytest.importorskip("brotli")
+        raw = brotli.compress(b"A" * (call_evidence._ERROR_SCAN_MAX + 1))
+        assert call_evidence._decompress_for_scan(raw, "br") is None
+
+    def test_decompress_zstd_rejects_unscanned_trailing_bytes(self):
+        zstandard = pytest.importorskip("zstandard")
+        plain = b'{"error":"refused"}'
+        compress = zstandard.ZstdCompressor().compress
+        assert call_evidence._decompress_for_scan(compress(plain), "zstd") == plain
+        sneaky = compress(plain) + b"secret_token_123456"
+        assert call_evidence._decompress_for_scan(sneaky, "zstd") is None
+        second = compress(plain) + compress(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(second, "zstd") is None
+        unknown = zstandard.ZstdCompressor(write_content_size=False).compress
+        assert call_evidence._decompress_for_scan(unknown(plain), "zstd") == plain
+        unknown_second = unknown(plain) + unknown(b"secret_token_123456")
+        assert call_evidence._decompress_for_scan(unknown_second, "zstd") is None
+
+    def test_decompress_zstd_output_is_bounded(self):
+        zstandard = pytest.importorskip("zstandard")
+        oversized = b"A" * (call_evidence._ERROR_SCAN_MAX + 1)
+        raw = zstandard.ZstdCompressor().compress(oversized)
+        assert call_evidence._decompress_for_scan(raw, "zstd") is None
+        unknown = zstandard.ZstdCompressor(write_content_size=False).compress(oversized)
+        assert call_evidence._decompress_for_scan(unknown, "zstd") is None
+
+    def test_decompress_hyphenated_utf16_and_utf32_are_decoded(self):
+        plain = b'{"error":{"message":"Unsupported get request","code":100}}'
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-le"), "utf-16-le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-16-be"), "utf-16-be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "utf-32le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "utf-32-le") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-be"), "utf-32be") == plain
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32"), "utf-32") == plain
+
+    def test_decompress_plaintext_fallback_rejects_wide_text(self):
+        plain = b'{"error":"refused","token":"secret_token_123456"}'
+        wide = plain.decode().encode("utf-16-le")
+        assert wide.lstrip()[:1] == b"{"
+        assert call_evidence._decompress_for_scan(wide, "not-a-codec") is None
+        assert call_evidence._decompress_for_scan(plain.decode().encode("utf-32-le"), "mystery") is None

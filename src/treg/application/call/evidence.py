@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import re
@@ -287,26 +288,61 @@ def _error_response_evidence(
 # answer that is otherwise relayed faithfully. treg protects what it injected, and that it knows
 # exactly; the case-insensitive, decoded re-check below is the backstop for a transform we missed.
 
-# Largest (decompressed) error body this scans. A bigger one, or one in an encoding the stdlib cannot
-# decode (br, zstd), cannot be proven clean, so on a credentialed call it is replaced, not relayed.
+# Largest (decompressed) error body this scans. A bigger one, or one in an encoding we cannot
+# decode, cannot be proven clean, so on a credentialed call it is replaced, not relayed.
 _ERROR_SCAN_MAX = 8 * 1024 * 1024
 _REDACTED_BODY = (b'{"error":"response_redacted",'
                   b'"message":"upstream response may have contained credentials and was redacted"}')
 UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
+# Not transfer encodings. Some Graph and CDN stacks put a charset on Content-Encoding.
+# UTF-8 / ASCII bytes are already searchable. Latin-1 must be transcoded to UTF-8:
+# a non-ASCII credential is a single high byte that UTF-8 surrogateescape will not
+# match. UTF-16 and UTF-32 must be decoded first: an ASCII credential in those
+# encodings is split by NULs and would miss the UTF-8 scan. Labels are matched
+# after stripping hyphens and underscores so utf-16-le / utf_16_le alias utf-16le.
+def _charset_token(enc: str) -> str:
+    return enc.replace("-", "").replace("_", "")
 
-def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
-    """The identity bytes of `raw`, or None when they cannot be had whole within `_ERROR_SCAN_MAX`.
 
-    Own-key calls mirror the caller's `Accept-Encoding`, so a caller asking for gzip gets the
-    provider's error gzipped, and a credential inside it is invisible until decoded.
-    """
-    enc = content_encoding.strip().lower()
-    if enc in ("", "identity"):
+_IDENTITY_CHARSETS = frozenset({
+    "utf8", "usascii", "ascii",
+})
+_TEXT_CHARSET_CODECS = {
+    "iso88591": "latin-1",
+    "latin1": "latin-1",
+    "utf16": "utf-16",
+    "utf16le": "utf-16-le",
+    "utf16be": "utf-16-be",
+    "utf32": "utf-32",
+    "utf32le": "utf-32-le",
+    "utf32be": "utf-32-be",
+}
+
+
+def _looks_like_plaintext_error(raw: bytes) -> bool:
+    """True when `raw` is already text a scanner can search, despite a lying Content-Encoding."""
+    # A UTF-16LE/UTF-32LE JSON body starts with `{`/`[`/`<` but inserts a NUL after
+    # every ASCII byte, so the UTF-8 credential scan would miss it. Fail closed.
+    if b"\x00" in raw:
+        return False
+    return raw.lstrip()[:1] in (b"{", b"[", b"<")
+
+
+def _decode_charset_for_scan(raw: bytes, enc: str) -> bytes | None:
+    """Identity bytes for a charset-labeled body, or None when a labeled charset cannot be decoded."""
+    codec = _TEXT_CHARSET_CODECS.get(_charset_token(enc))
+    if codec is None:
         return raw
-    if enc not in ("gzip", "x-gzip", "deflate"):
+    try:
+        return raw.decode(codec).encode("utf-8")
+    except UnicodeError:
         return None
+
+
+def _gzip_deflate_for_scan(raw: bytes) -> bytes | None:
+    """Identity bytes of a gzip/deflate body, or None when they cannot be had whole."""
     # 32+MAX_WBITS auto-detects a gzip or zlib header; raw deflate is the other "deflate" in the wild.
     for wbits in (32 + zlib.MAX_WBITS, -zlib.MAX_WBITS):
         d = zlib.decompressobj(wbits)
@@ -314,11 +350,140 @@ def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
             out = d.decompress(raw, _ERROR_SCAN_MAX + 1)
         except zlib.error:
             continue
-        # Bounded output (a bomb stops here), and the WHOLE input: a second gzip member is unscanned.
-        if len(out) > _ERROR_SCAN_MAX or d.unconsumed_tail or d.unused_data or not d.eof:
+        # Bounded output (a bomb stops here). Trailing NUL padding after one complete
+        # member is common; any other unused bytes (including a second gzip member) were
+        # not scanned, so the original body must not be relayed.
+        if len(out) > _ERROR_SCAN_MAX or d.unconsumed_tail or not d.eof:
+            continue
+        if d.unused_data.strip(b"\x00"):
             return None
         return out
     return None
+
+
+def _brotli_for_scan(raw: bytes) -> bytes | None:
+    try:
+        import brotli
+    except ImportError:
+        return None
+    dec = brotli.Decompressor()
+    out = bytearray()
+    try:
+        i = 0
+        n = len(raw)
+        while True:
+            remaining = _ERROR_SCAN_MAX + 1 - len(out)
+            if remaining <= 0:
+                return None
+            if dec.can_accept_more_data():
+                if i >= n:
+                    break
+                chunk = raw[i:i + 4096]
+                i += len(chunk)
+                piece = dec.process(chunk, output_buffer_limit=remaining)
+            else:
+                piece = dec.process(b"", output_buffer_limit=remaining)
+                if not piece:
+                    return None
+            out.extend(piece)
+            if len(out) > _ERROR_SCAN_MAX:
+                return None
+        if not dec.is_finished():
+            return None
+    except brotli.error:
+        return None
+    return bytes(out)
+
+
+def _zstd_for_scan(raw: bytes) -> bytes | None:
+    try:
+        import zstandard
+    except ImportError:
+        return None
+    try:
+        params = zstandard.get_frame_parameters(raw)
+    except zstandard.ZstdError:
+        return None
+    if params.content_size == zstandard.CONTENTSIZE_ERROR:
+        return None
+    known = params.content_size != zstandard.CONTENTSIZE_UNKNOWN
+    if known and params.content_size > _ERROR_SCAN_MAX:
+        return None
+    if known:
+        try:
+            out = zstandard.ZstdDecompressor().decompress(raw, allow_extra_data=False)
+        except zstandard.ZstdError:
+            return None
+        return None if len(out) > _ERROR_SCAN_MAX else out
+    # Unknown declared size: stream so a highly compressible frame cannot allocate
+    # past the scan cap, and leftover input after the first frame is not scanned.
+    try:
+        reader = zstandard.ZstdDecompressor().stream_reader(
+            io.BytesIO(raw), read_across_frames=False)
+        try:
+            out = bytearray()
+            while True:
+                remaining = _ERROR_SCAN_MAX + 1 - len(out)
+                if remaining <= 0:
+                    return None
+                want = min(65536, remaining)
+                piece = reader.read(want)
+                if not piece:
+                    break
+                out.extend(piece)
+                if len(out) > _ERROR_SCAN_MAX:
+                    return None
+                if len(piece) < want:
+                    try:
+                        extra = reader.read(1)
+                    except zstandard.ZstdError:
+                        return None
+                    if extra:
+                        return None
+                    break
+        finally:
+            reader.close()
+    except zstandard.ZstdError:
+        return None
+    return bytes(out)
+
+
+def _decompress_one(raw: bytes, enc: str) -> bytes | None:
+    if enc in ("", "identity"):
+        return raw
+    token = _charset_token(enc)
+    if token in _IDENTITY_CHARSETS or token in _TEXT_CHARSET_CODECS:
+        return _decode_charset_for_scan(raw, enc)
+    if enc in ("gzip", "x-gzip", "deflate"):
+        out = _gzip_deflate_for_scan(raw)
+        if out is not None:
+            return out
+        return raw if _looks_like_plaintext_error(raw) else None
+    if enc in ("br", "brotli"):
+        return _brotli_for_scan(raw)
+    if enc in ("zstd", "zst"):
+        return _zstd_for_scan(raw)
+    return raw if _looks_like_plaintext_error(raw) else None
+
+
+def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
+    """The identity bytes of `raw`, or None when they cannot be had whole within `_ERROR_SCAN_MAX`.
+
+    Own-key calls mirror the caller's `Accept-Encoding`, so a caller asking for gzip or brotli
+    gets the provider's error compressed, and a credential inside it is invisible until decoded.
+    Providers that ignore identity and still compress, or that put a charset on Content-Encoding,
+    are decoded the same way: plaintext is scanned, opaque unreadable bytes are not.
+    """
+    tokens = [part.strip().lower() for part in content_encoding.split(",") if part.strip()]
+    if not tokens:
+        return raw
+    body = raw
+    for enc in reversed(tokens):
+        nxt = _decompress_one(body, enc)
+        if nxt is None:
+            return None
+        body = nxt
+    return body
 
 
 def _redact_caller_response(body: bytes, secrets: list[str]) -> tuple[bytes, bool]:

@@ -60,7 +60,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    Never add upstream-specific modeling.
    One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
    back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
-   row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
+   row sees it. The error body is read whole (gzip, deflate, brotli or zstd decoded with bounded output; charset labels such as utf-8 treated as identity, latin-1 and utf-16 decoded before the scan; unused gzip bytes other than NUL padding cannot be scanned) up to 8 MiB; on a credentialed
    call one that cannot be scanned is replaced whole, never relayed as a prefix.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
