@@ -32,3 +32,24 @@ def test_the_finder_limits_are_its_own():
     assert capacity_view.concurrency_pool("filtrat-finder", FIND) == ("filtrat-finder", 20)
     assert capacity_view.rate_bucket("filtrat-finder", FIND) == ("filtrat-finder", 110, 60.0)
     assert capacity_view.concurrency_pool("filtrat", "filtrat.people.email.verify") == ("filtrat", 10)
+
+
+COMPANY = "filtrat-finder.companies.enrich"
+COMPANY_MD = "filtrat-finder.linkedin.company.profile"
+
+
+def test_company_pages_are_priced_per_page_found_and_fixed_to_their_mode():
+    by_id = catalog_store.load().by_id
+    for ep, mode in ((COMPANY, "json"), (COMPANY_MD, "markdown")):
+        row = by_id[ep]
+        assert row["provider"] == "filtrat-finder" and not row.get("status")
+        assert row["platform_request"] == {"body.mode": mode}
+        assert row["cost"]["type"] == "per_success" and row["cost"]["value"] == 12
+        assert row["cost"]["settle"] == "usage"
+
+
+def test_company_pages_have_their_own_limits_apart_from_finder_searches():
+    assert capacity_view.rate_bucket("filtrat-finder", COMPANY) == (COMPANY, 300, 60.0)
+    assert capacity_view.concurrency_pool("filtrat-finder", COMPANY)[1] == 20
+    assert capacity_view.concurrency_pool("filtrat-finder", COMPANY) != ("filtrat-finder", 20)
+    assert capacity_view.concurrency_pool("filtrat-finder", FIND) == ("filtrat-finder", 20)
