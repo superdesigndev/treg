@@ -537,15 +537,17 @@ async def test_v2_write_call_and_insufficient_balance_errors_use_shared_behavior
             org.balance_micro = 0
             db.add(org)
             await db.commit()
-        async with directory_session() as client:
-            refused = await _call_tool(client, "catalog_call_read", {
-                "endpoint_id": "tikhub.tiktok.video.comments",
-                "params": {"aweme_id": "7"},
-            }, token)
-        blob = json.dumps(refused)
-        assert refused["status"] == 402
-        assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
-        assert "not enough for this call" in refused["hint"]
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
+        async with paired_mcp_session() as client:
+            refused = await _call_tool(client, "catalog_call_read", args, token)
+            team = await _call_tool(client, "call", args, token, path="/mcp/")
+        for answer in (refused, team):
+            blob = json.dumps(answer)
+            assert answer["status"] == 402
+            assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
+        assert refused["hint"] == "the team's prepaid balance is not enough for this call"
+        assert team["hint"].startswith(refused["hint"])
+        assert "Team → Billing" in team["hint"]
     finally:
         get_settings.cache_clear()
 

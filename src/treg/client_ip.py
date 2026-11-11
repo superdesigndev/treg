@@ -16,6 +16,7 @@ import ipaddress
 import logging
 import time
 from collections.abc import Mapping
+from functools import lru_cache
 
 from .config import get_settings
 
@@ -78,6 +79,23 @@ def from_headers(headers: Mapping[str, str], peer: str | None) -> str:
             if appended:
                 return appended
     return _ip(peer) or (peer or "?")
+
+
+@lru_cache(maxsize=8)
+def exempt_networks(spec: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """The networks a comma-separated `TREG_RATE_LIMIT_EXEMPT_IPS` names; a bare address is a
+    one-host network. ValueError on anything else."""
+    return tuple(ipaddress.ip_network(part.strip(), strict=False)
+                 for part in spec.split(",") if part.strip())
+
+
+def exempt(ip: str) -> bool:
+    """True when the deployment exempts this address from per-IP rate windows."""
+    nets = exempt_networks(get_settings().rate_limit_exempt_ips)
+    if not nets:
+        return False
+    addr = _ip(ip)
+    return addr is not None and any(ipaddress.ip_address(addr) in net for net in nets)
 
 
 def of(request) -> str:

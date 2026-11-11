@@ -86,6 +86,17 @@ class InsufficientBalance(Exception):
         )
 
 
+class PurchasedCreditShort(InsufficientBalance):
+    """A `purchased_only` reserve: the purchased blocks, less this org's open purchased-only holds,
+    cannot cover it. `balance_micro` is the whole balance; `purchased_micro` what purchased-only
+    calls can still draw."""
+
+    def __init__(self, org_id: int, balance_micro: int, purchased_micro: int,
+                 required_micro: int) -> None:
+        super().__init__(org_id, balance_micro, required_micro)
+        self.purchased_micro = purchased_micro
+
+
 def _now() -> datetime:
     # Naive UTC — same convention as models._now (TIMESTAMP WITHOUT TIME ZONE; asyncpg rejects
     # tz-aware values into those columns).
@@ -343,7 +354,7 @@ async def revoke_in_transaction(
 
 async def reserve(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
-    tags: dict[str, str] | None = None, call_id: str | None = None,
+    tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
 ) -> str:
     """Withhold the estimated cost of one call and return its `call_id`. Commits.
 
@@ -362,7 +373,8 @@ async def reserve(
     """
     try:
         call_id = await reserve_in_transaction(
-            db, org_id, endpoint_id, est_micro, meta=meta, tags=tags, call_id=call_id)
+            db, org_id, endpoint_id, est_micro, meta=meta, tags=tags, call_id=call_id,
+            purchased_only=purchased_only)
     except InsufficientBalance:
         await db.rollback()
         raise
@@ -372,12 +384,16 @@ async def reserve(
 
 async def reserve_in_transaction(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
-    tags: dict[str, str] | None = None, call_id: str | None = None,
+    tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
 ) -> str:
     """Stage one call reservation in the caller-owned transaction.
 
     Lazy stale-hold releases still commit independently before the balance gate. The caller must
     commit a successful reservation or roll back an insufficient one.
+
+    `purchased_only` adds a second gate before the balance one: the org's purchased blocks, less
+    its open purchased-only holds, must cover the charge, and the hold settles from purchased
+    blocks alone (`PurchasedCreditShort` otherwise, a subclass of `InsufficientBalance`).
     """
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
     with money_stage(db, "reap_stale_holds"):
@@ -387,6 +403,8 @@ async def reserve_in_transaction(
     # ledger entries, the audit row and the X-Treg-Call-Id the caller gets back.
     call_id = call_id or _id()
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
+    if purchased_only and charged > 0:
+        await _purchased_gate(db, org_id, charged)
     with money_stage(db, "reserve_balance"):
         result = await db.execute(
             # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
@@ -399,17 +417,36 @@ async def reserve_in_transaction(
         with money_stage(db, "read_balance"):
             balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
         raise InsufficientBalance(org_id, int(balance), charged)
-    db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged))
+    db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
+                purchased_only=purchased_only))
     await _entry(db, org_id=org_id, kind="reserve", amount_micro=-charged, call_id=call_id,
                  endpoint_id=endpoint_id,
                  meta={**(meta or {}),
                        "estimated_micro": int(est_micro), "charged_micro": charged,
+                       "purchased_only": purchased_only,
                        "margin": get_settings().platform_margin, "tags": dict(tags or {})})
     # One row per caller tag, at the estimate, in THIS transaction. A builder's budget and invoice are
     # read from these; writing them anywhere else (or later) would make both lossy.
     for dim, val in (tags or {}).items():
         db.add(TagSpend(org_id=org_id, dim=dim, val=val, hold_id=call_id, amount_micro=charged))
     return call_id
+
+
+async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:
+    # Locking the purchased blocks serializes purchased-only reserves of one org, in the same
+    # primary-key order `_lock_blocks` uses, before the Org row (settle's order too).
+    with money_stage(db, "purchased_gate"):
+        purchased = sum((await db.execute(
+            select(CreditBlock.remaining_micro).where(
+                CreditBlock.org_id == org_id, CreditBlock.kind == "purchased",
+                CreditBlock.remaining_micro > 0)
+            .order_by(CreditBlock.id).with_for_update())).scalars().all())
+        held = (await db.execute(select(func.coalesce(func.sum(Hold.amount_micro), 0)).where(
+            Hold.org_id == org_id, Hold.purchased_only.is_(True)))).scalar_one()
+    available = max(0, int(purchased) - int(held))
+    if available < charged:
+        balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+        raise PurchasedCreditShort(org_id, int(balance), available, charged)
 
 
 class _ClaimedHold(NamedTuple):
@@ -425,6 +462,7 @@ class _ClaimedHold(NamedTuple):
     org_id: int
     endpoint_id: str
     created_at: datetime
+    purchased_only: bool = False
 
 
 async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
@@ -444,7 +482,8 @@ async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
         hold = await db.get(Hold, call_id)
         if hold is None:
             return None
-        claimed = _ClaimedHold(hold.amount_micro, hold.org_id, hold.endpoint_id, hold.created_at)
+        claimed = _ClaimedHold(hold.amount_micro, hold.org_id, hold.endpoint_id, hold.created_at,
+                               bool(hold.purchased_only))
         mark_money(db, org_id=claimed.org_id, call_id=call_id)
         result = await db.execute(delete(Hold).where(Hold.id == call_id))
     if result.rowcount != 1:
@@ -503,7 +542,8 @@ async def _settle_claimed(
     settled_at = _now()
     settled = reserved if actual_micro is None else max(0, with_margin(int(actual_micro)))
     consumed, shortfall = await _consume_blocks(
-        db, hold.org_id, settled, call_id, hold.endpoint_id, blocks=blocks)
+        db, hold.org_id, settled, call_id, hold.endpoint_id, blocks=blocks,
+        purchased_only=hold.purchased_only)
     # The hold came out of the balance at reserve time; give back whatever the call didn't use. If the
     # observed cost overran the estimate the delta is negative, which correctly takes MORE balance —
     # the next reserve is the gate that stops an overrun from compounding.
@@ -559,7 +599,8 @@ async def settle_to_in_transaction(
     amount = hold.amount_micro
     pay = amount if actual_micro is None else min(amount, max(0, int(actual_micro)))
     settled_at = _now()
-    consumed, shortfall = await _consume_blocks(db, hold.org_id, pay, call_id, hold.endpoint_id)
+    consumed, shortfall = await _consume_blocks(db, hold.org_id, pay, call_id, hold.endpoint_id,
+                                                purchased_only=hold.purchased_only)
     spent_delta = consumed - (amount if hold.created_at >= _day_start() else 0)
     # A refund and a seller credit update two existing balances. Acquire those locks in the same
     # order as multi-org batches, AFTER consuming blocks. Exact-cost payments only update the
@@ -703,10 +744,12 @@ async def _lock_blocks(db: AsyncSession, org_ids: set[int]) -> list[CreditBlock]
 
 async def _consume_blocks(
     db: AsyncSession, org_id: int, amount_micro: int, call_id: str, endpoint_id: str,
-    *, blocks: list[CreditBlock] | None = None,
+    *, blocks: list[CreditBlock] | None = None, purchased_only: bool = False,
 ) -> tuple[int, int]:
     """Draw `amount_micro` from the org's blocks, promotional-first then oldest-purchased-first.
     Returns (consumed, shortfall). Does NOT commit — the caller's transaction owns it.
+    `purchased_only` draws from purchased blocks alone; a shortfall there is not taken from free
+    credit.
 
     Consumption is capped by what the blocks actually hold: a shortfall is reported, never invented
     as negative `remaining_micro`.
@@ -723,6 +766,8 @@ async def _consume_blocks(
     blocks.sort(key=lambda b: (_KIND_ORDER.get(b.kind, 99), b.created_at or _now(), b.id))
     left, consumed = amount_micro, 0
     for block in blocks:
+        if purchased_only and block.kind != "purchased":
+            continue
         if left <= 0:
             break
         take = min(block.remaining_micro, left)

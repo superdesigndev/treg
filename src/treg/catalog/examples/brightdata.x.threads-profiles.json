@@ -1,0 +1,46 @@
+[
+  {
+    "url": "https://www.threads.com/@zuck",
+    "profile_name": "Mark Zuckerberg",
+    "profile_id": "63055343223",
+    "about_formatted": "Mostly superintelligence and MMA takes",
+    "number_of_followers": 5772482,
+    "website": null,
+    "instagram_profile_url": "https://www.instagram.com/zuck",
+    "threads": [
+      {
+        "profile_id": "63055343223",
+        "post_date": "2026-11-09T23:31:10.000Z",
+        "post_content_formatted": "Pavlova with Muse helping on our quest to go beyond beginner baking recipes!",
+        "likes": 837,
+        "comments_amount": 101,
+        "reshare_amount": 34,
+        "share_amount": 22
+      },
+      {
+        "profile_id": "63055343223",
+        "post_date": "2026-11-06T18:06:14.000Z",
+        "post_content_formatted": "Using our new spaces feature on Muse to build a tool for my smoker. Give Muse a prompt and it can help build whatever you want to keep track of.\n\nThe Pit Viper's vent controller has Bluetooth now, so Muse tracks the temp for me throughout the day.",
+        "likes": 2291,
+        "comments_amount": 517,
+        "reshare_amount": 133,
+        "share_amount": 119
+      },
+      {
+        "profile_id": "63055343223",
+        "post_date": "2026-11-05T18:32:19.000Z",
+        "post_content_formatted": "Now in the Muse app: talk with your Muse in real time. And pick from multiple voices 🗣️",
+        "likes": 1704,
+        "comments_amount": 581,
+        "reshare_amount": 95,
+        "share_amount": 65
+      }
+    ],
+    "profile_picture": "https://scontent-atl3-1.cdninstagram.com/v/t51.82787-19/825322135_17989325280103224_1252773933700107438_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-atl3-1.cdninstagram.com&_nc_cat=1&_nc_oc=Q6cZ2gHCyAGzk4dtktQ_-NKudE8ZZ0lNkbHkJIBhqIbO",
+    "verified": true,
+    "timestamp": "2026-11-10T15:31:19.064Z",
+    "input": {
+      "url": "https://www.threads.net/@zuck"
+    }
+  }
+]
