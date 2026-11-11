@@ -938,18 +938,25 @@ def _mk(provider: str, **kw) -> call_resolution.MarketplaceCall:
     ("theirstack.companies.technologies", b'{"data":[{},{}]}', 60_000),
     ("theirstack.companies.buying_intents", b'{"data":[]}', 0),
     ("theirstack.jobs.search", b'{"data":{}}', None),
+    ("theirstack.companies.jobs", b'{"data":[{},{}]}', 40_000),
+    ("theirstack.technologies.users", b'{"data":[{}]}', 60_000),
+    ("theirstack.technologies.users", b'{"data":[]}', 0),
 ])
 def test_theirstack_settles_returned_records_or_one_company_lookup(endpoint, body, expected):
-    mk = _mk("theirstack", endpoint_id=endpoint, cost_type=(
-        "per_result" if endpoint.endswith("search") else "per_success"),
-        unit_micro=20_000, estimate_micro=(200_000 if endpoint.endswith("search") else 60_000))
+    per_row = endpoint not in {"theirstack.companies.technologies", "theirstack.companies.buying_intents"}
+    mk = _mk("theirstack", endpoint_id=endpoint, cost_type=("per_result" if per_row else "per_success"),
+             unit_micro=20_000, estimate_micro=(200_000 if per_row else 60_000))
     assert call_settle._observed_cost_micro(mk, body) == expected
 
 
 @pytest.mark.parametrize(("endpoint", "body", "valid"), [
     ("theirstack.jobs.search", {"limit": 2}, True),
     ("theirstack.jobs.search", {}, False),
-    ("theirstack.companies.search", {"limit": 101}, False),
+    ("theirstack.companies.search", {"limit": 500}, True),
+    ("theirstack.companies.search", {"limit": 501}, False),
+    ("theirstack.companies.jobs", {"limit": 500}, True),
+    ("theirstack.companies.jobs", {}, False),
+    ("theirstack.technologies.users", {"limit": 501}, False),
     ("theirstack.jobs.search", {"limit": 1, "blur_company_data": True}, False),
     ("theirstack.companies.technologies", {"company_domain": "stripe.com"}, True),
     ("theirstack.companies.buying_intents", {"company_name_or": ["Stripe", "Google"]}, False),
@@ -1019,6 +1026,9 @@ def test_theirstack_platform_holds_match_the_credit_prices():
     for endpoint, body, hold in (
         ("theirstack.jobs.search", {"limit": 2, "posted_at_max_age_days": 30}, 40_000),
         ("theirstack.companies.search", {"limit": 2, "company_domain_or": ["stripe.com"]}, 120_000),
+        ("theirstack.companies.search", {"limit": 500, "company_country_code_or": ["US"]}, 30_000_000),
+        ("theirstack.companies.jobs", {"limit": 2, "company_domain_or": ["stripe.com"]}, 40_000),
+        ("theirstack.technologies.users", {"limit": 500, "company_technology_slug_or": ["hubspot"]}, 30_000_000),
         ("theirstack.companies.technologies", {"company_domain": "stripe.com"}, 60_000),
     ):
         ep = catalog.by_id[endpoint]
