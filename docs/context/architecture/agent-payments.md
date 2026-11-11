@@ -230,6 +230,10 @@ when the chain's answer is final. `landed` (someone submitted the payment anyway
 payer loses nothing and the ledger holds the money. `absent`: the row becomes `expired`. `pending`:
 the next run asks again. Short-lived proofs keep this set to the last few minutes of credit draws.
 
+Both lookups select only rows whose protocol and network belong to a rail this process has
+configured, so the rows of a switched-off rail wait in the table and never fill a batch ahead of
+rows that can be resolved. They count in `stuck` until that rail is configured again.
+
 ## Where the money lands (`agent_payments_settlement`)
 
 - `wallet` (default): the recipient addresses are treg's own wallet; payouts are off-chain work.

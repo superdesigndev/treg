@@ -22,7 +22,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, false, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select, update
 
@@ -527,15 +527,11 @@ async def reconcile(*, limit: int = 50) -> ReconcileResult:
     async with session_maker() as db:
         rows = (await db.execute(
             select(AgentPayment).where(AgentPayment.status == "settling",
-                                       AgentPayment.created_at < cutoff)
+                                       AgentPayment.created_at < cutoff, _on_configured_rails())
             .order_by(AgentPayment.created_at).limit(limit))).scalars().all()
-        stuck = [(row.id, row.protocol, row.network, _unconfirmed(row)) for row in rows]
-    for payment_id, protocol, network, payment in stuck:
-        rail = _rail(protocol, network)
-        if rail is None:
-            result.pending += 1
-            _count(result, "rail_not_configured")
-            continue
+        stuck = [(row.id, _rail(row.protocol, row.network), _unconfirmed(row)) for row in rows]
+    for payment_id, rail, payment in stuck:
+        assert rail is not None
         lookup = await rail.find(payment)
         _count(result, lookup.reason or lookup.state)
         if lookup.state == "landed":
@@ -570,6 +566,13 @@ def _rail(protocol: str, network: str) -> PaymentRail | None:
     return next((r for r in _rails if r.protocol == protocol and r.network == network), None)
 
 
+def _on_configured_rails():
+    """Only rows a configured rail can look up: rows of a switched-off rail wait in the table
+    and never fill a batch."""
+    return or_(false(), *(and_(AgentPayment.protocol == r.protocol,
+                               AgentPayment.network == r.network) for r in _rails))
+
+
 def _count(result: ReconcileResult, reason: str) -> None:
     result.reasons[reason] = result.reasons.get(reason, 0) + 1
 
@@ -582,14 +585,11 @@ async def _close_credit_proofs(result: ReconcileResult, *, limit: int) -> None:
     async with session_maker() as db:
         rows = (await db.execute(
             select(AgentPayment).where(AgentPayment.status == "credit",
-                                       AgentPayment.expires_at < after)
+                                       AgentPayment.expires_at < after, _on_configured_rails())
             .order_by(AgentPayment.expires_at).limit(limit))).scalars().all()
-        due = [(row.id, row.protocol, row.network, _unconfirmed(row)) for row in rows]
-    for payment_id, protocol, network, payment in due:
-        rail = _rail(protocol, network)
-        if rail is None:
-            _count(result, "rail_not_configured")
-            continue
+        due = [(row.id, _rail(row.protocol, row.network), _unconfirmed(row)) for row in rows]
+    for payment_id, rail, payment in due:
+        assert rail is not None
         lookup = await rail.find(payment)
         if lookup.state == "landed":
             _count(result, "credit_proof_landed")

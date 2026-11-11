@@ -1035,6 +1035,24 @@ async def test_a_credit_payment_is_not_looked_up_before_it_expires(anon: AsyncCl
     assert await _status(row.id) == "credit"
 
 
+async def test_payments_of_a_switched_off_rail_never_block_the_reconciler(anon: AsyncClient,
+                                                                            facilitator, evm):
+    stuck = await _stuck(anon, facilitator)
+    credit = await _credit_proof(anon)
+    old = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+    async with session_maker() as db:
+        for i, status in enumerate(["settling", "settling", "credit", "credit"]):
+            db.add(AgentPayment(proof_id=f"old:{i}", protocol="x402", network="eip155:1",
+                                payer_address=stuck.payer_address, org_id=stuck.org_id,
+                                amount_micro=FLOOR, status=status, asset=X402_ASSET,
+                                pay_to=RECIPIENT, expires_at=old, created_at=old))
+        await db.commit()
+    evm.now = stuck.expires_at + timedelta(minutes=5)
+    result = await agent_payments.reconcile(limit=2)
+    assert (result.failed, result.closed) == (1, 1)
+    assert (await _status(stuck.id), await _status(credit.id)) == ("failed", "expired")
+
+
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
 COINBASE = "https://api.cdp.coinbase.com/platform/v2/x402"
 
