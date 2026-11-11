@@ -205,6 +205,7 @@ async def test_e1_insufficient_balance(
         Expect(
             status=402,
             treg_error=True,
+            cost_micro=0,
             audit={
                 "endpoint_id": EP,
                 "provider": "tikhub",
