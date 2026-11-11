@@ -769,7 +769,8 @@ row.
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
   it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it), `entities` (list items,
-  comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
+  comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
+  request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
   or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter

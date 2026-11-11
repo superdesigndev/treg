@@ -963,6 +963,18 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
+    ep = {"id": "demo.scrape", "provider": "demo", "input": {},
+          "platform_request": {"queryParams.type": None}}
+    call_resolution._enforce_platform_request(
+        ep, b"[]", query=call_resolution.QueryValues((("dataset_id", "gd_x"),)))
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._enforce_platform_request(
+            ep, b"[]", query=call_resolution.QueryValues((("type", "discover_new"),)))
+    assert exc.value.detail["parameter"] == "queryParams.type"
+    assert "discover_new" not in json.dumps(exc.value.detail)
+
+
 async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")

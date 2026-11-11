@@ -458,7 +458,9 @@ cost:
   credential is spent on, such as a model); own-key calls relay any path.
 - **`platform_request`** pins exact body, header or query values needed only on the shared
   credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. Resolution applies these and the
+  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
+  means the parameter must be absent (it need not be declared), so a run mode the row does not
+  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
   provider-specific request guards in `resolve` only after selecting the platform offer and before
   reserve; a team's own credential keeps the upstream contract.
 
