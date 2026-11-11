@@ -3449,7 +3449,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     free on a miss must settle it at zero; one that bills a miss must settle it at the charge
     ranking prices (`miss_units` rows, else the whole hold). A synthetic miss keeps the hit
     example's reported charge, so a child that settles on the provider's own report cannot show
-    its zero here: those are listed with the evidence that an empty answer reports zero."""
+    its zero here: those are listed with the evidence that an empty answer reports zero. A child
+    whose provider bills each returned row, a row its adapter reads as a miss included, settles
+    its synthetic miss (the one row asked for) at the hold."""
     from treg.application.replay import engine, fixtures
     from treg.domain.catalog.routing.plan import bills_miss, cost_at
 
@@ -3474,9 +3476,7 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
         "sumble.organizations": "credits_used; unmatched inputs free",
     }
-    # Misses the provider bills by their count while ranking prices them free, as it did when these
-    # rows were labelled per_success.
-    counted = {
+    billed_per_row = {
         "tavily.web.extract": "a returned page without raw_content is a routing miss and a billed result",
     }
     cat = catalog_store.load()
@@ -3485,15 +3485,16 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     for rec in fixtures.generate():
         eid = rec["endpoint_id"]
         cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
-        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero \
-                or eid in counted:
+        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
             continue
         line = engine.replay(rec)
         if (line.get("routing") or {}).get("kind") != "miss":
             continue
         charged = (line["settle"] or {}).get("charged_micro")
         cv = cat.cost_view(cost, cat.by_id[eid]["provider"])
-        if not bills_miss(cost):
+        if eid in billed_per_row:
+            expected = line["reserve"]["hold_micro"]
+        elif not bills_miss(cost):
             expected = 0
         elif cost.get("bills_miss") is not True:
             continue  # a call_fee alone: the fee, checked where the run body is a dataset list
