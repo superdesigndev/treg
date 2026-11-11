@@ -163,6 +163,7 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
         ("List backlinks and find link gaps", ("web.backlinks.list", "web.backlinks.intersect")),
         ("How AI answers mention your brand", ("ai-search.mentions.summary",
                                                 "ai-search.chatgpt.answer",
+                                                "ai-search.chatgpt.scrape",
                                                 "ai-search.perplexity.answer")),
         ("Search Console: clicks, impressions and top queries", ("search-console.performance",)),
         ("Is this page indexed, and why not", ("search-console.url_inspection",)),
@@ -2421,8 +2422,9 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     "lede": (
         "Every AI visibility tool sells the same loop: run a set of prompts through ChatGPT and "
         "Perplexity, note who gets named, repeat next week. Your agent can run that loop itself. "
-        "One provider serves it through treg.to, as live answers to a prompt and as aggregated "
-        "mention metrics for a keyword or domain, priced per call from {cheapest}, with no "
+        "treg.to serves it as live answers to a prompt, from the model API or from the live "
+        "ChatGPT page, and as aggregated mention metrics for a keyword or domain, priced per "
+        "call from {cheapest}, with no "
         "subscription and no dashboard to pay for."),
     "prompt": "Using treg, run these 12 buyer prompts through ChatGPT and Perplexity, US, web search "
               "on, and tell me for each one whether treg.to or any of Composio, Pipedream or Zapier "
@@ -2464,9 +2466,10 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     ],
     "faq": [
         ("Is this a scrape of the ChatGPT website?",
-         "No. The provider calls the model's own API with web search enabled and returns the "
-         "answer as structured data. You choose the model name and the country to search from. "
-         "It is the same generated answer, without a browser."),
+         "Both kinds are here. The answer endpoints call the model's own API with web search "
+         "enabled and return the answer as structured data; you choose the model name and the "
+         "country to search from. The scrape endpoints return what a user sees on the live "
+         "ChatGPT page, with its cited sources, from the country you choose."),
         ("Can it tell me how to get mentioned?",
          "No. It tells you whether you are named, in which answers, and how that count moves. "
          "Earning the mention is a content and citation problem, and the neighbouring pages on "
