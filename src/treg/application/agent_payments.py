@@ -22,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select, update
 
@@ -631,16 +632,19 @@ async def _record_to_stripe(result: ReconcileResult, *, limit: int, api_key: str
     payment settled to an address treg no longer offers (an earlier wallet) is not Stripe's."""
     destinations = {(r.protocol, r.network): (r.pay_to, r.stripe_network)
                     for r in _rails if r.stripe_network}
+    if not destinations:
+        return
+    current = or_(*(and_(AgentPayment.protocol == protocol, AgentPayment.network == network,
+                         AgentPayment.pay_to == pay_to)
+                    for (protocol, network), (pay_to, _) in destinations.items()))
     async with session_maker() as db:
         rows = (await db.execute(
             select(AgentPayment).where(AgentPayment.status == "settled",
                                        AgentPayment.stripe_payment_intent.is_(None),
-                                       AgentPayment.reference.is_not(None))
+                                       AgentPayment.reference.is_not(None), current)
             .order_by(AgentPayment.created_at).limit(limit))).scalars().all()
-        due = [(row.id, row.amount_micro, row.reference, destinations.get((row.protocol, row.network)),
-                _stripe_metadata(row))
-               for row in rows if (row.protocol, row.network) in destinations
-               and row.pay_to == destinations[(row.protocol, row.network)][0]]
+        due = [(row.id, row.amount_micro, row.reference, destinations[(row.protocol, row.network)],
+                _stripe_metadata(row)) for row in rows]
     for payment_id, amount_micro, reference, (_, network), metadata in due:
         try:
             intent = await stripe_api.record_crypto_payment(

@@ -475,16 +475,15 @@ async def test_a_long_lived_payment_is_settled_even_when_credit_covers_the_call(
     assert await _balance(payer) == 2 * FLOOR - 3 * EP_MICRO
 
 
-async def test_a_tempo_transfer_with_no_expiry_never_draws_credit(anon: AsyncClient, payments_on,
-                                                                  chain):
+async def test_a_tempo_transfer_with_no_expiry_is_refused(anon: AsyncClient, payments_on, chain):
     chain.lifetime = None
-    for n in (1, 2):
-        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
-        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
-            "Authorization": _mpp_credential(challenge, _tempo_tx(bytes([n]) * 65))})
-        assert r.status_code == 200, r.text
-        assert r.headers["X-Treg-Payment"] == "paid"
-    assert chain.broadcasts == 2
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+        "Authorization": _mpp_credential(challenge, _tempo_tx(b"\x01" * 65))})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "expiry_required", r.text
+    assert chain.broadcasts == 0
+    async with session_maker() as db:
+        assert (await db.execute(select(AgentPayment))).scalars().all() == []
 
 
 async def test_an_mpp_challenge_expires_as_configured(anon: AsyncClient, payments_on):
@@ -1206,6 +1205,23 @@ async def test_a_payment_settled_to_an_earlier_wallet_is_not_stripes(anon: Async
         db.add(row)
         await db.commit()
     assert (await agent_payments.reconcile()).recorded == 0 and stripe_mode == []
+
+
+async def test_payments_to_earlier_wallets_never_block_stripe_recording(anon: AsyncClient,
+                                                                        stripe_mode):
+    for _ in range(3):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        credential, _ = _x402_credential(challenge)
+        await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    async with session_maker() as db:
+        rows = (await db.execute(select(AgentPayment).order_by(AgentPayment.id))).scalars().all()
+        for row in rows[:2]:  # the two oldest went to an address treg no longer offers
+            row.pay_to = "0x" + "77" * 20
+            db.add(row)
+        await db.commit()
+        newest = rows[2].id
+    assert (await agent_payments.reconcile(limit=2)).recorded == 1
+    assert [r["metadata"]["treg_agent_payment_id"] for r in stripe_mode] == [str(newest)]
 
 
 async def test_stripe_settlement_can_use_its_own_stripe_account(anon: AsyncClient, monkeypatch,

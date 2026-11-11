@@ -119,8 +119,10 @@ payer already broadcast (MPP push mode, `Verified.deferrable = False`) is always
 
 **Short-lived proofs.** A payment treg does not settle stays valid until it expires, and anyone
 holding it may submit it. So `admit` lets it draw credit (or prove a poll) only when its
-`expires_at` is within `agent_payments_credit_proof_max_s` (default 150); a longer-lived or
-open-ended one is settled like any payment (a poll answers `signature_needed`). Standard clients
+`expires_at` is within `agent_payments_credit_proof_max_s` (default 150); a longer-lived one is
+settled like any payment (a poll answers `signature_needed`). A pull-mode Tempo transfer with no
+`valid_before` is refused outright (`expiry_required`): it stays valid until its nonce is used, so
+the reconciler could never tell that it can no longer land. Standard clients
 sign short ones: x402 sets `validBefore` from the challenge's `maxTimeoutSeconds`
 (`..._x402_max_timeout_s`, 120), and pympp's Tempo client signs an expiring nonce valid 60 seconds,
 capped by the challenge's `expires`, which `MppTempoRail` sets `..._mpp_challenge_ttl_s` (120)
@@ -174,7 +176,8 @@ and `Cache-Control: no-store`. The message says what to pay and why that amount 
 the payment minimum), that only the real price is charged, and that what is not used stays as
 credit that is not refunded, plus the fee when it is not 0. A first challenge has `reason: payment_required`; a refusal names
 `reason`: `payment_replayed`, `invalid_challenge` (another route, query or amount),
-`payment_expired`, `malformed_credential`, `unsupported_version` (x402 v1 `X-PAYMENT`),
+`payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
+`valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`.
 
 It is told apart from treg's `insufficient_balance` and `route_max_cost` 402s (a signed-in
@@ -208,8 +211,8 @@ request). Each row stores what the chain must show: `asset`, `pay_to`, `amount_m
 JSON-RPC (`infra/agent_payments/evm.py`), no session open:
 
 - MPP: the receipt of the proof's transaction hash. `expires_at` is the signed transaction's
-  `valid_before` (a day when it has none; the moment of the request in push mode, which is mined
-  already).
+  `valid_before` (always present: one without it is refused; the moment of the request in push
+  mode, which is mined already).
 - x402: the token's `AuthorizationUsed(payer, nonce)` log (EIP-3009), searched only between shortly
   before the claim and shortly after `validBefore`, then that transaction's receipt. Public nodes
   prune old blocks and refuse wide log ranges, so `Chain.block_at` searches from the head and
@@ -239,7 +242,8 @@ the next run asks again. Short-lived proofs keep this set to the last few minute
   idempotency key, and metadata `treg_agent_payment_id`, `treg_team_id`, `payer_address`,
   `protocol`, `network` so support finds a payment by wallet) and stores its id in
   `stripe_payment_intent`; a payment settled to an address
-  the rail no longer offers (an earlier wallet) is not recorded. Stablecoin acceptance is enabled
+  the rail no longer offers (an earlier wallet) is not recorded. The query itself selects only
+  payments to a current deposit address, so older ones never fill the batch. Stablecoin acceptance is enabled
   per Stripe account, so `agent_payments_stripe_secret_key` may name another account than
   `stripe_secret_key` (card top-ups); empty, the two are one. Startup refuses `stripe` with neither
   key, and without an explicit Tempo currency (one Stripe accepts). x402 on mainnet

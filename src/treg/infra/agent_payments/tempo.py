@@ -13,9 +13,6 @@ from . import Lookup, Offer, PaymentRejected, Settlement, Unconfirmed, Verified,
 from .evm import Chain, ChainUnavailable, moved
 
 CONSUMED_HEADERS = ("authorization",)
-# A transaction with no expiring nonce can be included at any later time; a day is how long the
-# reconciler waits before it calls one that has not landed failed.
-UNBOUNDED_VALIDITY = timedelta(days=1)
 # Block timestamps and our clock disagree a little; this is the margin past `valid_before`.
 EXPIRY_GRACE = timedelta(seconds=60)
 RPC_TIMEOUT_S = 30.0
@@ -97,7 +94,12 @@ class MppTempoRail:
             # Only a recovered secp256k1 sender is authenticated before broadcast; keychain,
             # multisig, P256 and WebAuthn senders are authenticated by the chain at settlement.
             deferrable = details.get("payer_verified") is True
-            expires_at = _timestamp(details.get("valid_before")) or now + UNBOUNDED_VALIDITY
+            expires_at = _timestamp(details.get("valid_before"))
+            if expires_at is None:
+                # A transfer with no `valid_before` stays valid until its nonce is used, so treg
+                # could never tell that it can no longer land.
+                raise PaymentRejected("expiry_required",
+                                      "sign the Tempo transfer with valid_before (an expiring nonce)")
         # Both modes key on the transaction hash the chain records, so one transfer is one proof
         # whichever mode presents it and under whichever challenge it is wrapped.
         return Verified(protocol=self.protocol, network=self.network,
