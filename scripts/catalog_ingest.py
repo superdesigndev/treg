@@ -1484,7 +1484,8 @@ def _anyapi_measured() -> dict[str, dict]:
 
 def _anyapi_input(schema: dict, example: dict) -> dict:
     """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
-    routing controls, so a generated `test_request` is built from the vendor's own examples."""
+    routing controls, so a generated `test_request` is built from the vendor's own examples. AnyAPI
+    takes the shared `fields` query parameter as one comma-separated value, so a list is joined."""
     required = set(schema.get("required") or [])
     body = {}
     for name, spec in (schema.get("properties") or {}).items():
@@ -1501,7 +1502,7 @@ def _anyapi_input(schema: dict, example: dict) -> dict:
         if name in example:
             field["example"] = example[name]
         body[name] = field
-    return {"body": body, "bodyType": "json"}
+    return {"body": body, "bodyType": "json", "queryArrayEncoding": "comma"}
 
 
 def _anyapi_price(api: dict) -> dict:
