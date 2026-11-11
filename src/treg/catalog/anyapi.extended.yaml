@@ -6071,14 +6071,14 @@ endpoints:
     bodyType: json
     queryArrayEncoding: comma
   price:
-    value: '0.0718'
+    value: '0.11'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.2038 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: One source serves each call, with no failover to another; the lowest-priced unless the body names one in AnyAPI's `source` field, at $0.11 or $0.132 a call by source. Setting AnyAPI's `fresh` body field to true costs $0.44 per email found instead, a live read served by one source, which answers 202 when the read is not finished inside the call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/youtube.channel_contact
-    checked: '2026-10-02'
+    checked: '2026-11-16'
     confidence: verified
   docs_url: https://getanyapi.com/api/youtube/channel-contact
   test_request:
@@ -6088,6 +6088,7 @@ endpoints:
   added: '2026-09-19'
   example_response: examples/anyapi.youtube.channel_contact.json
   observed_time: 19.29
+  cache: forbidden
 - id: anyapi.youtube.channel_lives
   platform: youtube
   domain: channel

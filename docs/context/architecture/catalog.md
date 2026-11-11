@@ -646,7 +646,9 @@ rejects platform-eligible task/status/result reads that take a required id witho
 (`tests/test_dataforseo_async.py` holds every shared-key submission to an owned reader). Generated
 task consumers with no trustworthy producer chain are `platform_blocked`. `carry_verification`
 preserves reviewed ownership blocks across re-ingest; regenerating them away would reopen the
-tenant boundary.
+tenant boundary. It also preserves a row's reviewed `cache`: AnyAPI's
+`youtube.channel_contact` is `cache: forbidden` because its answers are per-request and must never be
+archived or served to another caller.
 
 ### Core-wins dedup compares NORMALISED paths - except on Graph
 
