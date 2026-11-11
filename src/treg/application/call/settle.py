@@ -460,12 +460,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         bare `{}` on enrich, an empty `organizations` page on search) and charges nothing for it, so
         status-based billing alone would bill the caller for a response Apollo gave away. The body
         says whether the charged thing came back; when it didn't, the call settles at 0.
-      - hunter (domain search): DERIVED too, and for the opposite reason — its price is not
-        per row but one whole SEARCH credit per 10 emails returned, rounded up, with an empty
-        domain free. `data.emails` is the only place that number exists.
-      - hunter (email finder): DERIVED, the flat case — one whole SEARCH credit when an email is
-        found, nothing on a miss ("a miss is free", per Hunter's own pricing), yet a miss still
-        answers HTTP 200, so the estimate billed the full credit for a name Hunter had nothing on.
 
       - crustdata / cloro / aiark: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`),
         the only place the charge exists. AI Ark reports debits as negative `X-Credit` values; its
@@ -787,28 +781,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             size = meta.get("pageSize") if isinstance(meta, dict) else None
             if type(size) is int and size > 0 and mk.unit_micro > 0:
                 return ((size + 9) // 10) * mk.unit_micro
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.companies.emails":
-        # DERIVED, like apollo. Hunter's domain search does not bill per row at all: it takes ONE
-        # whole search credit per 10 emails RETURNED, rounded up, and a domain it knows nobody at is
-        # free. Neither half survives being flattened into the catalog's per-row price, so settling
-        # at the estimate is wrong in both directions. The returned list is the bill.
-        data = doc.get("data")
-        emails = data.get("emails") if isinstance(data, dict) else None
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(emails, list) and rate:
-            credits = -(-len(emails) // 10)  # whole credits, rounded up; no emails = no charge
-            return int(credits * rate * 1_000_000 + 0.5)
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.people.email.find":
-        # DERIVED, the flat case of the same family: the finder takes ONE whole search credit when
-        # it finds an email and nothing when it doesn't, yet a miss still answers HTTP 200 with
-        # `email: null`. A body without the `email` key (an error shape) still falls back to the
-        # estimate.
-        data = doc.get("data")
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(data, dict) and "email" in data and rate:
-            return int(rate * 1_000_000 + 0.5) if data["email"] else 0
         return None
     if provider == "apollo":
         # Only the shapes whose billing rule is documented and body-decidable: company enrichment

@@ -767,7 +767,7 @@ row.
   resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
   applied, values coerced by their declared type), times a bounded `times` field, else the
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
-  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it), `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
@@ -775,15 +775,23 @@ row.
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
   fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
+- **The request it can price.** On every tier, before anything is held, `price_call` refuses with
+  `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
+  type is not a list (an undeclared one is not judged), and a `reserve.rows` count the request
+  carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
+  takes the default). The refusal names the parameter, never its value.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
-  spelling records a free miss, so the call record and the stats fallback read it alike. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
-  hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
-  evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged
+  answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
+  maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
+  unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
+  `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
+  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.

@@ -34,10 +34,11 @@ cost. Nothing about the candidate is in the public catalog; it is described only
 - The candidate is called from the worker with its own key (`shadow_provider_key`), at most
   `shadow_concurrency` at once, `shadow_per_second` per second, each limited to `shadow_timeout_s`.
   No hold, no settle, no team balance: the customer's call finished long before.
-- Both answers go through their adapters to the contract's fields; `compare` records, per shared
-  scalar field, whether they agree (domains by host, names by similarity after removing accents and
-  legal suffixes, other fields by normalized equality). Optional `count` and `with_email` output
-  keys give list sizes, so "found" and "found with an email" are reported apart.
+- Both answers go through their adapters to the contract's fields; an answer is not found when its
+  adapter reads a miss or, on a v2 row, its outcome declaration does not judge it a hit. `compare`
+  records, per shared scalar field, whether they agree (domains by host, names by similarity after
+  removing accents and legal suffixes, other fields by normalized equality). Optional `count` and
+  `with_email` output keys give list sizes, so "found" and "found with an email" are reported apart.
 
 ## What is stored and reported
 

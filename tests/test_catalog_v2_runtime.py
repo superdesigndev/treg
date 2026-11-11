@@ -152,6 +152,48 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
     assert call(blocks, {})[0] == 200000                                # the default: 100 rows
     assert call(blocks, {"limit": 99999})[0] == 20000000                # clamped at max
     assert call(blocks, {"limit": "x"})[0] == 200000                    # not a count: the default
+    assert call(blocks, {"limit": "0" * 5000 + "15"})[0] == 40000       # leading zeros: still 15 rows
+
+
+@pytest.mark.parametrize("query,body,refused", [
+    ([("q", "a"), ("q", "b")], None, "q"),                              # a single value, sent twice
+    ([("tags", "a"), ("tags", "b")], None, None),                       # a list may repeat
+    ([("other", "a"), ("other", "b")], None, None),                     # undeclared: no type to judge
+    ([("limit", "10"), ("limit", "10")], None, "limit"),
+    ([], None, None),                                                   # absent: the default
+    ([("limit", "100")], None, None), ([("limit", "0050")], None, None), ([("limit", "1")], None, None),
+    ([("limit", "0")], None, "query.limit"), ([("limit", "101")], None, "query.limit"),
+    ([("limit", "abc")], None, "query.limit"), ([("limit", "")], None, "query.limit"),
+    ([("limit", " 5")], None, "query.limit"), ([("limit", "5.0")], None, "query.limit"),
+    ([("limit", "-5")], None, "query.limit"), ([("limit", "\u0661\u0662")], None, "query.limit"),
+    ([("limit", "9" * 30)], None, "query.limit"),
+    ([("limit", "0" * 5000 + "5")], None, None), ([("limit", "0" * 5000 + "101")], None, "query.limit"),
+    ([("limit", "0" * 5000)], None, "query.limit"),
+])
+def test_a_request_repeating_a_single_value_or_with_an_unreadable_count_is_refused(query, body, refused):
+    from treg.application.call.types import ResolutionFailed
+    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array[string]"},
+                                    "limit": {"type": "integer"}}}
+    ep = row(input_schema, price={"value": "1", "currency": "credit", "per": 10, "round": "up"},
+             reserve={"rows": {"param": "query.limit", "default": {"value": 10, "source": "docs"}, "max": 100}})
+    request = settlement.request_evidence(query, json.dumps(body).encode() if body else b"")
+    if refused is None:
+        cost.require_request(ep, request)
+        return
+    with pytest.raises(ResolutionFailed) as caught:
+        cost.require_request(ep, request)
+    assert caught.value.status_code == 400 and caught.value.detail["parameter"] == refused
+    assert all(value not in json.dumps(caught.value.detail) for _, value in query if len(value) > 2)
+
+
+def test_a_count_in_a_json_body_is_a_whole_number_or_a_string_of_digits():
+    from treg.application.call.types import ResolutionFailed
+    ep = row(reserve={"rows": {"param": "body.n", "default": {"value": 3, "source": "docs"}, "max": 10}})
+    for n in (1, 10, "7", None):
+        cost.require_request(ep, settlement.request_evidence([], json.dumps({"n": n}).encode()))
+    for n in (0, 11, 2.5, 5.0, True, "x", [3]):
+        with pytest.raises(ResolutionFailed):
+            cost.require_request(ep, settlement.request_evidence([], json.dumps({"n": n}).encode()))
 
 
 def test_entities_add_up_list_items_and_comma_separated_query_values():
@@ -255,15 +297,32 @@ def test_a_free_outcome_without_settle_evidence_observes_a_zero_charge():
     assert call(ep, answer={"code": 0, "items": [1]})[1].observed_micro is None
 
 
-def test_a_count_settle_counts_non_null_items_capped_at_the_hold():
+def test_a_count_settle_counts_non_null_items_capped_at_the_declared_max():
     ep = row(reserve={"rows": {"param": "body.n", "default": {"value": 3, "source": "docs"}, "max": 10}},
              settle={"count": {"path": "response.items"}})
     many = row(settle={"count": {"path": "response.items.*.id"}},
                reserve={"rows": {"param": "body.n", "default": {"value": 9, "source": "docs"}, "max": 9}})
     assert call(ep, answer={"items": [1, None, 2]})[1].actual_micro == 40000
-    assert call(ep, answer={"items": [1, 2, 3, 4, 5]})[1].observed_micro == 60000
+    assert call(ep, answer={"items": [1, 2, 3, 4, 5]})[1].observed_micro == 100000   # above the hold
+    assert call(ep, answer={"items": list(range(12))})[1].actual_micro == 200000      # the max, 10 rows
     assert call(ep, answer={"items": "x"})[1].actual_micro == 60000      # unreadable: the hold
     assert call(many, answer={"items": [{"id": 1}, {"id": None}, {}]})[1].actual_micro == 20000
+
+
+def test_a_count_settle_without_a_declared_max_is_capped_at_the_hold(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.rows = lambda request, answer: answer.body["n"]
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    single = row(settle={"plugin": "demo.rows"})
+    undeclared = row(price={"value": "0.001"}, reserve={"entities": {"from": "body.domains"}},
+                     settle={"plugin": "demo.rows"})
+    declared = row(price={"value": "0.001"}, reserve={"entities": {"from": "body.domains", "max": 4}},
+                   settle={"plugin": "demo.rows"})
+    assert call(single, answer={"n": 5})[1].actual_micro == 20000                  # no reserve: the hold
+    assert call(undeclared, {"domains": ["a"]}, answer={"n": 3})[1].actual_micro == 1000
+    assert call(undeclared, {"domains": ["a"]}, answer={"n": 0})[1].actual_micro == 0
+    assert call(declared, {"domains": ["a"]}, answer={"n": 3})[1].actual_micro == 3000  # above the hold
+    assert call(declared, {"domains": ["a"]}, answer={"n": 9})[1].actual_micro == 4000  # the declared max
 
 
 def test_usage_meters_settle_from_the_frozen_basis_and_may_exceed_the_hold():

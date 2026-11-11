@@ -282,11 +282,14 @@ to the full core rules, and AIGC generation coverage forbids inferred mappings e
 - `scope_gap: <one line>` says treg's OAuth app lacks a scope for this route. These stay listed on
   purpose: the set of gaps answers "which scopes should the app request". Expect 403 until widened.
 
-Query arrays: `input.queryArrayEncoding` sets one wire format for every array parameter of an
-endpoint. `catalog_store.query_values()` is shared by MCP request assembly and `call_template()`, so
-the schema and the paste-ready command cannot disagree. Nested JSON bodies use dotted keys
-(`params.domain`); `call_template()` unflattens them, while query names that literally contain a
-dot (`user.fields`) stay as written.
+Query arrays: `input.queryArrayEncoding` sets one wire format for every list a caller passes as a
+query value on an endpoint, whatever the parameter's declared type. Under the default `repeated`, a
+list for a parameter declared with another type goes out as repeated keys, which a v2 row refuses
+([money](money.md#rows-in-the-v2-spelling)); `comma` sends the one comma-separated value a provider
+documents instead. `catalog_store.query_values()` is shared by MCP request assembly and
+`call_template()`, so the schema and the paste-ready command cannot disagree. Nested JSON bodies
+use dotted keys (`params.domain`); `call_template()` unflattens them, while query names that
+literally contain a dot (`user.fields`) stay as written.
 
 ## Cost - the file keeps the billing unit, the server computes USD
 
@@ -1067,8 +1070,12 @@ the contract's; `verdict` is an expression for a provider that reports the word 
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
 to a mapped word. `cost_units` gives an upper bound in catalog-priced units, used by both the quote
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
-request rather than letting it answer less than asked. `verified` is filled only from an explicit
-mailbox deliverability verdict, never a lookup-success flag.
+request (a number, or a string of ASCII digits) rather than letting it answer less than asked. A
+routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
+whole number from 1 to that child's max: otherwise the routed call is refused (400
+`catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
+before any candidate is held. `verified` is filled only from an explicit mailbox deliverability
+verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that

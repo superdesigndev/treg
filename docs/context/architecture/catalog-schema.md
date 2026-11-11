@@ -91,7 +91,8 @@ judges an error is a miss with reason `provider_error`, a 204 a miss with `adapt
 adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
 miss reads the one declaration. Such an adapter verifies beside any `miss` rule; beside a status
 rule alone, a 2xx that found nothing is a routing miss by the empty required output and a hit to
-stats, unless the row's `error` rule holds on it.
+stats, unless the row's `error` rule holds on it, and an example the row judges an error verifies
+the adapter as a miss does.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 

@@ -88,6 +88,7 @@ from ...domain.catalog.routing.plan import (
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
+from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -432,6 +433,32 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _above(value: object, cap: int) -> bool:
+    """A filter value above a provider's cap: a number, or a string of ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        return len(digits) > len(str(cap)) or int(digits or "0") > cap
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
+def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
+    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
+    number from 1 to that row's max when the caller sends it, or the routed call is refused before
+    any candidate is held. Neither the child nor the value is named."""
+    for e, ad, _v in candidates:
+        rule = (e.get("reserve") or {}).get("rows") or {}
+        if not is_v2(e) or not rule.get("param"):
+            continue
+        param = rule["param"]
+        target = "queryParams." + param.removeprefix("query.") if param.startswith("query.") else param
+        names = {k for k, t in ad.in_map.items() if t == target} | {
+            n for t, expr in (ad.in_expr or {}).items() if t == target for n in re.findall(r"[A-Za-z_]\w*", expr)}
+        for name in sorted(names & set(filters or {})):
+            value = (given or {}).get(name)
+            if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+
+
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
@@ -558,12 +585,13 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     capped = []
     for e, ad, v in raw:
         over = [f"{k} <= {m}" for k, m in (getattr(ad, "filter_max", None) or {}).items()
-                if isinstance(identity.get(k), (int, float)) and not isinstance(identity.get(k), bool) and identity[k] > m]
+                if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
         else:
             capped.append((e, ad, v))
     raw = capped
+    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):

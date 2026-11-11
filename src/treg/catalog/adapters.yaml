@@ -84,7 +84,6 @@ adapters:
     in:  {full_name: queryParams.full_name, domain: queryParams.domain}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
   leadmagic.people.email.find:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: body.full_name, domain: body.domain}
@@ -649,7 +648,6 @@ adapters:
     accepts: [[email]]
     in:  {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status, score: data.score}
-    miss: "data.status == null"
     verdicts: {accept_all: catch_all, webmail: unknown, disposable: risky}
   limadata.people.email.verify:
     accepts: [[email]]
@@ -706,9 +704,6 @@ adapters:
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
           linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
-    miss: "data.name.fullName == null"
-  # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
-  # cannot be fixture-verified; hunter.people.enrich covers the same identity.
   leadmagic.people.enrich:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.profile_url}
@@ -1009,8 +1004,8 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
+    max: {limit: 100}
     out: {people: data.emails, count: meta.results}
-    miss: "data.emails == []"
     row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
@@ -1184,7 +1179,6 @@ adapters:
     out: {name: data.name, domain: data.domain, description: data.description, industry: data.category.industry,
           employees: data.metrics.employees, founded: data.foundedYear, location: data.location,
           linkedin_url: "fmt('https://www.linkedin.com/{}', data.linkedin.handle)"}
-    miss: "data.name == null"
   tomba.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -1381,7 +1375,6 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {companies: data, count: meta.results}
-    miss: "data == []"
   aviato.companies.search:
     accepts: [[name]]
     in:  {}
@@ -2596,7 +2589,6 @@ adapters:
     out: {full_name: data.person.name.fullName, first_name: data.person.name.givenName, last_name: data.person.name.familyName,
           title: data.person.employment.title, company: data.company.name, company_domain: data.company.domain,
           location: data.person.location}
-    miss: "data.person.name.fullName == null"
 
   fiber-ai.people.contacts.turbo:
     accepts: [[linkedin_url]]

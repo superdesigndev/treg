@@ -2626,7 +2626,7 @@ def test_every_declared_miss_status_names_its_meaning():
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
     declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
-    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    assert "aviato.people.phone.find" in declared and "aviato.companies.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
         assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
@@ -3321,6 +3321,47 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
         (f"{call_id}:r1", "reserve"), (f"{call_id}:r1", "settle")]
 
 
+@pytest.mark.parametrize("limit", [0, 50.0])
+async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_is_called(
+    clients: AsyncClient, monkeypatch, platform_on, limit,
+):
+    """A routed filter a v2 child prices its hold by (Hunter's `reserve.rows` limit, a whole number
+    from 1 to 100) refuses the routed call itself when the route is planned, naming the routed
+    call's own parameter, before any candidate is held or called. A whole number above the child's
+    cap only drops that child."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
+    get_settings.cache_clear()
+    hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
+                                                                  "last_name": "B", "position": "CTO"}]}})
+
+    async def post(asked):
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"icypeas": [(200, {"leads": [], "total": 0})], "hunter": [hunter]}, seen))
+        r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": asked},
+                               headers={"X-Treg-Route-Prefer": "icypeas,hunter"})
+        return r, [provider for provider, *_ in seen]
+
+    r, called = await post(limit)
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "catalog_parameter_invalid"
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
+    assert called == []
+    r, called = await post(10)
+    assert r.status_code == 200, r.text
+    assert called == ["icypeas", "hunter"]
+    assert r.json()["_treg"]["served_by"] == "hunter.companies.emails"
+    for above in (150, "150"):
+        r, called = await post(above)
+        assert r.status_code == 200, r.text
+        assert called == ["icypeas"]
+        assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
+
+
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
     """`max: {limit: N}` on an adapter: a request asking for more than N skips that provider with a
     named drop instead of answering less than was asked; at or under N it stays a candidate."""
@@ -3347,6 +3388,11 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert all(c.endpoint["id"] != "akta.companies.news" for c in over.candidates)
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
+    assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+    for limit in ("5", "0" * 5000 + "4", "9" * 5000):
+        over = await call_route.build_plan(ep, {"domain": "canva.com", "limit": limit}, _Caller(), options)
+        assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped, limit[:8]
+    under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": "03"}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 
