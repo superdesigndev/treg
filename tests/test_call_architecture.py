@@ -11,7 +11,7 @@ import pytest
 
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
-from treg.application.hub import runner as hub_runner
+from treg.application.hub import limits as hub_limits, runner as hub_runner
 from treg.application.call import authorize, overflow, reserve, route, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
@@ -125,6 +125,12 @@ _DATAPLANE_DERIVED_WRITES = {
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
     ),
+    # A hub run holds a renewed lease on its team's and its tool's shared places (Redis, before any
+    # step's DB phase) until it ends; expiry frees a crashed holder's.
+    "hub_run_slots": (
+        (service._execute_call, "hub_limits.slot"),
+        (hub_limits._take, "provider_concurrency.try_acquire"),
+    ),
     # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
     # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
     "provider_rate_window": (
@@ -155,10 +161,12 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_daily_cap_slot",
     "provider_concurrency_lease",
     "provider_rate_window",
+    "hub_run_slots",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
     _SRC / "application" / "hub" / "runner.py": {"money_admission.admit", "reserve_admission"},
+    _SRC / "application" / "hub" / "limits.py": {"provider_concurrency.try_acquire"},
     _SRC / "archive.py": {"archive_bodies.prepare"},
     _SRC / "archive_bodies.py": {"_store.put"},
     _SRC / "application" / "billing.py": {"loop.create_task"},
@@ -189,6 +197,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "service.py": {
         "org_endpoint_quota.admit",
         "fair_share.acquire",
+        "hub_limits.slot",
         "rate_observe.observe",
         "rate_observe.release",
         "archive.record",
@@ -261,6 +270,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_apply_managed_resource_result",
      "provider_resources.tombstone"),
     ("application/call/service.py", "_execute_call", "fair_share.acquire"),
+    ("application/call/service.py", "_execute_call", "hub_limits.slot"),
+    ("application/hub/limits.py", "_take", "provider_concurrency.try_acquire"),
     ("domain/capacity/fair_share.py", "_ask", "provider_concurrency.try_acquire"),
     ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),

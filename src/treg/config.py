@@ -748,6 +748,35 @@ class Settings(BaseSettings):
     # Sign-in emails who may use the hub in ANY team they work in, beside `hub_teams`. Either list
     # lets a reader in; both empty means every team.
     hub_users: str = ""
+    # Runs of one hub tool in flight across every team; 0 = no per-tool cap. A tool's steps share
+    # upstream quotas, so one busy tool must not exhaust them for everyone (application/hub/limits.py).
+    hub_tool_max_runs: int = Field(default=20, ge=0)
+    # Which engine runs a hub script. quickjs is the in-process child (`python -m treg.hub_sandbox`).
+    # workers opens a WebSocket to the loader at hub_workers_url and serves ctx.call on it.
+    hub_sandbox: Literal["quickjs", "workers"] = "quickjs"
+    hub_workers_url: str = ""
+    hub_workers_auth_secret: str = Field(default="", repr=False)
+
+    @field_validator("hub_sandbox", mode="before")
+    @classmethod
+    def _hub_sandbox_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @model_validator(mode="after")
+    def _hub_workers_configured(self):
+        if self.hub_sandbox != "workers":
+            return self
+        if not (self.hub_workers_url and self.hub_workers_auth_secret):
+            raise ValueError("workers sandbox requires hub_workers_url and hub_workers_auth_secret")
+        parts = urlsplit(self.hub_workers_url.strip())
+        loopback = parts.hostname in {"127.0.0.1", "localhost", "::1"}
+        if not parts.hostname or parts.scheme not in {"https", "wss"} and not (
+                loopback and parts.scheme in {"http", "ws"}):
+            raise ValueError("hub_workers_url must be https (plain http only on loopback)")
+        return self
+
     # `/table/<tool id>`: the same call as `/call/`, answered as rows and columns (for the Google
     # Sheets add-on). Off by default; with it on, `table_teams` / `table_users` limit it the same
     # way `hub_teams` / `hub_users` limit the hub, and both empty means every team.

@@ -53,6 +53,7 @@ server = [
     "obstore>=0.11,<0.12",
     "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
     "pillow>=11",  # re-draws uploaded pictures before they are stored (src/treg/infra/imaging.py)
+    "websockets>=15",
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
 # certificate authority on the machine, and `cryptography` is a compiled package — putting it in the
@@ -333,6 +334,7 @@ exclude = [
   ".codegraph",
   ".lavish",                # local visual review artifacts, not distributable product assets
   "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
+  "workers/**/node_modules", "workers/**/.wrangler",
   "videos",                 # git-excluded marketing renders
   "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
