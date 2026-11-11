@@ -1459,7 +1459,7 @@ _ANYAPI_MEASURED: dict[str, dict] | None = None
 # source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
 # number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
 # listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
-# `reported_charge` (`costUsd`) is what actually settles either way.
+# `costUsd` (the settle default in anyapi.yaml) is what actually settles either way.
 #
 # This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
 # lower number there would be a smaller reserve with no upside. It also does NOT apply to a
