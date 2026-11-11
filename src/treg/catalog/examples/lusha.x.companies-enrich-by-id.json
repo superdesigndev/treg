@@ -1,0 +1,140 @@
+{
+  "requestId": "9f56f783-5d09-40b3-b80c-6c68c95f7f6e",
+  "results": [
+    {
+      "id": "v1.3J1rAxaCJItvAYiCFRJaszj9lstdGJw",
+      "name": "HubSpot",
+      "alternativeName": "hubspot",
+      "domain": "www.hubspot.com",
+      "emailDomain": "hubspot.com",
+      "homepageUrl": "https://hubspot.com",
+      "alternativeDomains": [
+        "hubspot.com",
+        "hubspot.de",
+        "… 2 more item(s) truncated"
+      ],
+      "description": "HubSpot is a leading agentic customer platform that provides software and support to help businesses grow better. Our platform includes marketing, sales, service, and website management products that start free and scale to meet our customers’ needs at any stage of growth. Today, thousands of customers around the world use our powerful and easy-to-use tools and integrations to attract, engage, and delight customers.\n\nHubSpot's award-winning culture has been recognized by Glassdoor, Great Place t… [1186 chars total]",
+      "companyOffering": "HubSpot provides a CRM-based customer platform with marketing, sales, service, content, data, commerce, and AI tools for businesses.",
+      "companyType": "Public Company",
+      "yearFounded": 2006,
+      "employeeCount": {
+        "exact": 12262,
+        "min": 10001,
+        "max": 100000
+      },
+      "industry": "Technology, Information & Media",
+      "subIndustry": "Software Development",
+      "additionalIndustries": [
+        {
+          "industry": "Technology, Information & Media",
+          "subIndustry": "IT Consulting & IT Services"
+        },
+        {
+          "industry": "Technology, Information & Media",
+          "subIndustry": "Information Services"
+        }
+      ],
+      "specialities": [
+        "24/7 monitoring",
+        "ai agents",
+        "… 34 more item(s) truncated"
+      ],
+      "sicCodes": [
+        {
+          "code": 7372,
+          "description": "Prepackaged software"
+        }
+      ],
+      "naicsCodes": [
+        {
+          "code": 513210,
+          "description": "Software Publishers"
+        }
+      ],
+      "location": {
+        "city": "Cambridge",
+        "state": "Massachusetts",
+        "stateCode": "MA",
+        "country": "United States",
+        "countryIso2": "US",
+        "continent": "North America",
+        "zipCode": "02141"
+      },
+      "additionalLocations": [
+        {
+          "city": "Portsmouth",
+          "state": "New Hampshire",
+          "stateCode": "NH",
+          "country": "United States",
+          "countryIso2": "US",
+          "continent": "North America",
+          "zipCode": "03801"
+        },
+        {
+          "city": "Dublin",
+          "country": "Ireland",
+          "countryIso2": "IE",
+          "continent": "Europe",
+          "zipCode": "D02 CR67"
+        },
+        "… 12 more item(s) truncated"
+      ],
+      "socialLinks": {
+        "linkedin": "https://www.linkedin.com/company/hubspot",
+        "x": "http://twitter.com/HubSpot",
+        "facebook": "http://www.facebook.com/hubspot",
+        "crunchbase": [
+          "https://www.crunchbase.com/organization/hubspot-japan",
+          "https://www.crunchbase.com/organization/hubspot-aa3a",
+          "… 2 more item(s) truncated"
+        ],
+        "instagram": [
+          "https://www.instagram.com/smart_it_belarus/",
+          "https://www.instagram.com/hubspot/"
+        ],
+        "youtube": [
+          "https://youtube.com/user/HubSpot",
+          "https://www.youtube.com/channel/UCMmPo433Y2s_jxdWpOJvjUA"
+        ],
+        "tiktok": [
+          "https://www.tiktok.com/@hubspot"
+        ]
+      },
+      "linkedinFollowers": 1769568,
+      "revenueRange": {
+        "min": 1000000000,
+        "max": 10000000000
+      },
+      "popularityTier": 1,
+      "logoUrl": "https://logo.lusha.co/logo-files/brightdata/75a67adc-580e-46ed-9db3-d1cef071239f.jpg",
+      "businessModel": [
+        "B2B"
+      ],
+      "additionalDescriptions": [
+        "HubSpot is a leading agentic customer platform that provides software and support to help businesses grow better. Our platform includes marketing, sales, service, and website management products that start free and scale to meet our customers’ needs at any stage of growth. Today, thousands of customers around the world use our powerful and easy-to-use tools and integrations to attract, engage, and delight customers.\n\nHubSpot's award-winning culture has been recognized by Glassdoor, Great Place t… [1186 chars total]",
+        "HubSpot provides a customer platform with marketing, sales, service, CMS, and CRM software for managing customer interactions.",
+        "… 1 more item(s) truncated"
+      ],
+      "phones": [
+        {
+          "number": "+81 3 5656 5900"
+        }
+      ],
+      "emails": [
+        {
+          "email": "privacy@hubspot.com"
+        }
+      ],
+      "keywords": [
+        "24/7 monitoring",
+        "ai agents",
+        "… 43 more item(s) truncated"
+      ]
+    }
+  ],
+  "billing": {
+    "creditsCharged": 1,
+    "resultsReturned": 1,
+    "lowBalance": false
+  }
+}
