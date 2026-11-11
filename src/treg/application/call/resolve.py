@@ -2637,9 +2637,9 @@ def platform_quote(ep: dict, query: QueryValues, body: bytes, *,
     provider = oauth_providers.get(ep["provider"])
     try:
         _, consumed = _marketplace_upstream(ep, provider, query)
+        estimate = price_call(ep, query, body, consumed).estimate_micro
     except ResolutionFailed:
         return 0, "invalid_request"
-    estimate = price_call(ep, query, body, consumed).estimate_micro
     return (estimate, "") if estimate > 0 or allow_free else (0, "free")
 
 

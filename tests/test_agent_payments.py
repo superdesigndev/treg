@@ -281,6 +281,12 @@ async def test_free_own_and_passthrough_calls_get_no_challenge(anon: AsyncClient
         assert detail["reason"] == reason and "Sign in" in detail["message"], (path, detail)
 
 
+async def test_a_request_treg_cannot_price_gets_no_challenge(anon: AsyncClient, payments_on):
+    r = await anon.get("/call/tikhub.tiktok.user.profile?uniqueId=a&uniqueId=b")
+    assert r.status_code == 401 and "payment-required" not in r.headers, r.text
+    assert r.json()["detail"]["reason"] == "invalid_request"
+
+
 async def test_any_treg_credential_takes_the_account_path(anon: AsyncClient, clients: AsyncClient,
                                                          payments_on):
     for headers in ({"X-Treg-Token": "not-a-real-token"}, {"X-Treg-Token": ""}):
