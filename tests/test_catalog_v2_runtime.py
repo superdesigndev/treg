@@ -13,6 +13,7 @@ import pytest
 from treg.application.call import cost
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.settle import decide_settle
+from treg.application.call.types import ResolutionFailed
 from treg.domain.catalog import outcome
 from treg.domain.catalog.schema import V2Row, served
 from treg.domain.catalog.schema.paths import holds, select
@@ -201,6 +202,16 @@ def test_entities_add_up_list_items_and_comma_separated_query_values():
     assert call(ep, {"domains": ["a", "b"]}, [("target", "c,d")])[0] == 4000
     assert call(ep, {"domains": ["a", "b", "c"]}, [("target", "d,e")])[0] == 4000
     assert call(ep, {})[0] == 1000                                      # never below one
+
+
+def test_treg_key_refuses_more_entities_than_the_max_before_any_hold():
+    ep = row(price={"value": "0.001"}, reserve={"entities": {"from": ["body.domains", "query.target"], "max": 4}})
+    fits = settlement.request_evidence([("target", "c,d")], json.dumps({"domains": ["a", "b"]}).encode())
+    cost.require_entities(ep, fits)
+    over = settlement.request_evidence([("target", "d,e")], json.dumps({"domains": ["a", "b", "c"]}).encode())
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_entities(ep, over)
+    assert exc.value.status_code == 400 and exc.value.detail["error"] == "catalog_parameter_invalid"
 
 
 def test_a_price_table_matches_after_input_defaults_and_coercion_and_falls_back():

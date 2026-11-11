@@ -175,7 +175,7 @@ def require_rates(ep: dict, cat) -> None:
                 "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
 
 
-def _entities(rule: dict, request: dict) -> int:
+def _entity_total(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
     for path in paths:
@@ -186,7 +186,25 @@ def _entities(rule: dict, request: dict) -> int:
                     total += sum(1 for part in parts if part.strip())
                 elif item is not None:
                     total += 1
-    return max(1, min(total, int(rule.get("max") or 10_000)))
+    return total
+
+
+def _entities(rule: dict, request: dict) -> int:
+    return max(1, min(_entity_total(rule, request), int(rule.get("max") or 10_000)))
+
+
+def require_entities(ep: dict, request_data: dict) -> None:
+    """On treg's key, a request naming more `reserve.entities` than the row's max is refused
+    before anything is held: the hold stops at the max, so the rest would go unheld."""
+    rule = (ep.get("reserve") or {}).get("entities")
+    if not rule:
+        return
+    top = int(rule.get("max") or 10_000)
+    if _entity_total(rule, request_document(ep, request_data, defaults=False)) > top:
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
+            "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
+                       "request or connect your own key"})
 
 
 def plugin_request(ep: dict, request_data: dict) -> plugins.Request:

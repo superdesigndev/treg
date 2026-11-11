@@ -1849,6 +1849,17 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         name = str(path).split(".", 1)[1]
         supplied = [value for key, value in query.multi_items() if key == name] \
             if query is not None else []
+        if expected is None:
+            if supplied:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"queryParams.{name}",
+                        "message": f"{ep['id']} does not take query parameter {name} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
+            continue
         if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
@@ -2466,6 +2477,7 @@ async def _resolve_marketplace_call(
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
+            call_cost.require_entities(ep, pricing.request_data)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
