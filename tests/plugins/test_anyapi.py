@@ -24,6 +24,7 @@ def _scrape(**data: object) -> dict:
     (_scrape(statusCode=399, markdown="# Example"), False),
     (_scrape(statusCode=600, markdown="# Example"), False),
     (_scrape(statusCode="x", markdown="# Example"), False),
+    (_scrape(statusCode=float("inf"), markdown=""), True),
     (_scrape(statusCode=True, markdown="# Example"), False),
     (_scrape(statusCode=200, markdown=""), True),
     (_scrape(statusCode=200, markdown=None), True),

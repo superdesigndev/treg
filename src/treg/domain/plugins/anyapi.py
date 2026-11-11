@@ -15,7 +15,7 @@ def scrape_miss(request: Request | None, answer: Answer) -> bool:
     data = data if isinstance(data, dict) else {}
     try:
         failed = 400 <= int(data.get("statusCode")) <= 599
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         failed = False
     return failed or data.get("markdown") in (None, "", [])
 
