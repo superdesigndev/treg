@@ -207,7 +207,7 @@ endpoints:
         format: {type: string, required: false, default: markdown, enum: [markdown, text]}
         include_favicon: {type: boolean, required: false, default: false}
         timeout: {type: number, required: false, default: 150, min: 10, max: 150}
-      note: "Crawl combines mapping and extraction. Platform settlement conservatively allocates 0.3-0.6 credit per valid returned extraction by depth and caller-supplied instructions, ignoring grouped usage.credits."
+      note: "Crawl combines mapping and extraction. Platform settlement conservatively allocates 0.3-0.6 credit per returned extraction by depth and caller-supplied instructions, ignoring grouped usage.credits."
     test_request:
       body: {url: "https://example.com", limit: 10, extract_depth: basic}
     verified: '2026-09-21'
