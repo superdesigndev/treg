@@ -224,7 +224,6 @@ endpoints:
       note: "Conservative allocation per returned extraction: Basic 0.3 credit, Basic with instructions 0.4, Advanced 0.5, Advanced with instructions 0.6. Calls require limit 1-20 on treg's key. Tavily does not expose every successfully mapped page, so treg absorbs any bounded hidden mapping difference. BYOK is unmetered."
     reserve: {rows: {param: body.limit, max: 20}}
     settle: {count: {path: response.results}}
-    # A 204 carries no result and is free; every other answer is charged by its count.
-    bill: {error: charged}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/crawl
     example_response: examples/tavily.web.crawl.json
