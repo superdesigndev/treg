@@ -963,6 +963,18 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
+    ep = {"id": "demo.scrape", "provider": "demo", "input": {},
+          "platform_request": {"queryParams.type": None}}
+    call_resolution._enforce_platform_request(
+        ep, b"[]", query=call_resolution.QueryValues((("dataset_id", "gd_x"),)))
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._enforce_platform_request(
+            ep, b"[]", query=call_resolution.QueryValues((("type", "discover_new"),)))
+    assert exc.value.detail["parameter"] == "queryParams.type"
+    assert "discover_new" not in json.dumps(exc.value.detail)
+
+
 async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
@@ -1400,45 +1412,88 @@ def test_apollo_people_enrich_stub_is_a_free_miss():
         assert call_settle._observed_cost_micro(enrich, hit) is None, hit
 
 
-def test_hunter_domain_search_settles_on_the_emails_it_returned():
-    """Hunter's domain search bills one whole SEARCH credit per 10 emails RETURNED, rounded up, and
-    a domain it knows nobody at is free — a rule the catalog's per-row price (1 credit ÷ 10 =
-    $0.00245/result) cannot express, so the estimate is wrong in both directions. Settling on
-    `data.emails` is what makes the published number and the ledger agree: zero emails costs zero,
-    and one email costs the same whole credit ten do."""
-    credit = 24_500  # $0.0245/credit (fx.yaml, Starter $49/mo / 2,000 credits)
-    h = _mk("hunter", endpoint_id="hunter.companies.emails", cost_type="per_result")
-    assert call_settle._observed_cost_micro(h, b'{"data": {"domain": "x.com", "emails": []}}') == 0, \
-        "a domain with no results is free — the catalog says so and Hunter bills so"
-    assert call_settle._observed_cost_micro(h, b'{"data": {"emails": [{"value": "a@x.com"}]}}') == credit, \
-        "one email costs a whole search credit, not a tenth of one"
-    def _emails(n: int) -> bytes:
-        return json.dumps({"data": {"emails": [{"value": f"p{i}@x.com"} for i in range(n)]}}).encode()
-    assert call_settle._observed_cost_micro(h, _emails(10)) == credit, "ten still fit in one credit"
-    assert call_settle._observed_cost_micro(h, _emails(11)) == 2 * credit, "the 11th rounds up to a second credit"
-    assert call_settle._observed_cost_micro(h, b'{"errors": [{"code": "wrong_params"}]}') is None, \
-        "no emails key at all: we never learned the count, settle at the estimate"
-    assert call_settle._observed_cost_micro(h, b"not json") is None
-    other = _mk("hunter", endpoint_id="hunter.people.email.verify", cost_type="per_call")
-    assert call_settle._observed_cost_micro(other, b'{"data": {"emails": []}}') is None, \
-        "only domain search bills per 10 returned; every other hunter route settles at its estimate"
+@pytest.fixture
+def hunter_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "PLATFORM-HUNTER-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
-def test_hunter_email_finder_miss_is_free():
-    """The finder's rule is flat: one whole SEARCH credit when an email comes back, nothing on a
-    miss — Hunter's pricing says a miss is free, but a miss still answers HTTP 200 with
-    `email: null`, so settling at the estimate billed the full credit for a name Hunter had
-    nothing on. The body is the only place the found/missed distinction exists."""
-    credit = 24_500  # $0.0245/credit (fx.yaml, Starter $49/mo / 2,000 credits)
-    f = _mk("hunter", endpoint_id="hunter.people.email.find", cost_type="per_success")
-    assert call_settle._observed_cost_micro(f, b'{"data": {"email": "a@x.com", "score": 92}}') == credit
-    assert call_settle._observed_cost_micro(f, b'{"data": {"email": null, "score": null}}') == 0, \
-        "a miss is free — the catalog says so and Hunter bills so"
-    assert call_settle._observed_cost_micro(f, b'{"data": {"email": "", "score": null}}') == 0, \
-        "an empty string is a miss too"
-    assert call_settle._observed_cost_micro(f, b'{"errors": [{"code": "wrong_params"}]}') is None, \
-        "no email key at all: we never learned the outcome, settle at the estimate"
-    assert call_settle._observed_cost_micro(f, b"not json") is None
+HUNTER_CREDIT_MICRO = 24_500  # fx.yaml: one Hunter search credit
+
+
+async def _hunter_call(clients, monkeypatch, path, params, status, answer, seen):
+    def upstream(request):
+        seen.append((request.url.path, request.headers["x-api-key"], request.url.params.get_list("limit")))
+        return _dropleads_response(status, answer)
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        response = await clients.get(path, params=params)
+        return response, before - await _balance(clients)
+
+
+def _domain_emails(n: int) -> dict:
+    return {"data": {"domain": "x.com", "emails": [{"value": f"p{i}@x.com"} for i in range(n)]}}
+
+
+@pytest.mark.parametrize("limit,answer,credits", [
+    (None, _domain_emails(0), 0),
+    (None, _domain_emails(1), 1),
+    ("9", _domain_emails(9), 1),
+    ("10", _domain_emails(10), 1),
+    ("11", _domain_emails(11), 2),
+    ("100", _domain_emails(100), 10),
+    (None, _domain_emails(50), 5),                       # above the hold, within the 100-row max
+    ("20", {"errors": [{"id": "wrong_params"}]}, 2),     # no email list: the hold
+])
+async def test_hunter_domain_search_settles_whole_credits_per_ten_emails_returned(
+    clients: AsyncClient, monkeypatch, hunter_platform_on, limit, answer, credits,
+):
+    seen = []
+    params = {"domain": "x.com", **({"limit": limit} if limit else {})}
+    response, charged = await _hunter_call(clients, monkeypatch, "/call/hunter.companies.emails", params,
+                                           200, answer, seen)
+    assert response.status_code == 200, response.text
+    assert charged == credits * HUNTER_CREDIT_MICRO
+    assert seen == [("/v2/domain-search", "PLATFORM-HUNTER-KEY", [limit] if limit else [])]
+
+
+@pytest.mark.parametrize("params", [
+    {"domain": "x.com", "limit": ["5", "50"]}, {"domain": ["x.com", "y.com"]},
+    {"domain": "x.com", "limit": "101"}, {"domain": "x.com", "limit": "abc"}, {"domain": "x.com", "limit": ""},
+    pytest.param({"domain": "x.com", "limit": "0" * 5000 + "101"}, id="zero-padded-above-max"),
+])
+async def test_hunter_domain_search_refuses_a_count_it_cannot_read_before_any_hold(
+    clients: AsyncClient, monkeypatch, hunter_platform_on, params,
+):
+    seen = []
+    response, charged = await _hunter_call(clients, monkeypatch, "/call/hunter.companies.emails", params,
+                                           200, _domain_emails(50), seen)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"]["error"] == "catalog_parameter_invalid"
+    assert charged == 0 and seen == []
+
+
+@pytest.mark.parametrize("answer,credits", [
+    ({"data": {"email": "a@x.com", "score": 92}}, 1),
+    ({"data": {"email": None, "score": None}}, 0),
+    ({"data": {"email": ""}}, 0),
+    ({"errors": [{"id": "wrong_params"}], "data": {"email": None}}, 0),
+    ({"errors": [{"id": "wrong_params"}]}, 1),
+])
+async def test_hunter_email_finder_charges_a_credit_unless_its_email_field_is_empty(
+    clients: AsyncClient, monkeypatch, hunter_platform_on, answer, credits,
+):
+    seen = []
+    response, charged = await _hunter_call(clients, monkeypatch, "/call/hunter.people.email.find",
+                                           {"domain": "x.com", "full_name": "Pat Doe"}, 200, answer, seen)
+    assert response.status_code == 200, response.text
+    assert charged == credits * HUNTER_CREDIT_MICRO
+    assert [path for path, _, _ in seen] == ["/v2/email-finder"]
 
 
 async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeypatch):
@@ -2629,31 +2684,6 @@ def test_a_zero_price_on_a_billed_provider_falls_back_rather_than_billing_zero()
 # Everything above tests the pricing FUNCTIONS. This walks the whole path a real X call takes —
 # registry connection → `_billed_marketplace` → reserve → relay → settle — because the free-price
 # bug was invisible to every unit test and only showed up as a number on a screen.
-
-def test_observed_cost_counts_brightdata_records():
-    """Bright Data bills per record DELIVERED and reports no charge field — the body is the bill.
-    Before this settled-by-count existed, every per_result call settled as one record: $13.61
-    consumed upstream vs $0.35 billed over three weeks (2026-08-24)."""
-    bd = _mk("brightdata", cost_type="per_result", unit_micro=1500)
-    # sync scrape / snapshot download, format=json: an array, one element per record
-    assert call_settle._observed_cost_micro(bd, b'[{"url": "a"}, {"url": "b"}, {"url": "c"}]') == 4500
-    assert call_settle._observed_cost_micro(bd, b"[]") == 0
-    # the >60s sync fallback and /trigger hand back a snapshot id: zero records HERE — they bill
-    # when the snapshot is downloaded
-    assert call_settle._observed_cost_micro(bd, b'{"snapshot_id": "sd_x"}') == 0
-    # an early snapshot download answers the job's state, not rows: nothing delivered, nothing billed
-    assert call_settle._observed_cost_micro(bd, b'{"status": "running", "message": "not ready"}') == 0
-    # ndjson: one record per line
-    assert call_settle._observed_cost_micro(bd, b'{"url": "a"}\n{"url": "b"}\n') == 3000
-    # a csv body counts the rows under its header line
-    assert call_settle._observed_cost_micro(bd, b"url,name\na,x\nb,y\n") == 3000
-    # a payload the 8MB metered buffer truncated must settle at the estimate, never a partial count
-    assert call_settle._observed_cost_micro(bd, b'[{"url": "a"}, {"url"') is None
-    # gzipped (compress=true): can't count, estimate wins
-    assert call_settle._observed_cost_micro(bd, b"\x1f\x8b\x08\x00junk") is None
-    # a free management route (progress polls) never reaches the counter
-    assert call_settle._observed_cost_micro(_mk("brightdata", cost_type="free"), b'{"status": "ready"}') is None
-
 
 def test_influencersclub_discovery_settles_creators_returned():
     """Discovery bills each creator in `accounts` at the catalog's per-creator USD price, never

@@ -1,0 +1,110 @@
+[
+  {
+    "url": "https://apps.apple.com/us/app/whatsapp/id310633997",
+    "title": "WhatsApp",
+    "sub_title": "Group messaging & calling",
+    "developer": {
+      "developer_name": "WhatsApp Inc.",
+      "developer_link": "https://apps.apple.com/us/developer/whatsapp-inc/id310634000?platform=iphone"
+    },
+    "top_charts": [],
+    "monetization_features": [
+      "Free",
+      "In‑App Purchases"
+    ],
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/17/38/46/1738468d-7226-44ae-547a-44723e839cd5/Placeholder.mill/128x128Icon.ApSiOS01-75.jpg",
+    "screenshots": [
+      "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/59/68/07/59680746-33d1-542e-5c43-1845813e74e2/6.9__Display_1-en_US.png/460x998bb-60.jpg",
+      "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/19/02/fb/1902fbb6-44b3-937d-f4f2-279af6a7f68c/6.9__Display_2-en_US.png/460x998bb-60.jpg",
+      "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/a5/70/66/a57066d2-6b29-1805-524f-1d2133ab2398/6.9__Display_3-en_US.png/460x998bb-60.jpg"
+    ],
+    "description": "Bring your group together on WhatsApp.\nWhatsApp from Meta is a free messaging and calling app for the people and groups in your life. Bring your best friends, parent group, study group, or neighborhood together to chat, make plans, and share moments.\n\nGet everyone into the conversation\nInvite people",
+    "rating": 4.7,
+    "number_of_raters": 19000000,
+    "reviews_star_percentage": {
+      "one_stars": 3,
+      "two_stars": 1,
+      "three_stars": 3,
+      "four_stars": 8,
+      "five_stars": 84
+    },
+    "reviews": [
+      {
+        "review_title": "WhatsApp not bad",
+        "review_rating": "5",
+        "reviewer_name": "Ed Bradway “Dad Warrior”",
+        "review_date": "2026-01-21T04:48:38.000Z",
+        "review": "WhatsApp’s not bad at all—it’s actually great for what it does. End-to-end encryption keeps your actual messages and calls private (no one, not even Meta, can read them), and it’s super reliable for texting, voice notes, video calls, groups, and sharing pics/videos across the world without paying ex"
+      },
+      {
+        "review_title": "Potential improvements",
+        "review_rating": "4",
+        "reviewer_name": "Ivonne_pg.99",
+        "review_date": "2023-06-14T06:43:29.000Z",
+        "review": "I love the app and it’s my main communication method. I just have some ideas that would make the app experience better. 1. It would be useful to have the possibility to filter (as you can do with unread messages) the group chats and individual chats. This would help to find chats easier. 2. The poss"
+      },
+      {
+        "review_title": "My hosnest rewive",
+        "review_rating": "5",
+        "reviewer_name": "Rubdujbj",
+        "review_date": "2025-11-06T21:34:56.000Z",
+        "review": "I just wanted to take a moment to express my appreciation for creating such a fantastic app. WhatsApp has truly revolutionized the way we connect with others, and I’m extremely impressed with the range of features it offers. Here are a few aspects that stand out to me: Seamless Communication: The ab"
+      }
+    ],
+    "events": [
+      {
+        "event_tile": "WhatsApp Events",
+        "event_link": "https://apps.apple.com/us/app/whatsapp/id310633997?eventid=6830928917"
+      }
+    ],
+    "data_linked_to_you": [],
+    "seller": "WhatsApp Inc.",
+    "category": [
+      "Social Networking"
+    ],
+    "languages": [
+      "English",
+      "Arabic",
+      "Bengali"
+    ],
+    "copyright": "© 2026 WhatsApp LLC",
+    "size": "411.1 MB",
+    "compatibility": [
+      {
+        "devise": "iPhone",
+        "version": "iOS 15.1 or later"
+      },
+      {
+        "devise": "iPad",
+        "version": "iPadOS 15.1 or later"
+      },
+      {
+        "devise": "iPod touch",
+        "version": "iOS 15.1 or later"
+      }
+    ],
+    "age_rating": [
+      "13+"
+    ],
+    "price": "Free",
+    "In_app_purchases": [
+      "No ads (1 account) - $4.00",
+      "No ads (4 accounts) - $21.99",
+      "No ads (4 accounts) - $21.99"
+    ],
+    "support": "Siri",
+    "more_by_this_developer": [],
+    "you_might_also_like": [],
+    "privacy_policy": "https://www.whatsapp.com/legal/#Privacy",
+    "developer_website": "http://www.whatsapp.com/",
+    "featured_in": [],
+    "country": "United States",
+    "latest_app_version": "Version 26.44.72",
+    "app_id": "310633997",
+    "provider": null,
+    "timestamp": "2026-11-10T15:30:39.572Z",
+    "input": {
+      "url": "https://apps.apple.com/us/app/whatsapp-messenger/id310633997"
+    }
+  }
+]

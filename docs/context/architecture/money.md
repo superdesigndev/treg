@@ -7,6 +7,7 @@ sources:
   - src/treg/catalog/tinyfish.yaml
   - tests/test_tinyfish.py
   - src/treg/domain/money/__init__.py
+  - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
@@ -175,6 +176,17 @@ application lock: N concurrent callers against a balance that affords K get exac
 first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable
 liability, so spending promo first keeps the refundable pool small.
+
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only`
+(video generation) is paid from purchased credit alone: `_platform_reserve` passes
+`purchased_only=True` (`_purchased_only` in `application/call/reserve.py`), and
+`reserve_in_transaction` runs `_purchased_gate` before the balance gate. The gate locks the org's
+purchased blocks in primary-key order, subtracts its open `Hold.purchased_only` holds, and raises
+`PurchasedCreditShort` (an `InsufficientBalance`) when the rest cannot cover the charge; the call
+is refused with 402 `free_credit_excludes_video`, before any upstream request and with nothing
+held. The flag is stored on the hold, so every settle path (the call, the async worker, a batch
+close) draws only purchased blocks in `_consume_blocks`; an overrun past them is a recorded
+`block_shortfall_micro`, never taken from free credit. A $0 call passes the gate.
 
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.
@@ -379,6 +391,11 @@ dashboard Activity page and the CLI's `--await` all read this one view.
 is a URL the payer controls. The one exception is the off-session auto-top-up charge, where the
 server itself holds the PaymentIntent's confirmed status; it credits immediately and the webhook
 redelivery is a no-op.
+
+The dashboard reads the return's `?topup=` or `?card=` once and strips it (`followStripeReturn`). On
+`topup=success` it says the payment is being added, then re-reads `GET /billing` a bounded number of
+times (`TOPUP_POLLS`) until the balance rises above the one stored when the payer left for Checkout,
+and names the amount added. It never credits anything itself.
 
 The webhook is `POST /billing/stripe/webhook` and **404s when unconfigured**, so a deploy without the
 secret exposes no unauthenticated POST surface. `verify_event` uses the SDK's `verify_header`
@@ -750,23 +767,32 @@ row.
   resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
   applied, values coerced by their declared type), times a bounded `times` field, else the
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
-  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it), `entities` (list items,
-  comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
+  comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
+  request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
   or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
   fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
+- **The request it can price.** On every tier, before anything is held, `price_call` refuses with
+  `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
+  type is not a list (an undeclared one is not judged), and a `reserve.rows` count the request
+  carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
+  takes the default). The refusal names the parameter, never its value.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
-  spelling records a free miss, so the call record and the stats fallback read it alike. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
-  hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
-  evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged
+  answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
+  maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
+  unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
+  `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
+  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.

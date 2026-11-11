@@ -4221,7 +4221,9 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
     for known in [*(run.get("manual") or []), *(run.get("posts") or [])]:
         if str(known.get("id")) == post_id:
             return {**known, "cached": True}
-    ok = await ratestore.rate_check(db, _JEV_JUDGE_NS, [(f"ip:{_client_ip(request)}", 5), ("all", 60)], window_s=3600)
+    ip = _client_ip(request)
+    ok = await ratestore.rate_check(
+        db, _JEV_JUDGE_NS, [*ratestore.ip_limit(ip, 5, key=f"ip:{ip}"), ("all", 60)], window_s=3600)
     await db.commit()
     if not ok:
         raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
