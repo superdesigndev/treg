@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "tool": "unit-convert",
+  "result": {
+    "value": 10,
+    "from": "km",
+    "to": "mi",
+    "result": 6.21371192237,
+    "dimension": "length"
+  },
+  "quota": {
+    "allowed": true,
+    "used": 2,
+    "limit": 50,
+    "remaining": 48,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools"
+  }
+}

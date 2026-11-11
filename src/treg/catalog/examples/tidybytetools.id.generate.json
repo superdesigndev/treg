@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "tool": "id-generate",
+  "result": {
+    "type": "uuid",
+    "count": 2,
+    "ids": [
+      "9c4fa30d-03d0-452a-a72a-71f07835f225",
+      "1a450667-2b07-4ecc-af38-7e64d072144e"
+    ],
+    "id": "9c4fa30d-03d0-452a-a72a-71f07835f225"
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools"
+  }
+}

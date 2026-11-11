@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "tool": "hash",
+  "result": {
+    "bytes": 5,
+    "encoding": "utf-8",
+    "hashes": {
+      "md5": {
+        "hex": "5d41402abc4b2a76b9719d911017c592"
+      }
+    },
+    "md5": "5d41402abc4b2a76b9719d911017c592"
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools",
+    "lite": "https://github.com/tidybytetools/hash-lite"
+  }
+}

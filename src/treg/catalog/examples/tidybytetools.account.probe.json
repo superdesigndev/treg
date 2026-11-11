@@ -1,0 +1,6 @@
+{
+  "ok": true,
+  "auth": "anonymous",
+  "dailyLimit": 50,
+  "message": "No key sent. Anonymous free-tier use is allowed."
+}

@@ -1,0 +1,361 @@
+provider: tidybytetools
+source:
+  docs: https://tidybytetools.tidybytetools.workers.dev/
+  openapi: https://tidybytetools.tidybytetools.workers.dev/openapi.json
+  rate_card: https://tidybytetools.tidybytetools.workers.dev/pricing.json
+  llms: https://tidybytetools.tidybytetools.workers.dev/llms.txt
+  curated: 2026-11-11
+pricing_url: https://tidybytetools.tidybytetools.workers.dev/pricing
+limits: "50 anonymous calls per IP per UTC day; 200 calls per free API key per UTC day; 30 tool calls per minute burst; 16 KB max body. GET /v1/probe, pricing, docs, OpenAPI, health, and MCP tools/list do not use the daily quota."
+# The shared taxonomy has no platform for general text/data compute (repair, hash, format, convert).
+# This file proposes those jobs under `data.*`. The `data` platform slug is added to
+# capabilities.yaml in the same PR so the first segment exists. Probe reuses account.identity.
+proposed_capabilities:
+  data.hash: Hash text with MD5, SHA-1, SHA-256, or SHA-512
+  data.json.repair: Repair broken or incomplete JSON
+  data.json.format: Pretty-print or minify JSON
+  data.base64: Encode text as Base64, or decode Base64 to text
+  data.json.shape: Turn notes, CSV, or a Markdown table into JSON
+  data.markdown.chunk: Split Markdown into heading-aware chunks
+  data.url.codec: Percent-encode or decode a string
+  data.id.generate: Create a UUID, ULID, or NanoID
+  data.jwt.decode: Read a JWT header and payload without checking the signature
+  data.date.normalize: Parse a messy date and convert it to a timezone
+  data.unit.convert: Convert a value from one unit to another
+  data.cron.parse: Explain a cron expression and list the next fire times
+  data.text.diff: Diff two texts and return a unified patch
+  data.yaml.json: Convert YAML to JSON, or JSON to YAML
+defaults:
+  provenance:
+    source: docs
+    source_url: https://tidybytetools.tidybytetools.workers.dev/pricing.json
+    checked: '2026-11-11'
+    confidence: documented
+endpoints:
+  - id: tidybytetools.account.probe
+    capability: account.identity
+    platform: account
+    domain: identity
+    kind: utility
+    method: GET
+    path: /v1/probe
+    name: Check an API key
+    summary: Confirm a Tidy Byte Tools API key still works, or that anonymous access is open.
+    test_request: {}
+    price: {value: '0', currency: USD, per: 1, unit: call, note: "The probe does not use the daily quota. Paid billing is not live."}
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.account.probe.json
+
+  - id: tidybytetools.hash
+    capability: data.hash
+    platform: data
+    domain: hash
+    kind: utility
+    method: POST
+    path: /v1/hash
+    body_allowlist: true
+    name: Hash text
+    summary: Return MD5, SHA-1, SHA-256, or SHA-512 checksums of a string.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: "hello"}
+        algorithms: {type: "array[string]", required: false, enum: [md5, sha1, sha256, sha512], example: [md5]}
+    test_request: {body: {text: "hello", algorithms: [md5]}}
+    price: &free_call
+      value: '0'
+      currency: USD
+      per: 1
+      unit: call
+      note: "Included in the free daily cap (50 calls per IP without a key, or 200 per free key, each UTC day). Paid per-call billing is not live. Planned later prices are on /pricing.json but cannot be charged today."
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.hash.json
+
+  - id: tidybytetools.json.repair
+    capability: data.json.repair
+    platform: data
+    domain: json
+    kind: utility
+    method: POST
+    path: /v1/json-repair
+    body_allowlist: true
+    name: Repair JSON
+    summary: Fix broken or incomplete JSON, including text from language models.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: "{name: 'Ada', ok: True,}"}
+    test_request: {body: {text: "{name: 'Ada', ok: True,}"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.json.repair.json
+
+  - id: tidybytetools.json.format
+    capability: data.json.format
+    platform: data
+    domain: json
+    kind: utility
+    method: POST
+    path: /v1/json-format
+    body_allowlist: true
+    name: Format or minify JSON
+    summary: Pretty-print or shrink valid JSON.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: '{"a":1,"b":[2,3]}'}
+        mode: {type: string, required: false, enum: [pretty, minify], example: pretty}
+    test_request: {body: {text: '{"a":1,"b":[2,3]}', mode: pretty}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.json.format.json
+
+  - id: tidybytetools.base64
+    capability: data.base64
+    platform: data
+    domain: encoding
+    kind: utility
+    method: POST
+    path: /v1/base64
+    body_allowlist: true
+    name: Base64 encode or decode
+    summary: Turn text into Base64, or Base64 back into text.
+    input:
+      bodyType: json
+      body:
+        action: {type: string, required: true, enum: [encode, decode], example: encode}
+        text: {type: string, required: true, example: "hello"}
+    test_request: {body: {action: encode, text: "hello"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.base64.json
+
+  - id: tidybytetools.json.shaper
+    capability: data.json.shape
+    platform: data
+    domain: json
+    kind: utility
+    method: POST
+    path: /v1/json-shaper
+    body_allowlist: true
+    name: Shape text into JSON
+    summary: Turn key-value lines, CSV, or a Markdown table into clean JSON.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: "name: Ada\nyear: 1815"}
+    test_request: {body: {text: "name: Ada\nyear: 1815"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.json.shaper.json
+
+  - id: tidybytetools.md.chunk
+    capability: data.markdown.chunk
+    platform: data
+    domain: markdown
+    kind: utility
+    method: POST
+    path: /v1/md-chunk
+    body_allowlist: true
+    name: Chunk Markdown
+    summary: Split Markdown into heading-aware chunks for search and RAG.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: "# Title\n\nHello.\n\n## Part\n\nMore text."}
+        maxChars: {type: integer, required: false, min: 1, example: 400}
+    test_request: {body: {text: "# Title\n\nHello.\n\n## Part\n\nMore text.", maxChars: 400}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.md.chunk.json
+
+  - id: tidybytetools.url.codec
+    capability: data.url.codec
+    platform: data
+    domain: url
+    kind: utility
+    method: POST
+    path: /v1/url-codec
+    body_allowlist: true
+    name: URL encode or decode
+    summary: Percent-encode or decode a string or a query map.
+    input:
+      bodyType: json
+      body:
+        action: {type: string, required: true, enum: [encode, decode], example: encode}
+        text: {type: string, required: true, example: "hello world & cats"}
+    test_request: {body: {action: encode, text: "hello world & cats"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.url.codec.json
+
+  - id: tidybytetools.id.generate
+    capability: data.id.generate
+    platform: data
+    domain: id
+    kind: utility
+    method: POST
+    path: /v1/id-generate
+    body_allowlist: true
+    name: Make IDs
+    summary: Create a UUID, a ULID, or a NanoID.
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: false, enum: [uuid, ulid, nanoid], example: uuid}
+        count: {type: integer, required: false, min: 1, max: 20, example: 2}
+    test_request: {body: {type: uuid, count: 2}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.id.generate.json
+
+  - id: tidybytetools.jwt.decode
+    capability: data.jwt.decode
+    platform: data
+    domain: jwt
+    kind: utility
+    method: POST
+    path: /v1/jwt-decode
+    body_allowlist: true
+    name: Decode a JWT
+    summary: Read a JWT header and payload. This does not check the signature.
+    input:
+      bodyType: json
+      body:
+        token: {type: string, required: true, example: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhZGEifQ."}
+    test_request: {body: {token: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhZGEifQ."}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.jwt.decode.json
+
+  - id: tidybytetools.date.timezone
+    capability: data.date.normalize
+    platform: data
+    domain: date
+    kind: utility
+    method: POST
+    path: /v1/date-timezone
+    body_allowlist: true
+    name: Normalize dates
+    summary: Parse a messy date and convert it to a timezone you choose.
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, example: "March 14, 2026 3:00 PM"}
+        sourceTimezone: {type: string, required: false, example: "America/Chicago"}
+        targetTimezone: {type: string, required: false, example: "UTC"}
+    test_request: {body: {text: "March 14, 2026 3:00 PM", sourceTimezone: "America/Chicago", targetTimezone: "UTC"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.date.timezone.json
+
+  - id: tidybytetools.unit.convert
+    capability: data.unit.convert
+    platform: data
+    domain: unit
+    kind: utility
+    method: POST
+    path: /v1/unit-convert
+    body_allowlist: true
+    name: Convert units
+    summary: Convert length, mass, temperature, volume, time, area, speed, and data-size units.
+    input:
+      bodyType: json
+      body:
+        value: {type: number, required: true, example: 10}
+        from: {type: string, required: true, example: km}
+        to: {type: string, required: true, example: mi}
+    test_request: {body: {value: 10, from: km, to: mi}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.unit.convert.json
+
+  - id: tidybytetools.cron.parse
+    capability: data.cron.parse
+    platform: data
+    domain: cron
+    kind: utility
+    method: POST
+    path: /v1/cron-parse
+    body_allowlist: true
+    name: Parse a cron expression
+    summary: Explain a 5- or 6-field cron string and list the next fire times in UTC.
+    input:
+      bodyType: json
+      body:
+        expression: {type: string, required: true, example: "0 9 * * 1-5"}
+        count: {type: integer, required: false, min: 1, max: 20, example: 3}
+    test_request: {body: {expression: "0 9 * * 1-5", count: 3}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.cron.parse.json
+
+  - id: tidybytetools.text.diff
+    capability: data.text.diff
+    platform: data
+    domain: text
+    kind: utility
+    method: POST
+    path: /v1/text-diff
+    body_allowlist: true
+    name: Diff two texts
+    summary: Return a line-level diff of two strings, plus a unified patch.
+    input:
+      bodyType: json
+      body:
+        a: {type: string, required: true, example: "one\ntwo\nthree"}
+        b: {type: string, required: true, example: "one\ntwo changed\nthree"}
+    test_request: {body: {a: "one\ntwo\nthree", b: "one\ntwo changed\nthree"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.text.diff.json
+
+  - id: tidybytetools.yaml.json
+    capability: data.yaml.json
+    platform: data
+    domain: yaml
+    kind: utility
+    method: POST
+    path: /v1/yaml-json
+    body_allowlist: true
+    name: YAML to JSON
+    summary: Convert a common YAML subset to JSON, or JSON to YAML.
+    input:
+      bodyType: json
+      body:
+        direction: {type: string, required: false, enum: [to-json, to-yaml], example: to-json}
+        text: {type: string, required: true, example: "name: Ada\nyears: [1815, 1852]"}
+    test_request: {body: {direction: to-json, text: "name: Ada\nyears: [1815, 1852]"}}
+    price: *free_call
+    verified: '2026-11-11'
+    added: '2026-11-11'
+    docs_url: https://tidybytetools.tidybytetools.workers.dev/
+    example_response: examples/tidybytetools.yaml.json.json

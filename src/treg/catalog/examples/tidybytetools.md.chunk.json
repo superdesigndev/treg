@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "tool": "md-chunk",
+  "result": {
+    "count": 2,
+    "chunks": [
+      {
+        "headingPath": [
+          "Title"
+        ],
+        "headingLevel": 1,
+        "anchor": "title",
+        "part": 1,
+        "parts": 1,
+        "chars": 15,
+        "text": "# Title\n\nHello.",
+        "index": 1,
+        "id": "text#1"
+      },
+      {
+        "headingPath": [
+          "Title",
+          "Part"
+        ],
+        "headingLevel": 2,
+        "anchor": "part",
+        "part": 1,
+        "parts": 1,
+        "chars": 19,
+        "text": "## Part\n\nMore text.",
+        "index": 2,
+        "id": "text#2"
+      }
+    ]
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk work, use our paid Apify actor: markdown-rag-chunker.",
+    "apify": "https://apify.com/tidybytetools",
+    "actor": "https://apify.com/tidybytetools/markdown-rag-chunker",
+    "lite": "https://github.com/tidybytetools/md-chunk-lite"
+  }
+}

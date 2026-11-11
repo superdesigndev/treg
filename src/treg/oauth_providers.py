@@ -4256,6 +4256,43 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+TIDYBYTETOOLS = OAuthProvider(
+    service="tidybytetools",
+    display_name="Tidy Byte Tools",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="tbt_…",
+    # The key rides in X-Api-Key (Authorization: Bearer is accepted too). The header keeps it out
+    # of logged URLs. Anonymous calls are allowed; a presented but invalid key is rejected with 401
+    # and does not fall back to the anonymous cap.
+    token_header="X-Api-Key",
+    token_format="{secret}",
+    setup_url="https://tidybytetools.tidybytetools.workers.dev/",
+    setup_action_label="Get a free API key",
+    setup_steps=(
+        "Open the Tidy Byte Tools API site, or POST https://tidybytetools.tidybytetools.workers.dev/keys (no signup form).",
+        "Copy the key that starts with tbt_ and paste it here. You can also call the API with no key.",
+        "A free key raises the cap from 50 calls per IP per UTC day to 200 calls per key per UTC day. Paid billing is not live yet.",
+    ),
+    setup_note=(
+        "Anonymous use is allowed (50 calls per IP each UTC day). A bad key is rejected with HTTP 401 "
+        "and error=invalid_api_key; it does not fall back to the anonymous cap. GET /v1/probe is free "
+        "and does not use the daily quota. You cannot pay for this API yet."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary=(
+        "Repair JSON, hash or encode text, format data, make IDs, convert dates and units, and run "
+        "other small compute tools on text you already have."
+    ),
+    base_url="https://tidybytetools.tidybytetools.workers.dev",
+    docs_url="https://tidybytetools.tidybytetools.workers.dev/",
+    probe_path="/v1/probe",
+    probe_method="GET",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4286,6 +4323,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Developer utilities API-key providers
+        TIDYBYTETOOLS,
     )
 }
 
