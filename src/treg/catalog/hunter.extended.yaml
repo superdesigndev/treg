@@ -234,6 +234,9 @@ endpoints:
   name: Search emails across companies matching filters
   summary: Searches every company matching your filters in one request; returns masked rows with reveal handles
   input:
+    # Hunter takes location, industry, technology, seniority and required_field as one
+    # comma-separated value; a list a caller passes is sent that way, not as repeated keys.
+    queryArrayEncoding: comma
     queryParams:
       company_name:
         type: string
