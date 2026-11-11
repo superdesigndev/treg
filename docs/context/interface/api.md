@@ -135,6 +135,11 @@ never in a URL. `POST /auth/cli/approve` requires the session, the same-origin C
 matching code and membership in the chosen team; `GET /auth/cli/poll` hands over the Default key
 exactly once (only a seven-day bootstrap credential when no team was chosen).
 
+Start reports `expires_in`. The login id travels in a shareable URL, so start also accepts an
+optional `poll_challenge` (S256 of a verifier the CLI keeps) and then adds `poll_verifier: true`;
+that handshake is collectable only by a poll sending the matching `X-Treg-Poll-Verifier`. Poll
+answers `expired` for a missing, consumed, expired or malformed id, so a CLI can stop waiting.
+
 State lives in the database `Ephemeral` table so every worker and instance shares it. Approve
 locks the pairing row with a no-op update (works on PostgreSQL and SQLite), then commits the
 encrypted result and any Default-key creation together; wrong attempts commit their decrement

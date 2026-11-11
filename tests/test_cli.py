@@ -122,6 +122,86 @@ def test_login_exits_with_helpful_message_when_localhost_unreachable(monkeypatch
     assert cli.PRODUCTION_BASE_URL in error_msg
 
 
+def test_login_names_an_unreachable_server_instead_of_waiting(monkeypatch):
+    import httpx
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("synthetic refusal")
+
+    opened: list[str] = []
+    def waited(seconds):
+        raise AssertionError("login waited on a handshake that never started")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(cli.time, "sleep", waited)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_login(type("A", (), {"token": None, "email": None})(), {"base_url": "https://treg.example"})
+    assert "ConnectError: synthetic refusal" in str(exc_info.value)
+    assert "Retry `treg login`" in str(exc_info.value) and opened == []
+
+
+def test_login_against_a_server_without_start_falls_back_to_a_local_id(monkeypatch, tmp_path):
+    import httpx
+
+    class Resp:
+        def __init__(self, payload, status_code=200):
+            self._payload, self.status_code, self.cookies = payload, status_code, {}
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    opened: list[str] = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: Resp({"detail": "Not Found"}, 404))
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: Resp({"token": "tok", "email": "a@b.c", "active_org": "team-a"}))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli, "_maybe_offer_onboarding", lambda cfg: None)
+
+    cli.cmd_login(type("A", (), {"token": None, "email": None})(), {"base_url": "https://treg.example"})
+    assert opened[0].startswith("https://treg.example/login?cli=") and "#code=" not in opened[0]
+    assert cli._load_config()["token"] == "tok"
+
+
+def test_email_login_picks_the_team_and_pins_with_the_verify_session(monkeypatch, tmp_path):
+    import httpx
+
+    class Resp:
+        status_code, headers = 200, {}
+
+        def __init__(self, payload, cookies):
+            self._payload, self.cookies = payload, cookies
+
+        def json(self):
+            return self._payload
+
+    verify_cookies = {"treg_session": "synthetic-session"}
+    answers = {"/auth/email/start": Resp({}, {}),
+               "/auth/email/verify": Resp({"token": "tok", "email": "a@b.c"}, verify_cookies)}
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    (tmp_path / "pending-login.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: answers[url.removeprefix("https://treg.example")])
+    monkeypatch.setattr("builtins.input", lambda prompt: "123456")
+    calls = []
+
+    def pick(cfg, *, pin=True):
+        calls.append(("pick", pin, cfg["token"]))
+        cfg["active_org"] = "team-a"
+
+    monkeypatch.setattr(cli, "_pick_active_org", pick)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org",
+                        lambda cfg, *, session_cookies=None: calls.append(("pin", session_cookies)))
+    monkeypatch.setattr(cli, "_maybe_offer_onboarding", lambda cfg: None)
+    cfg = {"base_url": "https://treg.example", "token": None, "active_org": "earlier-team"}
+
+    cli.cmd_login(type("A", (), {"token": None, "email": "a@b.c"})(), cfg)
+    assert calls == [("pick", False, "tok"), ("pin", verify_cookies)]
+    assert cli._load_config()["token"] == "tok" and cfg["active_org"] == "team-a"
+    assert not (tmp_path / "pending-login.json").exists()
+
+
 def test_token_org_claim_reads_a_team_pinned_token():
     """`_token_org_claim` decodes the org slug a team-pinned identity token carries — without the
     signature check (the server still authorizes), and returning None on anything else."""

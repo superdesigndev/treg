@@ -161,7 +161,7 @@ async def test_approve_completes_the_cli_handshake(web):
     me = await web.get("/auth/me", headers={"X-Treg-Token": d["token"]})  # token path wins over the cookie
     assert me.status_code == 200 and me.json()["email"] == "pat@x.dev"
     again = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()
-    assert again == {"status": "pending"}  # single-use
+    assert again == {"status": "expired"}  # single-use
 
 
 async def test_approve_requires_a_session(web):
@@ -223,14 +223,14 @@ async def test_start_mints_a_login_id_and_code(web):
 async def test_approve_requires_a_started_login_and_matching_code(web):
     """The phishing block, enforced at approve: a login not begun via /start can't complete, and a
     wrong/blank code is refused — so a mailed /login?cli=<attacker_id> the victim never started (or
-    whose code they don't have) never yields a token. A codeless poll of it returns pending."""
+    whose code they don't have) never yields a token. A codeless poll of it returns expired."""
     uid = await _seed_user()
     web.cookies.set("treg_session", sess.make_session(uid))
 
     # a login_id that was never started (what an attacker's mailed link may carry) → refused, no token
     bogus = await web.post("/auth/cli/approve", json={"login_id": LID, "code": "7F3K"})
     assert bogus.status_code == 400
-    assert (await web.get(f"/auth/cli/poll?login_id={LID}")).json() == {"status": "pending"}
+    assert (await web.get(f"/auth/cli/poll?login_id={LID}")).json() == {"status": "expired"}
 
     lid, code = await _start(web)
     assert (await web.post("/auth/cli/approve", json={"login_id": lid})).status_code == 400          # no code

@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Cookie, Depends, Form, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import client_ip, crypto
@@ -441,30 +441,43 @@ app = APIRouter()
 cli_router = app
 
 
+class CliStartIn(BaseModel):
+    poll_challenge: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{43}$")
+
+
 @app.post("/auth/cli/start")
-async def auth_cli_start(response: Response) -> dict:
+async def auth_cli_start(response: Response, body: CliStartIn | None = None) -> dict:
     """`treg login` calls this FIRST. The SERVER mints both the login_id and a short pairing code and
     remembers them (pending approval). The code is shown only in that terminal; the browser must echo it
     back at approve time, where it's validated server-side, before any token is issued. So a login the
     user didn't start (a phished /login?cli=<id> link) can't be completed, and the poll endpoint carries
-    no code to brute-force. Unauthenticated — on its own it grants nothing."""
+    no code to brute-force. Unauthenticated — on its own it grants nothing.
+
+    `poll_challenge` is the unpadded base64url SHA-256 of a secret the CLI keeps; when present, only
+    a poll carrying that secret in `X-Treg-Poll-Verifier` can collect the token, so the login link
+    alone is not enough to take it."""
     response.headers["Cache-Control"] = "no-store"
     try:
-        return await auth_use_cases.start_cli_login()
+        return await auth_use_cases.start_cli_login(body.poll_challenge if body else None)
     except auth_use_cases.CliPairingError as exc:
         raise _cli_http_error(exc) from exc
 
 
 @app.get("/auth/cli/poll")
-async def auth_cli_poll(response: Response, login_id: str = "") -> dict:
+async def auth_cli_poll(
+    response: Response, login_id: str = "",
+    x_treg_poll_verifier: str = Header(default=""),
+) -> dict:
     """The CLI polls this after opening the browser; returns the identity token once, then forgets it.
     A token only lands here after auth_cli_approve validated the terminal pairing code, so a login the
-    user didn't approve never yields one — there is nothing here to brute-force (no code parameter)."""
+    user didn't approve never yields one — there is nothing here to brute-force (no code parameter).
+    A handshake started with a `poll_challenge` stays `pending` until a poll sends the matching
+    `X-Treg-Poll-Verifier`. A missing, consumed or expired handshake answers `expired`."""
     response.headers["Cache-Control"] = "no-store"
     if not _LOGIN_ID_RE.fullmatch(login_id):
-        return {"status": "pending"}
+        return {"status": "expired"}
     try:
-        return await auth_use_cases.poll_cli_login(login_id)
+        return await auth_use_cases.poll_cli_login(login_id, x_treg_poll_verifier)
     except auth_use_cases.CliPairingError as exc:
         raise _cli_http_error(exc) from exc
 

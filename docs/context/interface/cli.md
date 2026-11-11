@@ -112,6 +112,18 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   `/login?cli=<id>#code=<code>` page shows the code from the URL fragment (never sent to the server,
   so never in request logs) so the user confirms it matches the terminal. The server still validates
   the code at approve time: a login you did not start cannot be approved into a token.
+- **Login without waiting.** `start` sends a `poll_challenge`; its verifier never enters the shared
+  link. Only a 404 from `start` falls back to a locally minted id; any other failure exits naming
+  it, because a current server answers `expired` for an id it never issued. Outside a terminal and
+  without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`), prints the link, polls for
+  20 s so a human with a dashboard session finishes in one click, then exits 3 (as `call --await`
+  does for a task still running) while the sign-in stays pending; `login` again (with the same
+  grace) or `--wait` resumes it rather than orphaning the link already shared. A signed-out command without
+  `TREG_TOKEN` collects it once before running and reports on stderr, so its stdout stays parseable
+  and a process on another credential never consumes the human's login. The server decides expiry,
+  since approval extends it. The pending login is a separate file so a claim that sees `expired`
+  never rewrites `config.json`; it then waits up to 2 s for a parallel command that consumed the same
+  login to save its token there.
 - **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
   that identifies the account for onboarding, expires after seven days and cannot call team
   resources. Selecting, creating, joining or accepting a team replaces the stored token with that

@@ -377,6 +377,24 @@
         "title": "CliApproveIn",
         "type": "object"
       },
+      "CliStartIn": {
+        "properties": {
+          "poll_challenge": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{43}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Challenge"
+          }
+        },
+        "title": "CliStartIn",
+        "type": "object"
+      },
       "ConnectionRenameIn": {
         "properties": {
           "name": {
@@ -4410,7 +4428,7 @@
     },
     "/auth/cli/poll": {
       "get": {
-        "description": "The CLI polls this after opening the browser; returns the identity token once, then forgets it.\nA token only lands here after auth_cli_approve validated the terminal pairing code, so a login the\nuser didn't approve never yields one — there is nothing here to brute-force (no code parameter).",
+        "description": "The CLI polls this after opening the browser; returns the identity token once, then forgets it.\nA token only lands here after auth_cli_approve validated the terminal pairing code, so a login the\nuser didn't approve never yields one — there is nothing here to brute-force (no code parameter).\nA handshake started with a `poll_challenge` stays `pending` until a poll sends the matching\n`X-Treg-Poll-Verifier`. A missing, consumed or expired handshake answers `expired`.",
         "operationId": "auth_cli_poll_auth_cli_poll_get",
         "parameters": [
           {
@@ -4420,6 +4438,16 @@
             "schema": {
               "default": "",
               "title": "Login Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-poll-verifier",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Poll-Verifier",
               "type": "string"
             }
           }
@@ -4453,8 +4481,25 @@
     },
     "/auth/cli/start": {
       "post": {
-        "description": "`treg login` calls this FIRST. The SERVER mints both the login_id and a short pairing code and\nremembers them (pending approval). The code is shown only in that terminal; the browser must echo it\nback at approve time, where it's validated server-side, before any token is issued. So a login the\nuser didn't start (a phished /login?cli=<id> link) can't be completed, and the poll endpoint carries\nno code to brute-force. Unauthenticated — on its own it grants nothing.",
+        "description": "`treg login` calls this FIRST. The SERVER mints both the login_id and a short pairing code and\nremembers them (pending approval). The code is shown only in that terminal; the browser must echo it\nback at approve time, where it's validated server-side, before any token is issued. So a login the\nuser didn't start (a phished /login?cli=<id> link) can't be completed, and the poll endpoint carries\nno code to brute-force. Unauthenticated — on its own it grants nothing.\n\n`poll_challenge` is the unpadded base64url SHA-256 of a secret the CLI keeps; when present, only\na poll carrying that secret in `X-Treg-Poll-Verifier` can collect the token, so the login link\nalone is not enough to take it.",
         "operationId": "auth_cli_start_auth_cli_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CliStartIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -4467,6 +4512,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Auth Cli Start"
