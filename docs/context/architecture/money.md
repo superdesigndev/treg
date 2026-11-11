@@ -245,7 +245,8 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
 - **Only `reserve` may shed load.** When its budget (`money_admission_wait_s`) expires it releases
   partial gates and raises `ReserveAdmissionTimeout`, which `reserve.reserve_admission` maps to a 429
   (`money_admission_timeout`, blame `treg`) with a randomized `Retry-After` between
-  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. Every other
+  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. A routed call
+  answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
   and cleanup must run.
@@ -390,6 +391,11 @@ dashboard Activity page and the CLI's `--await` all read this one view.
 is a URL the payer controls. The one exception is the off-session auto-top-up charge, where the
 server itself holds the PaymentIntent's confirmed status; it credits immediately and the webhook
 redelivery is a no-op.
+
+The dashboard reads the return's `?topup=` or `?card=` once and strips it (`followStripeReturn`). On
+`topup=success` it says the payment is being added, then re-reads `GET /billing` a bounded number of
+times (`TOPUP_POLLS`) until the balance rises above the one stored when the payer left for Checkout,
+and names the amount added. It never credits anything itself.
 
 The webhook is `POST /billing/stripe/webhook` and **404s when unconfigured**, so a deploy without the
 secret exposes no unauthenticated POST surface. `verify_event` uses the SDK's `verify_header`
@@ -972,6 +978,10 @@ the actual estimate with margin before opening its transaction. Direct calls set
 `X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
 route's remainder. A refusal is a 402 `route_max_cost` that moves no money. Overflow inherits the
 field and checks its own estimate; a preceding direct charge reduces the remainder.
+
+Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))
+may refuse a call on treg's money with a 403 (`funds_required` or `own_key_required`); like the
+ceiling it moves no money.
 
 With a `ceiling_param` declared (AGENTS.md non-negotiable 4), the appended USD figure is the largest
 provider charge that still settles within the ceiling after `with_margin` (which rounds up); at margin

@@ -90,7 +90,9 @@ Constraints the hosts impose, which the code cannot explain:
 Served at `GET /skills/<name>/SKILL.md` from `src/treg/web/skills/<name>/SKILL.md`. Those in the
 well-known index are offered by `treg skill bootstrap` and installed only when named with
 `--skills` (or `all`) or already present; `jev-memory` and `rea-growth` are opt-in, kept out of the
-index and `/.well-known/`, so the installer never offers them. Workflow skills name search words
+index and `/.well-known/`, so the installer never offers them. Bootstrap names the offered ones in
+one line and never tells the agent to stop and ask: it runs before sign-in, so `llms.txt` and
+`skill.md` put that question after the first call that returns real data. Workflow skills name search words
 or routed `treg.*` jobs rather than per-provider endpoint ids where the catalog moves weekly; the
 catalog row's price and parameters win over anything a skill states.
 

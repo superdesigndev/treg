@@ -114,7 +114,8 @@ Ready-made recipes your agent runs end to end, every call through treg:
 | [`make-ugc`](skills/make-ugc/SKILL.md) | Make AI UGC videos: trending hooks, a presenter, talking-head clips, captions ([treg.to/ugc](https://treg.to/ugc)) |
 | [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
 
-`install.sh` installs only `treg` and lists the others; name the ones you want with
+`install.sh` installs only `treg` and names the others in one line; your agent offers them after
+sign-in and the first call. Name the ones you want with
 `sh -s -- --skills lead-signals,recruit` (or `--skills all`; the opt-in `jev-memory` and `rea-growth` are never in that set). In Claude Code each one is
 also its own plugin in treg's marketplace: `/plugin install recruit@treg`, or pick them from `/plugin`. To add
 them to an existing agent instead ([skills.sh](https://skills.sh) CLI):
@@ -244,8 +245,7 @@ treg run gh -- pr list
 ```
 
 `--local` (default) runs on your machine. Server-side CLI execution (`--server`) is disabled globally.
-For a whole session, `treg shell start` opens a subshell where every registered CLI injects
-automatically — just use `stripe`, `gh`, … normally; `exit` reverts. `treg runs` is the audit log.
+`treg runs` is the audit log.
 
 ### 3. Skills
 

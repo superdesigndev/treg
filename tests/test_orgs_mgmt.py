@@ -182,10 +182,17 @@ async def test_member_cannot_invite_but_admin_can(c):
     # member cannot invite or list members
     assert (await c.post(f"/orgs/{org_id}/invites", headers=_h(mtok), json={"email": "x@x.dev"})).status_code == 403
     assert (await c.get(f"/orgs/{org_id}/members", headers=_h(mtok))).status_code == 403
+    # but a member can learn who can add funds
+    assert (await c.get(f"/orgs/{org_id}/admins", headers=_h(mtok))).json() == [
+        {"email": "owner@x.dev", "role": "owner"}]
     # add an admin, who then CAN invite
     code2 = (await c.post(f"/orgs/{org_id}/invites", headers=_h(otok), json={"email": "a@x.dev", "role": "admin"})).json()["code"]
     atok = (await accept_with_code(c, json={"code": code2, "email": "a@x.dev"})).json()["token"]
     assert (await c.post(f"/orgs/{org_id}/invites", headers=_h(atok), json={"email": "y@x.dev"})).status_code == 200
+    admins = (await c.get(f"/orgs/{org_id}/admins", headers=_h(mtok))).json()
+    assert admins == [{"email": "owner@x.dev", "role": "owner"}, {"email": "a@x.dev", "role": "admin"}]
+    other = (await c.post("/orgs", headers=_h(owner), json={"name": "Team B"})).json()
+    assert (await c.get(f"/orgs/{other['org_id']}/admins", headers=_h(mtok))).status_code == 403
 
 
 async def test_viewer_can_call_and_read_but_not_register(c):
