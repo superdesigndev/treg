@@ -364,6 +364,7 @@ class Settings(BaseSettings):
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
     platform_key_orbisearch: str = ""  # X-API-Key; prepaid validation and enrichment credits
     platform_key_bounceban: str = ""  # raw key in Authorization; prepaid verification credits
+    platform_key_docuqueue: str = ""   # raw api-key header; prepaid document credits (1 credit = 1 document)
     platform_key_hunter: str = ""
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
     platform_key_moltsets: str = ""  # Bearer; shared subscription fair-use pools, no auto-top-up
