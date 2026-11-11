@@ -104,6 +104,15 @@ class RateLimited(Exception):
               "message": "too many payments from this address; wait a minute and send it again"}
 
 
+class PayerSuspended(Exception):
+    """The wallet's payer team, or its member, is suspended; no payment was taken."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.detail = {"error": "payer_suspended", "reason": reason,
+                       "message": "this wallet's treg team is suspended; no payment was taken"}
+
+
 RATE_NS = "agent_payments"
 RATE_WINDOW_S = 60
 
@@ -278,6 +287,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                           f"settling it, expiring within {max_life} seconds")
     else:
         org_id = await _payer_org(verified.payer)
+    if reason := await _suspension(org_id):
+        raise PayerSuspended(reason)
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
@@ -326,6 +337,18 @@ async def _settle_and_credit(rail: PaymentRail, verified: Verified, paid: PaidOf
     return settlement
 
 
+async def _suspension(org_id: int) -> str | None:
+    """What `require_member` refuses on the account path, checked before a payment is taken."""
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        if org is None or org.suspended:
+            return "org_suspended"
+        users = (await db.execute(
+            select(User).join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == org_id))).scalars().all()
+        return "account_suspended" if not users or any(u.suspended for u in users) else None
+
+
 async def _known_payer_org(address: str) -> int | None:
     async with session_maker() as db:
         payer = await db.get(AgentPayer, address)
@@ -338,8 +361,8 @@ async def _payer_org(address: str) -> int:
             payer = await db.get(AgentPayer, address)
             if payer is not None:
                 return payer.org_id
-            org = await make_payer_team(db, address)
             try:
+                org = await make_payer_team(db, address)
                 await db.commit()
                 return int(org.id)
             except IntegrityError:

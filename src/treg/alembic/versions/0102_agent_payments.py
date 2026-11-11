@@ -4,7 +4,8 @@ Revision ID: 0102
 Revises: 0101
 Create Date: 2026-10-30
 
-Additive: two new small tables, nothing else touched. Both are written only by
+Additive: two new small tables, nothing else touched. No foreign keys (AGENTS.md); the
+application keeps `org_id` pointing at the payer team. Both are written only by
 `application/agent_payments.py`, behind `TREG_AGENT_PAYMENTS_ENABLED`.
 """
 from collections.abc import Sequence
@@ -26,7 +27,6 @@ def upgrade() -> None:
         sa.Column("address", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("org_id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["org_id"], ["org.id"]),
         sa.PrimaryKeyConstraint("address"),
         sa.UniqueConstraint("org_id"),
     )
@@ -49,7 +49,6 @@ def upgrade() -> None:
         sa.Column("error", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["org_id"], ["org.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_agentpayment_proof_id", "agentpayment", ["proof_id"], unique=True)

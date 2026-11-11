@@ -418,6 +418,51 @@ async def test_credit_pays_the_next_call_without_settling_again(anon: AsyncClien
     assert await _balance(payer) == FLOOR - 3 * EP_MICRO
 
 
+@pytest.mark.parametrize("target", ["org", "user"])
+async def test_a_suspended_payer_is_refused_before_any_payment(anon: AsyncClient, payments_on,
+                                                              facilitator, target):
+    from treg.models import Membership, Org, User
+
+    account = Account.create()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    org_id = await _payer_org(payer)
+    async with session_maker() as db:
+        if target == "org":
+            (await db.get(Org, org_id)).suspended = True
+        else:
+            member = (await db.execute(select(Membership).where(
+                Membership.org_id == org_id))).scalar_one()
+            (await db.get(User, member.user_id)).suspended = True
+        await db.commit()
+    for lifetime in (None, 3600):  # one would draw credit, the other would settle
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        credential, _ = _x402_credential(challenge, account, lifetime=lifetime)
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"]["reason"] == f"{'org' if target == 'org' else 'account'}_suspended"
+    assert facilitator.settles == 1
+    async with session_maker() as db:
+        assert len((await db.execute(select(AgentPayment))).scalars().all()) == 1
+
+
+async def test_concurrent_first_payments_share_one_payer_team(payments_on, monkeypatch):
+    real = agent_payments.make_payer_team
+    address = "0x" + "cd" * 20
+
+    async def _loses_the_race(db, addr):
+        async with session_maker() as other:  # the concurrent request commits first
+            await real(other, addr)
+            await other.commit()
+        return await real(db, addr)
+
+    monkeypatch.setattr(agent_payments, "make_payer_team", _loses_the_race)
+    org_id = await agent_payments._payer_org(address)
+    assert org_id == await _payer_org(address)
+
+
 async def test_a_long_lived_payment_is_settled_even_when_credit_covers_the_call(
         anon: AsyncClient, payments_on, facilitator):
     account = Account.create()

@@ -1018,7 +1018,7 @@ class AgentPayer(SQLModel, table=True):
     payment from `address` acts for it. Staged only by `governance.teams.make_payer_team`."""
 
     address: str = Field(primary_key=True)  # lowercase 0x hex, 20 bytes
-    org_id: int = Field(foreign_key="org.id", unique=True)
+    org_id: int = Field(unique=True)
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
@@ -1035,7 +1035,7 @@ class AgentPayment(SQLModel, table=True):
     protocol: str          # mpp | x402
     network: str           # e.g. tempo:42431, eip155:84532
     payer_address: str = Field(index=True)
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
     # treg's fee kept from `amount_micro`; the payer team is credited the rest.
     fee_micro: int = Field(default=0, sa_column=Column("fee_micro", BigInteger, nullable=False))

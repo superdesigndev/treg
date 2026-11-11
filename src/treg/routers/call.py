@@ -347,6 +347,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 402, exc.detail, exc.headers)
     except agent_payments.PaymentPending as exc:
         return await _payment_refusal(request, 503, exc.detail, [])
+    except agent_payments.PayerSuspended as exc:
+        return await _payment_refusal(request, 403, exc.detail, [])
     try:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)

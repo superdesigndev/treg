@@ -137,7 +137,11 @@ WebAuthn signatures only *name* their account and are authenticated by the chain
 
 1. The rail whose header is present verifies the credential (`rail.verify`). No session is open:
    pull-mode Tempo checks decode the signed transaction locally, x402 asks the facilitator.
-2. `_payer_org`: get or create the payer team (a concurrent create loses on the `AgentPayer` key).
+2. `_payer_org`: get or create the payer team (a concurrent create loses on the `AgentPayer` key
+   or the machine user's email, rolls back and reads the winner's team). `_suspension` then
+   refuses a suspended team or member with 403 `payer_suspended`, as `require_member` does on the
+   account path, before the proof is claimed or anything settles. `agentpayer` and `agentpayment`
+   carry `org_id` with no foreign key (AGENTS.md); team deletion removes both.
 3. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.
 4. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
