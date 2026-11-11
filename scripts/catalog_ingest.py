@@ -200,9 +200,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     replaces a proven request, not re-ingesting.
 
     A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
-    card (AnyAPI's sources and failover ceiling), so the fresh one is written over the carried one.
-    With `fresh_price_note` (AnyAPI) the same holds for a carried v2 `price`; every other provider
-    keeps its reviewed `price` whole, note included.
+    card, so the fresh one is written over the carried one. With `fresh_price_note` the same holds
+    for a carried v2 `price` (AnyAPI's note names its sources and failover ceiling); every other
+    provider keeps its reviewed `price` whole, note included.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
     old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
