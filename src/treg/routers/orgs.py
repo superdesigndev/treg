@@ -755,6 +755,23 @@ async def list_members(
     return out
 
 
+@app.get("/orgs/{org_id}/admins")
+async def list_admins(
+    org_id: int, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+) -> list[dict]:
+    """The people who can add funds, for a member whose team ran out: owner and admin emails only.
+    The full roster stays admin-only."""
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="this org's token is required")
+    rows = (await db.execute(
+        select(User.email, Membership.role).join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == org_id, Membership.role.in_(("owner", "admin")))
+    )).all()
+    people = [(email, role) for email, role in rows if not _is_agent_email(email)]
+    return [{"email": email, "role": role}
+            for email, role in sorted(people, key=lambda p: (p[1] != "owner", p[0]))]
+
+
 app = APIRouter()
 member_management_router = app
 

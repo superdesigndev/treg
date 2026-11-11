@@ -24,7 +24,7 @@ export default function data(){
       emailInput:'', codeInput:'', emailStage:false, devCode:'', pendingInvites:[], invitePrefill:'', inviteChoice:false, inviteBusy:false,
       inviteSel:{}, inviteLinkOrg:null, inviteErr:'',  // multi-select accept: checked ids, the org_id the clicked email link was for, partial-failure note
       tut:{i:0, panel:null}, tutCopied:false, tourI:0, helpMode:null, xtut:{i:0},
-      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'',
+      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'', memberFunds:false, teamAdmins:null,
       orgMembers:[], orgMembersLoaded:false, orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
       editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
       // agents (machine identities), projects (sub-scope) and deny rules (policy)
@@ -44,7 +44,7 @@ export default function data(){
   // usage-metering: rollups + the member's own used/cap
       // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
       // false = this deployment sells no balance, so the whole block stays hidden.
-      billing:null, billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
+      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
       topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
       capCfg:null, capUsd:0, capBusy:false, capErr:'',
       archiveBusy:false, archiveErr:'',

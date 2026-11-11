@@ -14,6 +14,10 @@ async createOrg(){ const name=(this.newOrgName||'').trim(); if(!name){ this.orgE
         this.newOrg=false; this.newOrgName=''; await this.loadAll(); this.switchOrg({slug:o.org}); }
       catch(e){ this.orgErr='Could not create: '+(e.detail||e.status); } finally{ this.orgBusy=false; } },
 async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgInvites=[]; this.lastInvite=null;
+      // '#billing' is where a 402 sends everyone, but only admins can add funds: a member who lands
+      // there is told whom to ask instead of meeting a tab that is not theirs.
+      this.memberFunds=!this.canAdmin && this.orgTab==='billing';
+      if(this.memberFunds) this.loadTeamAdmins();
       if(!this.canAdmin && !['keys','danger','sso'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
       if(!this.activeOrgId) return; const id=this.activeOrgId, live=this.ticket('orgAdmin');
@@ -32,6 +36,10 @@ async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgI
            const sel={}; this.projects.forEach(p=>{ sel[p.id]=true; }); this.agentProjSel=sel;
            this.observedAgents=observed; }
       catch(e){ if(!live()) return; this.orgMembersLoaded=true; this.orgErr='Load team failed: '+(e.detail||e.status); } },
+async loadTeamAdmins(){ this.teamAdmins=null; if(!this.activeOrgId) return;
+      const live=this.ticket('teamAdmins');
+      const admins=await this.api('/orgs/'+this.activeOrgId+'/admins').catch(()=>[]);
+      if(live()) this.teamAdmins=admins; },
 async loadMyUsage(){ if(!this.activeOrgId){ this.myUsage=null; return; }
       const live=this.ticket('myUsage');
       const usage=await this.api('/usage/me').catch(()=>null);

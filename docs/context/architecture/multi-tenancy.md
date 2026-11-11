@@ -120,6 +120,8 @@ dependency commits; it never extends the auth transaction.
 - **Roles.** Admin and owner manage any resource in the org; a member only what it created
   (`resource.owner == caller.email`). Another org's resource is 404, a failed role gate 403. A viewer
   may call and list only (`_require_can_register`).
+- **The roster is admin-only** (`list_members`); any member may read the team's human owners and
+  admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
   NULL-means-everything, and the owner is exempt from both. An all-selected list collapses back to
   NULL so the member keeps getting new tools; a customized list is an explicit allow-list that does

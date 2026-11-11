@@ -1,5 +1,40 @@
 
+import { storageGet, storageSet, storageRemove } from './storage.js'
+
+export const TOPUP_POLLS=10
+const BASELINE_KEY='treg-topup-before', BASELINE_MAX_AGE_MS=60*60*1000
+
 export default {
+// The balance as it was when the payer left for Stripe, so the return can say how much arrived even
+// when the webhook beat the browser back.
+_keepTopupBaseline(){ if(!this.billing) return;
+      storageSet(BASELINE_KEY, JSON.stringify({org:this.activeOrgId, balance_micro:this.billing.balance_micro, at:Date.now()})); },
+_takeTopupBaseline(){ const raw=storageGet(BASELINE_KEY); storageRemove(BASELINE_KEY);
+      try{ const b=JSON.parse(raw||'null');
+        return b && b.org===this.activeOrgId && Date.now()-b.at<BASELINE_MAX_AGE_MS ? b.balance_micro : null; }
+      catch(e){ return null; } },
+// Stripe sends the payer back to /app?topup=success|cancelled#billing, or ?card=saved|cancelled after
+// saving a card (see billing.py). The return proves nothing, credit lands on the webhook, so a
+// success says the money is on its way and re-reads the balance a bounded number of times.
+async followStripeReturn(ret){ if(!ret || !this.canAdmin) return;
+      const before=this._takeTopupBaseline();
+      const notes={'topup-cancelled':'Payment cancelled. Nothing was charged.',
+        'card-saved':'Card saved. Auto top-up turns on as soon as Stripe confirms it.',
+        'card-cancelled':'Card setup cancelled. No card was saved.'};
+      if(notes[ret]){ this.billingNote=notes[ret]; return; }
+      if(ret!=='topup-success') return;
+      this.billingNote='Payment received, adding it to your balance…';
+      const live=this.ticket('stripeReturn'), pause=this.topupPollMs ?? 2000;
+      let base=before;
+      for(let i=0;i<TOPUP_POLLS;i++){
+        if(i) await new Promise(r=>setTimeout(r, pause));
+        const b=await this.api('/billing').catch(()=>null);
+        if(!live()) return;
+        if(!b) continue;
+        if(base==null){ base=b.balance_micro; continue; }
+        if(b.balance_micro>base){ this.billing=b;
+          this.billingNote='Added '+this.money(b.balance_micro-base)+' to your balance.'; return; } }
+      if(live()) this.billingNote='Payment received. It can take a minute to reach your balance; reload this page if the balance has not changed yet.'; },
 money(micro){ const m=Math.round(Number(micro)||0), s=m<0?'-':'', a=Math.abs(m);
       if(a%10000===0) return s+'$'+(a/1e6).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
       return s+'$'+(a/1e6).toFixed(6).replace(/0+$/,''); },
@@ -116,7 +151,7 @@ async addFunds(amount){ this.billingBusy=true; this.topupAmount=amount; this.err
       try{ const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:amount,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
         // Stripe's own hosted page does the payment; the balance moves when its webhook lands, never
         // on the return redirect (which a payer could simply type). Same tab, so the return lands here.
-        window.location.href=out.url; }
+        this._keepTopupBaseline(); window.location.href=out.url; }
       catch(e){ this.err='Could not start the payment: '+(e.detail||e.status); this.billingBusy=false; } },
     openTopup(){ this.topupPick=this.billing.topup.default_usd; this.topupOther=null; this.topupErr='';
       // Default ON only for a team with no mandate; a team that already decided is not re-asked.
@@ -158,7 +193,7 @@ async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
         // other team, so the payment stops here instead.
         if(this.activeOrgId!==org) throw {detail:'the active team changed'};
         const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:usd,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
-        window.location.href=out.url; }
+        this._keepTopupBaseline(); window.location.href=out.url; }
       catch(e){ this.topupErr='Could not start the payment: '+(e.detail||e.status); this.billingBusy=false; } },
 // The toggle itself never arms auto top-up - it can only DISARM (off is safe) or open the
     // settings panel; arming still goes through the consent checkbox + confirm button below.

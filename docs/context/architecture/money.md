@@ -380,6 +380,11 @@ is a URL the payer controls. The one exception is the off-session auto-top-up ch
 server itself holds the PaymentIntent's confirmed status; it credits immediately and the webhook
 redelivery is a no-op.
 
+The dashboard reads the return's `?topup=` or `?card=` once and strips it (`followStripeReturn`). On
+`topup=success` it says the payment is being added, then re-reads `GET /billing` a bounded number of
+times (`TOPUP_POLLS`) until the balance rises above the one stored when the payer left for Checkout,
+and names the amount added. It never credits anything itself.
+
 The webhook is `POST /billing/stripe/webhook` and **404s when unconfigured**, so a deploy without the
 secret exposes no unauthenticated POST surface. `verify_event` uses the SDK's `verify_header`
 (timestamp tolerance is replay protection, and it handles several signatures during rotation) rather
