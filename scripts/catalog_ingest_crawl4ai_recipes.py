@@ -414,8 +414,9 @@ TEXT: dict[str, dict] = {
                   "limit": "at most 12: a larger limit gives the same 12, marked partial"},
     },
     "instagram-profile": {
-        "summary": "Get one public Instagram account: full name, follower and post counts and verified flag. "
-                   "biography and external_url come back null; for the bio or link use treg.instagram.user.profile.",
+        "summary": "Get one public Instagram account: full name, follower and post counts and verified flag.",
+        "note": "biography and external_url are null on every answer: for the bio or link use "
+                "treg.instagram.user.profile.",
         "input": {"username": "the account: @name or an instagram.com URL"},
     },
     "instagram-reels": {
