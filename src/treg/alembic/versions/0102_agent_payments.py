@@ -1,7 +1,7 @@
 """agent payments: the payer team of a wallet address and the payment proofs it presented
 
-Revision ID: 0101
-Revises: 0100
+Revision ID: 0102
+Revises: 0101
 Create Date: 2026-10-30
 
 Additive: two new small tables, nothing else touched. Both are written only by
@@ -14,8 +14,8 @@ import sqlalchemy as sa
 import sqlmodel
 
 
-revision: str = "0101"
-down_revision: str | Sequence[str] | None = "0100"
+revision: str = "0102"
+down_revision: str | Sequence[str] | None = "0101"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -839,11 +839,9 @@ endpoints:
     method: POST
     path: /recipes/chatgpt-answer
     name: ChatGPT's answer to a question
-    summary: 'What ChatGPT answers a logged-out visitor for one question, as one row: the answer as Markdown and as
-      plain text, the sources it cited and the pages its web search read. For brand monitoring and AI-search visibility:
-      does ChatGPT name you, and which pages does it cite. `prompt` is the question; `web_search` lets ChatGPT search
-      the web first (default on); `country` asks from that country. About 30 s to 2 minutes. Columns: prompt, answer,
-      answer_text, citations, sources, web_search_used, asked_at.'
+    summary: 'Get ChatGPT''s answer to one question as a logged-out visitor sees it, with the sources it cited: for
+      brand and AI-search visibility checks.'
+    note: 'A run takes 30 s to 2 minutes: allow the call that long.'
     body_allowlist: true
     input:
       bodyType: json
@@ -851,7 +849,7 @@ endpoints:
         country:
           type: string
           required: false
-          note: 'default '
+          note: the country the question is asked from, like us
           example: us
         prompt:
           type: string
@@ -860,7 +858,7 @@ endpoints:
         web_search:
           type: boolean
           required: false
-          note: default True
+          note: lets ChatGPT search the web before it answers; default true
           example: true
     cost:
       type: per_success
@@ -889,11 +887,8 @@ endpoints:
     method: POST
     path: /recipes/airbnb-listing
     name: One Airbnb listing
-    summary: 'One Airbnb listing as one row: name, type of place, city and map point, guests, bedrooms, beds and baths,
-      rating and review count, description and photos. `listing` is the listing''s URL or its id (the number after
-      /rooms/). No prices: they depend on dates. About 1 s; when Airbnb does not answer, a slower second source does.
-      Columns: listing_id, url, name, type, city, latitude, longitude, guests, bedrooms, beds, baths, rating, review_count,
-      description, photos.'
+    summary: 'Get one Airbnb listing: type of place, location, capacity, rating, description and photos.'
+    note: 'The answer has no price: Airbnb prices a stay by its dates.'
     body_allowlist: true
     input:
       bodyType: json
@@ -901,6 +896,7 @@ endpoints:
         listing:
           type: string
           required: true
+          note: the listing's URL or its id (the number after /rooms/)
           example: '678901120783302718'
     cost:
       type: per_success
@@ -929,10 +925,7 @@ endpoints:
     method: POST
     path: /recipes/amazon-product
     name: One Amazon product
-    summary: 'One Amazon product page: ASIN, title, price, star rating, review count, brand, availability, the feature
-      bullets, the main image and the product''s link. `product` is the 10-character ASIN or any URL of the product;
-      `country` picks the store (us, uk, de, fr, jp, in, …). Columns: asin, title, price, rating, reviews, brand,
-      availability, bullets, image, url.'
+    summary: 'Get one Amazon product: title, price, star rating, review count, brand, availability and feature bullets.'
     body_allowlist: true
     input:
       bodyType: json
@@ -940,10 +933,11 @@ endpoints:
         country:
           type: string
           required: false
-          note: default us
+          note: 'the store: us, uk, de, fr, jp, in, …; default us'
         product:
           type: string
           required: true
+          note: the 10-character ASIN or any URL of the product
           example: B0F5HSNDXF
     cost:
       type: per_success
@@ -972,11 +966,8 @@ endpoints:
     method: POST
     path: /recipes/amazon-reviews
     name: Reviews of an Amazon product
-    summary: 'Customer reviews of one product on amazon.com, one row per review: star rating, title, text, date, country,
-      reviewer, verified purchase, helpful votes, the variant bought. `product` is the ASIN or a product URL; `limit`
-      how many (default 10, at most 100). The top reviews on the product page (8 to 13) come in about 2 s; more than
-      those come from a slower second source (2 to 4 minutes), billed per review. Columns: review_id, asin, rating,
-      title, text, date, country, author, verified, helpful_votes, variant, vine.'
+    summary: List customer reviews of one product on amazon.com with star rating, title, text, date, verified purchase
+      and helpful votes.
     body_allowlist: true
     input:
       bodyType: json
@@ -984,10 +975,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 10
+          note: at most 100; past the 8 to 13 reviews on the product page, the rest come from a slower source and
+            the run takes 2 to 4 minutes; default 10
         product:
           type: string
           required: true
+          note: the ASIN or a product URL
           example: B0F5HSNDXF
     cost:
       type: per_success
@@ -1016,10 +1009,8 @@ endpoints:
     method: POST
     path: /recipes/amazon-search
     name: Amazon search results
-    summary: 'The products on an Amazon search results page: ASIN, title, price, star rating, review count, the product''s
-      link, image, and whether the listing is sponsored. `keywords` is the search; `country` picks the store (us,
-      uk, de, fr, jp, in, …); `page` reads a later results page; `limit` caps the rows (a page holds up to about 60).
-      Columns: asin, title, price, rating, reviews, url, image, sponsored.'
+    summary: Search Amazon products by keyword and get ASIN, title, price, star rating, review count and the sponsored
+      flag.
     body_allowlist: true
     input:
       bodyType: json
@@ -1027,7 +1018,7 @@ endpoints:
         country:
           type: string
           required: false
-          note: default us
+          note: 'the store: us, uk, de, fr, jp, in, …; default us'
         keywords:
           type: string
           required: true
@@ -1035,7 +1026,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: a results page holds up to about 60; default 20
         page:
           type: integer
           required: false
@@ -1067,14 +1058,8 @@ endpoints:
     method: POST
     path: /recipes/app-store-app
     name: One app on Apple's App Store
-    summary: 'One iPhone/iPad app on Apple''s App Store as one row: name, developer, price and currency, rating and
-      rating count, categories, age rating, size, the current version with its date and release notes, first release
-      date, minimum iOS, languages, description, icon and screenshots. `app` is the App Store URL or the app''s numeric
-      id (the number after /id); `country` is the two-letter store (us, gb, de, …): price, rating and text follow
-      it. About 1 s. Columns: app_id, name, bundle_id, developer, developer_id, developer_url, developer_website,
-      price, currency, rating, rating_count, category, categories, content_rating, content_advisories, size_bytes,
-      version, version_released_at, release_notes, released_at, minimum_os, languages, description, icon, screenshots_iphone,
-      screenshots_ipad, url.'
+    summary: 'Get one iPhone or iPad app from Apple''s App Store: developer, price, rating, categories, current version
+      and description.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1082,11 +1067,12 @@ endpoints:
         app:
           type: string
           required: true
+          note: the App Store URL or the app's numeric id (the number after /id)
           example: '389801252'
         country:
           type: string
           required: false
-          note: default us
+          note: the two-letter store (us, gb, de, …); price, rating and text follow it; default us
           example: us
     cost:
       type: per_success
@@ -1115,14 +1101,8 @@ endpoints:
     method: POST
     path: /recipes/app-store-search
     name: App Store search
-    summary: 'The iPhone/iPad apps Apple''s App Store returns for a search, one row per app, in Apple''s order: name,
-      developer, price and currency, rating and rating count, categories, age rating, size, the current version with
-      its date and release notes, first release date, minimum iOS, languages, description, icon, screenshots and the
-      store link (the same columns as app-store-app). `query` is the search words; `country` is the two-letter store
-      (us, gb, de, …); `limit` is how many apps, 1 to 50. About 1 s. Columns: app_id, name, bundle_id, developer,
-      developer_id, developer_url, developer_website, price, currency, rating, rating_count, category, categories,
-      content_rating, content_advisories, size_bytes, version, version_released_at, release_notes, released_at, minimum_os,
-      languages, description, icon, screenshots_iphone, screenshots_ipad, url.'
+    summary: Search Apple's App Store for iPhone and iPad apps, in Apple's order, with developer, price, rating, version
+      and description.
     body_allowlist: true
     input:
       bodyType: json
@@ -1130,12 +1110,12 @@ endpoints:
         country:
           type: string
           required: false
-          note: default us
+          note: the two-letter store (us, gb, de, …); default us
           example: us
         limit:
           type: integer
           required: false
-          note: default 10
+          note: 1 to 50; default 10
         query:
           type: string
           required: true
@@ -1167,12 +1147,9 @@ endpoints:
     method: POST
     path: /recipes/booking-hotel
     name: One Booking.com hotel
-    summary: 'One hotel on Booking.com as one row: name, stars, address and map point, guest score and review count,
-      the score per category (location, cleanliness, value...), description, top facilities, check-in and check-out
-      times, nearby places and photos. `hotel` is the hotel''s Booking.com URL. No room prices: those depend on dates.
-      About 20 s; when the page fails, a slower second source answers. Columns: hotel_id, url, name, stars, address,
-      city, country, latitude, longitude, rating, review_count, category_scores, description, facilities, check_in,
-      check_out, nearby, photos.'
+    summary: 'Get one Booking.com hotel: stars, address, guest score per category, facilities, check-in times, nearby
+      places and photos.'
+    note: 'The answer has no room prices: Booking.com prices a stay by its dates.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1180,6 +1157,7 @@ endpoints:
         hotel:
           type: string
           required: true
+          note: the hotel's Booking.com URL
           example: https://www.booking.com/hotel/us/felix.html
     cost:
       type: per_success
@@ -1208,13 +1186,9 @@ endpoints:
     method: POST
     path: /recipes/crunchbase-company
     name: One company on Crunchbase
-    summary: 'One company''s Crunchbase profile as one row: description, website, headquarters, categories, employee
-      range, founders, Crunchbase rank, the funding rounds with their type and lead investors, the investors, acquisitions
-      and similar companies. Crunchbase keeps the money amounts and dates for its paying members, so they are not
-      here. `company` is the company''s Crunchbase URL or the name in it (crunchbase.com/organization/anthropic gives
-      anthropic). About 15 to 30 s. Columns: company_id, name, legal_name, url, short_description, description, website,
-      email, social, headquarters, categories, employees, company_type, operating_status, ipo_status, founders, rank,
-      last_funding_type, funding_rounds_count, investors_count, lead_investors, funding_rounds, acquisitions, similar_companies.'
+    summary: 'Get one company''s Crunchbase profile: description, website, headquarters, employee range, founders,
+      funding rounds, investors and acquisitions.'
+    note: 'Funding rounds carry no amounts or dates: Crunchbase shows those to paying members only.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1222,6 +1196,7 @@ endpoints:
         company:
           type: string
           required: true
+          note: the company's Crunchbase URL or the name in it (crunchbase.com/organization/anthropic gives anthropic)
           example: anthropic
     cost:
       type: per_success
@@ -1250,11 +1225,8 @@ endpoints:
     method: POST
     path: /recipes/coingecko-markets
     name: Coin prices from CoinGecko
-    summary: 'Coin prices from CoinGecko''s public API, one row per coin: rank, name, symbol, price, 24-hour change
-      in percent, 24-hour high and low, market cap, 24-hour volume, all-time high and the update time. `coins` is
-      a comma list of CoinGecko ids (bitcoin,ethereum) or empty for the top coins by market cap; `currency` is the
-      quote currency (usd, eur, …); `limit` up to 250. Fresh for 60 seconds. Columns: rank, name, symbol, price, change_24h,
-      high_24h, low_24h, market_cap, volume_24h, ath, updated.'
+    summary: Get live coin prices from CoinGecko with rank, 24-hour change, high and low, market cap, volume and all-time
+      high.
     body_allowlist: true
     input:
       bodyType: json
@@ -1262,16 +1234,16 @@ endpoints:
         coins:
           type: string
           required: false
-          note: 'default '
+          note: a comma list of CoinGecko ids (bitcoin,ethereum); empty for the top coins by market cap
           example: bitcoin,ethereum
         currency:
           type: string
           required: false
-          note: default usd
+          note: 'the quote currency: usd, eur, …; default usd'
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 250; default 20
     cost:
       type: per_success
       value: 0.25
@@ -1299,11 +1271,8 @@ endpoints:
     method: POST
     path: /recipes/ebay-product
     name: One eBay listing
-    summary: 'One eBay listing as one row: title, price, how it sells (buy it now, best offer, auction), condition,
-      how many are left and sold, the seller and their feedback, where it ships from, the category path, the item
-      specifics, images and the seller''s description. `item` is the listing''s URL or its item number. About 3 s;
-      when the page fails, a slower second source answers. Columns: product_id, url, title, price, currency, listing_format,
-      condition, in_stock, available, sold, seller, location, categories, specifications, images, description, badges.'
+    summary: 'Get one eBay listing: title, price, sale format, condition, stock and sold count, seller feedback, item
+      specifics and images.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1311,6 +1280,7 @@ endpoints:
         item:
           type: string
           required: true
+          note: the listing's URL or its item number
           example: '204690060416'
     cost:
       type: per_success
@@ -1339,12 +1309,8 @@ endpoints:
     method: POST
     path: /recipes/etsy-search
     name: Etsy search results
-    summary: 'The listings on an Etsy search results page: listing id, title, the listing''s link without its tracking
-      keys, the price as shown, its currency code, star rating, the shop''s review count, shop name, image, whether
-      it ships free, and whether it carries the Bestseller badge. `query` is the search; `page` reads a later results
-      page; `limit` caps the rows (a page holds up to 64). A few seconds; when the page cannot be read, a second source
-      answers page 1 in about 3 minutes. Columns: listing_id, title, url, price, currency, rating, reviews, shop,
-      image, free_shipping, bestseller.'
+    summary: Search Etsy listings by keyword and get title, link, price, star rating, shop, free shipping and the
+      Bestseller badge.
     body_allowlist: true
     input:
       bodyType: json
@@ -1352,7 +1318,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 24
+          note: a results page holds up to 64; default 24
           example: 12
         page:
           type: integer
@@ -1390,11 +1356,8 @@ endpoints:
     method: POST
     path: /recipes/facebook-event
     name: One public Facebook event
-    summary: 'One public Facebook event as one row: name, start and end time, the place with its map point, the host,
-      the description, categories, whether it is online or cancelled, and the cover image. `event` is the event''s
-      URL or its id (the number after /events/). About 20 s; when the page fails, a slower second source answers.
-      Columns: event_id, url, name, starts_at, ends_at, when, place, host, description, categories, responded, is_online,
-      is_canceled, cover.'
+    summary: 'Get one public Facebook event: name, start and end time, place, host, description and whether it is
+      online or cancelled.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1402,6 +1365,7 @@ endpoints:
         event:
           type: string
           required: true
+          note: the event's URL or its id (the number after /events/)
           example: '601379014832379'
     cost:
       type: per_success
@@ -1430,12 +1394,8 @@ endpoints:
     method: POST
     path: /recipes/facebook-marketplace-item
     name: One Facebook Marketplace item
-    summary: 'One Facebook Marketplace listing as one row: title, price and the price before a reduction, currency,
-      condition, category, description, location, the seller''s id, when it was listed, whether it has sold, and photos.
-      `item` is the listing''s URL or its id (the number after /marketplace/item/). About 5 s from the public page
-      (no seller id there); about 20 s from the second source when Facebook refuses the page. Columns: item_id, url,
-      title, price, price_before, currency, condition, categories, description, location, seller_id, listed_at, is_sold,
-      photos.'
+    summary: 'Get one Facebook Marketplace listing: title, price, condition, category, description, location, listing
+      time, sold status and photos.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1443,6 +1403,7 @@ endpoints:
         item:
           type: string
           required: true
+          note: the listing's URL or its id (the number after /marketplace/item/)
           example: '886233566263264'
     cost:
       type: per_success
@@ -1471,13 +1432,7 @@ endpoints:
     method: POST
     path: /recipes/facebook-post
     name: One public Facebook post
-    summary: 'One public Facebook post as one row: id, URL, author, text, time posted, reactions in total and by type,
-      comments, shares, photos and videos, and where it was posted. `post` is the post''s facebook.com URL (/posts/,
-      permalink.php, photo, videos, reel or share link). About 5-25 s; when the page fails, a slower second source
-      answers (about 40 s). `session` (optional) = your c_user and xs cookies. You supply your own session. Crawl4AI
-      uses it for this run only and does not store it. Your account and the site''s terms are your responsibility.
-      Columns: post_id, url, author_name, author_id, author_url, page_id, text, created_at, reactions, reactions_by_type,
-      comments, shares, media, posted_to.'
+    summary: 'Get one public Facebook post: author, text, time, reactions by type, comments, shares, photos and videos.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1485,6 +1440,7 @@ endpoints:
         post:
           type: string
           required: true
+          note: 'the post''s facebook.com URL: a /posts/, permalink.php, photo, videos, reel or share link'
           example: https://www.facebook.com/NASA/posts/1110592997763013
     cost:
       type: per_success
@@ -1512,12 +1468,7 @@ endpoints:
     method: POST
     path: /recipes/facebook-page-posts
     name: Recent posts of a Facebook page
-    summary: 'A public Facebook page''s posts as its first load carries them (no paging): one row per post with id,
-      URL, text (first 1000 chars), time posted, reactions, comments, shares, and the page''s name and id. `page`
-      is the page name or URL; `limit` up to 20. The page is fetched through a home address. With your own Facebook
-      session (`session`, copied with the Crawl4AI Session extension) the page shows more posts. You supply your own
-      session. Crawl4AI uses it for this run only and does not store it. Your account and the site''s terms are your
-      responsibility. Columns: id, url, text, posted, reactions, comments, shares, page_name, page_id.'
+    summary: List a public Facebook page's latest posts with text, time, reactions, comments and shares.
     body_allowlist: true
     input:
       bodyType: json
@@ -1525,11 +1476,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 10
+          note: at most 20, from the page's first load (no paging); default 10
           example: 5
         page:
           type: string
           required: true
+          note: the page name or URL
           example: nasa
     cost:
       type: per_success
@@ -1558,14 +1510,8 @@ endpoints:
     method: POST
     path: /recipes/facebook-profile
     name: One public Facebook profile or page
-    summary: 'One public Facebook profile or page as one row: name, ids, category, intro, followers, contact lines
-      (website, e-mail, phone, address), rating, place, photos, verified badge. `profile` is the name after facebook.com/,
-      a profile.php?id= number, or the URL. About 5-25 s; when the page fails, a slower second source answers (2-4
-      min). `session` (optional) = your c_user and xs cookies; the page is then read as you see it. You supply your
-      own session. Crawl4AI uses it for this run only and does not store it. Your account and the site''s terms are
-      your responsibility. Columns: profile_id, page_id, username, url, name, type, category, intro, details, followers,
-      following, talking_about, checkins, address, phone, email, websites, price_range, recommend_percent, review_count,
-      location, profile_photo, cover_photo, is_verified.'
+    summary: 'Get one public Facebook profile or page: name, category, intro, followers, contact details, rating and
+      verified badge.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1573,6 +1519,7 @@ endpoints:
         profile:
           type: string
           required: true
+          note: the name after facebook.com/, a profile.php?id= number, or the URL
           example: nasa
     cost:
       type: per_success
@@ -1601,12 +1548,8 @@ endpoints:
     method: POST
     path: /recipes/github-file
     name: Files of a GitHub repository
-    summary: 'Files of a public GitHub repository, one row per file: one file, or every file under a folder (sub-folders
-      included, in path order). A row holds the path, ref, blob sha, size in bytes, a language guessed from the extension,
-      is_binary, the UTF-8 text cut at max_chars (null for a binary file) and the raw and GitHub URLs. url is a github.com
-      /blob/ or /tree/ URL, a raw URL, or owner/name (the root folder); ref and path replace the URL''s; max_files
-      caps a folder. 2-4 units, plus 1 per text file of a folder. Columns: repository, path, ref, sha, size, language,
-      is_binary, content, is_truncated, raw_url, url.'
+    summary: Read files from a public GitHub repository, one file or every file under a folder, with path, size, language
+      and text.
     body_allowlist: true
     input:
       bodyType: json
@@ -1614,26 +1557,27 @@ endpoints:
         max_chars:
           type: integer
           required: false
-          note: default 100000
+          note: cuts each file's text at this many characters; default 100000
           example: 100000
         max_files:
           type: integer
           required: false
-          note: default 50
+          note: caps the files read from a folder; default 50
           example: 50
         path:
           type: string
           required: false
-          note: 'default '
+          note: replaces the URL's path
           example: crawl4ai/__init__.py
         ref:
           type: string
           required: false
-          note: 'default '
+          note: replaces the URL's branch, tag or commit
           example: main
         url:
           type: string
           required: true
+          note: a github.com /blob/ or /tree/ URL, a raw URL, or owner/name for the root folder
           example: https://github.com/unclecode/crawl4ai/blob/main/README.md
     cost:
       type: per_success
@@ -1662,13 +1606,8 @@ endpoints:
     method: POST
     path: /recipes/github-issues
     name: Issues of a GitHub repository
-    summary: 'The issues of one GitHub repository, one row per issue: number, title, url, state, author, labels, comment
-      count, created and updated times, the first 300 characters of the body. `repo` is owner/name or the repository
-      URL; `state` open, closed or all; `labels` a comma list every issue must carry; `sort` created, updated or comments,
-      newest or most first. GitHub''s list holds pull requests too: `pull_requests` true keeps them, false drops them,
-      so a page can give fewer rows than `limit`. GitHub rate-limits unauthenticated calls: a refused call gives no
-      rows and one warning line. Columns: number, title, url, state, author, labels, comments, created, updated, is_pull_request,
-      body.'
+    summary: List a GitHub repository's issues with number, title, state, author, labels, comment count and the start
+      of the body.
     body_allowlist: true
     input:
       bodyType: json
@@ -1676,7 +1615,7 @@ endpoints:
         labels:
           type: string
           required: false
-          note: 'default '
+          note: a comma list every issue must carry
           example: bug
         limit:
           type: integer
@@ -1691,21 +1630,23 @@ endpoints:
         pull_requests:
           type: boolean
           required: false
-          note: default False
+          note: true keeps the pull requests GitHub lists among issues; false drops them, so a page can give fewer
+            rows than `limit`; default false
           example: false
         repo:
           type: string
           required: true
+          note: owner/name or the repository URL
           example: unclecode/crawl4ai
         sort:
           type: string
           required: false
-          note: default created
+          note: created, updated or comments, newest or most first; default created
           example: created
         state:
           type: string
           required: false
-          note: default open
+          note: open, closed or all; default open
           example: open
     cost:
       type: per_success
@@ -1734,11 +1675,8 @@ endpoints:
     method: POST
     path: /recipes/github-repo
     name: A GitHub repository and its releases
-    summary: 'One GitHub repository''s facts, then its latest releases: the first row is the repository (stars, forks,
-      open issues, language, license, topics, homepage, created and last push), the rows after it are releases (tag,
-      published, the first 300 characters of the notes). `repo` is owner/name or the repository URL; `releases` caps
-      the release rows (0 for none). Columns: kind, name, url, description, stars, forks, open_issues, language, license,
-      topics, homepage, created, pushed, archived, tag, published, notes.'
+    summary: Get one GitHub repository's stars, forks, open issues, language, license and topics, followed by its
+      latest releases.
     body_allowlist: true
     input:
       bodyType: json
@@ -1746,10 +1684,11 @@ endpoints:
         releases:
           type: integer
           required: false
-          note: default 5
+          note: how many release rows follow the repository row; 0 for none; default 5
         repo:
           type: string
           required: true
+          note: owner/name or the repository URL
           example: unclecode/crawl4ai
     cost:
       type: per_success
@@ -1778,8 +1717,8 @@ endpoints:
     method: POST
     path: /recipes/github-trending
     name: 'GitHub: trending repositories'
-    summary: 'The repositories trending on GitHub today: name, description, language, stars and stars gained today.
-      `since` is daily, weekly or monthly. Columns: name, url, description, language, stars, forks, stars_today.'
+    summary: List the repositories trending on GitHub with description, language, stars and the stars gained in the
+      period.
     body_allowlist: true
     input:
       bodyType: json
@@ -1791,7 +1730,7 @@ endpoints:
         since:
           type: string
           required: false
-          note: default daily
+          note: daily, weekly or monthly; default daily
     cost:
       type: per_success
       value: 1.65
@@ -1818,12 +1757,9 @@ endpoints:
     method: POST
     path: /recipes/glassdoor-reviews
     name: Reviews of a company on Glassdoor
-    summary: 'The employee reviews on one page of a company''s Glassdoor reviews, one row per review: id, title, overall
-      rating, date, the reviewer''s job title, whether they still work there, pros, cons, advice to management, whether
-      they recommend the company, location and the review''s link. `company` is the reviews page''s path part, like
-      Microsoft-Reviews-E1651, or its URL; `limit` caps the rows. Glassdoor answers a browser only: about a minute,
-      two when www.glassdoor.com refuses and the page is read from www.glassdoor.co.uk. Columns: id, title, rating,
-      date, job_title, current, pros, cons, advice, recommends, location, url.'
+    summary: 'List the employee reviews on one page of a company''s Glassdoor reviews: rating, title, job title, pros,
+      cons and advice.'
+    note: 'A run takes one to two minutes, as Glassdoor answers only a browser: allow the call that long.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1831,6 +1767,7 @@ endpoints:
         company:
           type: string
           required: true
+          note: the reviews page's path part, like Microsoft-Reviews-E1651, or its URL
           example: Microsoft-Reviews-E1651
         limit:
           type: integer
@@ -1869,12 +1806,8 @@ endpoints:
     method: POST
     path: /recipes/glassdoor-jobs
     name: Jobs on Glassdoor for a search
-    summary: 'The jobs on the first Glassdoor search page for a query, one row per job: id, title, employer, employer
-      rating, location, the pay range as Glassdoor shows it, days since posting, the job''s Glassdoor link and whether
-      Easy Apply is on. `query` is the search text; `remote` true keeps remote jobs only (Glassdoor takes a place
-      only as its own id, and the recipe knows the id of Remote); `limit` caps the rows, at most 30 (one page). The
-      page needs Glassdoor''s cookie or a browser, so a run takes 5 to 15 seconds. Columns: job_id, title, employer,
-      rating, location, salary, posted_days, url, easy_apply.'
+    summary: 'List the jobs on Glassdoor''s first search page for a query: title, employer and rating, location, pay
+      range and posting age.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1882,7 +1815,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 30 (one page); default 20
           example: 10
         query:
           type: string
@@ -1891,7 +1824,7 @@ endpoints:
         remote:
           type: boolean
           required: false
-          note: default False
+          note: true keeps remote jobs only; the recipe takes no other place; default false
           example: true
     cost:
       type: per_success
@@ -1920,14 +1853,8 @@ endpoints:
     method: POST
     path: /recipes/play-store-app
     name: One app on Google Play
-    summary: 'One Android app on Google Play as one row: name, developer and contacts, rating with counts and the
-      star histogram, installs (the shown band and the exact count), price and currency, ads and in-app purchases,
-      category, content rating, release and update dates, version, minimum Android, description, what''s new, icon
-      and screenshots. `app` is the Play URL or the package id (com.whatsapp); `hl` the page language (en); `gl` the
-      store country that sets price and currency (us). About 1 s. Columns: app_id, url, name, summary, developer,
-      rating, rating_count, review_count, rating_histogram, installs, installs_min, installs_exact, price, currency,
-      is_free, contains_ads, in_app_purchases, in_app_price_range, category, category_id, content_rating, released,
-      updated, version, min_android, description, whats_new, icon, header_image, screenshots, privacy_policy.'
+    summary: 'Get one Android app from Google Play: developer, rating, installs, price, category, version, description
+      and screenshots.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1935,16 +1862,17 @@ endpoints:
         app:
           type: string
           required: true
+          note: the Play URL or the package id (com.whatsapp)
           example: com.whatsapp
         gl:
           type: string
           required: false
-          note: default us
+          note: the store country, which sets price and currency; default us
           example: us
         hl:
           type: string
           required: false
-          note: default en
+          note: the page language; default en
           example: en
     cost:
       type: per_success
@@ -1973,13 +1901,8 @@ endpoints:
     method: POST
     path: /recipes/google-maps-reviews
     name: Reviews of a place on Google Maps
-    summary: 'The reviews Google Maps shows for one place, one row per review: stars, text, date, the reviewer, likes,
-      the owner''s reply and the review''s own link. Up to 8 reviews come from the place''s Maps data (about 1 to
-      3 s); above 8, from Google Search''s review list, 10 per page (about 1 s per page, 100 reviews in about 10 to
-      15 s). `place` is the place''s Google Maps link, its place id (ChIJ...) or its cid (the number in a maps?cid=
-      link); `sort` is relevant (Google''s order) or newest; `limit` how many reviews (default 5, at most 100). Past
-      the first 5 to 8 reviews an owner reply''s date is null. Columns: review_id, place_id, rating, text, date, author,
-      likes, owner_reply, url.'
+    summary: List the reviews Google Maps shows for one place with stars, text, date, reviewer, likes and the owner's
+      reply.
     body_allowlist: true
     input:
       bodyType: json
@@ -1987,15 +1910,16 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 5, at most 100
+          note: past the first 5 to 8 reviews, an owner reply carries no date; default 5, at most 100
         place:
           type: string
           required: true
+          note: the place's Google Maps link, its place id (ChIJ...) or its cid (the number in a maps?cid= link)
           example: ChIJG-gJw2vKRIYROWi2uwOp8QE
         sort:
           type: string
           required: false
-          note: default relevant
+          note: relevant (Google's order) or newest; default relevant
           example: newest
     cost:
       type: per_success
@@ -2024,13 +1948,8 @@ endpoints:
     method: POST
     path: /recipes/google-maps-places
     name: Google Maps local business search by keyword, category…
-    summary: 'The places Google Maps lists for a search, in Google''s order, one row per place: name, place id and
-      cid, category, address, map point, rating and review count, phone, website, today''s opening hours and the place''s
-      Maps link. `query` is what you would type in Google Maps ("coffee"); `location` the city or area ("Austin, TX"),
-      or leave it empty and put the place in the query; `limit` how many places (default 20, at most 100). About 1
-      to 3 s for 20 places; when Google Maps does not answer, a slower second source does (minutes). Columns: position,
-      place_id, cid, name, category, categories, address, latitude, longitude, rating, review_count, phone, website,
-      hours, url.'
+    summary: Search Google Maps for places, in Google's order, with category, address, map point, rating, phone, website
+      and hours.
     body_allowlist: true
     input:
       bodyType: json
@@ -2038,15 +1957,16 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
         location:
           type: string
           required: false
-          note: 'default '
+          note: the city or area, like Austin, TX; leave it empty to name the place in `query`
           example: Austin, TX
         query:
           type: string
           required: true
+          note: what you would type in Google Maps, like coffee
           example: coffee
     cost:
       type: per_success
@@ -2075,9 +1995,7 @@ endpoints:
     method: POST
     path: /recipes/google-news
     name: Google News headlines for a query
-    summary: 'Headlines for a query from Google News: title, the publishing source, Google''s link to the article,
-      time and a short summary. `lang` (like en-US) and `country` (like US) pick the edition; `limit` caps the rows,
-      up to 100. Columns: title, source, url, published, summary.'
+    summary: Get Google News headlines for a query with source, link, publication time and a short summary.
     body_allowlist: true
     input:
       bodyType: json
@@ -2085,15 +2003,15 @@ endpoints:
         country:
           type: string
           required: false
-          note: default US
+          note: the edition's country; default US
         lang:
           type: string
           required: false
-          note: default en-US
+          note: the edition's language; default en-US
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 100; default 25
         query:
           type: string
           required: true
@@ -2125,11 +2043,8 @@ endpoints:
     method: POST
     path: /recipes/google-shopping-product
     name: One Google Shopping product
-    summary: 'One product from Google Shopping as one row: title, brand, price and the store offering it, every store''s
-      offer, the expected delivery, specifications, description, images and related products. `product` is the product''s
-      Google Shopping link (open the product on Google Shopping and copy the address; it starts with https://www.google.com/search?ibp=oshop).
-      About 10 to 25 s. Columns: product_id, url, title, brand, price, currency, seller, in_stock, delivery_by, offers,
-      specifications, description, images, related.'
+    summary: 'Get one Google Shopping product: title, brand, price, every store''s offer, delivery, specifications
+      and images.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2137,6 +2052,8 @@ endpoints:
         product:
           type: string
           required: true
+          note: the product's Google Shopping link, starting https://www.google.com/search?ibp=oshop (open the product
+            on Google Shopping and copy the address)
           example: https://www.google.com/search?ibp=oshop&q=sony+wh-1000xm5&prds=gpcid:15544113663339316856,pvt:hg&gl=us&udm=28
     cost:
       type: per_success
@@ -2165,11 +2082,8 @@ endpoints:
     method: POST
     path: /recipes/hn-hiring
     name: 'Hacker News: who is hiring, by keyword'
-    summary: 'The job posts in a Hacker News ''Who is hiring?'' thread that name a keyword as a whole word: one row
-      per company with the post''s first 300 characters, its link and its time. Leave `thread` empty for this month''s
-      thread, or give an older month''s story id or link. `remote` keeps remote posts only; `summarize` lets the LLM
-      read the first 5 posts for role, location and salary (null without it). Columns: company, author, role, location,
-      salary, text, url, posted.'
+    summary: Find the job posts in a Hacker News 'Who is hiring?' thread that name a keyword, one row per company
+      with the post's link.
     body_allowlist: true
     input:
       bodyType: json
@@ -2177,19 +2091,19 @@ endpoints:
         keyword:
           type: string
           required: false
-          note: default Rust
+          note: matched as a whole word; default Rust
         remote:
           type: boolean
           required: false
-          note: default True
+          note: keeps remote posts only; default true
         summarize:
           type: boolean
           required: false
-          note: default False
+          note: an LLM reads the first 5 posts for role, location and salary, which are null without it; default false
         thread:
           type: string
           required: false
-          note: 'default '
+          note: an older month's story id or link; empty for this month's thread
           example: '49922569'
     cost:
       type: per_success
@@ -2218,10 +2132,8 @@ endpoints:
     method: POST
     path: /recipes/hackernews-search
     name: Search Hacker News
-    summary: 'Stories or comments on Hacker News that match a query, from the public Algolia API: title, link, points,
-      author, comment count, time, and the Hacker News page. `tags` picks story, comment, ask_hn, show_hn or poll;
-      `sort` is relevance or date; `limit` up to 100 in one call. Columns: title, url, hn_url, points, author, comments,
-      created, id, text.'
+    summary: Search Hacker News stories or comments through the Algolia API and get title, link, points, author and
+      comment count.
     body_allowlist: true
     input:
       bodyType: json
@@ -2229,7 +2141,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
         query:
           type: string
           required: true
@@ -2237,11 +2149,11 @@ endpoints:
         sort:
           type: string
           required: false
-          note: default relevance
+          note: relevance or date; default relevance
         tags:
           type: string
           required: false
-          note: default story
+          note: story, comment, ask_hn, show_hn or poll; default story
     cost:
       type: per_success
       value: 0.15
@@ -2269,8 +2181,7 @@ endpoints:
     method: POST
     path: /recipes/hackernews-front
     name: 'Hacker News: front page stories'
-    summary: 'The stories on the Hacker News front page, newest first: title, link, points, author, comment count.
-      `limit` caps the rows (max 90, three pages). Columns: rank, title, url, site, score, author, age, comments.'
+    summary: List the stories on the Hacker News front page with rank, title, link, points, author and comment count.
     body_allowlist: true
     input:
       bodyType: json
@@ -2278,7 +2189,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 30
+          note: at most 90 (three pages); default 30
     cost:
       type: per_success
       value: 0.15
@@ -2305,13 +2216,8 @@ endpoints:
     method: POST
     path: /recipes/indeed-jobs
     name: Indeed job search results
-    summary: 'Job cards from Indeed''s US search results (www.indeed.com): job key, title, company, location, a remote
-      flag, the salary text, job type, posting age, publish date, the job page URL and the first 300 characters of the
-      description.
-      `query` is the search text; `location` a city, state or ''Remote'' (empty = anywhere); `start` the result offset
-      (Indeed pages by 10, up to 990); `limit` the most rows (up to 50). One page per run; the page needs a cookie
-      or a browser, so a run takes 5 to 20 seconds. Columns: jobkey, title, company, location, remote, salary, job_type,
-      posted, published, url, snippet.'
+    summary: Search Indeed's US job listings (www.indeed.com) and get title, company, location, salary text, job type
+      and posting age.
     body_allowlist: true
     input:
       bodyType: json
@@ -2319,12 +2225,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 15
+          note: at most 50, from one results page; default 15
           example: 10
         location:
           type: string
           required: false
-          note: 'default '
+          note: a city, state or Remote; empty for anywhere
           example: Remote
         query:
           type: string
@@ -2333,7 +2239,7 @@ endpoints:
         start:
           type: integer
           required: false
-          note: default 0
+          note: 'the result offset: Indeed pages by 10, up to 990; default 0'
           example: 0
     cost:
       type: per_success
@@ -2361,12 +2267,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-hashtag
     name: Posts of an Instagram hashtag
-    summary: 'The posts Instagram shows on a hashtag page (its top and recent sections), newest first, one row per
-      post: code and URL, caption (first 300 characters), likes, comments, time posted, author username, media type
-      (image, video or carousel). `tag` is the hashtag without the #; `limit` up to 50 (the page holds about 30).
-      `session` is required: your `sessionid` and `csrftoken` cookies, copied with the Crawl4AI Session extension;
-      used for this run only and never stored. One fetch, 1 unit; a wrong session costs the unit and gives no row.
-      Columns: code, url, caption, likes, comments, taken_at, author, media_type.'
+    summary: List the posts on an Instagram hashtag page with caption, likes, comments, time, author and media type.
+    note: 'Needs the caller''s own Instagram login, which treg does not send: every call answers 400 bad_input, free.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2374,11 +2276,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 50; the page holds about 30; default 20
           example: 20
         tag:
           type: string
           required: true
+          note: 'the hashtag without the #'
           example: space
     cost:
       type: per_success
@@ -2406,12 +2309,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-comments
     name: Comments of an Instagram post
-    summary: 'The comments of one Instagram post or reel, one row per top-level comment: id, author, whether the author
-      is verified, text, likes, reply count, time posted, the post''s URL. `post` is the post URL, the reel URL or
-      the short code; `limit` up to 100; `sort` is popular (Instagram''s own order, the default) or recent. `session`
-      is required: your `sessionid` and `csrftoken` cookies, copied with the Crawl4AI Session extension; used for
-      this run only and never stored. Cost: 1 fetch per 15 comments (Instagram fills 15 per page); a wrong session
-      costs the unit. Columns: id, author, author_verified, text, likes, replies, created_at, url.'
+    summary: List the top-level comments of one Instagram post or reel with author, text, likes, reply count and time.
+    note: 'Needs the caller''s own Instagram login, which treg does not send: every call answers 400 bad_input, free.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2419,16 +2318,17 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
           example: 20
         post:
           type: string
           required: true
+          note: the post URL, the reel URL or the short code
           example: https://www.instagram.com/p/DcOX3hWFiey/
         sort:
           type: string
           required: false
-          note: default popular
+          note: popular (Instagram's order) or recent; default popular
           example: popular
     cost:
       type: per_success
@@ -2456,12 +2356,9 @@ endpoints:
     method: POST
     path: /recipes/instagram-search
     name: 'Instagram search: accounts, hashtags, places'
-    summary: 'What Instagram''s search box shows for a query, one row per hit: kind (user, hashtag, place), name (username,
-      #tag or place name), title (full name, the hashtag''s post count text, or the place''s address), followers (Instagram''s
-      rounded count for a user), media_count (exact, for a hashtag), is_verified, url. `kind` is users, hashtags,
-      places or all (all = Instagram''s blended list: users for a word, hashtags for a #word). `session` is required:
-      your `sessionid` and `csrftoken` cookies, copied with the Crawl4AI Session extension; used for this run only
-      and never stored. One fetch, 1 unit. Columns: kind, name, title, followers, media_count, is_verified, url.'
+    summary: Search Instagram for users, hashtags and places as its search box shows them, with follower or post counts
+      and links.
+    note: 'Needs the caller''s own Instagram login, which treg does not send: every call answers 400 bad_input, free.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2469,7 +2366,7 @@ endpoints:
         kind:
           type: string
           required: false
-          note: default all
+          note: users, hashtags, places or all (Instagram's blended list); default all
           example: all
         query:
           type: string
@@ -2501,12 +2398,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-posts
     name: Posts of an Instagram account
-    summary: 'The latest posts of one Instagram account, newest first, one row per post: code, URL, caption (first
-      500 characters), likes, comments, time posted, kind (photo, video, reel, carousel), image, video URL, owner.
-      `username` is the account (@name or an instagram.com URL). Without `session`: the 12 latest posts of a public
-      account, about 3 to 8 s (a larger `limit` gives those 12, marked partial). With `session` (your `sessionid`
-      and `csrftoken` cookies from the Crawl4AI Session extension, used once, never stored) it is read as you, up
-      to 48. Columns: code, url, caption, likes, comments, taken_at, kind, image, video_url, owner.'
+    summary: List the latest posts of a public Instagram account, newest first, with caption, likes, comments, time
+      and media links.
     body_allowlist: true
     input:
       bodyType: json
@@ -2514,11 +2407,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 12
+          note: 'at most 12: a larger limit gives the same 12, marked partial; default 12'
           example: 12
         username:
           type: string
           required: true
+          note: 'the account: @name or an instagram.com URL'
           example: nasa
     cost:
       type: per_success
@@ -2547,13 +2441,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-profile
     name: Profile of an Instagram account
-    summary: 'One Instagram account as one row: username, full name, biography, followers, following, posts, verified
-      and private, category, external link, picture, user id. `username` is the account (@name or an instagram.com
-      URL). Without `session` a public profile is read from its public pages in about 1 to 3 s, every column but category
-      (no public page shows it); a private account gives its profile without the post count. A missing account answers
-      at once with no row. With `session` (your `sessionid` and `csrftoken` cookies, used once, never stored) every
-      column is read as you. Columns: username, full_name, biography, followers, following, posts, is_verified, is_private,
-      category, external_url, profile_pic_url, user_id.'
+    summary: 'Get one public Instagram account: full name, biography, follower, following and post counts, verified
+      flag and external link.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2561,11 +2450,12 @@ endpoints:
         full_profile:
           type: boolean
           required: false
-          note: default False
+          note: default false
           example: false
         username:
           type: string
           required: true
+          note: 'the account: @name or an instagram.com URL'
           example: nasa
     cost:
       type: per_success
@@ -2594,11 +2484,7 @@ endpoints:
     method: POST
     path: /recipes/instagram-reels
     name: Reels of an Instagram account
-    summary: 'The latest reels of one Instagram account, newest first, one row per reel: id, code, URL, plays, likes,
-      comments, thumbnail. `username` is the account (@name or an instagram.com URL), or `user_id` its numeric id.
-      Without `session`: the 12 latest reels of a public account by `username`, about 1 to 3 s (a larger `limit` gives
-      those 12, marked partial). With `session` (your `sessionid` and `csrftoken` cookies, used once, never stored)
-      it is read as you, up to 48. Columns: id, code, url, plays, likes, comments, thumbnail.'
+    summary: List the latest reels of a public Instagram account, newest first, with plays, likes, comments and thumbnail.
     body_allowlist: true
     input:
       bodyType: json
@@ -2606,17 +2492,17 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 12
+          note: 'at most 12: a larger limit gives the same 12, marked partial; default 12'
           example: 12
         user_id:
           type: string
           required: false
-          note: 'default '
+          note: the account's numeric id; without a login, which treg does not send, the reels are read by `username`
           example: '528817151'
         username:
           type: string
           required: false
-          note: 'default '
+          note: 'the account: @name or an instagram.com URL'
           example: nasa
     cost:
       type: per_success
@@ -2645,10 +2531,7 @@ endpoints:
     method: POST
     path: /recipes/linkedin-company
     name: A LinkedIn company page
-    summary: 'One LinkedIn company page as one row: name, tagline, industry, size, headquarters, website, founded,
-      followers, About (first 500 characters) and the link. `company` is the slug (microsoft) or the linkedin.com/company/
-      URL. About 8 s through a home address; when LinkedIn refuses the page, a slower second source answers. Columns:
-      name, tagline, industry, size, headquarters, website, founded, followers, about, url.'
+    summary: 'Get one LinkedIn company page: tagline, industry, size, headquarters, website, followers and About text.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2656,6 +2539,7 @@ endpoints:
         company:
           type: string
           required: true
+          note: the slug (microsoft) or the linkedin.com/company/ URL
           example: microsoft
     cost:
       type: per_success
@@ -2684,12 +2568,9 @@ endpoints:
     method: POST
     path: /recipes/linkedin-post-comments
     name: Comments on a LinkedIn post
-    summary: 'The top-level comments on one LinkedIn post, one row per comment: author, profile link, headline, text,
-      time, likes (all reactions), reply count; replies themselves are not listed. `post` = the post URL (…-activity-<id>-…
-      or …/feed/update/urn:li:activity:<id>) or the activity urn; `limit` up to 100, in LinkedIn''s relevance order.
-      `session` (your `li_at` and `JSESSIONID` cookies, from the Crawl4AI Session extension) is optional, used for
-      this run only and never stored. Without it you get the post''s top ~10 comments, without headline and reply
-      count. Columns: author, author_url, author_headline, text, posted_at, likes, replies.'
+    summary: List the top-level comments on one LinkedIn post with author, profile link, text, time and likes.
+    note: 'Returns the post''s top comments, about 10, without headline or reply count: LinkedIn shows no more to
+      a visitor.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2702,6 +2583,7 @@ endpoints:
         post:
           type: string
           required: true
+          note: the post URL (…-activity-<id>-… or …/feed/update/urn:li:activity:<id>) or the activity urn
           example: https://www.linkedin.com/feed/update/urn:li:activity:7502080571335155713/
     cost:
       type: per_success
@@ -2730,12 +2612,8 @@ endpoints:
     method: POST
     path: /recipes/linkedin-jobs
     name: LinkedIn job search results
-    summary: 'The job cards of LinkedIn''s public jobs search, one row per card: title, company, location, when it
-      was posted (LinkedIn''s relative text and the date), the job''s link, its id, and the salary when the card shows
-      one. `query` is the search; `location` a place or Remote; `posted` keeps the last day, week or month; `start`
-      is LinkedIn''s offset (a page holds up to 60 cards, LinkedIn moves 25 a step, up to 975); `limit` caps the rows.
-      Fetched through a home address in the US, about 3 to 8 s. No login: this is what LinkedIn shows a visitor. Columns:
-      title, company, location, posted, posted_on, url, job_id, salary.'
+    summary: Search LinkedIn's public job listings and get title, company, location, posting date, link and salary
+      when shown.
     body_allowlist: true
     input:
       bodyType: json
@@ -2748,12 +2626,12 @@ endpoints:
         location:
           type: string
           required: false
-          note: 'default '
+          note: a place or Remote
           example: Remote
         posted:
           type: string
           required: false
-          note: 'default '
+          note: 'day, week or month: keeps the jobs posted within it'
           example: week
         query:
           type: string
@@ -2762,7 +2640,7 @@ endpoints:
         start:
           type: integer
           required: false
-          note: default 0
+          note: LinkedIn's result offset, in steps of 25 up to 975; a page holds up to 60 cards; default 0
           example: 0
     cost:
       type: per_success
@@ -2791,11 +2669,8 @@ endpoints:
     method: POST
     path: /recipes/linkedin-people-search
     name: LinkedIn people search by first and last name
-    summary: 'The public LinkedIn members with a given first and last name, one row per member: name, profile URL,
-      headline, location, and the company and school summary LinkedIn shows ("Microsoft, +4 more"). For finding the
-      right profile before you read it with linkedin-profile. `first_name` and `last_name` are the name; `limit` caps
-      the members. About 2 s from our own search; about 1 minute when only the second source finds the name. Columns:
-      name, profile_url, profile_id, headline, location, experience, education, avatar.'
+    summary: Find public LinkedIn members by first and last name, with profile URL, headline, location, companies
+      and schools.
     body_allowlist: true
     input:
       bodyType: json
@@ -2841,12 +2716,9 @@ endpoints:
     method: POST
     path: /recipes/linkedin-profile-posts
     name: Posts of a LinkedIn member
-    summary: 'The posts of one LinkedIn member, newest first, one row per post: link, text (500 chars), time, likes
-      (all reactions), comments, reposts, kind (post, repost or article) and one media link. `profile` = the public
-      identifier (williamhgates) or the linkedin.com/in/ URL; `limit` up to 50. `session` (your `li_at` and `JSESSIONID`
-      cookies, from the Crawl4AI Session extension) is optional, used for this run only and never stored. Without
-      it you get the member''s recent public posts and reposts (about 10), without repost counts and media; LinkedIn''s
-      internal id (ACoAA…) needs a session. Columns: url, text, posted_at, likes, comments, reposts, kind, media.'
+    summary: List one LinkedIn member's recent posts and reposts, newest first, with text, time, likes and comments.
+    note: 'Returns the member''s recent public posts, about 10, without repost counts or media: LinkedIn shows no
+      more to a visitor.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2859,6 +2731,7 @@ endpoints:
         profile:
           type: string
           required: true
+          note: the public identifier (williamhgates) or the linkedin.com/in/ URL, not the internal ACoAA… id
           example: williamhgates
     cost:
       type: per_success
@@ -2887,13 +2760,7 @@ endpoints:
     method: POST
     path: /recipes/linkedin-profile
     name: A LinkedIn profile
-    summary: 'One LinkedIn profile as one row: name, headline, location, About (500 chars), current company, school,
-      followers, link. `profile` = the public identifier (williamhgates) or the linkedin.com/in/ URL; an internal
-      id (ACoAA…) needs a session. A refused page falls back to a second source. `session` (optional) = your `li_at`
-      + `JSESSIONID` cookies; adds LinkedIn''s own name, headline, location; 2 units. You supply your own session.
-      Crawl4AI uses it for this run only and does not store it. Your account and the site''s terms are your responsibility.
-      LinkedIn restricts accounts it sees automating. Columns: name, headline, location, about, current_company, school,
-      followers, url.'
+    summary: 'Get one LinkedIn profile: name, headline, location, About text, current company, school and followers.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2901,6 +2768,7 @@ endpoints:
         profile:
           type: string
           required: true
+          note: the public identifier (williamhgates) or the linkedin.com/in/ URL, not the internal ACoAA… id
           example: williamhgates
     cost:
       type: per_success
@@ -2929,12 +2797,8 @@ endpoints:
     method: POST
     path: /recipes/medium-posts
     name: Posts of a Medium tag, author or publication
-    summary: 'The latest posts of a Medium tag, author or publication, from Medium''s public RSS feed: title, link
-      (the ?source= tracking query removed), author, publication time, categories, and the first 300 characters of
-      the summary. Set exactly one of `tag` (a tag slug such as rust), `author` (a Medium username without the @)
-      or `publication` (a publication slug); `tag` wins when several are set. `limit` caps the rows; Medium''s feed
-      carries about 10 items, so a larger limit gives no more. Columns: title, url, author, published, categories,
-      summary.'
+    summary: List the latest posts of a Medium tag, author or publication from its RSS feed, with title, link, author
+      and summary.
     body_allowlist: true
     input:
       bodyType: json
@@ -2942,22 +2806,22 @@ endpoints:
         author:
           type: string
           required: false
-          note: 'default '
+          note: a Medium username without the @
           example: unclecode
         limit:
           type: integer
           required: false
-          note: default 10
+          note: the feed carries about 10 items, so a larger limit gives no more; default 10
           example: 10
         publication:
           type: string
           required: false
-          note: 'default '
+          note: a publication slug
           example: towardsdatascience.com
         tag:
           type: string
           required: false
-          note: 'default '
+          note: a tag slug such as rust; set one of `tag`, `author` or `publication` (`tag` wins)
           example: rust
     cost:
       type: per_success
@@ -2985,14 +2849,8 @@ endpoints:
     method: POST
     path: /recipes/meta-ads-advertiser
     name: Meta Ad Library ads of one advertiser
-    summary: 'The ads one Facebook page runs, as the Meta Ad Library shows them, one row per ad: dates, platforms,
-      text, link, button, media, cards; spend and reach for political ads. `page` is the page id, its Ad Library or
-      Facebook URL, a company name (Tolteck) or web domain (tolteck.com); a name or domain picks the page (1-2 more
-      fetches); the warnings say which, or that none matched. `country` (ALL or two letters) and `active_status` (active
-      or all), left empty, take an Ad Library URL''s values, else ALL and active. No login. 2-8 s; refused: a residential
-      exit, then a browser (20-45 s). Columns: ad_archive_id, ad_url, page_id, page_name, page_url, page_likes, is_active,
-      start_date, end_date, platforms, display_format, title, body, link_url, link_caption, cta, cta_type, images,
-      videos, cards, same_creative_ads, impressions, spend, currency, paid_for_by.'
+    summary: List the ads one Facebook page runs, from the Meta Ad Library, with dates, platforms, text, media, and
+      spend for political ads.
     body_allowlist: true
     input:
       bodyType: json
@@ -3000,12 +2858,12 @@ endpoints:
         active_status:
           type: string
           required: false
-          note: 'default '
+          note: active or all; empty takes an Ad Library URL's value, else active
           example: active
         country:
           type: string
           required: false
-          note: 'default '
+          note: ALL or two letters; empty takes an Ad Library URL's value, else ALL
           example: US
         limit:
           type: integer
@@ -3015,6 +2873,8 @@ endpoints:
         page:
           type: string
           required: true
+          note: the page id, its Ad Library or Facebook URL, a company name (Tolteck) or web domain (tolteck.com);
+            the warnings name the page a name or domain matched, or that none did
           example: '15087023444'
     cost:
       type: per_success
@@ -3043,14 +2903,8 @@ endpoints:
     method: POST
     path: /recipes/meta-ads-search
     name: Meta Ad Library ads for a keyword
-    summary: 'The ads the Meta Ad Library (Facebook, Instagram, Messenger) shows for a keyword search, one row per
-      ad: advertiser page, dates, platforms, text, link, button, media, cards, and spend and impressions for political
-      ads. `query` is the search text; `country` is ALL or two letters (US, GB, DE); `active_status` is active or
-      all; `limit` up to 100. A view shows up to 30 ads; below `limit`, the recipe adds the search split by media
-      type (4 more fetches, not in the Library''s order). No login. 2-8 s; if Facebook refuses our address, a residential
-      exit (3-10 s), then a browser: 20-45 s, up to 10 units. Columns: ad_archive_id, ad_url, page_id, page_name,
-      page_url, page_likes, is_active, start_date, end_date, platforms, display_format, title, body, link_url, link_caption,
-      cta, cta_type, images, videos, cards, same_creative_ads, impressions, spend, currency, paid_for_by.'
+    summary: Search the Meta Ad Library by keyword and get each ad's page, dates, platforms, text and media, with
+      spend for political ads.
     body_allowlist: true
     input:
       bodyType: json
@@ -3058,17 +2912,18 @@ endpoints:
         active_status:
           type: string
           required: false
-          note: default active
+          note: active or all; default active
           example: active
         country:
           type: string
           required: false
-          note: default ALL
+          note: ALL or two letters (US, GB, DE); default ALL
           example: US
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; past the 30 ads one view shows, the search is split by media type, out of the Library's
+            order; default 20
           example: 20
         query:
           type: string
@@ -3101,10 +2956,8 @@ endpoints:
     method: POST
     path: /recipes/package-info
     name: Facts about a package (npm, PyPI, crates.io)
-    summary: 'One row of facts about a package from its registry''s public JSON: latest version and when it was published,
-      description, license, homepage, repository, downloads (crates.io only) and the number of dependencies. `ecosystem`
-      is npm, pypi or crates; `name` is the package. Columns: name, ecosystem, version, published, description, license,
-      homepage, repository, downloads, dependencies, url.'
+    summary: 'Get facts about an npm, PyPI or crates.io package: latest version and date, description, license, repository
+      and dependency count.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3112,7 +2965,7 @@ endpoints:
         ecosystem:
           type: string
           required: false
-          note: default npm
+          note: npm, pypi or crates; default npm
         name:
           type: string
           required: true
@@ -3144,9 +2997,8 @@ endpoints:
     method: POST
     path: /recipes/producthunt-today
     name: 'Product Hunt: today''s launches'
-    summary: 'The launches on Product Hunt''s home page today, in the site''s own rank order: name, tagline, the score
-      on the vote button, the first topic and the product link. `limit` caps the rows. Columns: name, tagline, votes,
-      topic, url.'
+    summary: List today's launches on Product Hunt's home page in rank order, with tagline, vote score, topic and
+      link.
     body_allowlist: true
     input:
       bodyType: json
@@ -3181,9 +3033,8 @@ endpoints:
     method: POST
     path: /recipes/producthunt-today-detailed
     name: 'Product Hunt: today''s launches, enriched from each…'
-    summary: 'Today''s Product Hunt launches, then each product page read by the LLM for a category and a one-line
-      summary. Costs one page per launch plus one LLM call each. Columns: name, tagline, url, category, pricing, website,
-      summary.'
+    summary: List today's Product Hunt launches, each product page read by an LLM for its category, pricing, website
+      and a one-line summary.
     body_allowlist: true
     input:
       bodyType: json
@@ -3218,12 +3069,8 @@ endpoints:
     method: POST
     path: /recipes/producthunt-product
     name: 'Product Hunt: one product'
-    summary: 'One product on Product Hunt as one row: name, tagline, description, website, logo, rating and review
-      count, followers, categories, social links, and its launches with each launch''s score, comments and daily rank
-      (the latest one also on its own). `slug` is the product''s Product Hunt URL or the name in it (producthunt.com/products/higgsfield
-      gives higgsfield). Product Hunt shows a score on a launch, not a vote count, and no longer shows a price type.
-      About 5 to 15 s. Columns: slug, url, name, tagline, description, website, logo, rating, reviews, followers,
-      categories, launches_count, latest_launch, launches, listed_at, twitter, linkedin, is_online.'
+    summary: 'Get one Product Hunt product: tagline, description, website, rating, followers, categories and its launches
+      with scores.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3231,6 +3078,7 @@ endpoints:
         slug:
           type: string
           required: true
+          note: the product's Product Hunt URL or the name in it (producthunt.com/products/higgsfield gives higgsfield)
           example: higgsfield
     cost:
       type: per_success
@@ -3259,12 +3107,7 @@ endpoints:
     method: POST
     path: /recipes/reddit-post-comments
     name: The comments of a Reddit post
-    summary: 'Every comment Reddit sends for one post, flattened in reading order: author, score, text, depth in the
-      thread, time, id, the parent''s id and the comment''s own link. `url` is the post''s page or its id; `sort`
-      top, best, new, controversial or old; `limit` caps the rows (up to about 500). `session` (your `reddit_session`
-      cookie, used for this run only, never stored) is optional. Without `session` it reads Reddit''s public JSON
-      as a visitor (a few seconds; Reddit refuses some of our addresses); when Reddit refuses, a slower second source
-      answers (about 40 s, replies one level deep). Columns: author, score, text, depth, created, id, parent, url.'
+    summary: List every comment Reddit sends for one post, in reading order, with author, score, text, depth and parent.
     body_allowlist: true
     input:
       bodyType: json
@@ -3272,16 +3115,17 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 100
+          note: at most about 500; default 100
           example: 20
         sort:
           type: string
           required: false
-          note: default top
+          note: top, best, new, controversial or old; default top
           example: top
         url:
           type: string
           required: true
+          note: the post's page or its id
           example: https://www.reddit.com/r/rust/comments/1w38wm2/hey_rustaceans_got_a_question_ask_here_362026/
     cost:
       type: per_success
@@ -3310,12 +3154,9 @@ endpoints:
     method: POST
     path: /recipes/reddit-search
     name: Reddit search results
-    summary: 'Reddit''s search results as posts: title, the post''s page, what it links to, score, comment count,
-      author, time, flair and the first 300 characters of the text. Site-wide, or inside one `subreddit`. `sort` relevance,
-      hot, top, new or comments; `t` the window for top; `limit` up to 250. Without `session` it reads Reddit''s public
-      search feed (1 to 3 s per 100 posts; the feed has no score, comment count or flair, so those are null). With
-      `session` (your `reddit_session` cookie, used for this run only, never stored) every column is filled. Columns:
-      title, url, link, score, comments, author, created, flair, subreddit, id, text.'
+    summary: Search Reddit posts site-wide or in one subreddit and get title, link, author, time and the start of
+      the text.
+    note: 'Score, comment count and flair are null: Reddit''s public search feed, read without a login, carries none.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3323,7 +3164,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 250; default 25
           example: 10
         query:
           type: string
@@ -3332,17 +3173,17 @@ endpoints:
         sort:
           type: string
           required: false
-          note: default relevance
+          note: relevance, hot, top, new or comments; default relevance
           example: relevance
         subreddit:
           type: string
           required: false
-          note: 'default '
+          note: searches this subreddit only
           example: rust
         t:
           type: string
           required: false
-          note: default all
+          note: the time window for sort top; default all
           example: all
     cost:
       type: per_success
@@ -3371,12 +3212,8 @@ endpoints:
     method: POST
     path: /recipes/reddit-subreddit
     name: Posts of a subreddit
-    summary: 'The posts of one subreddit: title, the post''s page, what it links to, score, comment count, author,
-      time, flair and the first 300 characters of the text. `sort` is hot, new, top or rising; `t` the window for
-      top; `limit` up to 250 (100 posts per page). Without `session` it reads Reddit''s public feed of the subreddit
-      (1 to 3 s per 100 posts; the feed has no score, comment count or flair, so those are null). With `session` (your
-      `reddit_session` cookie, from the Crawl4AI Session extension, used for this run only, never stored) every column
-      is filled. Columns: title, url, link, score, comments, author, created, flair, subreddit, id, text.'
+    summary: List the posts of one subreddit with title, link, author, time and the start of the text.
+    note: 'Score, comment count and flair are null: the subreddit''s public feed, read without a login, carries none.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3384,12 +3221,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 250, 100 posts per page; default 25
           example: 10
         sort:
           type: string
           required: false
-          note: default hot
+          note: hot, new, top or rising; default hot
           example: hot
         subreddit:
           type: string
@@ -3398,7 +3235,7 @@ endpoints:
         t:
           type: string
           required: false
-          note: default day
+          note: the time window for sort top; default day
           example: day
     cost:
       type: per_success
@@ -3427,12 +3264,8 @@ endpoints:
     method: POST
     path: /recipes/reddit-user
     name: Posts and comments of a Reddit user
-    summary: 'What one Reddit account posted and commented, one row per item: `kind` (post or comment), title (a comment
-      carries its post''s title), the item''s page, subreddit, score, comment count (posts only), time and the first
-      300 characters. `user` is the name, u/name or the profile URL; `kind` posts, comments or both; `sort` new, hot
-      or top; `limit` up to 250 per kind. `session` (your `reddit_session` cookie, used for this run only, never stored)
-      is optional. Without `session` it reads Reddit''s public JSON as a visitor (a few seconds; Reddit refuses some
-      of our addresses). Columns: kind, title, url, subreddit, score, comments, created, text, id.'
+    summary: List what one Reddit account posted and commented, with title, link, subreddit, score, time and the start
+      of the text.
     body_allowlist: true
     input:
       bodyType: json
@@ -3440,17 +3273,17 @@ endpoints:
         kind:
           type: string
           required: false
-          note: default posts
+          note: posts, comments or both; default posts
           example: posts
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 250 per kind; default 25
           example: 10
         sort:
           type: string
           required: false
-          note: default new
+          note: new, hot or top; default new
           example: new
         t:
           type: string
@@ -3460,6 +3293,7 @@ endpoints:
         user:
           type: string
           required: true
+          note: the name, u/name or the profile URL
           example: spez
     cost:
       type: per_success
@@ -3488,11 +3322,7 @@ endpoints:
     method: POST
     path: /recipes/remoteok-jobs
     name: Remote jobs from Remote OK
-    summary: 'The remote jobs listed on Remote OK right now, from its public API: title, company, tags, location,
-      salary range, date, the job''s Remote OK link, the apply link and the first 300 characters of the description.
-      `tag` keeps jobs with that tag (rust, design, …), `keyword` keeps jobs whose title, company or tags mention
-      it; `limit` caps the rows. Source: Remote OK. Columns: title, company, tags, location, salary_min, salary_max,
-      date, url, apply_url, description.'
+    summary: List the remote jobs on Remote OK with title, company, tags, location, salary range, date and apply link.
     body_allowlist: true
     input:
       bodyType: json
@@ -3500,7 +3330,7 @@ endpoints:
         keyword:
           type: string
           required: false
-          note: 'default '
+          note: keeps jobs whose title, company or tags mention it
           example: senior
         limit:
           type: integer
@@ -3509,7 +3339,7 @@ endpoints:
         tag:
           type: string
           required: false
-          note: 'default '
+          note: keeps jobs with this tag (rust, design, …)
           example: rust
     cost:
       type: per_success
@@ -3538,10 +3368,8 @@ endpoints:
     method: POST
     path: /recipes/arxiv-search
     name: Search arXiv papers
-    summary: 'Papers on arXiv that match a query, from the arXiv API: title, authors, the first 500 characters of
-      the abstract, the paper''s page, the PDF, submission time and primary category. `sort` is relevance or date;
-      `category` narrows to one arXiv category such as cs.LG; `limit` up to 100. Columns: title, authors, abstract,
-      url, pdf, published, category.'
+    summary: Search arXiv papers and get title, authors, the start of the abstract, PDF link, submission time and
+      primary category.
     body_allowlist: true
     input:
       bodyType: json
@@ -3549,12 +3377,12 @@ endpoints:
         category:
           type: string
           required: false
-          note: 'default '
+          note: one arXiv category, such as cs.LG
           example: cs.LG
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
         query:
           type: string
           required: true
@@ -3562,7 +3390,7 @@ endpoints:
         sort:
           type: string
           required: false
-          note: default relevance
+          note: relevance or date; default relevance
     cost:
       type: per_success
       value: 0.15
@@ -3590,13 +3418,9 @@ endpoints:
     method: POST
     path: /recipes/shopify-products
     name: Products of a Shopify store
-    summary: 'The products a Shopify store lists at its public /products.json, one row per product: title, handle,
-      product URL, vendor, product type, the lowest and the highest variant price as the store''s own text (no currency
-      code: the store''s default currency), whether any variant is in stock, the variant count, the first image, the
-      tags, and the update time. `store` is the store''s host (allbirds.com) or its URL, with a market path (www.x.com/en-ca)
-      when the store has one; `limit` is products per page (up to 250); `page` picks a later page. A store with products.json
-      off answers 404 or HTML: no rows. Columns: title, handle, url, vendor, product_type, price, price_max, available,
-      variants, image, tags, updated_at.'
+    summary: List the products a Shopify store publishes at /products.json with title, vendor, type, price range,
+      stock, variants and tags.
+    note: 'Prices are the store''s own text with no currency code: read them in the store''s default currency.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3604,7 +3428,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 50
+          note: products per page, at most 250; default 50
           example: 20
         page:
           type: integer
@@ -3614,6 +3438,8 @@ endpoints:
         store:
           type: string
           required: true
+          note: the store's host (allbirds.com) or its URL, with a market path (www.x.com/en-ca) when the store has
+            one
           example: allbirds.com
     cost:
       type: per_success
@@ -3642,10 +3468,8 @@ endpoints:
     method: POST
     path: /recipes/stackoverflow-questions
     name: Stack Overflow questions by tag
-    summary: 'Questions on Stack Overflow with a tag, from the Stack Exchange API: title, link, score, answer count,
-      views, whether an answer is accepted, time, tags, author, id and the first 300 characters of the question. `sort`
-      is activity, votes, creation, hot, week or month; `limit` up to 100 in one call. Columns: title, url, score,
-      answers, views, answered, created, tags, author, id, text.'
+    summary: List Stack Overflow questions with a tag and get title, link, score, answer count, views, the accepted
+      flag and time.
     body_allowlist: true
     input:
       bodyType: json
@@ -3653,11 +3477,11 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
         sort:
           type: string
           required: false
-          note: default activity
+          note: activity, votes, creation, hot, week or month; default activity
         tag:
           type: string
           required: true
@@ -3689,11 +3513,8 @@ endpoints:
     method: POST
     path: /recipes/steam-app
     name: A Steam game's price, reviews and facts
-    summary: 'One game on Steam: name, price and discount in the chosen store region, developers, publishers, release
-      date, genres, feature tags, Metacritic score, the review counts and verdict (Very Positive, …), platforms and
-      the short description. `app` is the Steam app id or a store URL; `country` the price region (us, de, …). Columns:
-      name, app_id, price, discount, developers, publishers, release, genres, tags, metacritic, reviews, positive,
-      negative, review_score, platforms, description, url.'
+    summary: 'Get one Steam game: price and discount, developers, release date, genres, tags, Metacritic score and
+      review verdict.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3701,11 +3522,12 @@ endpoints:
         app:
           type: string
           required: true
+          note: the Steam app id or a store URL
           example: '1245620'
         country:
           type: string
           required: false
-          note: default us
+          note: the price region (us, de, …); default us
     cost:
       type: per_success
       value: 0.15
@@ -3733,14 +3555,8 @@ endpoints:
     method: POST
     path: /recipes/yahoo-company
     name: Company profile from Yahoo Finance
-    summary: 'One public company''s profile from Yahoo Finance as one row: name, exchange, sector, industry, full-time
-      employees, business summary, head office address, phone, website, the key officers with title, age and pay,
-      Yahoo''s five governance risk scores (1 low to 10 high) and the market cap. `symbol` is a Yahoo ticker (AAPL,
-      7203.T, SAP.DE) or a Yahoo Finance quote or profile URL. A symbol Yahoo does not know gives 0 rows. Costs 2
-      units; 5 when the page gives no data and Yahoo''s API is asked. Fresh for one hour. Columns: symbol, name, exchange,
-      currency, market_cap, sector, industry, employees, description, street, city, state, zip, country, phone, website,
-      officers, audit_risk, board_risk, compensation_risk, shareholder_rights_risk, overall_risk, risk_scores_as_of,
-      url.'
+    summary: 'Get a public company''s Yahoo Finance profile: exchange, sector, industry, employees, business summary,
+      officers, risk scores and market cap.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3748,6 +3564,7 @@ endpoints:
         symbol:
           type: string
           required: true
+          note: a Yahoo ticker (AAPL, 7203.T, SAP.DE) or a Yahoo Finance quote or profile URL
           example: AAPL
     cost:
       type: per_success
@@ -3776,13 +3593,8 @@ endpoints:
     method: POST
     path: /recipes/yahoo-quote
     name: Stock quotes from Yahoo Finance
-    summary: 'The latest quote of up to 10 tickers from Yahoo Finance, one row per symbol: name, price, change and
-      change in percent against the previous close, previous close, currency, exchange, day high and low, volume,
-      52-week high and low, market state and the time of the last trade (UTC). `symbols` is a comma list of Yahoo
-      tickers (AAPL, BRK-B, ^GSPC, EURUSD=X); every symbol is one unit, all fetched at once. A symbol Yahoo does not
-      know gives a row with the symbol and nulls. market_state is REGULAR while the last trade falls inside the day''s
-      regular session, else CLOSED. Fresh for 60 seconds. Columns: symbol, name, price, change, change_pct, previous_close,
-      currency, exchange, day_high, day_low, volume, week52_high, week52_low, market_state, updated.'
+    summary: 'Get the latest Yahoo Finance quote for up to 10 tickers: price, change against the previous close, day
+      and 52-week range and volume.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3790,6 +3602,7 @@ endpoints:
         symbols:
           type: string
           required: true
+          note: a comma list of up to 10 Yahoo tickers (AAPL, BRK-B, ^GSPC, EURUSD=X)
           example: AAPL,MSFT,NVDA
     cost:
       type: per_success
@@ -3818,10 +3631,8 @@ endpoints:
     method: POST
     path: /recipes/substack-posts
     name: A Substack publication's latest posts
-    summary: 'The latest posts of a Substack publication, from its public archive: title, subtitle, link, date, author,
-      likes, comment count, whether it is behind the paywall, and word count. `publication` is the host (name.substack.com
-      or a custom domain) or any of its URLs; `limit` up to 50. Columns: title, subtitle, url, date, author, likes,
-      comments, paywalled, words.'
+    summary: List the latest posts of a Substack publication with subtitle, link, date, author, likes, comments and
+      the paywall flag.
     body_allowlist: true
     input:
       bodyType: json
@@ -3829,10 +3640,11 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 12
+          note: at most 50; default 12
         publication:
           type: string
           required: true
+          note: the host (name.substack.com or a custom domain) or any of its URLs
           example: lennysnewsletter.com
     cost:
       type: per_success
@@ -3861,9 +3673,7 @@ endpoints:
     method: POST
     path: /recipes/telegram-channel
     name: A public Telegram channel's messages
-    summary: 'The latest messages of a public Telegram channel, from its web preview page: text, time, view count,
-      the message''s link and id, newest first. Give the `channel` name (as in t.me/<channel>); the page carries about
-      20 messages; `limit` caps the rows. Columns: text, date, views, url, id.'
+    summary: Read the latest messages of a public Telegram channel, newest first, with text, time, views and link.
     body_allowlist: true
     input:
       bodyType: json
@@ -3871,11 +3681,12 @@ endpoints:
         channel:
           type: string
           required: true
+          note: the name in t.me/<channel>
           example: durov
         limit:
           type: integer
           required: false
-          note: default 20
+          note: the page carries about 20 messages; default 20
     cost:
       type: per_success
       value: 0.9
@@ -3903,12 +3714,8 @@ endpoints:
     method: POST
     path: /recipes/threads-profile
     name: Posts on a Threads profile
-    summary: 'The posts shown on a Threads profile page, one row per post: id, link, text, likes, replies, reposts
-      and the time posted (ISO 8601, UTC), plus the profile on every row: username, full name, follower count, bio,
-      verified badge and avatar. `username` is the handle, with or without @, or the profile URL; `limit` caps the
-      rows (the page holds about 10 posts, the newest threads with their replies; no paging). The page needs a browser,
-      so a run takes about 11 seconds; a result is cached for 10 minutes. Columns: id, url, text, likes, replies,
-      reposts, posted, username, name, followers, bio, verified, avatar.'
+    summary: List the posts on a Threads profile page with text, likes, replies, reposts and time, plus the profile's
+      followers and bio.
     body_allowlist: true
     input:
       bodyType: json
@@ -3916,11 +3723,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 10
+          note: the page holds about 10 posts, the newest threads with their replies; no paging; default 10
           example: 10
         username:
           type: string
           required: true
+          note: the handle, with or without @, or the profile URL
           example: zuck
     cost:
       type: per_success
@@ -3949,11 +3757,9 @@ endpoints:
     method: POST
     path: /recipes/tiktok-shop-product
     name: One TikTok Shop product
-    summary: 'One product on TikTok Shop (US) as one row: title, price and the price before a discount, how many sold,
-      rating and review count, sizes and colors with each variant''s price, the store with its rating and followers,
-      the category path, description and images. `product` is the product''s TikTok Shop URL or its id (the long number
-      in the URL). About 1 to 3 minutes. Columns: product_id, url, title, price, price_before, currency, in_stock,
-      sold, rating, review_count, colors, sizes, variants, store, categories, description, images.'
+    summary: 'Get one TikTok Shop (US) product: price, units sold, rating, variants with prices, store, description
+      and images.'
+    note: 'A run takes 1 to 3 minutes: allow the call that long.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3961,6 +3767,7 @@ endpoints:
         product:
           type: string
           required: true
+          note: the product's TikTok Shop URL or its id (the long number in the URL)
           example: '1732509604120924773'
     cost:
       type: per_success
@@ -3989,13 +3796,8 @@ endpoints:
     method: POST
     path: /recipes/tiktok-search
     name: TikTok videos for a search
-    summary: 'TikTok videos for a keyword search, one row per video: its text and hashtags, when it was posted, the
-      author, plays, likes, comments, shares and saves, length, cover and sound. `query` is the search words; `limit`
-      how many videos (default 20, at most 100). Our own search finds the videos on tiktok.com, in its order, and
-      reads each one: about 2 to 5 s for 20; a video TikTok does not show in time keeps the search''s text and has
-      no counts. When it finds fewer than half of `limit`, a second source adds the rest (15 to 40 s; above 20 videos
-      a slower one, 2 to 5 minutes: run it as a job). Columns: post_id, url, description, hashtags, created_at, author,
-      stats, duration_s, cover, music.'
+    summary: Search TikTok videos by keyword and get text, hashtags, author, plays, likes, comments, shares and length,
+      in TikTok's order.
     body_allowlist: true
     input:
       bodyType: json
@@ -4003,7 +3805,8 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; when the search finds fewer than half of it, a second source adds the rest in 15 to 40
+            s, or 2 to 5 minutes above 20; default 20
           example: 20
         query:
           type: string
@@ -4036,12 +3839,8 @@ endpoints:
     method: POST
     path: /recipes/tiktok-profile
     name: A TikTok profile's stats
-    summary: 'One TikTok account''s public facts from its profile page: username, display name, bio, exact follower,
-      following, like and video counts, verified badge, avatar, profile URL, user id and secUid. `username` is the
-      handle with or without @, or the profile URL. An unknown handle gives 0 rows with the reason in the warnings;
-      a private account gives its row with the counts the page shows (null when the page omits one). The page carries
-      no videos. Columns: username, nickname, bio, followers, following, likes, videos, verified, avatar, url, user_id,
-      sec_uid.'
+    summary: 'Get one TikTok account''s public profile: display name, bio, exact follower, like and video counts,
+      and verified badge.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4049,6 +3848,7 @@ endpoints:
         username:
           type: string
           required: true
+          note: the handle, with or without @, or the profile URL
           example: nasa
     cost:
       type: per_success
@@ -4077,12 +3877,8 @@ endpoints:
     method: POST
     path: /recipes/tiktok-user-videos
     name: A TikTok account's latest videos
-    summary: 'The latest videos of one public TikTok account, newest first, one row per video: its text and hashtags,
-      when it was posted, the author, plays, likes, comments, shares and saves, length, cover and sound. `account`
-      is the @handle, the profile URL, or TikTok''s secUid (MS4wLjABAAAA…, one call less); `limit` how many videos
-      (default 20, at most 100). About 1 to 3 s; when TikTok does not answer, a slower second source does for a handle
-      (minutes). An unknown or private account gives 0 rows with the reason in the warnings. Columns: post_id, url,
-      description, hashtags, created_at, author, stats, duration_s, cover, music.'
+    summary: List the latest videos of a public TikTok account, newest first, with text, plays, likes, comments, shares
+      and length.
     body_allowlist: true
     input:
       bodyType: json
@@ -4090,11 +3886,12 @@ endpoints:
         account:
           type: string
           required: true
+          note: the @handle, the profile URL, or TikTok's secUid (MS4wLjABAAAA…, one call less)
           example: nasa
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
           example: 20
     cost:
       type: per_success
@@ -4123,12 +3920,8 @@ endpoints:
     method: POST
     path: /recipes/tiktok-comments
     name: Comments of a TikTok post
-    summary: 'The top-level comments of one public TikTok post, in TikTok''s own order (most relevant first), one
-      row per comment: text, time, likes, reply count, the commenter, whether the creator liked it, its language.
-      `post` is the post''s URL or its id; `limit` how many comments (default 50, at most 500; TikTok shows a visitor
-      about 350 to 450 per post). About 1 s per 50; when TikTok does not answer, a slower second source does. When
-      TikTok stops answering partway, the comments read so far come back with a warning that the list stopped early.
-      Columns: comment_id, post_id, text, created_at, likes, replies, author, liked_by_creator, language.'
+    summary: List the top-level comments of one public TikTok post, most relevant first, with text, time, likes and
+      reply count.
     body_allowlist: true
     input:
       bodyType: json
@@ -4136,10 +3929,11 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 50
+          note: at most 500; TikTok shows a visitor about 350 to 450 per post; default 50
         post:
           type: string
           required: true
+          note: the post's URL or its id
           example: '7654036719242726670'
     cost:
       type: per_success
@@ -4168,11 +3962,8 @@ endpoints:
     method: POST
     path: /recipes/tiktok-post
     name: One TikTok post
-    summary: 'One public TikTok video post as one row: its text and hashtags, when it was posted, the author (handle,
-      name, followers, verified), plays, likes, comments, shares and saves, length, cover, sound and subtitles. `post`
-      is the post''s URL or its id (the long number after /video/). About 1 s; when TikTok does not answer, a slower
-      second source does. Columns: post_id, url, description, hashtags, created_at, author, stats, duration_s, cover,
-      music, subtitles, region.'
+    summary: 'Get one public TikTok video: text, hashtags, author, plays, likes, comments, shares, length, sound and
+      subtitles.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4180,6 +3971,7 @@ endpoints:
         post:
           type: string
           required: true
+          note: the post's URL or its id (the long number after /video/)
           example: '7654036719242726670'
     cost:
       type: per_success
@@ -4208,13 +4000,8 @@ endpoints:
     method: POST
     path: /recipes/trustpilot-reviews
     name: Trustpilot reviews of a company
-    summary: 'The reviews on a company''s Trustpilot page, newest first, one row per review: star rating, title, full
-      text, publish and experience dates, reviewer name, country and review count, verified flag, likes, the review''s
-      link and its language. `domain` is the company''s site as Trustpilot names it (www.notion.so); `stars` asks
-      Trustpilot for reviews with at least that rating (20 per page, also for a low-rated company); `page` reads a
-      later page of 20. The page takes 2 to 20 s; when it fails, a slower second source answers page 1 (about a minute).
-      Columns: review_id, url, rating, title, text, date, experience_date, author, author_country, author_review_count,
-      verified, likes, lang.'
+    summary: List a company's Trustpilot reviews, newest first, with rating, title, text, dates, reviewer country
+      and verified flag.
     body_allowlist: true
     input:
       bodyType: json
@@ -4222,6 +4009,7 @@ endpoints:
         domain:
           type: string
           required: true
+          note: the company's site as Trustpilot names it (www.notion.so)
           example: www.notion.so
         limit:
           type: integer
@@ -4230,11 +4018,11 @@ endpoints:
         page:
           type: integer
           required: false
-          note: default 1
+          note: a later page of 20; default 1
         stars:
           type: integer
           required: false
-          note: default 1
+          note: asks for reviews with at least this rating; default 1
     cost:
       type: per_success
       value: 1.35
@@ -4262,13 +4050,9 @@ endpoints:
     method: POST
     path: /recipes/walmart-product
     name: One Walmart product
-    summary: 'One Walmart product as one row: title, brand, price and the price before a discount, stock, rating with
-      its breakdown, seller, category, specifications, images, variants, delivery and returns, and the latest reviews.
-      `product` is the product''s URL or its Walmart item id (the number at the end of the URL). Prices and stock
-      are Walmart''s default store''s. About 3 s; when the page fails, a second source answers in about 10 s. Columns:
-      product_id, url, title, brand, price, price_before, currency, unit_price, in_stock, availability, rating, review_count,
-      rating_breakdown, seller, fulfillment, condition, categories, description, features, specifications, images,
-      videos, variants, badges, review_tags, top_reviews, reviews, identifiers, delivery, returns, order_limit.'
+    summary: 'Get one Walmart product: brand, price, stock, rating breakdown, seller, specifications, variants and
+      latest reviews.'
+    note: Prices and stock are those of Walmart's default store, not of a chosen location.
     body_allowlist: true
     input:
       bodyType: json
@@ -4276,6 +4060,7 @@ endpoints:
         product:
           type: string
           required: true
+          note: the product's URL or its Walmart item id (the number at the end of the URL)
           example: '12164618'
     cost:
       type: per_success
@@ -4304,11 +4089,8 @@ endpoints:
     method: POST
     path: /recipes/walmart-seller
     name: One Walmart Marketplace seller
-    summary: 'One seller on Walmart Marketplace as one row: name, the seller''s own description, the business contact
-      Walmart shows (email, phone, address), rating and review count, whether the account is active, and the logo.
-      `seller` is the seller''s Walmart URL or its id (the number after /seller/). About 2 to 6 s; when the page fails,
-      a second source answers. Columns: seller_id, url, name, display_name, about, email, phone, address, rating,
-      review_count, reviews_with_text, is_active, seller_type, has_badge, logo.'
+    summary: 'Get one Walmart Marketplace seller: description, business email, phone and address, rating, review count
+      and active status.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4316,6 +4098,7 @@ endpoints:
         seller:
           type: string
           required: true
+          note: the seller's Walmart URL or its id (the number after /seller/)
           example: '101011072'
     cost:
       type: per_success
@@ -4344,12 +4127,8 @@ endpoints:
     method: POST
     path: /recipes/open-meteo-forecast
     name: Daily weather forecast for a place
-    summary: 'One row per day of the daily forecast from Open-Meteo (no key): date, the weather in words and its WMO
-      code, max and min temperature in °C, precipitation in mm, the highest chance of rain in %, the strongest wind
-      in km/h, sunrise and sunset in the place''s local time. Give `place` (a city name, looked up first: one extra
-      unit) or both `latitude` and `longitude`; `place` wins when both are set. `days` is 1 to 16. Columns: date,
-      weather, code, temp_max, temp_min, precipitation_mm, precipitation_chance, wind_max, sunrise, sunset, place,
-      timezone.'
+    summary: 'Get the daily weather forecast for a place from Open-Meteo: conditions, high and low temperature, precipitation,
+      wind, sunrise and sunset.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4357,22 +4136,22 @@ endpoints:
         days:
           type: integer
           required: false
-          note: default 7
+          note: 1 to 16; default 7
           example: 7
         latitude:
           type: string
           required: false
-          note: 'default '
+          note: with `longitude`, in place of `place`
           example: '1.35'
         longitude:
           type: string
           required: false
-          note: 'default '
+          note: with `latitude`, in place of `place`
           example: '103.82'
         place:
           type: string
           required: false
-          note: 'default '
+          note: a city name; wins over `latitude` and `longitude`
           example: Singapore
     cost:
       type: per_success
@@ -4400,9 +4179,7 @@ endpoints:
     method: POST
     path: /recipes/rss-feed
     name: Any RSS or Atom feed
-    summary: 'The items of any RSS 2.0 or Atom feed: title, link, publication time, author, the first 300 characters
-      of the summary, and the item''s id. Give the feed''s `url`; `limit` caps the rows (up to 200). Columns: title,
-      link, published, author, summary, id.'
+    summary: 'Read the items of any RSS 2.0 or Atom feed: title, link, publication time, author and summary.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4410,7 +4187,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 200; default 25
         url:
           type: string
           required: true
@@ -4442,12 +4219,7 @@ endpoints:
     method: POST
     path: /recipes/weworkremotely-jobs
     name: Remote jobs from We Work Remotely
-    summary: 'The newest jobs in one We Work Remotely category feed: job title, company, the job''s page, region,
-      the feed''s category, the job type (Full-Time or Contract; the programming feed carries none), publication time
-      and the first 300 characters of the description. `category` picks the feed: programming, design, devops, support,
-      sales, product, management, other or all (`other` sits behind a Cloudflare challenge today: no rows, no charge).
-      `keyword` keeps jobs whose title or company mentions it. `limit` caps the rows (up to 100). One fetch per run.
-      Columns: title, company, url, region, category, type, published, description.'
+    summary: List the newest jobs in a We Work Remotely category with title, company, link, region, job type and time.
     body_allowlist: true
     input:
       bodyType: json
@@ -4455,17 +4227,18 @@ endpoints:
         category:
           type: string
           required: false
-          note: default programming
+          note: programming, design, devops, support, sales, product, management, other or all; other gives no rows
+            (a Cloudflare challenge); default programming
           example: programming
         keyword:
           type: string
           required: false
-          note: 'default '
+          note: keeps jobs whose title or company mentions it
           example: rust
         limit:
           type: integer
           required: false
-          note: default 25
+          note: at most 100; default 25
           example: 10
     cost:
       type: per_success
@@ -4494,10 +4267,8 @@ endpoints:
     method: POST
     path: /recipes/wikipedia-article
     name: A Wikipedia article's summary and sections
-    summary: 'One Wikipedia article: its title, short description, summary paragraph, page link, thumbnail, the list
-      of top-level sections, when it was last edited and the language. `title` is the article''s name; `lang` the
-      Wikipedia edition (en, de, ja, …). Columns: title, description, summary, url, thumbnail, sections, updated,
-      lang.'
+    summary: Get one Wikipedia article's short description, summary paragraph, link, thumbnail, top-level sections
+      and last edit time.
     body_allowlist: true
     input:
       bodyType: json
@@ -4505,10 +4276,11 @@ endpoints:
         lang:
           type: string
           required: false
-          note: default en
+          note: the Wikipedia edition (en, de, ja, …); default en
         title:
           type: string
           required: true
+          note: the article's name
           example: Singapore
     cost:
       type: per_success
@@ -4537,10 +4309,7 @@ endpoints:
     method: POST
     path: /recipes/wikipedia-search
     name: Wikipedia articles matching a query
-    summary: 'Wikipedia articles that match a query, from the public search API: title, article link, a plain-text
-      snippet around the match, word count, size in bytes, when the article was last edited, and the page id. `query`
-      is the search text; `lang` the Wikipedia edition (en, de, ja, …; letters only); `limit` the number of results,
-      up to 50 in one call. Columns: title, url, snippet, words, size, updated, pageid.'
+    summary: Search Wikipedia articles and get title, link, a snippet around the match, word count and last edit time.
     body_allowlist: true
     input:
       bodyType: json
@@ -4548,12 +4317,12 @@ endpoints:
         lang:
           type: string
           required: false
-          note: default en
+          note: the Wikipedia edition (en, de, ja, …), letters only; default en
           example: en
         limit:
           type: integer
           required: false
-          note: default 10
+          note: at most 50; default 10
           example: 10
         query:
           type: string
@@ -4586,12 +4355,9 @@ endpoints:
     method: POST
     path: /recipes/x-tweet-replies
     name: Replies to an X (Twitter) post
-    summary: 'The replies to one X (Twitter) post, one row per reply: id, author, author name, text, time, likes,
-      replies, reposts, views and link, in X''s own order (most relevant first). `tweet` is the post''s URL (https://x.com/NASA/status/2095890075447964086)
-      or its id. `limit` up to 100; X gives about 9-12 replies per page and a run reads at most 8 pages. `session`
-      is required: your `auth_token` and `ct0` cookies, copied with the Crawl4AI Session extension; used for this
-      run only and never stored. One fetch per page; a wrong session costs one unit. Columns: id, author, author_name,
-      text, posted_at, likes, replies, reposts, views, url.'
+    summary: List the replies to one X (Twitter) post, most relevant first, with author, text, time, likes, reposts
+      and views.
+    note: 'Needs the caller''s own X login, which treg does not send: every call answers 400 bad_input, free.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4599,11 +4365,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; X gives about 9 to 12 replies a page and a run reads at most 8 pages; default 20
           example: 20
         tweet:
           type: string
           required: true
+          note: the post's URL or its id
           example: https://x.com/NASA/status/2095890075447964086
     cost:
       type: per_success
@@ -4631,13 +4398,10 @@ endpoints:
     method: POST
     path: /recipes/x-search
     name: Search posts on X (Twitter)
-    summary: 'The posts X (Twitter) returns for a search, one row per post, in X''s order: id, link, text, time, author,
-      counts, views, language, media, and whether it is a reply, a quote or a repost. `query` is X search text (rust
-      lang, from:nasa since:2026-10-01); `mode` latest or top; `limit` up to 100. `session` is your X login (`auth_token`
-      and `ct0`, from the Crawl4AI Session extension), for this run only. Without it, only from:<account> (since:/until:
-      allowed) in mode latest: the account''s timeline, newest first; older days via a slower second source. Other
-      queries are refused, not billed. Columns: id, url, text, created, author, author_name, likes, reposts, replies,
-      quotes, views, language, media, is_reply, is_quote, is_repost.'
+    summary: 'Read one X (Twitter) account''s timeline through a from: search, newest first, with text, time, counts,
+      views, language and media.'
+    note: 'Only a from:<account> query with `mode` latest is answered (since: and until: allowed); any other query
+      answers 400 bad_input, free.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4645,7 +4409,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; default 20
           example: 20
         mode:
           type: string
@@ -4655,6 +4419,7 @@ endpoints:
         query:
           type: string
           required: true
+          note: X search text, like from:nasa since:YYYY-MM-DD
           example: rust lang
     cost:
       type: per_success
@@ -4682,13 +4447,8 @@ endpoints:
     method: POST
     path: /recipes/x-user-tweets
     name: Posts of an X (Twitter) account
-    summary: 'The latest posts of one X (Twitter) account, one row per post: id, link, text, likes, reposts, replies,
-      quotes, time, whether it is a repost, and the author. `username` is the handle (nasa or @nasa), the profile
-      URL or X''s numeric user id (11348282). `limit` up to 100; X gives about 15-20 posts a page and a run reads
-      at most two pages. `session` is your own X login (the `auth_token` and `ct0` cookies, from the Crawl4AI Session
-      extension) (optional), used for this run only, never stored. Without it the run reads X as a visitor; when X
-      shows a visitor nothing, a slower second source answers. Columns: id, url, text, likes, retweets, replies, quotes,
-      created, is_retweet, author.'
+    summary: List the latest posts of one X (Twitter) account with text, likes, reposts, replies, quotes, time and
+      the repost flag.
     body_allowlist: true
     input:
       bodyType: json
@@ -4696,11 +4456,12 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 100; a run reads at most two pages of about 15 to 20 posts; default 20
           example: 20
         username:
           type: string
           required: true
+          note: the handle (nasa or @nasa), the profile URL or X's numeric user id (11348282)
           example: nasa
     cost:
       type: per_success
@@ -4729,12 +4490,8 @@ endpoints:
     method: POST
     path: /recipes/x-profile
     name: An X (Twitter) profile
-    summary: 'One X (Twitter) account as one row: username, name, bio, followers, following, tweet count, join date,
-      location, website, verified badge, profile image and user id. `username` is the handle (nasa or @nasa) or the
-      profile URL. `session` is your own X login (the `auth_token` and `ct0` cookies, from the Crawl4AI Session extension),
-      optional, used for this run only and never stored. Without it the run reads X as a visitor; when X gives nothing,
-      a slower second source answers. Columns: username, name, bio, followers, following, tweets, created, location,
-      website, verified, image, user_id.'
+    summary: 'Get one X (Twitter) account: name, bio, follower, following and post counts, join date, location, website
+      and verified badge.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4742,6 +4499,7 @@ endpoints:
         username:
           type: string
           required: true
+          note: the handle (nasa or @nasa) or the profile URL
           example: nasa
     cost:
       type: per_success
@@ -4770,11 +4528,8 @@ endpoints:
     method: POST
     path: /recipes/yelp-business
     name: One Yelp business
-    summary: 'One business on Yelp as one row: name, rating and review count, price range, categories, phone, website,
-      address, neighborhoods and map point, whether it has closed for good, its description and photos. `business`
-      is the business''s Yelp URL or its alias (the part after /biz/). About 25 s, sometimes a second fetch. Columns:
-      business_id, alias, url, name, rating, review_count, price_range, categories, phone, website, address, neighborhoods,
-      latitude, longitude, is_closed, description, photos.'
+    summary: 'Get one Yelp business: rating, review count, price range, categories, phone, website, address, description
+      and photos.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4782,6 +4537,7 @@ endpoints:
         business:
           type: string
           required: true
+          note: the business's Yelp URL or its alias (the part after /biz/)
           example: four-seasons-hotel-san-francisco-san-francisco
     cost:
       type: per_success
@@ -4810,10 +4566,9 @@ endpoints:
     method: POST
     path: /recipes/yelp-reviews
     name: Reviews of a Yelp business
-    summary: 'The recommended reviews on a Yelp business''s page, in Yelp''s order, one row per review: stars, date,
-      text, the reviewer''s name, home town and Yelp profile, and the reactions (helpful, thanks, love this, oh no).
-      `business` is the business''s Yelp URL or its alias (the part after /biz/). Yelp shows up to 10 on the page;
-      about 25 s, sometimes a second fetch. Columns: review_id, business, rating, date, text, author, reactions.'
+    summary: List the recommended reviews on a Yelp business page, in Yelp's order, with stars, date, text, reviewer
+      and reactions.
+    note: Returns at most 10 reviews, the ones Yelp shows on the business's page.
     body_allowlist: true
     input:
       bodyType: json
@@ -4821,6 +4576,7 @@ endpoints:
         business:
           type: string
           required: true
+          note: the business's Yelp URL or its alias (the part after /biz/)
           example: tartine-bakery-san-francisco
     cost:
       type: per_success
@@ -4849,12 +4605,8 @@ endpoints:
     method: POST
     path: /recipes/youtube-channel
     name: One YouTube channel's facts
-    summary: 'One YouTube channel as one row, from its about page: channel id, handle, title, description, subscribers
-      (YouTube''s rounded count as a number, and its shown text), video and view counts, joined date, country, links
-      with their real targets, avatar, banner and the verified badge. `channel` is a channel URL (/@handle, /channel/UC…,
-      /c/name, /user/name), a @handle or a UC… id. One plain request, about 1 second. An unknown channel gives no
-      row. Columns: channel_id, handle, title, description, subscribers, subscribers_text, videos, views, joined,
-      country, links, avatar, banner, verified, url.'
+    summary: 'Get one YouTube channel''s about page: handle, description, subscribers, video and view counts, join
+      date, country and links.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4862,6 +4614,7 @@ endpoints:
         channel:
           type: string
           required: true
+          note: a channel URL (/@handle, /channel/UC…, /c/name, /user/name), a @handle or a UC… id
           example: '@veritasium'
     cost:
       type: per_success
@@ -4890,10 +4643,8 @@ endpoints:
     method: POST
     path: /recipes/youtube-channel-videos
     name: A YouTube channel's latest videos
-    summary: 'The latest videos of a YouTube channel, newest first: title, link, video id, when it was published,
-      views and the thumbnail. `channel` is a channel id (UC…), a handle (@name or name) or a channel URL; `limit`
-      caps the rows (at most 30). A run takes about a second, from YouTube''s own channel list. Columns: title, url,
-      video_id, published, views, description, thumbnail.'
+    summary: List the latest videos of a YouTube channel, newest first, with title, link, publish time, views and
+      thumbnail.
     body_allowlist: true
     input:
       bodyType: json
@@ -4901,11 +4652,12 @@ endpoints:
         channel:
           type: string
           required: true
+          note: a channel id (UC…), a handle (@name or name) or a channel URL
           example: UCHnyfMqiRRG1u-2MsSQLbXA
         limit:
           type: integer
           required: false
-          note: default 15
+          note: at most 30; default 15
     cost:
       type: per_success
       value: 0.9
@@ -4933,10 +4685,7 @@ endpoints:
     method: POST
     path: /recipes/youtube-search
     name: YouTube search results
-    summary: 'The videos YouTube finds for a query: title, link, video id, channel, views, when it was published (as
-      YouTube says it, "3 years ago"), length and a short description. `limit` caps the rows (at most 20). A run takes
-      about a second: YouTube''s own search answer, plus one more call when it holds fewer videos than `limit`. Columns:
-      title, url, video_id, channel, views, published, length, description.'
+    summary: Search YouTube videos and get title, link, channel, views, publish age, length and a short description.
     body_allowlist: true
     input:
       bodyType: json
@@ -4944,7 +4693,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 20
+          note: at most 20; default 20
         query:
           type: string
           required: true
@@ -4976,13 +4725,8 @@ endpoints:
     method: POST
     path: /recipes/youtube-captions
     name: Captions of a YouTube video
-    summary: 'One YouTube video''s captions (its transcript) in one language, as one row: the whole text, the timed
-      lines, whether they are auto-generated, and every caption language the video has. `video` is the watch URL,
-      a youtu.be or shorts link, or the 11-character id; `language` a code such as en, es or pt-BR (default en), or
-      `any` for the default captions. A person''s track comes before an auto-generated one. No captions in that language
-      gives no row and a warning listing the languages. 1 to 3 s; when YouTube refuses, a slower second source gives
-      the default captions (billed even when it has none). Columns: video_id, title, language, is_auto_generated,
-      available_languages, text, segments, url.'
+    summary: 'Get one YouTube video''s captions in one language: the full transcript, timed lines and the caption
+      languages the video has.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4990,11 +4734,13 @@ endpoints:
         language:
           type: string
           required: false
-          note: default en
+          note: a code such as en, es or pt-BR, or any for the default captions; a person's track comes before an
+            auto-generated one; default en
           example: en
         video:
           type: string
           required: true
+          note: the watch URL, a youtu.be or shorts link, or the 11-character id
           example: dQw4w9WgXcQ
     cost:
       type: per_success
@@ -5023,12 +4769,8 @@ endpoints:
     method: POST
     path: /recipes/youtube-comments
     name: Comments of a YouTube video
-    summary: 'The top-level comments of one public YouTube video, in YouTube''s top-comments order, one row per comment:
-      text, author, likes, reply count, when it was posted, whether the creator hearted or pinned it. `video` is the
-      watch URL, a youtu.be link or the 11-character id; `limit` how many comments (default 50, at most 500). YouTube
-      sends 20 comments a page, about 0.5 s each. A video with comments turned off gives no rows. When YouTube stops
-      answering partway, the comments read so far come back with a warning that the list stopped early. Columns: comment_id,
-      video_id, text, author, likes, replies, published, published_date, hearted_by_creator, pinned, url.'
+    summary: List the top-level comments of one public YouTube video, in top-comments order, with text, author, likes
+      and reply count.
     body_allowlist: true
     input:
       bodyType: json
@@ -5036,10 +4778,11 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 50
+          note: at most 500; default 50
         video:
           type: string
           required: true
+          note: the watch URL, a youtu.be link or the 11-character id
           example: dQw4w9WgXcQ
     cost:
       type: per_success
@@ -5068,10 +4811,8 @@ endpoints:
     method: POST
     path: /recipes/youtube-video
     name: One YouTube video's facts
-    summary: 'One YouTube video''s facts from its page: title, channel and channel id, length, views, likes, publish
-      date, category, keywords and the first 500 characters of the description. `video` is the watch URL, a youtu.be
-      link or the 11-character id. The page needs a browser, so a run takes 8 to 45 seconds. Columns: title, channel,
-      channel_id, length_s, views, likes, published, category, keywords, description, url.'
+    summary: 'Get one YouTube video''s details: title, channel, length, views, likes, publish date, category and keywords.'
+    note: 'A run takes 8 to 45 s, as the page needs a browser: allow the call that long.'
     body_allowlist: true
     input:
       bodyType: json
@@ -5079,6 +4820,7 @@ endpoints:
         video:
           type: string
           required: true
+          note: the watch URL, a youtu.be link or the 11-character id
           example: dQw4w9WgXcQ
     cost:
       type: per_success
@@ -5107,12 +4849,8 @@ endpoints:
     method: POST
     path: /recipes/zillow-property
     name: One Zillow home
-    summary: 'One home on Zillow as one row: status (for sale, sold, off market), price and Zestimate, address and
-      map point, beds, baths, living area, lot, year built, type, the listing''s description, price history, key facts
-      (HOA, heating, parking), photos and the listing''s MLS and broker. `home` is the home''s Zillow URL or its zpid
-      (the number before _zpid). About 2 s; when the page fails, a slower second source answers. Columns: zpid, url,
-      status, price, currency, zestimate, address, latitude, longitude, bedrooms, bathrooms, living_area_sqft, lot_size_sqft,
-      year_built, home_type, description, price_history, facts, photos, listing.'
+    summary: 'Get one Zillow home: status, price and Zestimate, address, beds, baths, living area, year built, price
+      history and photos.'
     body_allowlist: true
     input:
       bodyType: json
@@ -5120,6 +4858,7 @@ endpoints:
         home:
           type: string
           required: true
+          note: the home's Zillow URL or its zpid (the number before _zpid)
           example: '29437674'
     cost:
       type: per_success

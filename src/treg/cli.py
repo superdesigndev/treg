@@ -4365,14 +4365,8 @@ def cmd_skill_bootstrap(args, cfg) -> None:
     if failed:
         print(f"Could not download: {', '.join(failed)}. Rerun the same command to retry.")
     if available:
-        width = max(len(nm) for nm, _ in available)
-        print("\nOptional skills from this registry (not installed):")
-        for nm, desc in available:
-            print(f"  {nm:<{width}}  {desc}")
-        print("If you are an agent: tell the user in one sentence each what these do and ask which they")
-        print("want; then run")
-        print("  treg skill bootstrap --skills <name>,<name>")
-        print("  treg skill bootstrap --skills all")
+        print(f"More skills, not installed: {', '.join(nm for nm, _ in available)}"
+              " (add later: treg skill bootstrap --skills <name>,<name> or --skills all)")
 
 
 def cmd_agents_ls(args, cfg) -> None:

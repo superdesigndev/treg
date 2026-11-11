@@ -660,18 +660,12 @@ func (e *Env) skillBootstrap(allAgents, project bool, skillsArg string) error {
 		outf("Could not download: %s. Rerun the same command to retry.\n", strings.Join(failed, ", "))
 	}
 	if len(available) > 0 {
-		width := 0
+		names := make([]string, 0, len(available))
 		for _, o := range available {
-			width = max(width, utf8.RuneCountInString(o.name))
+			names = append(names, o.name)
 		}
-		outln("\nOptional skills from this registry (not installed):")
-		for _, o := range available {
-			outf("  %-*s  %s\n", width, o.name, o.summary)
-		}
-		outln("If you are an agent: tell the user in one sentence each what these do and ask which they")
-		outln("want; then run")
-		outln("  treg skill bootstrap --skills <name>,<name>")
-		outln("  treg skill bootstrap --skills all")
+		outf("More skills, not installed: %s (add later: treg skill bootstrap --skills <name>,<name> or --skills all)\n",
+			strings.Join(names, ", "))
 	}
 	return nil
 }

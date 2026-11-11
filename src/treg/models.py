@@ -1105,6 +1105,10 @@ class Hold(SQLModel, table=True):
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
+    # Reserved for an endpoint free credit may not pay for: settle draws only `purchased` blocks.
+    purchased_only: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
 
 
 class AsyncTaskRecord(SQLModel, table=True):

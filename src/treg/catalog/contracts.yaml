@@ -185,11 +185,11 @@ contracts:
       - {phone: str}
     filters: {}
     output:
-      live_status: {type: str, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)"}
+      live_status: {type: str, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)", analytics: value}
       phone: {type: str}
-      line_type: {type: str}
+      line_type: {type: str, analytics: value}
       current_network: {type: str}
-      ported: {type: bool}
+      ported: {type: bool, analytics: value}
     miss: "live_status == null"
     idempotent: true
     # Never `verified`: a live line is not proof it is this person's number.
@@ -222,6 +222,24 @@ contracts:
       line_type: {type: str, analytics: value}
       carrier: {type: str}
     miss: "valid == null"
+    idempotent: true
+
+  # Whether a phone number belongs to a named person. Admission-only (no treg route): it gives
+  # TrestleIQ's direct calls the contract's identity and answer columns, so a found number joins
+  # its ownership check by key in call events.
+  people.contact.verify:
+    summary: "Check that a phone number belongs to a named person"
+    routed: false
+    identity:
+      - {phone: str, full_name: str}
+    filters: {}
+    output:
+      name_match: {type: bool, required: true, note: "the number is registered to this name", analytics: value}
+      contact_grade: {type: str, note: "A (best) to F", analytics: value}
+      phone_valid: {type: bool, analytics: value}
+      line_type: {type: str, analytics: value}
+      activity_score: {type: int, analytics: value}
+    miss: "name_match == null"
     idempotent: true
 
   people.email.verify:

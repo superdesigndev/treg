@@ -7,6 +7,7 @@ sources:
   - src/treg/catalog/tinyfish.yaml
   - tests/test_tinyfish.py
   - src/treg/domain/money/__init__.py
+  - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
@@ -176,6 +177,17 @@ first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable
 liability, so spending promo first keeps the refundable pool small.
 
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only`
+(video generation) is paid from purchased credit alone: `_platform_reserve` passes
+`purchased_only=True` (`_purchased_only` in `application/call/reserve.py`), and
+`reserve_in_transaction` runs `_purchased_gate` before the balance gate. The gate locks the org's
+purchased blocks in primary-key order, subtracts its open `Hold.purchased_only` holds, and raises
+`PurchasedCreditShort` (an `InsufficientBalance`) when the rest cannot cover the charge; the call
+is refused with 402 `free_credit_excludes_video`, before any upstream request and with nothing
+held. The flag is stored on the hold, so every settle path (the call, the async worker, a batch
+close) draws only purchased blocks in `_consume_blocks`; an overrun past them is a recorded
+`block_shortfall_micro`, never taken from free credit. A $0 call passes the gate.
+
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.
 
@@ -233,7 +245,8 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
 - **Only `reserve` may shed load.** When its budget (`money_admission_wait_s`) expires it releases
   partial gates and raises `ReserveAdmissionTimeout`, which `reserve.reserve_admission` maps to a 429
   (`money_admission_timeout`, blame `treg`) with a randomized `Retry-After` between
-  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. Every other
+  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. A routed call
+  answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
   and cleanup must run.
@@ -378,6 +391,11 @@ dashboard Activity page and the CLI's `--await` all read this one view.
 is a URL the payer controls. The one exception is the off-session auto-top-up charge, where the
 server itself holds the PaymentIntent's confirmed status; it credits immediately and the webhook
 redelivery is a no-op.
+
+The dashboard reads the return's `?topup=` or `?card=` once and strips it (`followStripeReturn`). On
+`topup=success` it says the payment is being added, then re-reads `GET /billing` a bounded number of
+times (`TOPUP_POLLS`) until the balance rises above the one stored when the payer left for Checkout,
+and names the amount added. It never credits anything itself.
 
 The webhook is `POST /billing/stripe/webhook` and **404s when unconfigured**, so a deploy without the
 secret exposes no unauthenticated POST surface. `verify_event` uses the SDK's `verify_header`
