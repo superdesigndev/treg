@@ -116,18 +116,26 @@ export default {
 
               <div class="lbl" style="margin-top:14px">Members</div>
               <p class="sub" style="margin:-2px 0 8px;font-size:12px">Daily cap = how many calls + runs a member may make per day. Leave it empty for no limit.</p>
+              <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>$/day</b> = how much a member may spend per day on treg's keys. It resets at 00:00 UTC. Empty = the team default below; <span class="mono">none</span> = no limit.</p>
+              <div v-if="capCfg" class="field" style="gap:8px;align-items:center;margin:0 0 10px">
+                <span style="font-size:12.5px">Daily spend per member</span>
+                <span class="muted">$</span><input v-model="memberCapUsd" class="msel" style="width:90px" placeholder="No limit" aria-label="Daily spend limit for every member" @keyup.enter="saveMemberCap"/>
+                <button class="btn sm" :disabled="memberCapBusy" @click="saveMemberCap">{{memberCapBusy?'…':'Save'}}</button>
+                <span class="muted" style="font-size:12px">Applies to every member and agent. Owners and admins have no limit unless you set one on their row.</span>
+              </div>
+              <p v-if="memberCapErr" class="banner" style="margin:0 0 10px">{{memberCapErr}}</p>
               <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>Tools</b> = which endpoints/CLIs a member may call or run. <b>Local run</b> = may run CLIs on their own machine (off = server only). The owner always has full access.</p>
               <table>
-                <tr><th>Email</th><th>Role</th><th style="text-align:right">Today</th><th>Daily cap</th><th>Tools</th><th>Local run</th><th></th></tr>
+                <tr><th>Email</th><th>Role</th><th style="text-align:right">Today</th><th>Daily cap</th><th>$/day</th><th>Tools</th><th>Local run</th><th></th></tr>
                 <!-- An empty roster under its header read as "no members" until the request answered. -->
-                <tr v-if="!orgMembersLoaded"><td colspan="7" class="muted">Loading members…</td></tr>
+                <tr v-if="!orgMembersLoaded"><td colspan="8" class="muted">Loading members…</td></tr>
                 <template v-for="m in rosterMembers" :key="m.key">
                 <tr v-if="m.is_observed">
                   <td><span style="opacity:.45">↳</span> <b>{{m.client}}</b> <span class="chip" title="seen in this member\'s traffic — the runtime reports itself; attribution, not authentication">detected</span>
                     <div class="muted" style="font-size:11px">runs as {{short(m.member)}} — inherits their full access</div></td>
                   <td><span class="muted" style="font-size:12px">—</span></td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
-                  <td colspan="3"><span class="muted" style="font-size:12px">{{m.calls_30d}} calls in 30 days · last seen {{when(m.last_seen)}}</span></td>
+                  <td colspan="4"><span class="muted" style="font-size:12px">{{m.calls_30d}} calls in 30 days · last seen {{when(m.last_seen)}}</span></td>
                   <td style="text-align:right"><button class="btn sm" @click="promoteObserved(m)" title="mint this runtime its own token — its own cap, scope and audit trail">Scope this agent</button></td>
                 </tr>
                 <tr v-else>
@@ -146,6 +154,8 @@ export default {
                   </td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
                   <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Daily cap for '+(m.email||m.name)" title="Empty = no limit"/></td>
+                  <td><input class="msel" style="width:78px" :value="spendField(m)" :placeholder="spendHint(m)" @change="setSpendCap(m,$event.target.value)" :aria-label="'Daily spend limit for '+(m.email||m.name)" title="Dollars per day. Empty = the team default; none = no limit."/>
+                    <div v-if="m.effective_daily_spend_cap_micro!=null" class="muted" style="font-size:11px">{{money(m.spent_today_micro||0)}} of {{money(m.effective_daily_spend_cap_micro)}} today</div></td>
                   <td>
                     <span v-if="m.role==='owner'" class="chip">All</span>
                     <button v-else class="btn sm" :class="{active:editAccess===m.user_id}" @click="openAccess(m)" :title="m.tool_access===null?'Access to every tool':'Access to '+m.tool_access.length+' tool(s)'">{{m.tool_access===null?'All':m.tool_access.length+' tools'}} ▾</button>
