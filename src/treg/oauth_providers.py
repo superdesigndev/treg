@@ -3730,11 +3730,11 @@ ATLY = OAuthProvider(
     # Atly also accepts `Authorization: Bearer <key>`.
     token_header="X-API-Key",
     token_format="{secret}",
-    setup_url="https://agentic-api.atly.com/v2/docs",
+    setup_url="https://agentic-api.atly.com/key?ref=treg",
     setup_action_label="Get a free Atly API key",
     setup_steps=(
-        "POST https://agentic-api.atly.com/v2/keys with {\"email\": \"you@example.com\"}; the key comes back in the response.",
-        "Optional: POST https://agentic-api.atly.com/v2/keys/verify with {\"email\", \"code\"} (the 6-digit code emailed to you), sending the key as X-API-Key, to move that key to the verified daily quota.",
+        "Enter your email and press Get a key, then copy the key shown on the next page and paste it below.",
+        "Optional: type the 6-digit code emailed to you on that page and press Verify, to move the key to the verified daily quota.",
     ),
     setup_note="Every operation is free. A key is limited by a daily quota, larger once its email is verified.",
     auth_uri="", token_uri="",
