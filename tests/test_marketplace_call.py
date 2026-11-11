@@ -1705,7 +1705,7 @@ async def _tavily_call(clients, monkeypatch, endpoint, body, answer, *, status=2
     def upstream(request):
         if seen is not None:
             seen.append((request.headers["authorization"], json.loads(request.content)))
-        return _dropleads_response(status, answer)
+        return httpx.Response(status, stream=httpx.ByteStream(b"")) if answer is None else _dropleads_response(status, answer)
 
     async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
         monkeypatch.setattr(A.app.state, "http", vendor)
@@ -1804,6 +1804,20 @@ async def test_tavily_map_and_crawl_charge_the_results_they_return(
         {"results": results, "usage": {"credits": 99}})
     assert response.status_code == 200, response.text
     assert charged == units * unit, "the grouped usage.credits is never the bill"
+
+
+@pytest.mark.parametrize("endpoint,body,hold,charge", [
+    ("tavily.web.extract", {"urls": ["https://example.com"]}, 1_600, 1_600),
+    ("tavily.web.map", {"url": "https://example.com", "limit": 10}, 8_000, 8_000),
+    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10}, 24_000, 0),
+])
+async def test_a_tavily_204_is_charged_at_the_hold_except_on_crawl(
+    clients, monkeypatch, tavily_platform_on, endpoint, body, hold, charge,
+):
+    assert _tavily_hold(endpoint, body) == hold
+    response, charged = await _tavily_call(clients, monkeypatch, endpoint, body, None, status=204)
+    assert response.status_code == 204, response.text
+    assert charged == charge
 
 
 @pytest.mark.parametrize("endpoint,body", [
