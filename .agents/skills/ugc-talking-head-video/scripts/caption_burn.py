@@ -66,11 +66,17 @@ def header_img(lines, sz=62):
 
 def whisper_words(video):
     wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", wav], check=True)
-    r = subprocess.run(["curl", "-s", "https://api.openai.com/v1/audio/transcriptions", "-H", f"Authorization: Bearer {os.environ['OPENAI_API_KEY']}",
-                        "-F", f"file=@{wav}", "-F", "model=whisper-1", "-F", "response_format=verbose_json",
-                        "-F", "timestamp_granularities[]=word", "-F", "language=en"], capture_output=True, text=True)
-    return json.loads(r.stdout)
+    try:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", wav], check=True)
+        r = subprocess.run(["curl", "-s", "https://api.openai.com/v1/audio/transcriptions", "-H", f"Authorization: Bearer {os.environ['OPENAI_API_KEY']}",
+                            "-F", f"file=@{wav}", "-F", "model=whisper-1", "-F", "response_format=verbose_json",
+                            "-F", "timestamp_granularities[]=word", "-F", "language=en"], capture_output=True, text=True)
+        return json.loads(r.stdout)
+    finally:
+        try:
+            os.unlink(wav)
+        except OSError:
+            pass
 
 def norm(s):
     return re.sub(r"[^a-z0-9']", "", s.lower())
