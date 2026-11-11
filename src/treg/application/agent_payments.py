@@ -4,12 +4,14 @@
 A payer is a wallet address with a payer team. A payment confirmed on chain is an ordinary
 `topup` on that team, then the call runs the normal road as the team: reserve, relay, settle or
 release. What a call does not use stays as the team's credit, and a later call whose quote the
-credit covers proves key control with a fresh payment that treg never settles.
+credit covers proves key control with a fresh, short-lived payment that treg does not settle;
+the reconciler checks each one after it expires and credits it if it was settled anyway.
 
 No database session is open while a rail verifies, settles or looks a payment up. This module is
 the only writer of `AgentPayment`; `governance.teams.make_payer_team` stages the payer team.
 `reconcile` (run by `treg-worker agentpay reconcile`) resolves the payments whose settlement went
-unanswered and, when payments settle to Stripe, records each settled one there.
+unanswered, closes the expired ones that drew credit, and, when payments settle to Stripe, records
+each settled one there.
 """
 
 from __future__ import annotations
@@ -17,11 +19,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import func, select
+from sqlmodel import func, select, update
 
 from .. import ratestore
 from ..config import get_settings
@@ -63,6 +65,8 @@ def unserved(rest: str, method: str) -> str:
 
 CENT_MICRO = 10_000
 BPS = 10_000
+# The rails give the chain this long past `expires_at` before calling a payment absent.
+CREDIT_PROOF_GRACE = timedelta(seconds=90)
 
 
 def enabled() -> bool:
@@ -259,6 +263,9 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         verified = await rail.verify(credential, paid.offer)
     except PaymentRejected as exc:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    max_life = get_settings().agent_payments_credit_proof_max_s
+    if verified.deferrable and verified.expires_at > _now() + timedelta(seconds=max_life):
+        verified = replace(verified, deferrable=False)
 
     if paid.proof_only:
         org_id = await _known_payer_org(verified.payer)
@@ -268,7 +275,7 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         if not verified.deferrable:
             raise await challenge(paid, reason="signature_needed",
                                   message="send a signed payment that treg can check without "
-                                          "settling it")
+                                          f"settling it, expiring within {max_life} seconds")
     else:
         org_id = await _payer_org(verified.payer)
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
@@ -480,12 +487,15 @@ class ReconcileResult:
     recorded: int = 0
     record_errors: int = 0
     stuck: int = 0      # still `settling` past `agent_payments_stuck_after_s`: alert on this
+    late_landed: int = 0  # a payment that drew credit was settled anyway; credited now
+    closed: int = 0       # a payment that drew credit expired unsettled
     reasons: dict[str, int] = field(default_factory=dict)
 
 
 async def reconcile(*, limit: int = 50) -> ReconcileResult:
     """Resolve `settling` payments the request path could not confirm: credit the ones whose
-    transfer landed, fail the ones that can no longer land. Then, when payments settle to
+    transfer landed, fail the ones that can no longer land. Check each expired `credit` payment
+    once: credit it if someone settled it anyway, else close it. Then, when payments settle to
     Stripe, record each settled one there. Chain and Stripe I/O run with no session open."""
     settings = get_settings()
     result = ReconcileResult()
@@ -512,6 +522,7 @@ async def reconcile(*, limit: int = 50) -> ReconcileResult:
             result.failed += 1
         else:
             result.pending += 1
+    await _close_credit_proofs(result, limit=limit)
     if settings.agent_payments_settlement == "stripe":
         await _record_to_stripe(result, limit=limit, api_key=settings.agent_payments_stripe_key)
     stuck_before = _now() - timedelta(seconds=settings.agent_payments_stuck_after_s)
@@ -539,6 +550,48 @@ def _count(result: ReconcileResult, reason: str) -> None:
     result.reasons[reason] = result.reasons.get(reason, 0) + 1
 
 
+async def _close_credit_proofs(result: ReconcileResult, *, limit: int) -> None:
+    """A payment that drew credit is never settled by treg, but anyone holding it could submit it
+    until it expires. Past expiry and the rail's grace the chain's answer is final, so each one is
+    looked up once: a landed transfer becomes credit, the rest close."""
+    after = _now() - CREDIT_PROOF_GRACE
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(AgentPayment).where(AgentPayment.status == "credit",
+                                       AgentPayment.expires_at < after)
+            .order_by(AgentPayment.expires_at).limit(limit))).scalars().all()
+        due = [(row.id, row.protocol, row.network, _unconfirmed(row)) for row in rows]
+    for payment_id, protocol, network, payment in due:
+        rail = _rail(protocol, network)
+        if rail is None:
+            _count(result, "rail_not_configured")
+            continue
+        lookup = await rail.find(payment)
+        if lookup.state == "landed":
+            _count(result, "credit_proof_landed")
+            if await _claim_closed(payment_id, "settling"):
+                await _credit(payment_id, lookup.reference)
+                result.late_landed += 1
+        elif lookup.state == "absent":
+            _count(result, lookup.reason or "absent")
+            if await _claim_closed(payment_id, "expired", lookup.reason, lookup.reference):
+                result.closed += 1
+        else:
+            _count(result, lookup.reason or "pending")
+
+
+async def _claim_closed(payment_id: int, status: str, reason: str | None = None,
+                        reference: str | None = None) -> bool:
+    """Move a `credit` row on, once: a second reconciler that read the same row finds it moved."""
+    async with session_maker() as db:
+        moved_rows = (await db.execute(
+            update(AgentPayment)
+            .where(AgentPayment.id == payment_id, AgentPayment.status == "credit")
+            .values(status=status, error=reason, reference=reference, updated_at=_now()))).rowcount
+        await db.commit()
+        return moved_rows == 1
+
+
 async def _resolve_failed(payment_id: int, reason: str, reference: str | None) -> None:
     """Only a row still `settling` fails: a request that credited it meanwhile wins."""
     async with session_maker() as db:
@@ -561,14 +614,15 @@ async def _record_to_stripe(result: ReconcileResult, *, limit: int, api_key: str
                                        AgentPayment.stripe_payment_intent.is_(None),
                                        AgentPayment.reference.is_not(None))
             .order_by(AgentPayment.created_at).limit(limit))).scalars().all()
-        due = [(row.id, row.amount_micro, row.reference, destinations.get((row.protocol, row.network)))
+        due = [(row.id, row.amount_micro, row.reference, destinations.get((row.protocol, row.network)),
+                _stripe_metadata(row))
                for row in rows if (row.protocol, row.network) in destinations
                and row.pay_to == destinations[(row.protocol, row.network)][0]]
-    for payment_id, amount_micro, reference, (_, network) in due:
+    for payment_id, amount_micro, reference, (_, network), metadata in due:
         try:
             intent = await stripe_api.record_crypto_payment(
                 amount_cents=amount_micro // CENT_MICRO, network=network,
-                transaction_hash=reference, api_key=api_key)
+                transaction_hash=reference, api_key=api_key, metadata=metadata)
         except Exception:
             log.exception("agent payments: recording payment %s to Stripe failed", payment_id)
             result.record_errors += 1
@@ -579,6 +633,12 @@ async def _record_to_stripe(result: ReconcileResult, *, limit: int, api_key: str
             db.add(row)
             await db.commit()
         result.recorded += 1
+
+
+def _stripe_metadata(row: AgentPayment) -> dict[str, str]:
+    """What support searches Stripe by: the paying wallet, its team and treg's payment row."""
+    return {"treg_agent_payment_id": str(row.id), "treg_team_id": str(row.org_id),
+            "payer_address": row.payer_address, "protocol": row.protocol, "network": row.network}
 
 
 async def create_stripe_deposit_address(network: str) -> dict:

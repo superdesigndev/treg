@@ -68,7 +68,7 @@ fetch named by a catalog `async` descriptor, or one with `resource_ownership.req
 is a **proof only** (`PaidOffer.proof_only`): the 402 (`reason: proof_required`) asks for a
 payment of the minimum, which `admit` verifies and never settles. The wallet must already have a
 payer team (`unknown_wallet` otherwise; none is made) and the payment must be one treg can check
-without settling (`signature_needed` otherwise). The call then runs as that team, so the call
+without settling and that expires soon (`signature_needed` otherwise; see *Short-lived proofs*). The call then runs as that team, so the call
 runtime's own ownership check (`_enforce_platform_async_ownership`) decides whether the task is
 this wallet's; no money moves. A challenge for a tool that starts a task says the hold stays open
 until the task ends and that polling with the same wallet is free.
@@ -116,6 +116,15 @@ proves key control, is recorded as used (status `credit`) and expires unused. Ot
 settled and topped up. So a call at or above the floor pays exactly once on chain, and a call below
 it buys floor-sized credit that the next calls from the same address draw down. A payment the
 payer already broadcast (MPP push mode, `Verified.deferrable = False`) is always settled.
+
+**Short-lived proofs.** A payment treg does not settle stays valid until it expires, and anyone
+holding it may submit it. So `admit` lets it draw credit (or prove a poll) only when its
+`expires_at` is within `agent_payments_credit_proof_max_s` (default 150); a longer-lived or
+open-ended one is settled like any payment (a poll answers `signature_needed`). Standard clients
+sign short ones: x402 sets `validBefore` from the challenge's `maxTimeoutSeconds`
+(`..._x402_max_timeout_s`, 120), and pympp's Tempo client signs an expiring nonce valid 60 seconds,
+capped by the challenge's `expires`, which `MppTempoRail` sets `..._mpp_challenge_ttl_s` (120)
+ahead. The reconciler then looks each expired `credit` row up once (below).
 
 A credit draw moves no money, so the proof must establish key control before any settlement.
 x402: the facilitator's `verify` checks the EIP-3009 signature against `from`. MPP pull mode:
@@ -208,6 +217,12 @@ reference, so a request and the reconciler crediting together book it once. `abs
 unsettled, reverted, or a transaction that moved something else): the row becomes `failed`, only if
 still `settling`. `pending` (not knowable yet, node unavailable): left for the next run.
 
+A `credit` row is looked up the same way, once, after its `expires_at` plus `CREDIT_PROOF_GRACE`,
+when the chain's answer is final. `landed` (someone submitted the payment anyway): the row moves to
+`settling` in a conditional update, so one reconciler wins, and `_credit` tops the team up; the
+payer loses nothing and the ledger holds the money. `absent`: the row becomes `expired`. `pending`:
+the next run asks again. Short-lived proofs keep this set to the last few minutes of credit draws.
+
 ## Where the money lands (`agent_payments_settlement`)
 
 - `wallet` (default): the recipient addresses are treg's own wallet; payouts are off-chain work.
@@ -217,7 +232,9 @@ still `settling`. `pending` (not knowable yet, node unavailable): left for the n
   balance. Payments are rounded up to whole cents (`CENT_MICRO`), because Stripe records cents.
   After settlement the reconciler records each settled payment as a PaymentIntent in
   `transaction_verification` mode (`infra.stripe.record_crypto_payment`, the transaction hash as
-  idempotency key) and stores its id in `stripe_payment_intent`; a payment settled to an address
+  idempotency key, and metadata `treg_agent_payment_id`, `treg_team_id`, `payer_address`,
+  `protocol`, `network` so support finds a payment by wallet) and stores its id in
+  `stripe_payment_intent`; a payment settled to an address
   the rail no longer offers (an earlier wallet) is not recorded. Stablecoin acceptance is enabled
   per Stripe account, so `agent_payments_stripe_secret_key` may name another account than
   `stripe_secret_key` (card top-ups); empty, the two are one. Startup refuses `stripe` with neither
@@ -254,7 +271,8 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 ## Settings
 
 `agent_payments_enabled`, `agent_payments_secret` (32+ characters), `agent_payments_realm`,
-`agent_payments_min_payment_micro`, `agent_payments_fee_bps`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
+`agent_payments_min_payment_micro`, `agent_payments_fee_bps`, `agent_payments_credit_proof_max_s`,
+`agent_payments_mpp_challenge_ttl_s`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
 Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_rpc_api_key` (needs `..._tempo_rpc_url`),

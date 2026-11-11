@@ -1026,8 +1026,9 @@ class AgentPayment(SQLModel, table=True):
     """One payment proof presented by an agent payer, used at most once (`proof_id` UNIQUE).
     `credit` = proved key control and drew existing credit, never settled; `settling` = chain
     settlement started; `settled` = confirmed and topped up under `agentpay:<proof_id>`;
-    `failed` = settlement refused or expired unsettled. `treg-worker agentpay reconcile` resolves a
-    `settling` row from the chain. Written only by `application/agent_payments.py`."""
+    `failed` = settlement refused or expired unsettled; `expired` = a `credit` proof that expired
+    and was never settled. `treg-worker agentpay reconcile` resolves a `settling` row from the
+    chain and looks each expired `credit` row up once. Written only by `application/agent_payments.py`."""
 
     id: int | None = Field(default=None, primary_key=True)
     proof_id: str = Field(sa_column_kwargs={"unique": True}, index=True)

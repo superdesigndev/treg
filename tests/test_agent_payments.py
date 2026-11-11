@@ -9,6 +9,7 @@ x402 facilitator (so the EIP-3009 payload is a real signature made offline).
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -48,6 +49,7 @@ class FakeTempoChain:
         self.unknown = False
         self.payer_verified = True
         self.co_signed = False
+        self.lifetime: int | None = 60  # pympp's client signs an expiring nonce valid this long
 
     async def validate(self, intent, credential, request):
         from mpp._validation import Validation
@@ -59,7 +61,8 @@ class FakeTempoChain:
         else:
             signed = payload["signature"]
             details = {"mode": "pull", "payer_verified": self.payer_verified,
-                       "serialized_transaction": signed, "valid_before": None,
+                       "serialized_transaction": signed,
+                       "valid_before": int(time.time()) + self.lifetime if self.lifetime else None,
                        "transaction_hash": None if self.co_signed else tx_hash(signed)}
         return Validation(credential=credential, details=details, intent="charge",
                           request=dict(request), payer=TEMPO_PAYER)
@@ -168,9 +171,9 @@ def _mpp_credential(challenge_response: httpx.Response, signature: str = "0x76" 
                       payload={"type": "transaction", "signature": signature}).to_authorization()
 
 
-def _x402_credential(challenge_response: httpx.Response, account=None) -> tuple[str, str]:
+def _x402_credential(challenge_response: httpx.Response, account=None,
+                     lifetime: int | None = None) -> tuple[str, str]:
     import os
-    import time
 
     from mpp.methods.evm._eip3009 import authorization_domain, sign_authorization
     from mpp.x402 import decode_payment_required, encode_payment_signature
@@ -181,7 +184,7 @@ def _x402_credential(challenge_response: httpx.Response, account=None) -> tuple[
     now = int(time.time())
     authorization = {"from": account.address, "to": accepted["payTo"], "value": accepted["amount"],
                      "validAfter": str(now - 600),
-                     "validBefore": str(now + int(accepted["maxTimeoutSeconds"])),
+                     "validBefore": str(now + (lifetime or int(accepted["maxTimeoutSeconds"]))),
                      "nonce": "0x" + os.urandom(32).hex()}
     signature = sign_authorization(account, payload=authorization, domain=authorization_domain(
         name=accepted["extra"]["name"], version=accepted["extra"]["version"],
@@ -328,6 +331,22 @@ async def test_a_poll_is_refused_to_a_wallet_treg_does_not_know(anon: AsyncClien
         assert await db.get(AgentPayer, payer) is None
 
 
+async def test_a_poll_needs_a_short_lived_signature(anon: AsyncClient, payments_on, facilitator,
+                                                    monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    account = Account.create()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    challenge = await anon.get(f"/call/{POLL}?id=task-1")
+    credential, _ = _x402_credential(challenge, account, lifetime=3600)
+    r = await anon.get(f"/call/{POLL}?id=task-1", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "signature_needed"
+    assert "150 seconds" in r.json()["detail"]["message"]
+    assert facilitator.settles == 1
+
+
 async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient, payments_on,
                                                                facilitator, monkeypatch):
     calls: list = []
@@ -397,6 +416,39 @@ async def test_credit_pays_the_next_call_without_settling_again(anon: AsyncClien
         assert facilitator.settles == expected_settles
     assert "payment-response" not in r.headers  # nothing was settled for a credit draw
     assert await _balance(payer) == FLOOR - 3 * EP_MICRO
+
+
+async def test_a_long_lived_payment_is_settled_even_when_credit_covers_the_call(
+        anon: AsyncClient, payments_on, facilitator):
+    account = Account.create()
+    for lifetime, mode, settles in ((None, "paid", 1), (3600, "paid", 2), (None, "credit", 2)):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        credential, payer = _x402_credential(challenge, account, lifetime=lifetime)
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.status_code == 200, r.text
+        assert (r.headers["X-Treg-Payment"], facilitator.settles) == (mode, settles)
+    assert await _balance(payer) == 2 * FLOOR - 3 * EP_MICRO
+
+
+async def test_a_tempo_transfer_with_no_expiry_never_draws_credit(anon: AsyncClient, payments_on,
+                                                                  chain):
+    chain.lifetime = None
+    for n in (1, 2):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+            "Authorization": _mpp_credential(challenge, _tempo_tx(bytes([n]) * 65))})
+        assert r.status_code == 200, r.text
+        assert r.headers["X-Treg-Payment"] == "paid"
+    assert chain.broadcasts == 2
+
+
+async def test_an_mpp_challenge_expires_as_configured(anon: AsyncClient, payments_on):
+    from mpp import Challenge
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    parsed = Challenge.from_www_authenticate(challenge.headers.get_list("www-authenticate")[0])
+    left = datetime.fromisoformat(parsed.expires.replace("Z", "+00:00")) - datetime.now(UTC)
+    assert timedelta(seconds=100) < left <= timedelta(seconds=120)
 
 
 
@@ -883,6 +935,62 @@ async def test_a_payment_credited_twice_tops_up_once(anon: AsyncClient, facilita
     assert await _balance(row.payer_address) == FLOOR
 
 
+async def _credit_proof(anon: AsyncClient, *, expired: bool = True) -> AgentPayment:
+    """A paid call, then a call drawn on credit; returns the credit row, expired if asked."""
+    account = Account.create()
+    for mode in ("paid", "credit"):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        credential, _ = _x402_credential(challenge, account)
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.headers["X-Treg-Payment"] == mode, r.text
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment).where(
+            AgentPayment.status == "credit"))).scalar_one()
+        if expired:
+            row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
+            db.add(row)
+            await db.commit()
+            await db.refresh(row)
+        return row
+
+
+async def _status(payment_id: int) -> str:
+    async with session_maker() as db:
+        return (await db.get(AgentPayment, payment_id)).status
+
+
+async def test_a_credit_payment_settled_anyway_becomes_credit_once(anon: AsyncClient, facilitator,
+                                                                   evm):
+    row = await _credit_proof(anon)
+    before = await _balance(row.payer_address)
+    nonce = row.proof_id.rsplit(":", 1)[-1]
+    evm.authorizations[(topic_address(row.payer_address), nonce)] = "0xlate"
+    evm.pays("0xlate", asset=row.asset, payer=row.payer_address, to=row.pay_to, amount=FLOOR)
+    assert (await agent_payments.reconcile()).late_landed == 1
+    assert await _balance(row.payer_address) == before + FLOOR
+    assert await _status(row.id) == "settled"
+    assert (await agent_payments.reconcile()).late_landed == 0
+    assert await _balance(row.payer_address) == before + FLOOR
+
+
+async def test_an_expired_credit_payment_is_closed_once(anon: AsyncClient, facilitator, evm):
+    row = await _credit_proof(anon)
+    before = await _balance(row.payer_address)
+    result = await agent_payments.reconcile()
+    assert (result.closed, result.reasons) == (1, {"expired_unsettled": 1})
+    assert await _status(row.id) == "expired"
+    assert (await agent_payments.reconcile()).closed == 0
+    assert await _balance(row.payer_address) == before
+
+
+async def test_a_credit_payment_is_not_looked_up_before_it_expires(anon: AsyncClient, facilitator,
+                                                                   evm):
+    row = await _credit_proof(anon, expired=False)
+    result = await agent_payments.reconcile()
+    assert (result.closed, result.late_landed, result.reasons) == (0, 0, {})
+    assert await _status(row.id) == "credit"
+
+
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
 COINBASE = "https://api.cdp.coinbase.com/platform/v2/x402"
 
@@ -1031,8 +1139,13 @@ async def test_each_payment_settled_to_stripe_is_recorded_once(anon: AsyncClient
     assert r.status_code == 200, r.text
     reference = r.headers["X-Treg-Payment-Reference"]
     assert (await agent_payments.reconcile()).recorded == 1
+    row = await _row()
     assert stripe_mode == [{"amount_cents": FLOOR // 10_000, "network": "base",
-                            "transaction_hash": reference, "api_key": "sk_test_agentpay"}]
+                            "transaction_hash": reference, "api_key": "sk_test_agentpay",
+                            "metadata": {"treg_agent_payment_id": str(row.id),
+                                         "treg_team_id": str(row.org_id),
+                                         "payer_address": row.payer_address, "protocol": "x402",
+                                         "network": row.network}}]
     assert (await _row()).stripe_payment_intent == "pi_1"
     assert (await agent_payments.reconcile()).recorded == 0
 

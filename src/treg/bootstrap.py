@@ -740,7 +740,8 @@ def configure_agent_payments() -> None:
                 chain_id=s.agent_payments_tempo_chain_id,
                 rpc_url=s.agent_payments_tempo_rpc_url,
                 rpc_api_key=s.agent_payments_tempo_rpc_api_key,
-                currency=s.agent_payments_tempo_currency))
+                currency=s.agent_payments_tempo_currency,
+                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s))
         if s.agent_payments_x402_enabled:
             from .infra.agent_payments.x402 import X402Rail
 

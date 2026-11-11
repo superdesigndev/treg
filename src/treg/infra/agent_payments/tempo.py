@@ -32,13 +32,15 @@ class MppTempoRail:
     stripe_network = "tempo"
 
     def __init__(self, *, secret: str, realm: str, recipient: str, chain_id: int,
-                 rpc_url: str = "", rpc_api_key: str = "", currency: str = "") -> None:
+                 rpc_url: str = "", rpc_api_key: str = "", currency: str = "",
+                 challenge_ttl_s: int = 120) -> None:
         from mpp.methods.tempo import rpc_url_for_chain
         from mpp.methods.tempo import server as tempo
         from mpp.server import Mpp
 
         self.network = f"tempo:{chain_id}"
         self.pay_to = recipient.lower()
+        self._challenge_ttl = timedelta(seconds=challenge_ttl_s)
         # Tempo's hosted RPC takes its console API key in this header, not in the URL.
         client = (httpx.AsyncClient(headers={"tempo-api-key": rpc_api_key}, timeout=RPC_TIMEOUT_S)
                   if rpc_api_key else None)
@@ -60,7 +62,8 @@ class MppTempoRail:
 
     async def challenge(self, offer: Offer) -> list[tuple[str, str]]:
         handler = self._mpp["tempo/charge"](
-            amount=micro_to_decimal(offer.amount_micro), description=offer.description)
+            amount=micro_to_decimal(offer.amount_micro), description=offer.description,
+            expires_in=self._challenge_ttl)
         result = await handler(self._request(offer))
         return [("WWW-Authenticate", value)
                 for value in result.challenge.headers.get_list("www-authenticate")]

@@ -784,6 +784,11 @@ class Settings(BaseSettings):
     # treg's fee on each settled payment, in basis points (100 = 1%). The payment is raised so the
     # credit after the fee still covers the call; the fee is never credited.
     agent_payments_fee_bps: int = Field(default=0, ge=0, le=5_000)
+    # A payment treg does not settle (it draws credit, or proves a poll) stays cashable until it
+    # expires, so only one expiring within this many seconds may do so; a longer one is settled.
+    agent_payments_credit_proof_max_s: int = Field(default=150, ge=30, le=3600)
+    # How long an MPP challenge is valid; standard clients cap the signed transfer's expiry by it.
+    agent_payments_mpp_challenge_ttl_s: int = Field(default=120, ge=30, le=3600)
     agent_payments_tempo_recipient: str = ""
     agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
     agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC

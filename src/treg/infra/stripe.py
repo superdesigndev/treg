@@ -85,7 +85,7 @@ async def create_crypto_deposit_address(network: str, *, api_key: str) -> dict:
 
 
 async def record_crypto_payment(*, amount_cents: int, network: str, transaction_hash: str,
-                                api_key: str) -> dict:
+                                api_key: str, metadata: dict[str, str] | None = None) -> dict:
     """Record an on-chain payment to a deposit address as a PaymentIntent. The transaction hash
     is the idempotency key, so a retry records it once."""
     return await anyio.to_thread.run_sync(lambda: _raw(
@@ -96,7 +96,7 @@ async def record_crypto_payment(*, amount_cents: int, network: str, transaction_
             "mode": "transaction_verification",
             "transaction_verification_options": {
                 "network": network, "transaction_hash": transaction_hash}}},
-        idempotency_key=f"agentpay:{transaction_hash}"))
+        metadata=metadata or {}, idempotency_key=f"agentpay:{transaction_hash}"))
 
 
 def verify_event(payload: bytes, signature: str, secret: str) -> dict:

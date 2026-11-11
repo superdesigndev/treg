@@ -788,6 +788,7 @@ def main(argv: list[str] | None = None) -> int:
     pay = sub.add_parser("agentpay", help="agent payments (MPP, x402)")
     paysub = pay.add_subparsers(dest="cmd", required=True)
     rec = paysub.add_parser("reconcile", help="credit or fail payments whose settlement went unanswered; "
+                                              "close expired credit proofs, crediting any settled anyway; "
                                               "record settled payments to Stripe when they settle there")
     rec.add_argument("--limit", type=_positive_int, default=50)
     rec.set_defaults(fn=_agentpay_reconcile)

@@ -34,6 +34,11 @@ Temporary working plan for this PR. Remove this file from the branch before merg
    request without the key (401).
 5. Done: treg's fee on each payment, `TREG_AGENT_PAYMENTS_FEE_BPS` (100 = 1%), 0 for now. The
    payment is raised so the credit after the fee still covers the call; the fee is never credited.
+6. Done: a payment that draws credit must expire within 150 seconds
+   (`TREG_AGENT_PAYMENTS_CREDIT_PROOF_MAX_S`), or it is settled. The reconciler looks each expired
+   one up once and credits it if someone settled it anyway. MPP challenges last 120 seconds.
+7. Done: each payment recorded in Stripe carries metadata (wallet, team id, protocol, network,
+   payment id), so support finds it by wallet.
 
 ## 3. Keys and accounts
 
