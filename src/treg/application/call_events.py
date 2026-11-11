@@ -18,7 +18,8 @@ Every identifier is HMAC-SHA256 under `call_events_hmac_secret`, after one norma
 (emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle, phone
 numbers to their E.164 digits), so a find's `answer_keys['email']` equals a later verify's
 `input_keys['email']`. A phone written without its country code gets no key: its digits alone
-could be another country's number. No raw email,
+could be another country's number. A keyed phone also records its country calling code
+(`answer_values['phone_calling_code']`, `input_meta['calling_code']`), which names no person. No raw email,
 name, domain, phone or URL is ever emitted. `answer_values` does carry raw segment text as the
 provider wrote it (at most 256 characters): a company's industry, size and HQ location, and a
 person's `location`, which can name a city. That is personal data next to the person's keys, kept
@@ -67,6 +68,7 @@ _ROLE_LOCALS = frozenset({
     "support", "team", "webmaster",
 })
 _VALUE_MAX = 256
+_SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
 
@@ -143,6 +145,7 @@ def adapter_fingerprint(adapter: Adapter) -> str:
     if cached is not None and cached[0] is adapter:
         return cached[1]
     spec = {"accepts": adapter.accepts, "in": adapter.in_map, "in_expr": adapter.in_expr,
+            **({"in_read": adapter.in_read} if adapter.in_read else {}),
             "const": adapter.const, "out": adapter.out_map, "miss": adapter.miss,
             "verdict": adapter.verdict, "verdicts": adapter.verdicts}
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -185,6 +188,15 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             v = P.get_path(doc, target)
             if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
                 given[expr] = v
+    # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
+    for field_name, expr in (adapter.in_read or {}).items():
+        if field_name in contract.identity_types:
+            try:
+                v = P.evaluate(expr, doc)
+            except (TypeError, ValueError, AttributeError, IndexError):
+                continue  # a malformed request reads back as nothing, never as a failed event
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[field_name] = v
     # A provider often takes more shapes than the adapter sends: the router sends `full_name`,
     # while a direct caller of the same finder may send `first_name` + `last_name`. A request
     # parameter named exactly like an identity field means that field; derivation then joins
@@ -209,9 +221,13 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm), None)
     if domain is None and "@" in norm.get("email", ""):
         domain = norm["email"].rsplit("@", 1)[1]
+    # `acme.fr.` is acme.fr written with the DNS root.
+    domain = domain.rstrip(".") if domain else domain
     if domain and "." in domain:
         meta["domain_class"] = domain_class(domain)
         meta["tld"] = domain.rsplit(".", 1)[1]
+    if (code := P.calling_code(identity.get("phone"))) is not None:
+        meta["calling_code"] = code
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
@@ -255,6 +271,10 @@ def _tld(value: str) -> bool:
         and not any(c.isspace() for c in value)
 
 
+def _calling_code(value: str) -> bool:
+    return value.isdigit() and 1 <= len(value) <= 3
+
+
 def segment_checks(contract: Contract) -> dict:
     """Every key `segment` can produce for this contract's calls, each with a test of a value it
     can record: a recorded variant for `input_type`, a lower-cased label for `tld`."""
@@ -262,6 +282,8 @@ def segment_checks(contract: Contract) -> dict:
     if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
         checks["tld"] = _tld
         checks["domain_class"] = _DOMAIN_CLASSES.__contains__
+    if "phone" in contract.identity_types:
+        checks["calling_code"] = _calling_code
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value":
             checks[k] = lambda v: True
@@ -292,7 +314,20 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
         return None
     if not isinstance(doc, (dict, list)):
         return None
-    return safe_output(adapter.from_upstream(doc), capability=capability)
+    raw = adapter.from_upstream(doc)
+    core = safe_output(raw, capability=capability)
+    # The Arena keeps only the booleans and numbers it ranks on (`valid`, `score`, …) and blanks
+    # the rest as likely masking flags. A field the contract records and declares `bool`, `int` or
+    # `float` is the provider's verdict (`name_match`, `ported`), kept when it has that type.
+    contract = catalog_store.load().contracts.get(capability)
+    for field_name, spec in (contract.output if contract else {}).items():
+        spec = spec or {}
+        kind = _SCALAR_TYPES.get(str(spec.get("type")))
+        v = raw.get(field_name)
+        if kind and spec.get("analytics", "skip") != "skip" and isinstance(v, kind) \
+                and (kind is bool or not isinstance(v, bool)):
+            core[field_name] = v
+    return core
 
 
 def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None) -> dict:
@@ -308,6 +343,11 @@ def answer_columns(contract: Contract, output: dict, input_norm: dict | None = N
             if n is None:
                 continue
             keys[field_name] = keyed(n)
+            if field_name == "phone" or field_name.endswith("_phone"):
+                # The country a number dials into: no person in it, and the segment country
+                # analysis needs when the provider names none.
+                if (code := P.calling_code(f"+{n}")) is not None:
+                    values[f"{field_name}_calling_code"] = code
             if "@" in n:
                 local, dom = n.rsplit("@", 1)
                 p = "" if field_name == "email" else f"{field_name}_"

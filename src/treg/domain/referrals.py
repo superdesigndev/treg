@@ -40,18 +40,20 @@ those durable checkpoints is the whole safety argument for paying at most once.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from . import money as ledger
 from ..config import get_settings
-from ..models import CreditBlock, Membership, Org, Referral, User
+from ..models import CreditBlock, Membership, Org, Referral, ReferralAffiliateEvent, User
 
 log = logging.getLogger("treg")
 
@@ -144,6 +146,80 @@ async def attribute(db: AsyncSession, *, user: User, org: Org, code: str) -> Ref
     return row
 
 
+class AffiliateConflict(ValueError):
+    pass
+
+
+class AffiliateUserNotFound(ValueError):
+    pass
+
+
+async def lock_referrer(db: AsyncSession, user_id: int) -> None:
+    await db.execute(update(User).where(User.id == user_id).values(id=User.id)
+                     .execution_options(synchronize_session=False))
+
+
+def affiliate_event(event: ReferralAffiliateEvent) -> dict:
+    return {"operation_id": event.operation_id, "version": event.version,
+            "previous_affiliate": event.previous_affiliate, "affiliate": event.affiliate,
+            "reason": event.reason, "principal": event.principal,
+            "created_at": event.created_at.isoformat()}
+
+
+async def affiliate_state(db: AsyncSession, *, user_id: int | None = None,
+                          email: str | None = None) -> dict:
+    query = select(User).where(User.id == user_id) if user_id is not None else select(User).where(User.email == email)
+    user = (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
+    if user is None:
+        raise AffiliateUserNotFound("user not found")
+    paid = (await db.execute(select(func.count()).select_from(Referral).where(
+        Referral.referrer_user_id == user.id, Referral.status.in_(("qualified", "paid")),
+    ))).scalar_one()
+    events = (await db.execute(select(ReferralAffiliateEvent).where(
+        ReferralAffiliateEvent.user_id == user.id,
+        ReferralAffiliateEvent.user_created_at == user.created_at,
+    ).order_by(ReferralAffiliateEvent.version.desc()).limit(20))).scalars().all()
+    limit = int(get_settings().referral_cap)
+    return {"user": {"id": user.id, "email": user.email, "suspended": user.suspended,
+                     "referral_code": user.referral_code},
+            "affiliate": user.referral_affiliate, "version": user.referral_affiliate_version,
+            "cap": {"paid": paid, "limit": None if user.referral_affiliate else limit,
+                    "standard_limit": limit, "affiliate": user.referral_affiliate},
+            "history": [affiliate_event(event) for event in events]}
+
+
+async def set_affiliate(db: AsyncSession, *, user_id: int, affiliate: bool, expected_version: int,
+                        reason: str, operation_id: str, principal: str) -> dict:
+    await lock_referrer(db, user_id)
+    user = (await db.execute(select(User).where(User.id == user_id)
+                            .execution_options(populate_existing=True))).scalar_one_or_none()
+    if user is None:
+        raise AffiliateUserNotFound("user not found")
+    previous = await db.get(ReferralAffiliateEvent, operation_id)
+    if previous is not None:
+        if (previous.user_id != user_id or previous.user_created_at != user.created_at
+                or previous.affiliate != affiliate
+                or previous.version != expected_version + 1 or previous.reason != reason
+                or previous.principal != principal):
+            raise AffiliateConflict("operation_id was already used for a different request")
+        return {**await affiliate_state(db, user_id=user_id), "replayed": True,
+                "changed": False, "event": affiliate_event(previous)}
+    if user.referral_affiliate_version != expected_version:
+        raise AffiliateConflict("affiliate version changed; read the current state before retrying")
+    event = ReferralAffiliateEvent(operation_id=operation_id, user_id=user_id,
+                                   user_created_at=user.created_at,
+                                   version=expected_version + 1,
+                                   previous_affiliate=user.referral_affiliate, affiliate=affiliate,
+                                   reason=reason, principal=principal)
+    user.referral_affiliate = affiliate
+    user.referral_affiliate_version = event.version
+    db.add(user)
+    db.add(event)
+    await db.flush()
+    return {**await affiliate_state(db, user_id=user_id), "replayed": False,
+            "changed": event.previous_affiliate != event.affiliate, "event": affiliate_event(event)}
+
+
 async def qualify(
     db: AsyncSession, *, org_id: int, payment_intent: str, amount_micro: int,
     fingerprint: str | None = None,
@@ -169,6 +245,18 @@ async def qualify(
         select(Referral).where(Referral.referred_org_id == org_id, Referral.status == "pending")
     )).scalars().first()
     if row is None:
+        return None
+    referrer_id = row.referrer_user_id
+    await lock_referrer(db, referrer_id)
+    if fingerprint and db.bind.dialect.name == "postgresql":
+        card_lock = int.from_bytes(hashlib.sha256(("referral-card:" + fingerprint).encode()).digest()[:8],
+                                   "big", signed=True)
+        await db.execute(select(func.pg_advisory_xact_lock(card_lock)))
+    row = (await db.execute(select(Referral).where(
+        Referral.referred_org_id == org_id, Referral.status == "pending",
+    ).execution_options(populate_existing=True))).scalar_one_or_none()
+    if row is None:
+        await db.commit()
         return None
 
     s = get_settings()
@@ -198,9 +286,11 @@ async def qualify(
     if paid_micro < int(s.referral_min_topup_micro):
         log.info("referral %s: %s of %s micro-USD paid — still pending",
                  row.id, paid_micro, s.referral_min_topup_micro)
+        await db.commit()
         return row
 
-    referrer = await db.get(User, row.referrer_user_id)
+    referrer = (await db.execute(select(User).where(User.id == referrer_id)
+                                .execution_options(populate_existing=True))).scalar_one_or_none()
     if referrer is None or referrer.suspended:
         return await _refuse("referrer_unavailable")
 
@@ -221,14 +311,14 @@ async def qualify(
 
     # Gate 3 — the lifetime cap. Kept distinct from `rejected` because it is not an accusation:
     # this person referred someone real and simply ran out of self-serve allowance.
-    paid_count = len((await db.execute(
-        select(Referral.id).where(
+    paid_count = 0
+    if not referrer.referral_affiliate:
+        paid_count = (await db.execute(select(func.count()).select_from(Referral).where(
             Referral.referrer_user_id == row.referrer_user_id,
             Referral.status.in_(("qualified", "paid")),  # type: ignore[attr-defined]
             Referral.id != row.id,
-        )
-    )).scalars().all())
-    if paid_count >= int(s.referral_cap):
+        ))).scalar_one()
+    if not referrer.referral_affiliate and paid_count >= int(s.referral_cap):
         row.status = "capped"
         row.reject_reason = "referrer_at_cap"
         row.qualifying_payment_intent = payment_intent
@@ -271,6 +361,12 @@ async def _grant_referee(db: AsyncSession, row: Referral) -> None:
     # (MissingGreenlet) - the log line itself would break the never-raises contract.
     row_id = row.id
     try:
+        await db.execute(update(Referral).where(Referral.id == row_id).values(id=Referral.id)
+                         .execution_options(synchronize_session=False))
+        await db.refresh(row)
+        if row.status != "qualified" or row.referred_block_id:
+            await db.commit()
+            return
         block = await ledger.grant(
             db, row.referred_org_id, amount_micro=int(get_settings().referral_referred_micro),
             kind="referral", once=False,
@@ -302,6 +398,9 @@ async def reject_for_payment(db: AsyncSession, payment_intent: str, reason: str)
     )).scalars().all()
     cancelled = 0
     for row in rows:
+        await db.execute(update(Referral).where(Referral.id == row.id).values(id=Referral.id)
+                         .execution_options(synchronize_session=False))
+        await db.refresh(row)
         if row.status == "qualified":
             row.status = "rejected"
             row.reject_reason = reason
@@ -320,7 +419,7 @@ async def reject_for_payment(db: AsyncSession, payment_intent: str, reason: str)
                 "referral %s was already PAID when payment %s was %s — %s micro-USD needs a human",
                 row.id, payment_intent, reason,
                 row.referrer_reward_micro + row.referred_reward_micro)
-    if cancelled:
+    if rows:
         await db.commit()
     return cancelled
 
@@ -398,11 +497,18 @@ async def _pay(db: AsyncSession, row: Referral) -> bool:
     once rather than twice. The grants only stage, so they and the block-id stamp land in ONE
     commit after the separate claim commit.
     """
+    await db.execute(update(Referral).where(Referral.id == row.id).values(id=Referral.id)
+                     .execution_options(synchronize_session=False))
+    await db.refresh(row)
+    if row.status != "qualified":
+        await db.commit()
+        return False
     s = get_settings()
     referred_org = await db.get(Org, row.referred_org_id)
     referrer_org = await credit_org_for(db, row.referrer_user_id)
     if referred_org is None or referrer_org is None:
         log.warning("referral %s has nowhere to pay (referrer org missing) — skipping", row.id)
+        await db.commit()
         return False
 
     claimed = (await db.execute(
@@ -504,7 +610,8 @@ async def summary(db: AsyncSession, user: User) -> dict:
             "min_topup_micro": int(s.referral_min_topup_micro),
             "hold_days": int(s.referral_hold_days),
         },
-        "cap": {"paid": paid_count, "limit": int(s.referral_cap)},
+        "cap": {"paid": paid_count, "limit": None if user.referral_affiliate else int(s.referral_cap),
+                "standard_limit": int(s.referral_cap), "affiliate": user.referral_affiliate},
         "totals": {
             "signed_up": len(rows),
             "topped_up": sum(1 for r in rows if r.status in ("qualified", "paid", "capped")),

@@ -14,6 +14,8 @@ from ..models import Feedback
 from ..domain.identity.access import Caller, require_member, require_superadmin
 from ..feedback_contract import FeedbackCategory, ReviewUsefulness
 from ..infra.db import get_admin_session, get_session
+from . import view
+from .views import account as account_views
 
 app = APIRouter()
 
@@ -61,6 +63,11 @@ async def get_feedback(
     return {"feedback_id": row.id, "status": "received", "category": row.category,
             "message": row.message, "call_ids": row.call_ids, "endpoint_id": row.endpoint_id,
             "created_at": row.created_at}
+
+
+@view.renders(get_feedback)
+async def _feedback_view(answer: view.Answer) -> str:
+    return account_views.feedback(answer.status, answer.json())
 
 
 @app.get("/admin/feedback", include_in_schema=False)

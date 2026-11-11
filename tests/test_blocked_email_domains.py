@@ -304,11 +304,12 @@ async def test_emailed_invite_link_refuses_a_blocked_domain(client, ops, sent_in
     assert await _user_count("farm@farm-a.example") == 0
 
 
-async def test_invite_code_accept_refuses_a_blocked_domain(client, ops, sent_invites):
+async def test_invite_code_accept_never_creates_a_blocked_user(client, ops, sent_invites):
     await _team_with_invite(client, "owner@company.dev", "farm@sub.farm-b.example")
     ops()
+    client.cookies.clear()
     r = await client.post("/invites/accept",
                           json={"code": sent_invites[0]["code"], "email": "farm@sub.farm-b.example"})
-    assert r.status_code == 403 and r.json()["detail"] == REFUSAL
+    assert r.status_code == 401
     assert "token" not in r.json()
     assert await _user_count("farm@sub.farm-b.example") == 0

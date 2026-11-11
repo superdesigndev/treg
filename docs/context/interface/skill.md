@@ -41,7 +41,8 @@ only what a user should install.
 [llms.txt](https://llmstxt.org) format (H1, summary blockquote, prose without headings, then H2 link
 lists) and restates nothing operational; it links `skill.md` for that. Both state the same money
 rule, so change them together. Provider-specific detail (an allowance, voice discovery) lives on the catalog row, in a
-parameter's, the cost's or the row's `note`, never in either file.
+parameter's, the cost's or the row's `note` ([catalog-schema](../architecture/catalog-schema.md#summary-and-note)),
+never in either file.
 
 `skill.md` mirrors the surfaces in [api.md](api.md) and [cli.md](cli.md); keep the three in sync
 when the API or CLI changes. Its feedback section links `{BASE}/feedback.md`; the contract is in
@@ -89,7 +90,9 @@ Constraints the hosts impose, which the code cannot explain:
 Served at `GET /skills/<name>/SKILL.md` from `src/treg/web/skills/<name>/SKILL.md`. Those in the
 well-known index are offered by `treg skill bootstrap` and installed only when named with
 `--skills` (or `all`) or already present; `jev-memory` and `rea-growth` are opt-in, kept out of the
-index and `/.well-known/`, so the installer never offers them. Workflow skills name search words
+index and `/.well-known/`, so the installer never offers them. Bootstrap names the offered ones in
+one line and never tells the agent to stop and ask: it runs before sign-in, so `llms.txt` and
+`skill.md` put that question after the first call that returns real data. Workflow skills name search words
 or routed `treg.*` jobs rather than per-provider endpoint ids where the catalog moves weekly; the
 catalog row's price and parameters win over anything a skill states.
 

@@ -17,6 +17,7 @@ _SNAPSHOT = Path(__file__).parent / "snapshots" / "routes.json"
 _CALL_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /call/{rest:path}"
 _CATALOG_CALL_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /catalog/call/{rest:path}"
 _TABLE_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /table/{rest:path}"
+_TASK_ROUTES = ("POST /tasks/{call_id}", "GET,HEAD /tasks/{call_id}")
 
 
 def _all_routes() -> list[str]:
@@ -36,6 +37,7 @@ _DATAPLANE_ONLY = (
     _CALL_ROUTE,
     _CATALOG_CALL_ROUTE,
     _TABLE_ROUTE,
+    *_TASK_ROUTES,
     "GET,HEAD /.well-known/oauth-protected-resource/mcp",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2",

@@ -23,6 +23,12 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
     billing
   - every tool row carries `added:`, the UTC day it reached main, as YYYY-MM-DD and not in the
     future (scripts/catalog_added.py writes it; its `--base` mode guards existing dates in CI)
+  - WARN on a summary or note over its token limit and on every match of the reflection word list
+    (scripts/catalog_text_reflect.txt) in a row's summary and notes, on every row, or with
+    `--base REF` on the rows added or changed against REF (catalog-schema.md, "Summary and note")
+  - with `--base REF`, a row keeps the spelling (today's `cost` or v2) it has on REF, unless
+    `--allow-respelling`; catalog-added.yml runs `--base` on every pull request and passes
+    `--allow-respelling` when the pull request carries the `catalog-migration` label
   - a `verified` endpoint must have an existing example_response file, and every example file
     parses and stays under EXAMPLE_MAX_BYTES
   - an extended endpoint a verification run has touched claims exactly one non-empty state
@@ -46,6 +52,7 @@ never what a claim on it is worth.
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import json
 import math
@@ -56,6 +63,11 @@ from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
+
+try:  # Running as a script puts `scripts/` on sys.path; importing in tests puts the repo root there.
+    from catalog_added import base_texts  # type: ignore[import-not-found]
+except ModuleNotFoundError:
+    from scripts.catalog_added import base_texts
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -198,6 +210,111 @@ def check_added(ep: dict, where: str, errors: list[str]) -> None:
                             "YYYY-MM-DD); run `uv run python scripts/catalog_added.py` to add today's")
     elif day > dt.datetime.now(dt.UTC).date():
         fail(errors, where, f"`added: {added}` is in the future; it is the UTC day the tool reached main")
+
+
+# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character;
+# punctuation is not counted.
+SUMMARY_TOKENS = 50
+NOTE_TOKENS = 75
+_CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"
+TOKEN = re.compile(rf"[{_CJK}]|[^\W_{_CJK}]+")
+REFLECT_FILE = ROOT / "scripts" / "catalog_text_reflect.txt"
+
+
+def tokens(text: str) -> int:
+    return len(TOKEN.findall(text))
+
+
+def reflect_entries(path: Path = REFLECT_FILE) -> list[tuple[str, re.Pattern, str]]:
+    """(entry, pattern, reason) for every line of the reflection word list."""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        entry, _, reason = line.partition("  # ")
+        entry = entry.strip()
+        if entry.startswith("re:"):
+            pattern = re.compile(entry[3:], re.I)
+        else:
+            words = r"\s+".join(map(re.escape, entry.split()))
+            pattern = re.compile(rf"(?<!\w){words}(?!\w)", re.I)
+        out.append((entry, pattern, reason.strip()))
+    return out
+
+
+def _param_notes(input_schema: object) -> list[tuple[str, str]]:
+    """(where, text) of every note in a row's `input`: its own, a location's, every parameter's."""
+    if not isinstance(input_schema, dict):
+        return []
+    out = [("input.note", input_schema["note"])] if isinstance(input_schema.get("note"), str) else []
+    def walk(specs: object, prefix: str) -> None:
+        for name, spec in (specs or {}).items() if isinstance(specs, dict) else ():
+            if isinstance(spec, dict):
+                if isinstance(spec.get("note"), str):
+                    out.append((f"{prefix}.{name}.note", spec["note"]))
+                walk(spec.get("properties"), f"{prefix}.{name}")
+    for location in ("pathParams", "queryParams", "headers", "body"):
+        block = input_schema.get(location)
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("note"), str):
+            out.append((f"input.{location}.note", block["note"]))
+        if isinstance(block.get("properties"), dict):
+            walk(block["properties"], f"input.{location}")
+        elif not isinstance(block.get("type"), str):
+            walk(block, f"input.{location}")
+    return out
+
+
+def _charge_notes(ep: dict) -> list[tuple[str, str]]:
+    out = []
+    for key in ("cost", "price"):
+        block = ep.get(key)
+        if isinstance(block, dict):
+            if isinstance(block.get("note"), str):
+                out.append((f"{key}.note", block["note"]))
+            fallback = block.get("fallback")
+            if isinstance(fallback, dict) and isinstance(fallback.get("note"), str):
+                out.append((f"{key}.fallback.note", fallback["note"]))
+    return out
+
+
+def check_row_text(ep: dict, where: str, warnings: list[str],
+                   reflect: list[tuple[str, re.Pattern, str]]) -> None:
+    """Warn on a summary or note over its token limit and on every reflection-list match in the
+    row's caller-facing text (catalog-schema.md "Summary and note")."""
+    prose = [(key, ep[key]) for key in ("summary", "note") if isinstance(ep.get(key), str)]
+    for key, limit in (("summary", SUMMARY_TOKENS), ("note", NOTE_TOKENS)):
+        if isinstance(ep.get(key), str) and (n := tokens(ep[key])) > limit:
+            fail(warnings, where, f"{key} is {n} tokens, over {limit}")
+    for field, text in [*prose, *_param_notes(ep.get("input")), *_charge_notes(ep)]:
+        for entry, pattern, reason in reflect:
+            if m := pattern.search(text):
+                fail(warnings, where, f"{field} says {m.group(0)!r} ({entry}){': ' + reason if reason else ''}")
+
+
+def _catalog_rows(texts) -> dict[str, tuple[dict, str]]:
+    """id -> (row as written, its spelling with its provider's `defaults:` applied)."""
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    docs = [d for d in (yaml.load(text, Loader=loader) for text in texts) if isinstance(d, dict)]
+    defaults = {d.get("provider"): d["defaults"] for d in docs if isinstance(d.get("defaults"), dict)}
+    out = {}
+    for doc in docs:
+        for ep in doc.get("endpoints") or []:
+            if isinstance(ep, dict) and ep.get("id"):
+                out[str(ep["id"])] = (ep, schema.spelling(schema.merge(ep, defaults.get(doc.get("provider")))))
+    return out
+
+
+def compare_with_base(base: str) -> tuple[set[str], list[str]]:
+    """The ids of the rows added or changed against `base`, wherever in the catalog they moved, and
+    one line per row whose spelling (today's `cost` or v2) differs from its spelling on `base`."""
+    before = _catalog_rows(base_texts(base, CATALOG).values())
+    after = _catalog_rows(p.read_text() for p in sorted(CATALOG.glob("*.yaml")))
+    changed = {eid for eid, (ep, _) in after.items() if eid not in before or before[eid][0] != ep}
+    respelt = [f"{eid}: written in the {before[eid][1]} spelling on {base}, now {spelt}"
+               for eid, (_, spelt) in sorted(after.items()) if eid in before and before[eid][1] != spelt]
+    return changed, respelt
 
 
 def _input_fields(input_schema: object) -> dict[str, dict]:
@@ -373,7 +490,6 @@ def check_cost_quantity(cost: dict, input_schema: object, where: str, errors: li
 
 RESERVE_DEFAULT_SOURCES = {"docs", "observed"}
 UNDECLARED_RESERVE = frozenset({
-    "dataforseo.x.on-page-page-screenshot",
     "findymail.intellimatch.search",
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
@@ -1014,10 +1130,17 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     """
     if cost.get("type") not in COST_TYPES:
         fail(errors, where, f"cost.type missing or not one of {sorted(COST_TYPES)}")
-    # `bills_miss` marks a per-success price whose provider still charges for some misses (a
-    # routed row counts it among the children that bill a miss); other types already say so.
-    if "bills_miss" in cost and (cost["bills_miss"] is not True or cost.get("type") != "per_success"):
-        fail(errors, where, "cost.bills_miss must be true, and only on a per_success price")
+    # `bills_miss` marks a per-success or per-result price whose provider still charges for some
+    # misses (routing.plan.bills_miss: ranking prices those misses and a routed row counts the
+    # child among those that bill one); every other priced type already bills each call.
+    if "bills_miss" in cost and (cost["bills_miss"] is not True
+                                 or cost.get("type") not in ("per_success", "per_result")):
+        fail(errors, where, "cost.bills_miss must be true, and only on a per_success or per_result price")
+    # `miss_units`: how many rows a per-result miss bills (a minimum charge on an empty page);
+    # without it a billed miss costs the whole request.
+    if "miss_units" in cost and (type(cost["miss_units"]) is not int or cost["miss_units"] < 1
+                                 or cost.get("bills_miss") is not True or cost.get("type") != "per_result"):
+        fail(errors, where, "cost.miss_units must be a positive integer, beside bills_miss on a per_result price")
     value, conf = cost.get("value"), cost.get("confidence")
     if conf is not None and conf not in CONFIDENCES:
         fail(errors, where, f"cost.confidence '{conf}' not one of {sorted(CONFIDENCES)}")
@@ -1484,8 +1607,24 @@ def check_manifests(errors: list[str]) -> None:
 
 
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Validate the endpoint catalog.")
+    parser.add_argument("services", nargs="*", help="only these providers (both tiers)")
+    parser.add_argument("--base", metavar="REF",
+                        help="judge the text of only the rows added or changed against REF, and fail a "
+                             "row whose spelling differs from REF's")
+    parser.add_argument("--allow-respelling", action="store_true",
+                        help="with --base: report spelling changes but pass (the catalog-migration label)")
+    args = parser.parse_args(argv)
     errors: list[str] = []
     warnings: list[str] = []
+    changed, respelt = compare_with_base(args.base) if args.base else (set(), [])
+    reflect = reflect_entries()
+    for line in respelt:
+        if args.allow_respelling:
+            warnings.append(f"{line} (catalog-migration)")
+        else:
+            errors.append(f"{line}; keep the row's spelling, or label a migration batch "
+                          "`catalog-migration`")
     check_fx(errors)
     check_aliases(errors, warnings)
     tax = schema.read_yaml(CATALOG / "capabilities.yaml")
@@ -1495,7 +1634,7 @@ def main(argv: list[str]) -> int:
 
     from treg.oauth_providers import REGISTRY
 
-    only = set(argv)
+    only = set(args.services)
     all_files = sorted(p for p in CATALOG.glob("*.yaml")
                        if p.name not in ("capabilities.yaml", "fx.yaml", "aliases.yaml", "contracts.yaml", "adapters.yaml"))
     # Successors can appear later in the same file or in another provider. Build the reference map
@@ -1596,6 +1735,8 @@ def main(argv: list[str]) -> int:
                 if not ep.get(f):
                     fail(errors, where, f"missing required field '{f}'")
             check_added(ep, where, errors)
+            if args.base is None or eid in changed:
+                check_row_text(ep, where, warnings, reflect)
             miss = ep.get("miss") if legacy else None
             if isinstance(miss, dict) and miss.get("when") is not None:
                 # The router evaluates `when` against the provider body; a misspelt path parses
@@ -1694,7 +1835,7 @@ def main(argv: list[str]) -> int:
             effective_async = effective_async_descriptor(data.get("async"), ep.get("async"))
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
-                # verification observed (a DataForSEO extended row carries `observed_cost` only).
+                # verification observed (a row in today's spelling may carry `observed_cost` only).
                 check_async_descriptor(effective_async, where, str(service), endpoint_index,
                                        _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":

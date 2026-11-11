@@ -104,7 +104,10 @@ def test_segment_checks_are_what_the_event_can_record():
     assert find["input_type"]("domain+full_name") and not find["input_type"]("full_name+domain")
     assert find["tld"]("fr") and find["tld"]("中国") and not find["tld"]("FR") and not find["tld"](".fr")
     assert ev.segment(contracts["people.email.find"], {"full_name": "A B", "domain": "example.中国"})[1]["tld"] == "中国"
-    assert set(ev.segment_checks(contracts["people.phone.verify"])) == {"input_type"}
+    # A phone identity records the number's country calling code, never the number.
+    phone = ev.segment_checks(contracts["people.phone.verify"])
+    assert set(phone) == {"input_type", "calling_code"}
+    assert phone["calling_code"]("44") and not phone["calling_code"]("+44") and not phone["calling_code"]("4412")
 
 
 def test_the_most_specific_rule_wins_then_the_first_listed():
@@ -244,6 +247,25 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
     assert await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.de"}, n=1) != ["leadmagic"]
     header = await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"}, header="hunter", n=1)
     assert header == ["hunter"], "the caller's prefer header replaces published rules"
+
+
+async def test_a_domain_written_with_the_dns_root_matches_its_tld(clients, enrichment_on, published):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    contract = catalog_store.load().contracts["people.email.find"]
+    assert ev.segment(contract, {"full_name": "Jean Dupont", "domain": "acme.fr."})[1]["tld"] == "fr"
+    assert await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr."}, n=1) == ["leadmagic"]
+
+
+async def test_a_warmed_worker_plans_its_first_call_with_the_published_set(clients, enrichment_on, monkeypatch):
+    reader_app.reset()
+    store = SimpleNamespace(read_route_rules=AsyncMock(return_value=envelope(rules=[_rule(order=["leadmagic"])])))
+    monkeypatch.setattr(reader_app, "_store", lambda: store)
+    monkeypatch.setattr(reader_app, "get_settings", lambda: SimpleNamespace(
+        route_rules_enabled=True, route_rules_refresh_s=30))
+    await reader_app.warm()
+    assert reader_app.decide("people.email.find", {"tld": "fr", "input_type": "domain+full_name"}).rule.order == ("leadmagic",)
+    assert reader_app._reader.task is None, "the first call does not start a second read"
+    reader_app.reset()
 
 
 async def test_off_by_default_the_published_set_is_never_read(clients, enrichment_on, monkeypatch):

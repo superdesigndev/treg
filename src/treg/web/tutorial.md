@@ -319,25 +319,24 @@ HOME=~/.treg-personas/tom treg org invite alice@superdesign.dev --role viewer
 
 **Notice:** this time we **keep the code** - Alice uses it directly next.
 
-## Step 13 - Alice joins by code (no login first)
+## Step 13 - Alice signs in, then joins by code
 
-The contrast with Bob: Alice **never runs** `login`. The code itself proves her email, so `join` creates
-her, adds her to Superdesign, and saves her token - all in one command.
+The contrast with Bob: Alice uses the **code** instead of browsing her invites. The code only names the
+invite - Tom holds it too - so Alice still proves her email with `login` first. Then `join` adds her to
+Superdesign and saves her token.
 
 ```bash
-HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-… --email alice@superdesign.dev
+HOME=~/.treg-personas/alice treg login --email alice@superdesign.dev
+HOME=~/.treg-personas/alice treg org join ZTeW5ss-cXiyvzeMs3em-…
 ```
 ```json
 {
   "org": "superdesign", "org_id": 2, "name": "Superdesign", "role": "viewer",
-  "token": "<alice's superdesign token>",
-  "personal": { "org": "alice-superdesign-dev", "org_id": 4, "role": "owner",
-                "token": "<alice's personal token>" }
+  "token": "<alice's superdesign token>"
 }
 ```
 
-**Notice:** one command created Alice, gave her a personal org, and made her a viewer - Tom never handled
-her token.
+**Notice:** the code picked the invite; Alice's own sign-in proved who she is. Tom never handled her token.
 
 ## Step 14 - The viewer role has teeth
 
@@ -914,7 +913,7 @@ treg accept <org-slug>                          # accept one addressed to you (n
 treg org create "<Name>"                        # make a team, become owner
 treg org ls | org use <slug>                    # list / switch active org
 treg org invite <email> [--role viewer|member|admin] [--expires-days N]
-treg org join <code> --email you@x.com          # the code door (creates you if new)
+treg org join <code>                           # the code door (sign in as the invited email first)
 treg org members | set-role <user_id> <role>    # roster / change a role (owner)
 treg org invites | revoke <invite_id>           # list / kill pending invites (admin+)
 treg org leave | delete <slug>                  # self-remove / delete (owner, confirm-by-name)

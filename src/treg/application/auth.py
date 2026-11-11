@@ -637,7 +637,7 @@ async def _social_identity_proven(
 ) -> SocialLoginProof | SocialCheckPending:
     """Sign in a verified user now. An address no verified user holds yet waits for the browser
     check, because its first proof is where signup credit is decided."""
-    if turnstile.enabled():
+    if turnstile.enabled() and get_settings().turnstile_social:
         async with database.session_maker() as db:
             verified = (await db.execute(select(User.email_verified_at).where(
                 User.email == _norm_email(email)))).scalar_one_or_none()

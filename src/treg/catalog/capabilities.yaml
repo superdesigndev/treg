@@ -29,7 +29,9 @@ platforms:
   ai-judge: {label: "AI judgment", category: "AI generation", summary: "A label, a score or a yes/no probability over evidence you supply. A judge, not a writer: classify, route, verify, rank."}
 
   # --- AI generation: generated media modalities ------------------------------------------------
-  video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
+  # purchased_credit_only: a call on this platform is paid from purchased credit only; free credit
+  # (promotional, referral, bonus, earned) does not cover it.
+  video-gen: {label: "Video generation", category: "AI generation", purchased_credit_only: true, summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
@@ -306,6 +308,7 @@ capabilities:
   people.email.find.personal: "Find a person's personal email address"
   people.phone.verify: "Validate and format a phone number"
   people.phone.live: "Check whether a phone number is live on its network"
+  people.profile.from_phone: "Find social profiles from a contact phone number"
   linkedin.profile.from_email: "Find a person's LinkedIn profile from their email address"
   creators.socials.connected: "List a creator's accounts on other platforms"
 

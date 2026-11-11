@@ -13,8 +13,9 @@ reads some answer shape differently is printed with a warning, and the fixture r
 Applying keeps every comment outside the replaced keys; the dry-run names any comment it would drop.
 
 A provider whose endpoint-file header declares `defaults:` has its rows written against them: a key
-equal to the default is left out, one the row lacks is written as `null`, and a `bill` default is
-inherited whole, because it is the batch's translation of the Python branch it deletes.
+equal to the default is left out, one the row lacks is written as `null`, a `bill` default is
+inherited whole and a `settle` default by every priced row without a settle form of its own,
+because each is the batch's translation of the Python branch it deletes.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from pathlib import Path
 import yaml
 from treg.domain.catalog.schema import CatalogSchemaError, merge, parse_row, read_yaml, spelling
 from treg.domain.catalog.schema.v2 import cost_type
+from treg.domain.catalog.store import _effective_cost
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -38,7 +40,7 @@ CATALOG = ROOT / "src" / "treg" / "catalog"
 BRANCH_SOURCES = (ROOT / "src/treg/application/call/settle.py", ROOT / "src/treg/application/call/resolve.py",
                   ROOT / "src/treg/domain/catalog/results.py")
 PROVIDER_KEYS = ("call_fee", "call_fee_per", "contactout", "sumble", "enrichlayer", "octen_rates",
-                 "tavily_rates", "bills_miss", "ceiling_param")
+                 "tavily_rates", "bills_miss", "miss_units", "ceiling_param")
 PLUGIN_SETTLES = ("quantity", "base", "modifiers", "terminal_presence")
 # The 2xx error envelope today's result judge reads on every result-aware row (`results.classify`).
 ENVELOPE = {"any": [{"path": "response.error", "op": "present"}, {"path": "response.errors", "op": "present"}]}
@@ -193,9 +195,11 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
     endpoint_id = str(row["id"])
     out = Rewrite(endpoint_id)
     if row.get("cost") is None and defaults and not any(k in row for k in (*COST_KEYS, "observed_cost")):
-        # An unpriced row stays unpriced: it opts out of the defaults that describe a price, and its
-        # outcome keys in today's spelling move to v2 as a priced row's do.
-        keys, kind, bill = {k: None for k in COST_KEYS if k in defaults and k != "bill"}, None, {}
+        # An unpriced row stays unpriced: it opts out of the defaults that describe a price (a
+        # `price: null` says so when there are none) and inherits the provider's settle and bill
+        # rules, which price nothing without a price; its outcome keys move to v2 as a priced row's do.
+        keys = {k: None for k in ("price", "provenance", "reserve") if k in defaults} or {"price": None}
+        kind, bill = None, {}
         if spelling({k: row[k] for k in OUTCOME_KEYS if k in row}) == "v2":
             return _checked(row, out, keys, ("tier",) if "tier" in row else (), defaults)
     else:
@@ -266,8 +270,8 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
-            if key == "expect" and expect is None:
-                # today the row inherits its header's expect, which the batch moves into defaults
+            if key == "settle":
+                # like `bill`, a settle default translates the provider's branch the batch deletes
                 continue
             keys[key] = None
         elif keys[key] == defaults[key]:
@@ -284,18 +288,24 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
     order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note",
              "async")
     return _checked(row, out, {k: keys[k] for k in order if k in keys},
-                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()),
+                    tuple(k for k in ("cost", "observed_cost", "tier", *OUTCOME_KEYS,
+                                      *(("note",) if "note" in keys else ()),
                                       *(("async",) if row.get("async") is False else ()))
                           if k in row), defaults)
 
 
 def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple[dict, str | None, dict]:
-    """A priced row's v2 cost keys, today's `cost.type`, and the bill that type implies."""
-    endpoint_id, cost = out.endpoint_id, row.get("cost")
+    """A priced row's v2 cost keys, today's `cost.type`, and the bill that type implies. A row
+    priced by its `observed_cost` is rewritten from the price the catalog serves for it today,
+    without the note that says it was observed."""
+    endpoint_id, cost = out.endpoint_id, _effective_cost(row)
     if not isinstance(cost, dict):
         raise Refused("the row has no cost to rewrite")
-    if row.get("observed_cost") is not None:
-        raise Refused("an observed_cost price is written by the ingester in its batch")
+    if row.get("observed_cost") is not None and isinstance(row.get("cost"), dict):
+        out.warnings.append("observed_cost beside a cost is dropped: no code reads it")
+    elif row.get("observed_cost") is not None:
+        # how the price was measured is its provenance, not a caveat for the caller
+        cost = {k: v for k, v in cost.items() if k != "note"}
     if check_branches and (branch := _branches(provider, endpoint_id)):
         raise Refused(f"{branch}; its batch moves that rule into data or a plugin")
     if found := [k for k in PROVIDER_KEYS if k in cost]:
@@ -541,7 +551,9 @@ def main(argv: list[str]) -> int:
     refused: list[tuple[str, str]] = []
     docs = [schema.read_endpoint_file(path) for path in sorted(CATALOG.glob("*.yaml"))
             if isinstance(doc := schema.read_yaml(path), dict) and isinstance(doc.get("endpoints"), list)]
-    defaults = schema.provider_defaults(docs)
+    # Read directly, not through the loader's one-home check: a batch keeps its header's `expect`
+    # beside the defaults until the codemod has rewritten the rows that inherit it.
+    defaults = {d.provider: d.defaults for d in docs if d.defaults is not None}
     for path, provider, doc in ((d.path, d.provider, d.raw) for d in docs):
         for row in doc["endpoints"]:
             if not (row.get("id") in wanted or provider == args.provider):

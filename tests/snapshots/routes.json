@@ -361,6 +361,32 @@
     "methods": [
       "POST"
     ],
+    "name": "cli_events",
+    "path": "/cli/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest",
+    "path": "/cli/latest"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest_download",
+    "path": "/cli/latest/{platform}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "publish_hub_tool",
     "path": "/hub/tools"
   },
@@ -745,6 +771,15 @@
     ],
     "name": "install_sh",
     "path": "/install.sh"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "install_ps1",
+    "path": "/install.ps1"
   },
   {
     "kind": "APIRoute",
@@ -1692,6 +1727,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "list_admins",
+    "path": "/orgs/{org_id}/admins"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "org_usage",
     "path": "/orgs/{org_id}/usage"
   },
@@ -2063,6 +2107,15 @@
     ],
     "name": "agent_connection",
     "path": "/orgs/{org_id}/agents/{user_id}/connection"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "team_first_call",
+    "path": "/orgs/{org_id}/first-call"
   },
   {
     "kind": "APIRoute",
@@ -2680,6 +2733,32 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user_by_email",
+    "path": "/admin/referrals/users"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user",
+    "path": "/admin/referrals/users/{user_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "admin_set_referral_affiliate",
+    "path": "/admin/referrals/users/{user_id}/affiliate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "admin_set_superadmin",
@@ -2874,6 +2953,23 @@
     ],
     "name": "table_account",
     "path": "/table-account"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "task_submission",
+    "path": "/tasks/{call_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "task_look",
+    "path": "/tasks/{call_id}"
   },
   {
     "kind": "APIRoute",

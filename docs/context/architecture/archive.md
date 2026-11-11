@@ -254,7 +254,8 @@ the reserve, replacing only the network trip. The response carries `X-Treg-Cache
 is declared last in the model to match ALTER TABLE's append position). A hit is not an
 observation: no snapshot, no learning, only a fire-and-forget `last_requested_at` touch, the
 demand signal refresh reads. `lookup` uses the API pool on purpose so it never queues behind the
-archive's own background writes.
+archive's own background writes. A metered hit leaves through the live answer's hand-off, so
+`strip_reported_charge` removes the provider's reported charge from it as from a live answer.
 
 Freshness: `ttl_for(entry)` gives fixed starting guesses by capability prefix; a positive learned
 `ttl_s` replaces them. Serving takes the minimum of the learned TTL, the vendor
@@ -274,8 +275,8 @@ branch, and a fault anywhere in lookup degrades to a live call.
 `domain.catalog.results.classify` reads the buffered bytes, never rewriting them, into `found`,
 `empty`, `error` or `unknown` with bounded reason codes. Result-aware behavior applies only to
 endpoints with a verified adapter and a nonempty hit/miss expression (`has_result_rules`), reusing
-`Adapter.is_miss`, and to a v2 row with a verified adapter that declares a 2xx miss, judged by its
-outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
+`Adapter.is_miss`, and to a v2 row with a verified adapter that declares a `miss` rule (for a 2xx or
+a 4xx status), judged by its outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
 `routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
 the adapter. Strict per-endpoint validators live in `results.py`.
@@ -367,7 +368,10 @@ hashes depend on.
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
 plus the answer; a hash-only version reports `stored: false`. `GET /calls/{id}/result` exposes it
 to members of the row's org; what makes it safe is that the row belongs to the team and names
-bytes that team already received. A routed parent has no link of its own and lists its
+bytes that team already received. A metered answer is returned as its caller received it: with
+`strip_reported_charge` on, without the provider's reported charge unless the request keeps it
+([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
+provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
 `children`, audited before the parent, so the lookup reads the hour before the parent's row.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).
@@ -441,6 +445,8 @@ one body; then versions older than `archive_prune_min_age_days` beyond the newes
 `archive_prune_keep_versions` on keys undemanded for 14 days. `archive`-policy endpoints are
 exempt. Batch 0 disables. Stripped `both` rows become `r2` and keep their logical counts; only
 erasure deletes objects.
+Versions whose `content_hash` an unexpired trimmed `IdempotentCall` row names are protected too
+(read once per pass over Alembic 0100's partial index): that row replays from them.
 
 ## Change observation
 

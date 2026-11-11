@@ -52,8 +52,8 @@ One token reaches two kinds of tool, and treg injects the credential on the serv
 hold it:
 
 - **The catalog**: curated tools treg calls for you, each by id.
-- **Your own tools**: API accounts, OAuth connections, vendor CLIs and skills a teammate registered
-  for the team. Never billed, with one exception: an X connection made through treg's own X
+- **Your own tools**: API accounts, OAuth connections and skills a teammate registered for the
+  team. Never billed, with one exception: an X connection made through treg's own X
   app is billed per call, because X bills the app owner; the answer reports the price.
 
 ## First: check where you stand
@@ -88,12 +88,13 @@ or the CLI is enough, and having both is fine.
    token, `curl -fsSL https://treg.to/install.sh | sh -s -- --token <token>` does the install and sign-in at
    once.
 
-   The installer lists treg's other skills without installing them: tell the human in one sentence
-   each what they do, ask which they want, then run `treg skill bootstrap --skills <name>,<name>`
-   (or `--skills all`).
+   The installer names treg's other skills in one line without installing them. Do not stop to ask
+   about them before sign-in: sign in, make the first call, and only once it returns real data
+   tell the human in one sentence each what they do (`https://treg.to/.well-known/skills/index.json`), then
+   run `treg skill bootstrap --skills <name>,<name>` (or `--skills all`) for the ones they pick.
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
-`treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new
+`treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
 verified account gets $1.00 of credit once, on its first eligible team; aliases of one inbox (`+tag`,
 Gmail dots) share it.
 
@@ -148,6 +149,10 @@ How a routed call works:
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current.
+- A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
+  `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
+  keeps going until an answer fills every `complete` field (`routing.contract.complete` in
+  `catalog_get`); the fullest so far wins if none does.
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.
@@ -285,6 +290,8 @@ no JSON `detail` is never treg's.
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
 | 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
@@ -369,25 +376,6 @@ token, also send `X-Treg-Org: <team-slug>`; a team token does not need it. treg 
 injects the team's credential on the server, and relays method, query, headers and body unchanged;
 your `X-Treg-Token` is removed before the provider sees the request. `GET https://treg.to/tools` lists the
 tools as JSON.
-
-**Command-line tools** (stripe, gh, vercel, gcloud and others) run with the team's credential and
-without you logging in:
-
-- `treg <command>` is the simplest: `treg claude`, `treg node server.js`, `treg with -- npm test`
-  run that one command with the team's credentials, and nothing else changes. Calls to a registered
-  host are credentialed by the server; every other address goes out untouched. Node before version
-  24 ignores proxy settings in its built-in `fetch`, so such a call goes out with no credential: use
-  a client that reads the environment (axios, got, undici `ProxyAgent`) or Node 24+. curl, git,
-  Python requests and httpx, and Deno are covered at any version.
-- `treg run stripe -- balance retrieve` runs one vendor CLI. `--local` (the default) runs it on this
-  machine, isolated under a dedicated user once an admin has run `sudo treg setup-local-run`;
-  server-side execution (`--server`) is disabled globally.
-- `treg shell start` opens a subshell where registered CLIs get their credentials by themselves;
-  `--proxy` also credentials HTTPS calls your own code makes to a registered API. `treg serve` runs
-  the same proxy as a background service. A certificate-pinned client refuses the interception: use
-  `treg run` or `treg call` for it.
-
-[Import and shell](https://treg.to/tutorial-import-shell.md) has the full walkthrough.
 
 **Connecting a key for catalog calls.** `treg connections connect --provider <provider>` connects a
 provider the catalog knows: a consent screen for OAuth providers; for key-based ones a hidden

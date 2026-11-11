@@ -643,16 +643,17 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/monid.svg",
         "logo_fills": True,
         "title": "treg vs Monid: two tool catalogs for AI agents",
-        "description": "Monid and treg both give agents paid tools from a prepaid balance. treg adds "
-                       "0% markup in its terms and your own keys, never metered.",
-        "sub": "0% markup in the terms, and your own keys first. Like Monid, treg sells paid tools "
-               "from a prepaid balance.",
+        "checked": "2026-11-06",
+        "description": "Monid and treg both sell agents paid tools from a prepaid balance. treg adds "
+                       "0% markup on every tool and unmetered connected apps.",
+        "sub": "0% markup on every tool, and connected apps never metered. Like Monid, treg sells "
+               "paid tools from a prepaid balance.",
         "their_words": "Connect your agent to every tool it needs.",
         "tldr": "Monid and treg both give agents a catalog of paid tools from a prepaid balance, with "
                 "$1 to start and no subscription. treg is like OpenRouter for tools: one API key and "
                 "one balance for many paid APIs. treg has {ENDPOINTS} tools across {PROVIDERS} "
-                "providers, 0% markup written into its terms, your own keys and connected accounts "
-                "never metered, and team spend caps. Monid publishes its connector definitions and "
+                "providers, 0% markup on every tool written into its terms, your own keys and "
+                "connected apps never metered, and roles and call caps for each member. Monid publishes its connector definitions and "
                 "engine under MIT, with a large community on GitHub. treg's whole registry is on "
                 "GitHub too, and you can self-host it for your team.",
         "spec": {"billing": "Prepaid, per call or result", "start": "$1",
@@ -664,19 +665,21 @@ COMPETITORS: dict[str, dict] = {
             "You want discovery that ranks candidate tools by fit and price.",
         ],
         "fit_treg": [
+            "Your agent works in your own Google, Meta, TikTok, LinkedIn, Slack or YouTube accounts, "
+            "connected once and never metered.",
             "You want your own provider keys on the hosted service, used first and never metered.",
-            "Your agent works in your own Google Analytics, Search Console, Google Ads or Meta Ads "
-            "accounts.",
             "You want your team's own APIs, CLIs and skills behind the same token.",
-            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
-            "You want 0% markup written into the terms, and code on GitHub you can self-host.",
+            "You want roles, tool access and daily call caps for each member of your team.",
+            "You want 0% markup on every tool, written into the terms, and code on GitHub you can "
+            "self-host.",
         ],
         "cells": _c(
             how_pay="A prepaid wallet, pay as you go. No subscription.",
             free_start="$1 to start.",
-            fees="Per-call or per-result prices. A markup is not published.",
+            fees="0 Markup on most endpoints: the provider's standard rate, with no platform fee. "
+                 "Endpoints without the label may include a platform fee.",
             x402="Yes: USDC on Base or Monad.",
-            catalog="2,800+ tools across 90+ providers.",
+            catalog="2,900+ tools across 90+ providers.",
             data="Yes: sales intelligence, media generation, voice, web search and scraping, social and "
                  "marketplace data, SEO, people and brand data, DeFi.",
             own_accounts=NOT_PUBLISHED,
@@ -689,7 +692,7 @@ COMPETITORS: dict[str, dict] = {
             open_source="The connector layer and engine are MIT-licensed. The hosted platform is not "
                         "published.",
             price_before="Yes: prices in discover, inspect and run responses.",
-            caps=NOT_PUBLISHED,
+            caps="A daily budget and a per-call limit for a workspace.",
             logs="Runs and wallet activity.",
             team="Workspaces. Roles are not published.",
         ),
@@ -705,17 +708,18 @@ COMPETITORS: dict[str, dict] = {
              "rankings page."),
         ],
         "different": [
-            ("0% markup, in the terms.", "Each tool is billed at the provider's own rate, and no markup is "
-             "a commitment in treg's terms. No top-up fee."),
-            ("A large catalog, plus your own tools.", "{ENDPOINTS} tools across {PROVIDERS} providers "
-             "(Monid lists 2,800+ across 90+), and your team's own APIs, CLIs and skills behind the same "
-             "token."),
+            ("Your apps, connected and free.", "Connect Google Analytics, Search Console, Google Ads, "
+             "Meta Ads, TikTok, Instagram, LinkedIn, Slack, YouTube and more by OAuth once. treg never "
+             "meters those calls; X alone bills its own per-use price."),
+            ("0% markup on every tool.", "Every catalog tool is billed at the provider's own rate, a "
+             "commitment in treg's terms. No top-up fee."),
             ("Your own keys, on the hosted service.", "Register your key for a provider and treg uses it "
              "first, every time, and never meters the call."),
-            ("Your connected accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, "
-             "Slack and YouTube, connected by OAuth and never metered."),
-            ("Spend controls for a team.", "A team daily spend cap, a per-call cost ceiling and per-member "
-             "daily call caps, with owner, admin, member and viewer roles."),
+            ("A large catalog, plus your own tools.", "{ENDPOINTS} tools across {PROVIDERS} providers "
+             "(Monid lists 2,900+ across 90+), and your team's own APIs, CLIs and skills behind the same "
+             "token."),
+            ("Controls for each member.", "Owner, admin, member and viewer roles, tool access per member "
+             "and daily call caps per member, on top of team spend caps."),
         ],
         "both": "Both are remote MCP servers with an API, a CLI and an agent skill. Search both for the "
                 "tools you need, and compare the price of the calls you will make.",
@@ -725,9 +729,9 @@ COMPETITORS: dict[str, dict] = {
                  "catalog of paid tools from a prepaid balance. treg also puts your team's own APIs, "
                  "CLIs and skills behind the same token, beside the catalog."),
             ("How much does Monid cost?",
-                 "Monid pricing is per call or per result from a prepaid wallet, for example $0.003 a "
-                 "call, with $1 to start and no subscription. Monid shows prices in its discover, "
-                 "inspect and run responses."),
+                 "Monid pricing is per call or per result from a prepaid wallet, with $1 to start and "
+                 "no subscription. Most Monid endpoints carry 0 Markup, the provider's standard rate. "
+                 "Monid shows prices in its discover, inspect and run responses."),
             ("Can I use my own API keys with Monid?",
                  "Monid does not publish this for its hosted service; the open-source Monid engine can "
                  "run a connector locally with your own vendor key. On treg, your team's key for a "
@@ -735,17 +739,16 @@ COMPETITORS: dict[str, dict] = {
             ("Monid vs treg: what is the difference?",
                  "The main difference is what each one adds. Monid offers MIT-licensed connectors, "
                  "agent email and phone tools, and discovery ranked by fit and price. treg connects "
-                 "your Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, Slack and "
-                 "YouTube accounts, never metered, and sets a team daily spend cap, a per-call cost "
-                 "ceiling and per-member daily call caps."),
+                 "your Google, Meta, TikTok, LinkedIn, Slack and YouTube accounts by OAuth, never "
+                 "metered, and gives each team member a role and a daily call cap."),
             ("Can I use Monid and treg together?",
                  "Yes. Monid and treg are both remote MCP servers with an API, a CLI and an agent "
                  "skill, so one agent can hold both connections. Search Monid and treg for the tools "
                  "you need, and compare the price of the calls you will make."),
             ("How does treg pricing work compared with Monid?",
-                 "treg bills each call at the provider's own rate, with 0% markup written into its "
-                 "terms and no top-up fee. treg gives $1.00 of credit once per new verified account, "
-                 "with no card. Monid does not publish a markup."),
+                 "treg bills every catalog call at the provider's own rate, with 0% markup on every "
+                 "tool written into its terms and no top-up fee. Monid charges 0 Markup on most "
+                 "endpoints. treg gives $1.00 of credit once per new verified account, with no card."),
             ("Can I self-host treg?",
                  "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
                  "self-host treg for your own team. Monid's connector layer and engine are "
@@ -756,6 +759,9 @@ COMPETITORS: dict[str, dict] = {
             ("How it works", "https://monid.ai/docs/guide/how-it-works.md"),
             ("Pay with x402", "https://monid.ai/docs/guide/pay-with-x402.md"),
             ("API overview", "https://monid.ai/docs/api/overview.md"),
+            ("Terms, 0 Markup pricing", "https://monid.ai/legal/terms"),
+            ("Monid for agents (llms.txt)", "https://monid.ai/llms.txt"),
+            ("Budgets, in the dashboard (sign-in needed)", "https://app.monid.ai/rules"),
             ("Monid on GitHub", "https://github.com/monid-ai/monid"),
         ],
     },

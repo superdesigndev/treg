@@ -3,6 +3,7 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker idempotency prune [--dry-run]       # expired completed replay answers
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
@@ -446,6 +447,31 @@ async def _spend_rollup(args) -> int:
     return 0
 
 
+async def _billing_reconcile(args) -> int:
+    """Exit 1 and alert when a paid top-up is missing from the ledger; exit 0 when every one matches."""
+    from datetime import datetime, timedelta, timezone
+    from .application import billing
+    from .config import get_settings
+    from .infra import slack
+    from .infra.db import verify_db
+
+    webhook = get_settings().ops_slack_webhook_url
+    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
+    try:
+        await verify_db()
+        report = await billing.reconcile_topups(since=until - timedelta(hours=args.hours), until=until)
+    except Exception as exc:
+        if webhook:
+            await slack.post(webhook, f"treg-worker billing reconcile failed: {type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(report, sort_keys=True))
+    if not report["gaps"]:
+        return 0
+    if webhook:
+        await slack.post(webhook, billing.reconcile_alert(report))
+    return 1
+
+
 async def _usage_rollup(args) -> int:
     from .infra.db import verify_db
     from .application.call_usage_rollup import refresh
@@ -644,6 +670,30 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+async def _idempotency_prune(args) -> int:
+    from dataclasses import asdict
+    import logging
+
+    from .infra.db import verify_db
+    from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
+
+    await verify_db()
+    logging.basicConfig(level=logging.INFO)
+    result = await prune_expired_idempotency(
+        batch_size=args.batch_size, pause_s=args.pause_seconds,
+        max_batches=args.max_batches, dry_run=args.dry_run,
+    )
+    out = asdict(result)
+    trim = None
+    if not getattr(args, "skip_trim", False):
+        # Live rows whose answer the archive holds byte for byte drop their own copy.
+        trim = await trim_archived_answers(
+            batch_size=args.batch_size, pause_s=args.pause_seconds,
+            max_batches=args.max_batches, dry_run=args.dry_run,
+        )
+        out["trim"] = asdict(trim)
+    print(json.dumps(out, default=str, sort_keys=True))
+    return 0 if result.complete and (trim is None or trim.complete) else 1
 
 
 async def _run_command(args) -> int:
@@ -775,6 +825,14 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    bill = sub.add_parser("billing", help="prepaid balance top-ups")
+    billsub = bill.add_subparsers(dest="cmd", required=True)
+    breconcile = billsub.add_parser("reconcile", help="check every top-up Stripe collected against the ledger")
+    breconcile.add_argument("--hours", type=_positive_int, default=48,
+                            help="how far back to look, ending --grace-minutes ago")
+    breconcile.add_argument("--grace-minutes", type=_positive_int, default=30,
+                            help="leave the newest payments to their in-flight webhook")
+    breconcile.set_defaults(fn=_billing_reconcile)
     usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
     usagesub = usage.add_subparsers(dest="cmd", required=True)
     urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")
@@ -817,6 +875,16 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
+    idemsub = idem.add_subparsers(dest="cmd", required=True)
+    prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.add_argument("--batch-size", type=int, default=200)
+    prune.add_argument("--pause-seconds", type=float, default=0.25)
+    prune.add_argument("--max-batches", type=int, default=10000)
+    prune.add_argument("--skip-trim", action="store_true",
+                       help="only delete expired rows; keep live rows' copies of archived answers")
+    prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(_run_command(args))

@@ -89,20 +89,25 @@ The stream has no map type; they travel as JSON objects (`json` columns):
 - `input_type` names the contract identity variant the question is expressed in, `input_id` is
   the HMAC of that variant's normalized values. It is computed from the contract identity after
   derivation (`canonical_identity`), never from the vendor request's shape. A direct call is read
-  back through its adapter's `in` map plus any request parameter named exactly like an identity
-  field (a finder whose adapter sends `full_name` may be called with `first_name` +
+  back through its adapter's `in` map, its `in_read` rules (a field the provider takes reshaped:
+  HLR Lookup's digits without `+`, TrestleIQ's national US numbers) plus any request parameter
+  named exactly like an identity field (a finder whose adapter sends `full_name` may be called with `first_name` +
   `last_name`). A caller's
   `first_name`+`last_name` derives `full_name`, so `{full_name, domain}` and
   `{first_name, last_name, domain}` asked of a direct finder, a routed child or the routed parent
   give one `input_id`.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
-  `tld` of the input domain (or the email's), plus any filter declared `analytics: value`. A routed
+  `tld` of the input domain (or the email's), `calling_code` of an international input phone
+  (`44`, `1`), plus any filter declared `analytics: value`. A routed
   parent also carries `route_order` and `route_retry_order` (what decided its order) and, with published rules on,
   `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
 - `answer_values`: `{field: value}` for output fields declared `analytics: value`, as strings
-  (capped length), exactly as the adapter produced them.
+  (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
+  keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
+  A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
+  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
   when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
   `domain_match` comparison is disclosed to callers on a routed email-find hit as

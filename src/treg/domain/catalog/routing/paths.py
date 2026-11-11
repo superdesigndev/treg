@@ -74,6 +74,20 @@ def join(*parts: Any) -> str | None:
     return " ".join(words) if words else None
 
 
+def phrase(*parts: Any) -> str | None:
+    """`phrase(q, title)` → the parts as one text, each part left out when the text so far already
+    says it as whole words (case-insensitive): a title the caller also wrote into `q`, or a `q`
+    built from it. "CTO" is not said by "semiconductor"."""
+    words: list[str] = []
+    for p in parts:
+        if not (isinstance(p, str) and p.strip()):
+            continue
+        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
+        if not said:
+            words.append(p.strip())
+    return " ".join(words) if words else None
+
+
 def place(*parts: Any) -> str | None:
     """`place(city, state, country)` → "Berlin, Germany": the non-empty parts, in order, each once."""
     seen: list[str] = []
@@ -382,6 +396,30 @@ def e164_digits(v: Any) -> str | None:
     return digits if 7 <= len(digits) <= 15 else None
 
 
+# ITU country calling codes are prefix-free: one digit for 1 and 7, these two-digit codes, and
+# three digits for every other country.
+_CC2 = frozenset({"20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46",
+                  "47", "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63",
+                  "64", "65", "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98"})
+
+
+def calling_code(v: Any) -> str | None:
+    """`+44 7790 606023` → `44`, `+1 617…` → `1`: the country calling code of an international
+    number (shared by every country of one plan, so `1` is the US, Canada and the Caribbean)."""
+    digits = e164_digits(v)
+    if digits is None:
+        return None
+    if digits[0] in "17":
+        return digits[0]
+    return digits[:2] if digits[:2] in _CC2 else digits[:3]
+
+
+def key(obj: Any, name: Any) -> Any:
+    """`key(queryParams, 'phone.country_hint')`: one entry by its whole name, for parameter names
+    that contain a dot (a path would read it as nesting)."""
+    return obj.get(name) if isinstance(obj, dict) and isinstance(name, str) else None
+
+
 # A national number is trusted only with a country whose numbering plan it fits exactly.
 _NATIONAL_PLANS = {"US": ("1", re.compile(r"[2-9]\d{9}")), "CA": ("1", re.compile(r"[2-9]\d{9}"))}
 
@@ -396,6 +434,79 @@ def with_country_code(v: Any, country: Any) -> Any:
     if plan is None or not plan[1].fullmatch(digits):
         return v
     return f"+{plan[0]}{digits}"
+
+
+# An Instagram handle in page text: `instagram.com/<handle>` anywhere, or `@<handle>` on a page that
+# mentions Instagram (elsewhere an @ is as likely an X or TikTok handle). Not after a word or a dot, so
+# an email address is no handle.
+_IG_HANDLE = re.compile(r"(?:instagram\.com/|(?<![\w.@])@)([A-Za-z0-9_](?:[A-Za-z0-9_.]{0,28}[A-Za-z0-9_])?)")
+_IG_LINK_ONLY = re.compile(r"instagram\.com/")
+# Instagram's own paths, which look like handles after `instagram.com/`.
+_IG_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "about", "developer", "legal",
+                "direct", "instagram", "web", "help", "privacy", "terms"}
+
+
+def current_role(history: Any) -> dict | None:
+    """`current_role(workHistory)` — the role a person holds now, from a work history whose items carry
+    `dates: {from, to}`: of the roles with no end date the latest started, else the latest started
+    of all (someone between jobs keeps their last role). A role with a start date beats one without;
+    equal starts, including none at all, keep list order."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    if not roles:
+        return None
+    def start(r: dict) -> str:
+        d = r.get("dates")
+        return str((d or {}).get("from") or "") if isinstance(d, dict) or d is None else ""
+    def ended(r: dict) -> bool:
+        d = r.get("dates")
+        return isinstance(d, dict) and bool(d.get("to"))
+    pool = [r for r in roles if not ended(r)] or roles
+    return max(pool, key=start)  # max keeps the first of equal starts
+
+
+def past_titles(history: Any) -> list | None:
+    """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
+    carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
+    current role is something else."""
+    roles = [r for r in history if isinstance(r, dict)] if isinstance(history, list) else []
+    def to(r: dict) -> str:
+        d = r.get("dates")
+        return str(d.get("to") or "") if isinstance(d, dict) else ""
+    out: list[str] = []
+    for r in sorted((r for r in roles if to(r)), key=to, reverse=True):
+        t = r.get("title")
+        if isinstance(t, str) and t.strip() and t.strip() not in out:
+            out.append(t.strip())
+    return out[:5] or None
+
+
+def instagram_handles(results: Any) -> list | None:
+    """`instagram_handles(results)` — the Instagram accounts that search results' passages name (a
+    directory or list page of creators), one row each in page order, first mention wins: username,
+    profile url, the words around the mention as evidence (short: the agent reads every row), and
+    the site it came from."""
+    if not isinstance(results, list):
+        return None
+    rows, seen = [], set()
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        text = " ".join(t for t in (r.get("highlights") or []) if isinstance(t, str))
+        on_instagram = "instagram" in (text + " " + str(r.get("url") or "")).lower()
+        for m in _IG_HANDLE.finditer(text):
+            if not on_instagram and not _IG_LINK_ONLY.match(text, m.start()):
+                continue
+            handle = m.group(1)
+            # An all-digit handle is a real account (`instagram.com/433`) only in a link; after an @
+            # it is as likely a number in prose.
+            if (handle.lower() in _IG_RESERVED or handle.lower() in seen
+                    or (handle.isdigit() and not _IG_LINK_ONLY.match(text, m.start()))):
+                continue
+            seen.add(handle.lower())
+            around = " ".join(text[max(0, m.start() - 40):m.end() + 100].split())
+            rows.append({"username": handle, "url": f"https://www.instagram.com/{handle}/",
+                         "biography": around, "matched_from": host(r.get("url"))})
+    return rows
 
 
 def count_with(items: Any, path: Any) -> int | None:
@@ -513,13 +624,13 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

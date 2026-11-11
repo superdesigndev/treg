@@ -132,6 +132,9 @@ reseller, OpenRouter, Replicate) share the per-model key and sit on one comparis
   keyed by capability.
 - Under the `AI generation` category, platform means the generated-media modality. Text-to-video and
   image-to-video stay separate because their inputs and prices differ.
+- `purchased_credit_only: true` on a platform makes every metered call on it payable from purchased
+  credit only; free credit does not cover it (money.md, "Purchased-only holds"). `video-gen`
+  declares it. The rule follows the endpoint's `platform`, not its id, so new rows inherit it.
 
 ### `<service>.yaml`
 
@@ -140,6 +143,9 @@ provider: tikhub                # must equal OAuthProvider.service
 source: {docs: https://docs.tikhub.io/, openapi: https://api.tikhub.io/openapi.json, curated: 2026-07-28}
 limits: "10 requests/second per key"   # optional: the rate/quota model in one line
 pricing_url: https://...               # optional: where CURRENT prices live
+defaults:                              # optional: endpoint keys every row inherits (catalog-schema.md)
+  bill: {miss: charged, error: charged}
+  provenance: {source: rate_card_api, source_url: https://..., checked: '2026-07-28', confidence: verified}
 endpoints:
   - id: tikhub.tiktok.user.profile   # unique across the whole catalog; convention <provider>.<capability>
     capability: tiktok.user.profile
@@ -150,7 +156,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_user_profile
     name: "TikTok user profile by username - followers, bio, stats"   # ours, <= 60 chars
-    summary: "Public TikTok profile by username"   # the provider's text, verbatim
+    summary: "Public TikTok profile by username"   # what the tool does (catalog-schema.md)
     input:
       queryArrayEncoding: json      # optional: json | comma | repeated (default)
       queryParams:
@@ -158,19 +164,18 @@ endpoints:
       note: "one of uniqueId | secUid"
       # also pathParams, headers, body, bodyType (json|form|multipart). Unknown keys fail the load.
     test_request: {queryParams: {uniqueId: "tiktok"}}   # EXACT params the verifier sends; must be cheap
-    expect: {json_path: code, equals: 200, misses: [404]}   # optional; default is HTTP 2xx
-    cost: {type: per_success, value: 0.0015, currency: USD, note: "charged on 2xx only"}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}   # v2 spelling; a new provider never writes `cost:`
+    miss: {when: {path: response.data.userInfo.user.uniqueId, op: absent}}   # optional; also expect, error, not_found
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main
     example_response: examples/tikhub.tiktok.user.profile.json
     note: "..."                      # optional: a caller-facing caveat about the whole tool or its answer
 ```
 
-Every `note` is caller-facing. A caveat goes to its most specific home: a parameter's `input.*.note`,
-then the charge's `cost.note`, then the row's `note`. Only the endpoint's own detail
+Every `note` is caller-facing. What a summary and a note may say, and which note a caveat goes in,
+is [catalog-schema](catalog-schema.md#summary-and-note). Only the endpoint's own detail
 (`GET /catalog/endpoints/{id}`, `treg catalog get`, `/mcp/` `catalog_get`, the dashboard drawer) shows
-the row's `note`; lists, search and sibling rows leave it out. Maintainer context goes in a YAML
-comment, evidence in the PR body.
+the row's `note`; lists, search and sibling rows leave it out.
 
 The strict models ([catalog-schema](catalog-schema.md)), shared by the loader and the validator,
 refuse any `input` key and any parameter-spec key outside their vocabulary, because a misspelt
@@ -194,9 +199,10 @@ conflict on. It is not `verified` and not `source.curated`.
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
-  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
+  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
-  provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
+  provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
+  once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
@@ -236,7 +242,8 @@ re-attaches by id, so re-ingesting must not reset it to `data`.
 
 ### Naming - `name` is the search surface we own
 
-`summary` is the provider's text, verbatim; `name` is ours and searched at the same weight. The
+`summary` says what the tool does ([catalog-schema](catalog-schema.md#summary-and-note)); `name` is
+the short title, searched at the same weight. The
 formula: **job + the input the caller must hold + top output facets**, at most 60 characters, and it
 must read as a natural title.
 
@@ -486,8 +493,9 @@ The `verified:` stamp is not required: a broken route fails unbilled under succe
 in-band reporters settle at 0, and caps bound the rest. Eligibility alone enables nothing: a
 normal platform call also needs a configured key and the provider allow-list (`platform_key_for`).
 A missing or unknown price reads as "refuse", never as free, so unpriced extended routes need no
-annotation. A row with only `observed_cost` gets a synthesized block from `_effective_cost`
-(`source: observed, confidence: verified`, `checked` = verify date). Whether a provider's plan
+annotation. A row in today's spelling with only `observed_cost` gets a synthesized block from
+`_effective_cost` (`source: observed, confidence: verified`, `checked` = verify date); in v2 the
+verifier writes that price as the row's `price` and `provenance`. Whether a provider's plan
 licence lets treg serve other teams decides whether it gets an `fx.yaml` rate at all; the provider
 file's header records that judgement.
 
@@ -587,10 +595,12 @@ fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `p
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
 the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
 An async endpoint must use `per_success` or `per_call`. Status values compare after string coercion;
-a missing or unknown value means still in progress in both the CLI awaiter and the worker (the CLI
-warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles usage
-instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before the
-response stream starts; it never inspects or buffers the upstream body.
+a missing or unknown value means still in progress in the CLI awaiter, `/tasks/` and the worker (a
+waiter warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles
+usage instead of releasing. The call router serializes the descriptor into `X-Treg-Async` before
+the response stream starts; it never inspects or buffers the upstream body. The call runtime has
+already read a 2xx async answer to record the task it names, which `/tasks/{call_id}` follows for
+the caller ([tasks](tasks.md)).
 
 - **Poll mode.** Every listed provider polls a static catalog id, reachable through `/call/<id>` on
   any tier. The dynamic-URL mode (`poll.url_from` + `url_hosts`) stays in schema, validator and
@@ -603,7 +613,7 @@ response stream starts; it never inspects or buffers the upstream body.
   `example_response` stays the submission shown by the catalog.
 - `terminal_on_submission: true`: a submission whose own status is already a success word settles
   like a synchronous call (read through `domain.asynctasks.finished_on_submission` by the direct
-  path, routed bridge, Enrich Arena and `treg call --await`).
+  path, routed bridge, Enrich Arena, `/tasks/` and `treg call --await`).
 - `max_age` (seconds, at most a day) is the provider's polling window: the worker times the task out
   there and no waiter waits past it. `interval` also paces the CLI awaiter; treg does not count
   polls across pollers.
@@ -747,8 +757,9 @@ TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify_extended.py <s
 The run goes cheapest first and stops before a call that would pass `--budget`; results are written
 back after every run and verified rows are skipped, so an interrupted run resumes.
 
-- **A missing `cost` reads as free and silently disables `--budget`.** `observed_cost` (the charge the
-  provider states in its response, written at verify time) budgets the next run. `observed_time` is
+- **A missing price reads as free and silently disables `--budget`.** Where a provider states the
+  charge in its response (DataForSEO), a row no rate card prices is priced at it when verified
+  (`price` with `provenance: {source: observed}`), which budgets the next run. `observed_time` is
   measured wall-clock, never read from the body (a provider's `time` field may be a timestamp).
 - **Spend accounting assumes per-success billing.** On a per-call provider compare the printed
   balance delta with the estimate before trusting a large run.
@@ -949,6 +960,13 @@ returned and never documented as stable. An output field may say where it lands 
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
   unconfirmed.
+- `complete` (opt-in via `X-Treg-Route-Complete`) lists the output fields a full answer carries. An
+  answer missing any is weak (the waterfall keeps looking; the fullest so far wins if nothing fuller
+  turns up, at most `MAX_WEAK_FALLBACKS` extra providers); an adapter that cannot map them all is
+  asked after every adapter that can. When the list is empty, under half the contract's output is
+  the thin bar. An answer whose subject identity differs from the one asked waits for another
+  provider to report the same identifier. Off unless the caller sends the header; catalog_get names
+  the fields and the header when the contract sets `complete`.
 - `verdict` declares the per-call word stored on `CallRecord.verdict`: `from` field, closed `words`,
   `map`. It is read only from an answer that fills the required output, and is independent of
   `miss`. `verdict.decisive` (opt-in via `X-Treg-Route-Decisive`) keeps a non-deciding answer as
@@ -980,15 +998,42 @@ returned and never documented as stable. An output field may say where it lands 
 - A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
   the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
   deploy and, like them, only reorders.
-- `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
+- `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
+  stable sha256 bucket of capability and team id; a call with no team is never in it), and the
+  other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
+  with no company or name (`{title}`, `{q, title}`) for half the teams, so the two orders are
+  compared on live calls before every team gets it.
+  `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
+  page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
+  Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
+  A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
+  left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
+  before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
-  both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
-  search asks for everyone who fits, while a company lookup stays one provider's answer.
+  both were sent (`min_results = limit`, merge on). A key counts as sent by the same test as
+  identity matching (a blank string is not sent). `people.search` lists `{q}` and
+  `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
+  stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
+  because scoping drops any that answer it by company alone (below).
+- `fill_rows: N` makes every request fill toward N rows, merging providers, when the caller set no
+  `fill_limit_when` target and sent neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`
+  (either header wins; `X-Treg-Route-Waterfall: 0` turns filling off). A short answer goes on to
+  the next provider in plan order, at most `MAX_WEAK_FALLBACKS` more and within the cost cap, and
+  every provider asked is billed at its own price, so each request costs up to that many more
+  calls. Use it only where providers see different slices of one population: `instagram.search.users`
+  sets 25 with `prefer: [scrapecreators, exa]`, account bios first, then the accounts that creator
+  directory pages name (`instagram_handles`), then TikHub. Whenever two providers contribute rows,
+  the answer is their deduped union in attempt order, so an earlier provider's row for an account
+  (with its follower count) leads and a later provider's own repeats count once. Rows from every child carry the account's profile `url`,
+  which the merge dedupes on.
+- `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
+  people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`,
@@ -997,14 +1042,24 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource.
+  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
+  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
+  rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
+  held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
+  they held it. Only a row with a work history (`since`, `past` or `ended` set) is judged: a bare
+  `title` may be a headline ("Former Developer Evangelist"), so it stays unmarked. Words keep any
+  script and `+`, `#` and an inner `.` ("C++", "C#" and "C" are three roles). The provider's order
+  stands within each group and no row is dropped. A semantic search matches the whole work history,
+  so without it a former holder ranks with current ones.
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
+call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
@@ -1040,12 +1095,20 @@ an invalid extra never disables the primary.
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
-  `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
+  `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
   request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
-  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
-  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child
+  bills no miss, so its cost per hit is its price either way, unless its cost bills one
+  (`plan.bills_miss`); the routed row's `miss_billed_by` uses the same rule. A per-result child is
+  free on a miss only when settlement reads the answer (a row count or the provider's reported
+  charge); one that settles an empty answer at a charge carries `cost.bills_miss`, and a test
+  replays every routed child's miss fixture to hold ranking's miss charge equal to settlement's. A
+  billed miss costs the whole request, `miss_units` rows of it (a minimum charge settlement floors
+  at), or an Apify `call_fee` alone, which `cost_at` also adds to the hit price. Through overflow, a
+  miss pays the route's price when it bills per call and nothing when it bills per result. An
+  unmeasured per-call child leads only below half a
   measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
@@ -1065,7 +1128,16 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    refusals (`_GLOBAL_REFUSALS`) are terminal. treg's own team-level transient refusals
+    (`_TEAM_BUSY`: a busy money queue, an unreadable daily-cap or tag budget) are `skipped`, spend
+    no error allowance, and are tried on at most `MAX_TEAM_BUSY_TRIES` candidates; when only they
+    stopped the call the caller gets treg's refusal with its `Retry-After`, never `route_failed`.
+    Provider-level ones (`share_busy`, `provider_rate_limited`, `trial_allowance_unavailable`)
+    still fall back as errors. When Confirm, Decisive
+    or Min-Results already holds a paid answer, a terminal refusal ends the walk instead: that answer
+    is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
+    A `call_admission` refusal of treg's money skips that candidate without
+    spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
@@ -1128,8 +1200,21 @@ an invalid extra never disables the primary.
   builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
   can answer a `{title}` request while every other provider's request is unchanged. The stand-in
   never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
-  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard
-  (`company_domain`: a text match cannot scope by company).
+  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard.
+  exa and parallel fold `company_domain` into the query text (`join(q, company_domain, …)`), and
+  `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
+  that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
+  builds from the title, still skips them. The stand-in key itself always counts as sent, and a
+  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key, typed
+  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
+  (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
+  dropped; icypeas answers `{q, title}` through `{title}` and stays.
+- **Scoping reads the request this call sends**: `to_upstream` sends a mapped (`in`) field only
+  when it is in the matched variant, so `unscoped` counts it only then (`in_expr` always runs, so
+  its keys always count). An adapter whose upstream takes filters together declares the combined
+  variants first (`[full_name, title, company_domain]` before `[company_domain]`), or a request
+  with all of them goes out with the first one alone.
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

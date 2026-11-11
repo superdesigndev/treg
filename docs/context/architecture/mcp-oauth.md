@@ -59,7 +59,7 @@ behavior.
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
 | endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
-| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation |
+| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
 | transport | host checks, compression, cache headers, eager auth, static capabilities | V2 has a separate audience, metadata path, scope marker and Claude browser origin |
@@ -151,8 +151,9 @@ through the real routes without a socket. The enforcement rules (deny rules, pin
 access, the credential ladder, metering) live in those routes; a path that read the database
 directly would be a second implementation of each, drifting quietly. Those requests carry the
 caller's credential (for an OAuth bearer, the identity it is exchanged for), so the call tools
-refuse an `endpoint_id` with an empty, `.` or `..` segment at any depth of percent-encoding (a
-trailing slash excepted): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
+refuse an `endpoint_id` with a `.` or `..` segment at any depth of percent-encoding (a trailing
+slash and a mid-path empty segment excepted — percent-encoded URLs inside one segment must still
+reach the upstream encoded): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
 management route. `_call_url` also checks the final path stays under the call route. The catalog is the one
 exception, read straight from `catalog_store` for speed, not permission.
 

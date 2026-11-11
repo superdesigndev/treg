@@ -3596,22 +3596,40 @@ async def indexnow_key():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-def _install_script(ad_link: str = "") -> PlainTextResponse:
+def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
     """The install script with the serving domain templated in, so it targets whichever host is
     live (dev box or the real domain after deploy), and the short-link code when fetched as
-    `/i/<code>` (empty on the plain URL)."""
-    f = _WEB_DIR / "install.sh"
+    `/i/<code>` (empty on the plain URL). `channel=beta` serves the binary CLI's installer."""
+    f = _WEB_DIR / ("install-bin.sh" if channel == "beta" else "install.sh")
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
-    base = get_settings().public_url.rstrip("/")
-    text = f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+            .replace("{CHANNEL}", channel or "stable")
+            .replace("{POSTHOG_KEY}", settings.posthog_key)
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/"))
+            .replace("{BINARY_PERCENT}", str(settings.cli_binary_install_percent)))
     return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
 
 
 @app.get("/install.sh", include_in_schema=False)
-async def install_sh():
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server."""
-    return _install_script()
+async def install_sh(channel: str = ""):
+    """`curl -fsSL {BASE}/install.sh | sh`: installs the treg CLI and points it at this server.
+    `?channel=beta` installs the binary CLI's beta channel instead."""
+    return _install_script(channel="beta" if channel == "beta" else "")
+
+
+@app.get("/install.ps1", include_in_schema=False)
+async def install_ps1(channel: str = ""):
+    """`irm {BASE}/install.ps1 | iex`: installs the binary treg CLI on Windows."""
+    f = _WEB_DIR / "install.ps1"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="install.ps1 not bundled")
+    base = get_settings().public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base)
+            .replace("{CHANNEL}", "beta" if channel == "beta" else "stable"))
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/i/{code}", include_in_schema=False)
