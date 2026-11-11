@@ -3240,12 +3240,6 @@ adapters:
     in_expr: {body.limit: limit}
     test_identity: {url: "https://www.iana.org", q: domain}
     out: {results: output.data.results, count: "len(output.data.results)"}
-  tavily.web.crawl:
-    route: false
-    accepts: [[url]]
-    in: {url: body.url}
-    in_expr: {body.limit: limit}
-    out: {pages: results, count: "len(results)"}
   tavily.web.map:
     accepts: [[url], [url, q]]
     in: {url: body.url, q: body.instructions}
