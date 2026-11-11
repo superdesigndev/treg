@@ -100,48 +100,6 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
 
 
 _PLATFORM_BODY_MAX = 8 * 1024 * 1024  # complete response evidence ceiling; free final downloads stream
-def _brightdata_record_count(body: bytes) -> int | None:
-    """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
-    estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
-    response body is the only bill we will ever see.
-
-    Shapes, per docs + live traffic:
-      - sync /scrape and /snapshot downloads, format=json → a JSON ARRAY, one element per record;
-      - the >60s sync fallback and /trigger → a JSON OBJECT carrying `snapshot_id` — zero records
-        HERE; the job's records bill when the snapshot is downloaded (its catalog entry is priced
-        per_result for exactly that reason);
-      - format=ndjson → one JSON object per line; format=csv → header line + one line per record.
-    A body that STARTS like JSON but does not parse is invalid or incomplete evidence:
-    return None and settle at the estimate, never a line-count guess over a partial payload. Any other unrecognised shape → None for the same
-    reason: when we cannot count, the estimate is the honest number."""
-    if body[:2] == b"\x1f\x8b":  # compress=true gzips the download — we can't count, estimate wins
-        return None
-    text = body.decode("utf-8", "replace").strip()
-    if not text:
-        return 0
-    try:
-        doc = json.loads(text)
-    except ValueError:
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-        try:  # ndjson: every line is its own record — EVERY line must parse, or it isn't ndjson
-            for ln in lines:
-                json.loads(ln)
-            return len(lines)
-        except ValueError:
-            pass
-        if text[0] in "[{":  # Invalid JSON must never be guessed as CSV
-            return None
-        return len(lines) - 1 if len(lines) > 1 else None  # csv: header + rows
-    if isinstance(doc, list):
-        return len(doc)
-    if isinstance(doc, dict):
-        # Zero records delivered, whatever the object says: the async handoff (`snapshot_id` — the
-        # records bill at the snapshot download), an early download's {"status": "running"}, or any
-        # other envelope. Pay-per-success means an answer with no records costs nothing.
-        return 0
-    return None
-
-
 def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
     """Count only the response containers verified for Openmart's synchronous data reads."""
     if endpoint_id in (
@@ -513,11 +471,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             charged_credits = -1
         if math.isfinite(charged_credits) and charged_credits >= 0 and rate:
             return _usd_to_micro(charged_credits * rate)
-    if provider == "brightdata" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # DERIVED by counting records — Bright Data's bill is per record delivered and the body is
-        # the only place that number exists (see _brightdata_record_count for the shapes).
-        n = _brightdata_record_count(body)
-        return None if n is None else n * mk.unit_micro
     if not body:
         return 0 if provider == "contactout" else None
     try:

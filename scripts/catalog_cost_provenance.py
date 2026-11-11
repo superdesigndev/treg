@@ -50,8 +50,6 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
     # Prices transcribed from docs / pricing pages → documented.
-    "brightdata": {"source": "docs", "confidence": "documented",
-                   "url": "https://brightdata.com/pricing", "units": {"*": "record"}},
     "diffbot": {"source": "docs", "confidence": "documented",
                 "url": "https://www.diffbot.com/pricing/",
                 "units": {"*": "page", "per_result": "record"}},

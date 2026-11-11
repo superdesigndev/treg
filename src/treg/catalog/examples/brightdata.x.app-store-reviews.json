@@ -1,0 +1,50 @@
+[
+  {
+    "url": "redacted",
+    "review_id": "redacted",
+    "review_title": "Notification issue at ios 27.2 on iPhone 16 Pro Max",
+    "review_rating": 5,
+    "reviewer_name": "redacted",
+    "review_date": "2026-11-08T19:18:44-07:00",
+    "review": "After updating ios 27.2, notification is not working properly for Whatsapp",
+    "app_url": "redacted",
+    "app_latest_version": "26.43.75",
+    "app_id": "redacted",
+    "timestamp": "2026-11-10T15:31:31.886Z",
+    "input": {
+      "url": "https://apps.apple.com/us/app/whatsapp-messenger/id310633997"
+    }
+  },
+  {
+    "url": "redacted",
+    "review_id": "redacted",
+    "review_title": "Praise !!",
+    "review_rating": 5,
+    "reviewer_name": "redacted",
+    "review_date": "2026-11-08T18:57:47-07:00",
+    "review": "Excellent resource !!",
+    "app_url": "redacted",
+    "app_latest_version": "26.43.75",
+    "app_id": "redacted",
+    "timestamp": "2026-11-10T15:31:31.886Z",
+    "input": {
+      "url": "https://apps.apple.com/us/app/whatsapp-messenger/id310633997"
+    }
+  },
+  {
+    "url": "redacted",
+    "review_id": "redacted",
+    "review_title": "Low quality",
+    "review_rating": 1,
+    "reviewer_name": "redacted",
+    "review_date": "2026-11-08T18:45:01-07:00",
+    "review": "WhatsApp sends low quality photos and videos on my iPhone 18 pro max, even though I have HD quality on.",
+    "app_url": "redacted",
+    "app_latest_version": "26.43.75",
+    "app_id": "redacted",
+    "timestamp": "2026-11-10T15:31:31.886Z",
+    "input": {
+      "url": "https://apps.apple.com/us/app/whatsapp-messenger/id310633997"
+    }
+  }
+]
