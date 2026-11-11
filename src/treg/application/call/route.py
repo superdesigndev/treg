@@ -164,8 +164,9 @@ _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned",
                                        "org_endpoint_quota_exceeded"})
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
-_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_video",
+                              "tag_spend_cap_reached", "platform_daily_cap_reached",
+                              "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
 _TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
