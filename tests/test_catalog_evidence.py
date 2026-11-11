@@ -49,3 +49,13 @@ def test_a_reingest_writes_the_generated_cost_note_over_the_carried_cost(ingest,
     assert fresh["cost"] == {**old_cost, "note": "One source serves this, at up to $0.0012 a call. The charge "
                              "follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost "
                              "to refuse any source dearer than your ceiling."}
+
+
+def test_a_reingest_keeps_a_reviewed_cache_decision(ingest, monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    row = {"id": "anyapi.web.x", "method": "POST", "path": "/v1/run/web.x", "added": "2026-09-19"}
+    (tmp_path / "anyapi.extended.yaml").write_text(json.dumps(
+        {"provider": "anyapi", "endpoints": [row | {"cache": "forbidden"}]}))
+    fresh = dict(row)
+    ingest.carry_verification("anyapi", [fresh])
+    assert fresh["cache"] == "forbidden"

@@ -226,6 +226,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             "cost", "observed_cost", "expect", "untestable", "status",
             # A caller-facing caveat about the whole tool, written by a reviewer: no ingest writes one.
             "note",
+            # A reviewed cache decision: a row whose answer holds a per-request secret (AnyAPI's
+            # channel contact 202 carries a keyless collect token) must never be archived again.
+            "cache",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
             "authorization_method", "authorization_methods", "authorization_paths",
