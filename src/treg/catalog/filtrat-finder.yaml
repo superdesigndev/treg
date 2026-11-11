@@ -50,6 +50,6 @@ endpoints:
       checked: '2026-11-10'
       confidence: verified
       note: "credits_used settles the call. A find that needed catch-all resolution reduced the balance by 25 credits; the same person found again without needing it reduced it by 20. Misses are free."
-    verified: '2026-11-02'
+    verified: '2026-11-11'
     example_response: examples/filtrat-finder.people.email.find.json
     docs_url: https://filtrat.io/v1/docs
