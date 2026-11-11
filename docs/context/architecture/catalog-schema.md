@@ -203,8 +203,9 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
   request and the answer; it may do no I/O ([import-boundaries](import-boundaries.md)). One that
   raises is missing evidence for its hook, and only the exception's type is logged. An adapter
   `miss` that needs an if-then-else, which the codemod refuses, becomes an outcome plugin
-  (`miss: {plugin: <module>.<function>}`) when its row moves to v2; the request may be absent, since
-  stats and routing judge an answer alone.
+  (`miss: {plugin: <module>.<function>}`) when its row moves to v2. Any outcome plugin (`expect`,
+  `error`, `miss`, `not_found`) may be called without the request, since stats and routing judge an
+  answer alone.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.
