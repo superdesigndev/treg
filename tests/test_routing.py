@@ -3474,13 +3474,19 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
         "sumble.organizations": "credits_used; unmatched inputs free",
     }
+    # Misses the provider bills by their count while ranking prices them free, as it did when these
+    # rows were labelled per_success.
+    counted = {
+        "tavily.web.extract": "a returned page without raw_content is a routing miss and a billed result",
+    }
     cat = catalog_store.load()
     kids = {c for r in cat.by_id.values() if r.get("kind") == "routed" for c in r["routed_children"]}
     wrong = []
     for rec in fixtures.generate():
         eid = rec["endpoint_id"]
         cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
-        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
+        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero \
+                or eid in counted:
             continue
         line = engine.replay(rec)
         if (line.get("routing") or {}).get("kind") != "miss":

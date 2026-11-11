@@ -3026,14 +3026,12 @@ adapters:
     in_expr: {body.max_results: limit}
     const: {body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   tavily.web.search.news:
     accepts: [[q]]
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     const: {body.topic: news, body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   linkup.web.search:
     accepts: [[q]]
     in: {q: body.q}
@@ -3166,7 +3164,6 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.extract_depth: basic}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].raw_content, '') == ''"
   linkup.web.fetch:
     accepts: [[url]]
     in: {url: body.url}
@@ -3247,8 +3244,10 @@ adapters:
     accepts: [[url], [url, q]]
     in: {url: body.url, q: body.instructions}
     in_expr: {body.limit: limit}
+    max: {limit: 20}
+    # Ranked at one page, the price routing gave it before its bill followed the returned count.
+    cost_units: "1"
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   olostep.web.map.search:
     accepts: [[url, q]]
     in: {url: body.url, q: body.search_query}

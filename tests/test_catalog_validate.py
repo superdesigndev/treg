@@ -768,35 +768,6 @@ def test_a_quantity_price_is_bounded_and_settles_at_what_was_bought(patch, valid
     assert (not errors) is valid
 
 
-def test_tavily_rates_require_complete_positive_finite_endpoint_tables():
-    cat = catalog_store.load()
-    for endpoint_id, expected in validator.TAVILY_RATE_KEYS.items():
-        cost = cat.by_id[endpoint_id]["cost"]
-        errors = []
-        validator.check_tavily_rates(endpoint_id, cost, endpoint_id, errors)
-        assert errors == []
-        assert set(cost["tavily_rates"]) == expected
-
-    valid = cat.by_id["tavily.web.search"]["cost"]["tavily_rates"]
-    broken = [
-        None,
-        {},
-        {key: value for key, value in valid.items() if key != "advanced"},
-        valid | {"typo": 1},
-        valid | {"basic": 0},
-        valid | {"basic": -1},
-        valid | {"basic": True},
-        valid | {"basic": "1"},
-        valid | {"basic": float("nan")},
-        valid | {"basic": float("inf")},
-    ]
-    for rates in broken:
-        errors = []
-        validator.check_tavily_rates(
-            "tavily.web.search", {"tavily_rates": rates}, "test", errors)
-        assert errors
-
-
 def test_octen_rate_table_matches_displayed_base_and_requires_every_meter():
     base = {"currency": "USD", "value": 5, "per": 1000,
             "octen_rates": {"call": 0.005, "full_content_extra": 0.0005}}

@@ -431,10 +431,10 @@ cost:
   describe its maximum.
 - A scalar `unit: character` is request-priced: `_body_text_characters` counts the top-level JSON
   `text` string; invalid or empty input reserves one character, never zero.
-- Provider-specific rate tables (`tavily_rates`, `octen_rates`) have exact mode-key contracts:
-  validation rejects incomplete, extra, non-finite or non-positive rates, and the runtime repeats the
-  check before reserve so catalog drift cannot turn a platform call free. Their platform request
-  bounds never rewrite the caller's body and do not apply to a team's own key.
+- A provider-specific rate table (`octen_rates`) has an exact mode-key contract: validation rejects
+  incomplete, extra, non-finite or non-positive rates, and the runtime repeats the check before
+  reserve so catalog drift cannot turn a platform call free. Its platform request bounds never
+  rewrite the caller's body and do not apply to a team's own key.
 - Where a provider bills one usage SKU at different prices per mode, each price is its own row with
   a `mode` enum.
 

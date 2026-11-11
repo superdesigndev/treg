@@ -542,30 +542,6 @@ def check_cost_settle_count(cost: dict, example: object, where: str, errors: lis
         fail(errors, where, f"cost.settle.count.path '{count['path']}' is not a list in the example_response")
 
 
-TAVILY_RATE_KEYS = {
-    "tavily.web.search": {"basic", "fast", "ultra_fast", "advanced"},
-    "tavily.web.extract": {"basic", "advanced"},
-    "tavily.web.map": {"regular", "instructions"},
-    "tavily.web.crawl": {
-        "basic", "basic_instructions", "advanced", "advanced_instructions",
-    },
-}
-
-
-def check_tavily_rates(endpoint_id: str, cost: dict, where: str,
-                        errors: list[str]) -> None:
-    """Tavily's provider-specific formulas require a complete positive finite mode table."""
-    expected = TAVILY_RATE_KEYS.get(endpoint_id)
-    if expected is None:
-        return
-    rates = cost.get("tavily_rates")
-    if not isinstance(rates, dict) or set(rates) != expected:
-        fail(errors, where, "cost.tavily_rates must contain exactly " + ", ".join(sorted(expected)))
-        return
-    if any(not _finite_number(value) or value <= 0 for value in rates.values()):
-        fail(errors, where, "cost.tavily_rates values must be positive finite numbers")
-
-
 OCTEN_RATE_KEYS = {
     "octen.web.search": {"call", "full_content_extra"},
     "octen.web.search.broad": {"subquery", "full_content_extra"},
@@ -1833,8 +1809,6 @@ def main(argv: list[str]) -> int:
                     elif ("reserve" not in cost and eid not in UNDECLARED_RESERVE
                           and cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS):
                         fail(errors, where, "a per_result price in an entity unit needs cost.reserve")
-                    if service == "tavily":
-                        check_tavily_rates(eid, cost, where, errors)
                     if service == "octen":
                         check_octen_rates(eid, cost, where, errors)
                     if service == "enrichlayer":

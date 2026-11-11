@@ -4,7 +4,12 @@ source:
   openapi: https://docs.tavily.com/documentation/api-reference/openapi.json
   curated: '2026-09-21'
 pricing_url: https://docs.tavily.com/documentation/api-credits
-limits: "Development keys allow 100 requests/minute and production keys 1,000 requests/minute; Crawl is limited to 100 requests/minute on both. A 429 may include Retry-After. Platform Search requires include_usage: true for per-request settlement. Platform Map and Crawl require an explicit limit of 1-20 so the hold is bounded; BYOK retains Tavily's upstream range."
+limits: "Development keys allow 100 requests/minute and production keys 1,000 requests/minute; Crawl is limited to 100 requests/minute on both. A 429 may include Retry-After. Platform Search requires include_usage: true for per-request settlement. Map and Crawl take a limit of 1-20, required on treg's key, so the hold is bounded."
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.tavily.com/documentation/api-credits', checked: '2026-09-22', confidence: documented}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  # Every answer is charged by its settle form; the outcome rules judge it for routing and stats.
+  bill: {miss: charged, error: charged}
 
 endpoints:
   - id: tavily.web.search.news
@@ -28,11 +33,10 @@ endpoints:
     test_request: {body: {query: "AI policy", topic: news, max_results: 10, search_depth: basic, include_usage: true}}
     verified: '2026-10-05'
     added: '2026-10-05'
-    cost: {type: per_call, value: 1, currency: credit, unit: call,
-           tavily_rates: {basic: 1, fast: 1, ultra_fast: 1, advanced: 2},
-           source: docs, source_url: "https://docs.tavily.com/documentation/api-credits",
-           checked: '2026-10-05', confidence: verified,
-           note: "News with explicit basic depth costs one credit; include_usage reports settlement usage."}
+    price: {value: '1', currency: credit, unit: call,
+            note: "News with explicit basic depth costs one credit; include_usage reports settlement usage."}
+    provenance: {source: docs, source_url: 'https://docs.tavily.com/documentation/api-credits', checked: '2026-10-05', confidence: verified}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
     example_response: examples/tavily.web.search.news.json
   - id: tavily.web.search
@@ -48,7 +52,7 @@ endpoints:
       bodyType: json
       body:
         query: {type: string, required: true, example: "recent changes to the EU AI Act guidance"}
-        search_depth: {type: string, required: false, default: basic, enum: [basic, advanced, fast, ultra-fast], example: basic, note: "Basic, fast and ultra-fast cost 1 credit; advanced costs 2. auto_parameters can raise a basic request to the advanced price."}
+        search_depth: {type: string, required: false, enum: [basic, advanced, fast, ultra-fast], example: basic, note: "Tavily's default is basic. Basic, fast and ultra-fast cost 1 credit; advanced costs 2. auto_parameters can raise a request that names no depth to the advanced price."}
         chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 3}
         max_results: {type: integer, required: false, default: 10, min: 0, max: 20, example: 5}
         topic: {type: string, required: false, default: general, enum: [general, news, finance]}
@@ -78,23 +82,21 @@ endpoints:
       body: {query: "recent changes to the EU AI Act guidance", search_depth: basic, max_results: 3, include_usage: true}
     verified: '2026-09-21'
     added: '2026-09-21'
-    cost:
-      type: per_call
+    # An explicit depth decides the price; only a request naming none is raised by auto_parameters.
+    price:
       table:
-        - {when: {body.auto_parameters: true}, value: 2}
-        - {when: {body.search_depth: advanced}, value: 2}
-        - {when: {body.search_depth: basic}, value: 1}
-        - {when: {body.search_depth: fast}, value: 1}
-        - {when: {body.search_depth: ultra-fast}, value: 1}
-      fallback: {value: 2, note: "The documented maximum is the two-credit advanced search selected explicitly or by auto_parameters."}
+        - {when: [{path: body.search_depth, op: equals, value: advanced}], value: '2'}
+        - {when: [{path: body.search_depth, op: equals, value: basic}], value: '1'}
+        - {when: [{path: body.search_depth, op: equals, value: fast}], value: '1'}
+        - {when: [{path: body.search_depth, op: equals, value: ultra-fast}], value: '1'}
+        - {when: [{path: body.auto_parameters, op: equals, value: true}], value: '2'}
+        - {when: [{path: body.auto_parameters, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "The documented maximum is the two-credit advanced search selected explicitly or by auto_parameters."}
       currency: credit
       unit: call
-      tavily_rates: {basic: 1, fast: 1, ultra_fast: 1, advanced: 2}
-      source: docs
-      source_url: https://docs.tavily.com/documentation/api-credits
-      checked: '2026-09-22'
-      confidence: documented
       note: "Basic, fast and ultra-fast cost one credit per request; advanced costs two. auto_parameters may select advanced, while an explicit basic depth overrides that selection. Platform Search settles from this request's usage.credits; BYOK is unmetered."
+    settle: {reported: {path: response.usage.credits, unit: credit}}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
     example_response: examples/tavily.web.search.json
 
@@ -123,19 +125,16 @@ endpoints:
       body: {urls: ["https://example.com"], extract_depth: basic}
     verified: '2026-09-21'
     added: '2026-09-21'
-    cost:
-      type: per_success
-      value: 0.4
-      table_min: 0.2
+    price:
+      table:
+        - {when: [{any: [{path: body.extract_depth, op: equals, value: basic}, {path: body.extract_depth, op: absent}]}], value: '0.2'}
+      fallback: {value: '0.4', note: "Advanced extraction, the documented maximum."}
       currency: credit
-      per: 1
       unit: result
-      tavily_rates: {basic: 0.2, advanced: 0.4}
-      source: docs
-      source_url: https://docs.tavily.com/documentation/api-credits
-      checked: '2026-09-22'
-      confidence: documented
-      note: "Basic is 0.2 credit per successful extraction; Advanced is 0.4. Platform reserve uses requested URLs, selected depth, and the 20-URL maximum, then settlement counts valid results only. failed_results and grouped usage.credits do not charge the caller; BYOK is unmetered."
+      note: "Basic is 0.2 credit per successful extraction; Advanced is 0.4. Platform reserve uses requested URLs, selected depth, and the 20-URL maximum, then settlement counts returned results only. failed_results and grouped usage.credits do not charge the caller; BYOK is unmetered."
+    reserve: {entities: {from: body.urls, max: 20}}
+    settle: {count: {path: response.results}}
+    miss: {when: {any: [{path: response.results.0.raw_content, op: absent}, {path: response.results.0.raw_content, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/extract
     example_response: examples/tavily.web.extract.json
 
@@ -155,7 +154,7 @@ endpoints:
         instructions: {type: string, required: false, note: "Natural-language discovery instructions; doubles the mapping credit rate."}
         max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
         max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
-        limit: {type: integer, required: false, min: 1, example: 10, note: "Shared-key calls require an explicit value of 1-20. Tavily publishes no upstream maximum; BYOK can use its accepted range."}
+        limit: {type: integer, required: false, min: 1, max: 20, example: 10, note: "A whole number from 1 to 20, required on treg's key. Tavily's own default is 50."}
         select_paths: {type: "array[string]", required: false}
         select_domains: {type: "array[string]", required: false}
         exclude_paths: {type: "array[string]", required: false}
@@ -167,19 +166,16 @@ endpoints:
       body: {url: "https://example.com", limit: 10}
     verified: '2026-09-21'
     added: '2026-09-21'
-    cost:
-      type: per_success
-      value: 0.2
-      table_min: 0.1
+    price:
+      table:
+        - {when: [{any: [{path: body.instructions, op: absent}, {path: body.instructions, op: empty}]}], value: '0.1'}
+      fallback: {value: '0.2', note: "Nonempty instructions double the mapping rate."}
       currency: credit
-      per: 1
       unit: page
-      tavily_rates: {regular: 0.1, instructions: 0.2}
-      source: docs
-      source_url: https://docs.tavily.com/documentation/api-credits
-      checked: '2026-09-22'
-      confidence: documented
-      note: "Regular Map is 0.1 credit per successful returned page; caller-supplied nonempty instructions make it 0.2. Platform calls require limit 1-20, reserve that bounded maximum, and settle valid results only. Grouped usage.credits is ignored; BYOK is unmetered and keeps Tavily's upstream range."
+      note: "Regular Map is 0.1 credit per successful returned page; caller-supplied nonempty instructions make it 0.2. Calls require limit 1-20 on treg's key, reserve that bounded maximum, and settle returned results only. Grouped usage.credits is ignored; BYOK is unmetered."
+    reserve: {rows: {param: body.limit, max: 20}}
+    settle: {count: {path: response.results}}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/map
     example_response: examples/tavily.web.map.json
 
@@ -200,7 +196,7 @@ endpoints:
         chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 5}
         max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
         max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
-        limit: {type: integer, required: false, min: 1, example: 10, note: "Shared-key calls require an explicit value of 1-20. Tavily publishes no upstream maximum; BYOK can use its accepted range."}
+        limit: {type: integer, required: false, min: 1, max: 20, example: 10, note: "A whole number from 1 to 20, required on treg's key. Tavily's own default is 50."}
         select_paths: {type: "array[string]", required: false}
         select_domains: {type: "array[string]", required: false}
         exclude_paths: {type: "array[string]", required: false}
@@ -216,18 +212,19 @@ endpoints:
       body: {url: "https://example.com", limit: 10, extract_depth: basic}
     verified: '2026-09-21'
     added: '2026-09-21'
-    cost:
-      type: per_success
-      value: 0.6
-      table_min: 0.3
+    price:
+      table:
+        - when: [{path: body.extract_depth, op: equals, value: advanced}, {any: [{path: body.instructions, op: absent}, {path: body.instructions, op: empty}]}]
+          value: '0.5'
+        - {when: [{any: [{path: body.instructions, op: absent}, {path: body.instructions, op: empty}]}], value: '0.3'}
+        - {when: [{any: [{path: body.extract_depth, op: equals, value: basic}, {path: body.extract_depth, op: absent}]}], value: '0.4'}
+      fallback: {value: '0.6', note: "Advanced with instructions, the documented maximum."}
       currency: credit
-      per: 1
       unit: result
-      tavily_rates: {basic: 0.3, basic_instructions: 0.4, advanced: 0.5, advanced_instructions: 0.6}
-      source: docs
-      source_url: https://docs.tavily.com/documentation/api-credits
-      checked: '2026-09-22'
-      confidence: documented
-      note: "Conservative allocation per valid returned extraction: Basic 0.3 credit, Basic with instructions 0.4, Advanced 0.5, Advanced with instructions 0.6. Platform calls require limit 1-20. Tavily does not expose every successfully mapped page, so treg absorbs any bounded hidden mapping difference. BYOK is unmetered."
+      note: "Conservative allocation per returned extraction: Basic 0.3 credit, Basic with instructions 0.4, Advanced 0.5, Advanced with instructions 0.6. Calls require limit 1-20 on treg's key. Tavily does not expose every successfully mapped page, so treg absorbs any bounded hidden mapping difference. BYOK is unmetered."
+    reserve: {rows: {param: body.limit, max: 20}}
+    settle: {count: {path: response.results}}
+    # A 204 carries no result and is free; every other answer is charged by its count.
+    bill: {error: charged}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/crawl
     example_response: examples/tavily.web.crawl.json
