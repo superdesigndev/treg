@@ -2796,6 +2796,51 @@ def _call_body(args) -> bytes | None:
     return _without_bom(path.read_bytes(), f"--data {args.data}")
 
 
+def _call_transport_error(exc: BaseException) -> NoReturn:
+    """A dropped or timed-out registry connection is a compact refusal, not a traceback.
+
+    httpx closes a partial response before raising, so headers are present only when the
+    exception carries them. The type name identifies the failure; the exception text is
+    omitted so a transport detail cannot leak onto stdout.
+    """
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    call_id = headers.get("X-Treg-Call-Id") if hasattr(headers, "get") else None
+    raw_cost = headers.get("X-Treg-Cost-Micro") if hasattr(headers, "get") else None
+    details: dict = {}
+    if call_id:
+        details["call_id"] = call_id
+    cost_micro = None
+    if raw_cost is not None:
+        try:
+            cost_micro = int(raw_cost)
+        except (TypeError, ValueError):
+            cost_micro = None
+    reserved = bool(headers.get("X-Treg-Async")) if hasattr(headers, "get") else False
+    if cost_micro is not None:
+        details["reserved_micro" if reserved else "charged_micro"] = cost_micro
+    kind = type(exc).__name__
+    if call_id or cost_micro is not None:
+        bits = [f"call id {call_id}" if call_id else "no call id"]
+        if cost_micro is not None:
+            bits.append(
+                f"{'reserved' if reserved else 'charged'} ${cost_micro / 1_000_000:g}"
+            )
+        else:
+            bits.append("charge unknown")
+        message = (
+            f"the connection to the registry failed ({kind}) after a partial response "
+            f"({', '.join(bits)}). A retry might or might not repeat a charge; "
+            f"check `treg balance` or `treg calls` before retrying."
+        )
+    else:
+        message = (
+            f"the connection to the registry failed ({kind}) before a complete response "
+            f"arrived. No call id or charge was received, so it is unknown whether a "
+            f"retry would repeat a charge. Check `treg balance` or `treg calls` before retrying."
+        )
+    _fail("network_error", message, ["treg balance", "treg calls"], **details)
+
+
 def cmd_call(args, cfg) -> None:
     for kv in args.query:  # a token without '=' would crash dict()/split with an opaque traceback
         if "=" not in kv:
@@ -2877,7 +2922,10 @@ def cmd_call(args, cfg) -> None:
     # `treg call <id> --data …` just work beats asking the caller to repeat what the catalog knows.
     method = args.method or ("POST" if content is not None else "GET")
     with _client(cfg) as c:
-        submission = c.request(method, f"/call/{rest}", params=params, content=content, headers=headers)
+        try:
+            submission = c.request(method, f"/call/{rest}", params=params, content=content, headers=headers)
+        except (httpx.RequestError, OSError) as exc:
+            _call_transport_error(exc)
         _note(status_class=f"{submission.status_code // 100}xx")
         if not getattr(args, "await_task", False) or not submission.headers.get("X-Treg-Async"):
             _show_call_response(submission)
