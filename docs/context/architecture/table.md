@@ -36,7 +36,8 @@ so a fault while converting is audited and its idempotency claim released like a
 
 `table_tool` passes `headers=application.table.plain_headers(...)`: the caller's headers with
 `Accept-Encoding: identity`, because the table must parse the body. A provider that answers gzip or deflate anyway is decoded (`_decoded`); any other encoding
-reads as a `raw` table.
+reads as a `raw` table. Deflate accepts both zlib-wrapped and raw streams; malformed or
+truncated compressed answers fall back to their original bytes for the raw view.
 
 `/table/` is in `call_surface._CALL_SURFACES` (surface label `table`), so its refusals get
 `X-Treg-Error: 1` and the audit fallback, and in `bootstrap._DATAPLANE_ROUTE_KEYS`. The demo lockdown
