@@ -126,8 +126,14 @@ def _soft(hex_color: str, alpha: float = .16) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+def _launch_cards() -> list[dict]:
+    return [{"path": "/aigc", "layout": "page", "title": "AI video for your agent", "size": 96,
+             "sub": "Seedance, Veo, Wan, Hailuo and Kling with one token. Pay per finished clip.",
+             "them": "rgba(17,132,83,.14)", "path_label": "treg.to/aigc"}]
+
+
 # Each group lists its pages; add a function here to give another set of pages its own cards.
-GROUPS = {"compare": _compare_cards}
+GROUPS = {"compare": _compare_cards, "launches": _launch_cards}
 
 
 def out_file(path: str) -> Path:
