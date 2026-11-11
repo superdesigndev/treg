@@ -3205,6 +3205,33 @@ COMPANYENRICH = OAuthProvider(
 )
 
 
+FUNDABLE = OAuthProvider(
+    service="fundable",
+    display_name="Fundable",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Fundable API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.tryfundable.ai/api-access/",
+    setup_action_label="Get your Fundable API key",
+    setup_steps=(
+        "Sign up for a Fundable account.",
+        "Open API Access and create an API key.",
+        "Copy the key and paste it here.",
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search companies, funding rounds, investors and people, and retrieve their funding histories.",
+    base_url="https://www.tryfundable.ai/api/v1",
+    docs_url="https://docs.tryfundable.ai",
+    # Free industry search rejects a bogus key with HTTP 401 INVALID_API_KEY.
+    probe_path="/industry/search?name=software",
+)
+
+
 OCEANIO = OAuthProvider(
     service="oceanio",
     display_name="Ocean.io",
@@ -4293,7 +4320,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

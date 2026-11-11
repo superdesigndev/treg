@@ -370,6 +370,25 @@ async def _openmart(c, key):
             "note": f"Monthly subscription balance; current period ends {period_end or 'at the account renewal date'}."}
 
 
+async def _fundable(c: httpx.AsyncClient, key: str) -> dict[str, object]:
+    # GET /api/v1/credits is documented as free and consumes no credits.
+    d = await _get(c, "https://www.tryfundable.ai/api/v1/credits",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    if not isinstance(d, dict) or d.get("success") is not True or not isinstance(data, dict):
+        raise ValueError("Fundable returned no valid credit balance")
+    unlimited = data.get("is_unlimited")
+    if type(unlimited) is not bool:
+        raise ValueError("Fundable returned no valid credit balance")
+    if unlimited:
+        return {"value": None, "unit": "credits", "note": "unlimited API account",
+                "informational": True}
+    balance = _finite(data.get("total_available"))
+    if balance is None or balance < 0:
+        raise ValueError("Fundable returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "API credit balance"}
+
+
 async def _harvestapi(c, key):
     d = await _get(c, "https://api.harvestapi.io/users/my-api-user",
                    headers={"X-API-Key": key})
@@ -1139,6 +1158,7 @@ BALANCE_ROUTES = {
     "sumble": _sumble,
     "moltsets": _moltsets,
     "openmart": _openmart,
+    "fundable": _fundable,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,
