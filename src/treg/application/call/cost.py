@@ -114,8 +114,41 @@ def _rows(rule: dict, request: dict) -> int | None:
     value = found[0] if found else None
     raw = str(value).strip() if value is not None and not isinstance(value, list) else ""
     if raw.isdigit():
-        return top if len(raw) > len(str(top)) else max(1, min(int(raw), top))
+        return top if len(raw.lstrip("0")) > len(str(top)) else max(1, min(int(raw.lstrip("0") or "0"), top))
     return int(rule["default"]["value"]) if rule.get("default") else None
+
+
+def _whole(value: object, top: int) -> bool:
+    """A count parameter's value is a whole number from 1 to `top`: a JSON integer, or ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        return len(value.lstrip("0")) <= len(str(top)) and 1 <= int(value.lstrip("0") or "0") <= top
+    return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= top
+
+
+def _invalid(ep: dict, parameter: str, message: str) -> ResolutionFailed:
+    return ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
+        "message": message})
+
+
+def require_request(ep: dict, request_data: dict) -> None:
+    """On every tier, before anything is held: a parameter whose declared type is not a list is sent
+    at most once, and a `reserve.rows` count the request carries is a whole number from 1 to its
+    max (an absent one takes the default). The value itself is never echoed."""
+    inputs = ep.get("input") or {}
+    declared = {**(inputs.get("pathParams") or {}), **(inputs.get("queryParams") or {})}
+    for block in ("queryParams", "pathParams"):
+        for name, value in (request_data.get(block) or {}).items():
+            spec = declared.get(name)
+            if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
+                    and spec.get("type") != "list":
+                raise _invalid(ep, name, f"{ep['id']} takes {name} once")
+    rule = (ep.get("reserve") or {}).get("rows")
+    if rule and rule.get("param"):
+        found = select(rule["param"], request_document(ep, request_data, defaults=False))
+        if found and found[0] is not None and not _whole(found[0], int(rule["max"])):
+            raise _invalid(ep, rule["param"],
+                           f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
 def require_rows(ep: dict, request_data: dict) -> None:
@@ -123,9 +156,7 @@ def require_rows(ep: dict, request_data: dict) -> None:
     before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and _rows(rule, request_document(ep, request_data, defaults=False)) is None:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
-            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["param"],
-            "message": f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}"})
+        raise _invalid(ep, rule["param"], f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
 def require_rates(ep: dict, cat) -> None:
@@ -144,7 +175,7 @@ def require_rates(ep: dict, cat) -> None:
                 "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
 
 
-def _entities(rule: dict, request: dict) -> int:
+def _entity_total(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
     for path in paths:
@@ -155,7 +186,25 @@ def _entities(rule: dict, request: dict) -> int:
                     total += sum(1 for part in parts if part.strip())
                 elif item is not None:
                     total += 1
-    return max(1, min(total, int(rule.get("max") or 10_000)))
+    return total
+
+
+def _entities(rule: dict, request: dict) -> int:
+    return max(1, min(_entity_total(rule, request), int(rule.get("max") or 10_000)))
+
+
+def require_entities(ep: dict, request_data: dict) -> None:
+    """On treg's key, a request naming more `reserve.entities` than the row's max is refused
+    before anything is held: the hold stops at the max, so the rest would go unheld."""
+    rule = (ep.get("reserve") or {}).get("entities")
+    if not rule:
+        return
+    top = int(rule.get("max") or 10_000)
+    if _entity_total(rule, request_document(ep, request_data, defaults=False)) > top:
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
+            "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
+                       "request or connect your own key"})
 
 
 def plugin_request(ep: dict, request_data: dict) -> plugins.Request:
@@ -201,11 +250,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
             raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
                 "error": "catalog_price_invalid", "endpoint_id": ep["id"],
                 "message": f"{ep['id']} could not price this request"})
-        hold = min(held, _micro_up(Decimal(reserve["max"]) * rate))
+        terms["count_max_micro"] = _micro_up(Decimal(reserve["max"]) * rate)
+        hold = min(held, terms["count_max_micro"])
     else:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
         hold = amount(terms, units)
+        top = (reserve.get("rows") or reserve.get("entities") or {}).get("max")
+        if top is not None:
+            terms["count_max_micro"] = amount(terms, int(top))
     scalar = (price_.get("value") if price_.get("value") is not None
               else (price_.get("fallback") or {}).get("value"))
     unit = _micro_up(Decimal(scalar) * rate) if scalar is not None else 0
@@ -280,9 +333,11 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
 
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,
               answer: plugins.Answer | None) -> int | None:
-    """What a `count` or `plugin` settle reads off this answer, capped at the hold."""
+    """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
+    maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
     found = _uncapped(terms, doc, request, answer)
-    return None if found is None else min(found, hold)
+    cap = terms.get("count_max_micro")
+    return None if found is None else min(found, hold if cap is None else int(cap))
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,

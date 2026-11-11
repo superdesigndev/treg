@@ -38,7 +38,7 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
-  filtrat.people.email.find.resolve_catchall:
+  filtrat-finder.people.email.find:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
     const: {body.resolve_catchall: true}
@@ -84,7 +84,6 @@ adapters:
     in:  {full_name: queryParams.full_name, domain: queryParams.domain}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
   leadmagic.people.email.find:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: body.full_name, domain: body.domain}
@@ -649,7 +648,6 @@ adapters:
     accepts: [[email]]
     in:  {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status, score: data.score}
-    miss: "data.status == null"
     verdicts: {accept_all: catch_all, webmail: unknown, disposable: risky}
   limadata.people.email.verify:
     accepts: [[email]]
@@ -706,9 +704,6 @@ adapters:
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
           linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
-    miss: "data.name.fullName == null"
-  # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
-  # cannot be fixture-verified; hunter.people.enrich covers the same identity.
   leadmagic.people.enrich:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.profile_url}
@@ -1009,8 +1004,8 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
+    max: {limit: 100}
     out: {people: data.emails, count: meta.results}
-    miss: "data.emails == []"
     row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
@@ -1056,7 +1051,6 @@ adapters:
     out: {username: "[0].account", user_id: "[0].id", full_name: "[0].full_name", followers: "[0].followers",
           following: "[0].following", posts_count: "[0].posts_count", is_verified: "[0].is_verified",
           is_private: "[0].is_private", biography: "[0].biography"}
-    miss: "[0].account == null"
   brightdata.x.tiktok-profiles:
     accepts: [[username]]
     in:  {}
@@ -1067,7 +1061,6 @@ adapters:
     out: {username: "[0].account_id", user_id: "[0].id", sec_uid: "[0].secu_id", nickname: "[0].nickname",
           followers: "[0].followers", following: "[0].following", likes: "[0].likes", videos_count: "[0].videos_count",
           is_verified: "[0].is_verified", biography: "[0].biography"}
-    miss: "[0].account_id == null"
   brightdata.x.instagram-posts:
     accepts: [[url]]
     in:  {url: body.url}
@@ -1075,7 +1068,6 @@ adapters:
     const: {queryParams.dataset_id: gd_lk5ns7kz21pck8jpis, queryParams.format: json}
     out: {id: "[0].post_id", shortcode: "[0].shortcode", caption: "[0].description", likes: "[0].likes",
           comments: "[0].num_comments", owner_username: "[0].user_posted"}
-    miss: "[0].post_id == null"
   lusha.people.enrich:
     accepts: [[first_name, last_name, domain], [full_name, domain]]
     in:  {}
@@ -1184,7 +1176,6 @@ adapters:
     out: {name: data.name, domain: data.domain, description: data.description, industry: data.category.industry,
           employees: data.metrics.employees, founded: data.foundedYear, location: data.location,
           linkedin_url: "fmt('https://www.linkedin.com/{}', data.linkedin.handle)"}
-    miss: "data.name == null"
   tomba.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -1381,7 +1372,6 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {companies: data, count: meta.results}
-    miss: "data == []"
   aviato.companies.search:
     accepts: [[name]]
     in:  {}
@@ -1518,7 +1508,6 @@ adapters:
     out: {full_name: "[0].name", first_name: "[0].first_name", last_name: "[0].last_name", headline: "[0].position",
           location: "[0].city", followers: "[0].followers", connections: "[0].connections", about: "[0].about",
           linkedin_url: "[0].url"}
-    miss: "[0].name == null"
   fiber-ai.linkedin.user.profile:
     accepts: [[linkedin_handle]]
     in:  {linkedin_handle: body.identifier}
@@ -2094,7 +2083,6 @@ adapters:
     const: {queryParams.dataset_id: gd_mf0urb782734ik94dz, queryParams.format: json}
     test_identity: {url: "https://www.facebook.com/facebook"}
     out: {name: "[0].name", id: "[0].id", url: "[0].url"}
-    miss: "[0].name == null"
   scrapecreators.x.v1-facebook-profile:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -2596,7 +2584,6 @@ adapters:
     out: {full_name: data.person.name.fullName, first_name: data.person.name.givenName, last_name: data.person.name.familyName,
           title: data.person.employment.title, company: data.company.name, company_domain: data.company.domain,
           location: data.person.location}
-    miss: "data.person.name.fullName == null"
 
   fiber-ai.people.contacts.turbo:
     accepts: [[linkedin_url]]

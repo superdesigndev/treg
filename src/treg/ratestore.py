@@ -25,6 +25,7 @@ from sqlalchemy import delete
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import client_ip
 from .models import Ephemeral
 
 
@@ -102,6 +103,14 @@ async def kv_take(db: AsyncSession, ns: str, k: str) -> dict | None:
     if row is None or row.expires_at < _utcnow_naive():
         return None
     return row.v
+
+
+def ip_limit(ip: str, max_hits: int, key: str | None = None) -> list[tuple[str, int]]:
+    """The per-address entry of a `rate_check` limits list, keyed by `key` (default: the address
+    itself). Empty for an address the deployment exempts, so the other entries still decide."""
+    if client_ip.exempt(ip):
+        return []
+    return [(key or ip, max_hits)]
 
 
 async def rate_check(

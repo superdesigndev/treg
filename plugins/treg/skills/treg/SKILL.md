@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 126 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 127 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 version: 0.30.0
 ---
 
@@ -180,6 +180,9 @@ one mistake. treg does not switch providers on a direct call; only you know whic
   run one tool of each shape and merge the results.
 - A tool marked `strict_query: true` accepts only its declared query parameters, once each, with
   required fields and allowed values enforced, and no body. Rejected input is not forwarded.
+- Send each declared single-valued parameter once, and a row count such as `limit` as a whole
+  number within its stated maximum: a tool that enforces this answers a 400
+  `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 **How a catalog call is served**, in this order:
 

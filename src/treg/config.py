@@ -209,6 +209,13 @@ class Settings(BaseSettings):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
 
+    @field_validator("rate_limit_exempt_ips")
+    @classmethod
+    def _exempt_ips_parse(cls, v: str) -> str:
+        from .client_ip import exempt_networks
+        exempt_networks(v)  # raises ValueError on an entry that is not an address or CIDR block
+        return v
+
     @field_validator("read_database_url")
     @classmethod
     def _read_database_driver(cls, v: str) -> str:
@@ -411,6 +418,7 @@ class Settings(BaseSettings):
     platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
     platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
     platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
+    platform_key_filtrat_finder: str = ""  # Bearer key (ak_…); Filtrat's finder, its own partner account
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key
@@ -960,6 +968,9 @@ class Settings(BaseSettings):
     # use the socket peer). The first X-Forwarded-For entry is client-written and never trusted.
     client_ip_header: str = ""
     trusted_proxy_hops: int = Field(default=1, ge=0, le=5)
+    # Comma-separated addresses or CIDR blocks that skip every per-IP rate window (an authorized
+    # security test, a monitoring probe); per-email, per-user and deployment-wide windows still apply.
+    rate_limit_exempt_ips: str = ""
     # Comma-separated `treg.extensions` entry-point names that must be installed (policy.py), so a
     # deployment that relies on a private policy extension refuses to start without it. Empty =
     # load whatever is installed, which for a plain install is nothing.

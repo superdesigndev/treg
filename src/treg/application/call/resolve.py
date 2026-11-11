@@ -986,17 +986,6 @@ def _marketplace_pricing(
             "domains", "names", "professional_network_profile_urls", "business_emails"
         ))
         return _usd_to_micro(float(cost.get("usd") or 0) * count), unit
-    if provider == "hunter" and endpoint_id == "hunter.companies.emails":
-        # Hunter charges 1 search credit per 10 emails RETURNED, rounded UP — not linear per-email.
-        # The settle logic uses ceil(emails/10); the estimate must match to avoid billing mismatch.
-        raw = query.get("limit")
-        asked = int(str(raw)) if raw is not None and str(raw).isdigit() else 10  # Hunter's default
-        asked = max(1, min(asked, 100))  # Hunter's max
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if rate:
-            credits = -(-asked // 10)  # ceil division: whole credits, minimum 1
-            return _usd_to_micro(credits * rate), _usd_to_micro(rate)
-        return estimate, unit
     if endpoint_id == "fiber-ai.people.search.natural_language" and credit_rate:
         # Fiber charges 2 NL-interpretation credits on the first page only.
         token = _json_object(body).get("pageToken")
@@ -1860,6 +1849,17 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         name = str(path).split(".", 1)[1]
         supplied = [value for key, value in query.multi_items() if key == name] \
             if query is not None else []
+        if expected is None:
+            if supplied:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"queryParams.{name}",
+                        "message": f"{ep['id']} does not take query parameter {name} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
+            continue
         if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
@@ -2247,11 +2247,13 @@ class Pricing:
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
     """Price one catalog call from the caller's query (path params included, named by `consumed`)
-    and body, with the catalog of this checkout. Pure: no session, no network."""
+    and body, with the catalog of this checkout. Pure: no session, no network. A v2 row refuses a
+    request its pricing cannot read (`call.cost.require_request`) here, on every tier."""
     cat = catalog_store.load()
     service = ep["provider"]
     if schema.is_v2(ep):
         request_data = settlement_basis.request_evidence(query.multi_items(), body, path_names=consumed)
+        call_cost.require_request(ep, request_data)
         hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
         return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
                        settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
@@ -2475,6 +2477,7 @@ async def _resolve_marketplace_call(
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
+            call_cost.require_entities(ep, pricing.request_data)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
