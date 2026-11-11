@@ -1,5 +1,5 @@
 {
- "version": 27,
+ "version": 28,
  "providers": [
   {
    "provider": "Google Ads",
@@ -1105,6 +1105,17 @@
     "shape": "bearer"
    },
    "probe": "user/credits/info"
+  },
+  {
+   "provider": "JobsPipe",
+   "tokens": [
+    "JOBSPIPE"
+   ],
+   "base_url": "https://api.jobspipe.dev",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v1/account"
   },
   {
    "provider": "ScrapeGraphAI",
