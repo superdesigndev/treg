@@ -659,8 +659,10 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
 
 
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
-                     provider: str | None = None) -> None:
-    """Validate a first-match AIGC price table and its explicit reserve upper bound."""
+                     provider: str | None = None, *, needs_default: bool = True) -> None:
+    """Validate a first-match AIGC price table and its explicit reserve upper bound. A v2 table
+    (`needs_default=False`) may compare an optional field without a default: an equality on an
+    absent field does not hold, so a later row or the fallback prices that request."""
     table = cost.get("table")
     if not isinstance(table, list) or not table:
         fail(errors, where, "cost.table must be a non-empty list")
@@ -689,7 +691,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
                 spec = fields.get(str(field))
                 if spec is None:
                     fail(errors, rwhere, f"when field '{field}' is not declared in input")
-                elif spec.get("required") is not True and "default" not in spec:
+                elif needs_default and spec.get("required") is not True and "default" not in spec:
                     fail(errors, rwhere, f"when field '{field}' must be required or declare a default")
                 elif isinstance(expected, (dict, list)) or expected is None:
                     fail(errors, rwhere, f"when field '{field}' must compare a scalar value")
@@ -1577,7 +1579,8 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         return
     view = schema.served(row, inp)["cost"]
     if "table" in view:
-        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider)
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider,
+                         needs_default=False)
         return
     for index, entry in enumerate(price.table):
         for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):

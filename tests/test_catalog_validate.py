@@ -457,6 +457,9 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     optional["body"]["duration"].pop("default")
     errors = _table_errors(_valid_table(), optional)
     assert any("must be required or declare a default" in error for error in errors)
+    v2: list[str] = []
+    validator.check_cost_table(_valid_table(), optional, "demo.yaml:submit", v2, needs_default=False)
+    assert v2 == [], "a v2 table's equality on an absent optional field just does not hold"
 
     no_max = _valid_input()
     no_max["body"]["duration"].pop("max")

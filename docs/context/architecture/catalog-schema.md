@@ -63,7 +63,8 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
 - A v2 row also serves `cost` in today's shape, derived from its price, provenance, reserve and
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
-  (omitted when a condition is not one equality), `reserve.rows` with its parameter back in
+  (omitted when a condition is not one equality; its floor `table_min` is served either way),
+  `reserve.rows` with its parameter back in
   `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
@@ -136,8 +137,10 @@ and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credi
 declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
 USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (required or
-defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum). A
+declared input fields; an equality-only table also meets today's table checks (enum and range, a
+bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
+field without a default: an equality on an absent field does not hold, so a later row or the
+fallback prices that request. A
 `provenance.checked` older than 90 days warns, as `cost.checked` does.
 
 ## Provider defaults and the one merge rule
