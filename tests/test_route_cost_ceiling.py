@@ -52,6 +52,7 @@ async def test_backlinks_ceiling(clients, moz_on, monkeypatch, endpoint, cap, ma
     charged = before - await _balance(clients)
     if status == 402:
         assert response.json()['detail']['error'] == 'route_max_cost'
+        assert response.headers['x-treg-cost-micro'] == '0'
         assert charged == 0 and seen == []
         async with session_maker() as db:
             assert (await db.execute(select(LedgerEntry).where(
@@ -74,6 +75,7 @@ async def test_underquoted_candidate_is_refused_at_reservation(clients, moz_on, 
         headers={'X-Treg-Route-Max-Cost': '0.01'})
     assert response.status_code == 402, response.text
     assert response.json()['detail']['error'] == 'route_max_cost'
+    assert response.headers['x-treg-cost-micro'] == '0'
     assert seen == [] and await _balance(clients) == before
     await _assert_no_holds()
 
@@ -179,6 +181,7 @@ async def test_ceiling_names_the_minimum_when_nothing_fits(clients, enrichment_o
     assert detail['max_cost_micro'] == 10_000
     assert detail['cheapest_micro'] == 54_000
     assert detail['charged_micro'] == 0
+    assert response.headers['x-treg-cost-micro'] == '0'
     assert detail['plan'][0]['endpoint_id'] == _DEAR and detail['plan'][0]['price_micro'] == 245_000
     assert detail['plan'][1]['endpoint_id'] == _CHEAP
     assert detail['message'] == (

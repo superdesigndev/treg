@@ -1381,6 +1381,7 @@ async def test_routed_busy_money_queue_is_treg_refusal_not_a_provider_failure(
     assert response.status_code == 429, response.text
     assert response.json()["detail"]["error"] == "money_admission_timeout"
     assert int(response.headers["Retry-After"]) >= 1
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
     assert seen == [], "no provider is asked against the same busy queue"
     assert await _balance(clients) == before
 
@@ -1451,6 +1452,7 @@ async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: Asyn
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "P C", "domain": "stripe.com"}, headers={"X-Treg-Route-Max-Cost": "0.001"})
     assert r.status_code == 402 and r.json()["detail"]["error"] == "route_max_cost" and seen == []
+    assert r.headers["X-Treg-Cost-Micro"] == "0"
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).scalars().all() == []
 

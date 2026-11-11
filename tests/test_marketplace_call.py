@@ -752,6 +752,7 @@ async def test_caller_max_cost_header_refuses_a_direct_call_before_the_reserve(c
     assert d["error"] == "route_max_cost" and d["endpoint_id"] == EP
     assert d["max_cost_micro"] == 500 and d["estimated_cost_micro"] == EP_MICRO
     assert "nothing was charged" in d["message"]
+    assert r.headers["X-Treg-Cost-Micro"] == "0"
     assert await _balance(clients) == 1_000_000
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={hdr: "not-money"})
     assert r.status_code == 400, r.text

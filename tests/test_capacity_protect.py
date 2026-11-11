@@ -88,6 +88,7 @@ async def test_exhausted_platform_account_is_refused_before_any_hold(clients: As
     assert r.status_code == 503, r.text
     assert r.headers["X-Treg-Error"] == "1"
     assert "X-Treg-Call-Id" in r.headers
+    assert r.headers["X-Treg-Cost-Micro"] == "0"
     body = r.json()["detail"]
     assert body["error"] == "provider_capacity_unavailable" and body["provider"] == "tikhub"
     assert body["endpoint_id"] == EP and body["resets_at"] and "own key" in body["message"]
@@ -98,6 +99,7 @@ async def test_exhausted_platform_account_is_refused_before_any_hold(clients: As
     await audit.drain()
     row = (await clients.get("/calls")).json()[0]
     assert row["status_code"] == 503 and row["refused_by"] == "capacity" and row["tool_name"] == EP
+    assert row["cost_charged_micro"] == 0
 
 
 async def test_a_capacity_refusal_names_the_provider_in_the_request_log(clients: AsyncClient, platform_on, caplog):

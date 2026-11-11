@@ -125,6 +125,22 @@ class ReservationFailed(CallFailure):
     """A metered call is refused before its reservation commits."""
 
 
+def cost_micro_for_failure(exc: CallFailure) -> int | None:
+    """The metered charge a CallFailure may state on `X-Treg-Cost-Micro`, or None to omit it.
+
+    A `charged_micro` already on the detail (including 0 after a full release) wins.
+    Reservation failures never committed a hold, and `provider_capacity` / `route_max_cost`
+    are refused before one exists, so they may state zero. Other kinds (own-key pauses,
+    gateway failures that may still hold money) leave the header off unless the detail
+    already named a charge.
+    """
+    if isinstance(exc.detail, dict) and "charged_micro" in exc.detail:
+        return int(exc.detail["charged_micro"] or 0)
+    if isinstance(exc, ReservationFailed) or exc.kind in {"provider_capacity", "route_max_cost"}:
+        return 0
+    return None
+
+
 class GatewayFailed(CallFailure):
     """The provider did not produce a complete response or treg refused the relay."""
 

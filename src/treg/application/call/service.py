@@ -100,6 +100,7 @@ from .types import (
     ResolutionFailed,
     UpstreamRequest,
     UpstreamResponse,
+    cost_micro_for_failure,
 )
 from ...domain import money as ledger  # noqa: F401 - tests patch the money module through service.ledger
 
@@ -936,7 +937,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             request.state.call_audited = True
             charged = (int(exc.detail.get("charged_micro") or 0)
                        if isinstance(exc.detail, dict) else 0)
-            if exc.kind in routed._QUOTA_REFUSALS:
+            cost = cost_micro_for_failure(exc)
+            if cost is not None:
+                request.state.call_cost_micro = cost
+            elif exc.kind in routed._QUOTA_REFUSALS:
                 request.state.call_cost_micro = 0
             elif exc.kind in ("route_caller_fault", "route_failed"):
                 request.state.call_cost_micro = charged
@@ -960,9 +964,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
                 api_key_prefix=caller.api_key_prefix,
                 telemetry={"call_ref": call_ref, "endpoint_id": ep["id"], "provider": "treg",
-                           "credential_tier": "routed", **_tag_telemetry(meta)})
+                           "credential_tier": "routed",
+                           **({"cost_charged_micro": cost} if cost is not None else {}),
+                           **_tag_telemetry(meta)})
             _routed_event(request, ep, exc.status_code, refused_by=_refusal_kind(exc.status_code),
-                          charged=0)
+                          charged=0 if cost is None else cost)
             raise
         request.state.call_audited = True
         routed_pending = response.status == 202 and routed._header(response, "X-Treg-Route-Outcome") == "pending"
@@ -1013,6 +1019,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             refused = ("capacity" if mkexc.kind == "provider_capacity"
                        else "paused" if mkexc.kind == "provider_paused"
                        else _refusal_kind(mkexc.status_code))
+            cost = cost_micro_for_failure(mkexc)
+            if cost is not None:
+                request.state.call_cost_micro = cost
             # Unresolved, so no credential tier; the provider is the catalog row's.
             request.context.provider, request.context.refused_by = ep.get("provider"), refused
             audit.record_call(
@@ -1023,6 +1032,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 api_key_prefix=caller.api_key_prefix,
                 telemetry={"call_ref": call_ref,
                            "endpoint_id": ep["id"], "provider": ep.get("provider"),
+                           **({"cost_charged_micro": cost} if cost is not None else {}),
                            **_tag_telemetry(meta)})
             call_event_app.emit(
                 "call", org_id=caller.org_id, endpoint_id=ep["id"], call_ref=call_ref,
@@ -1403,6 +1413,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # `exc.detail` says which. This runs inside `mk.metered` and before relay, so no provider
             # content reaches it. A tag-cap detail carries the tag's `val`, the caller's own identifier,
             # bounded by the same redaction and retention as the request bodies.
+            request.state.call_cost_micro = 0
             _audit(exc.status_code, charged_micro=0,
                    refused_by="balance" if exc.status_code == 402 else "cap",
                    error_response=(
