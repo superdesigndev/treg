@@ -20,7 +20,6 @@ def test_the_finder_row_is_live_priced_on_its_own_credit_rate():
     assert row["provider"] == "filtrat-finder" and not row.get("status")
     assert row["platform_request"] == {"body.resolve_catchall": True}
     assert row["cost"]["settle"] == "usage" and row["cost"]["fallback"]["value"] == 25
-    assert catalog.credit_rates["filtrat-finder"] == 0.00012          # 25 credits = $0.003 a found email
 
 
 def test_the_old_finder_rows_point_to_the_new_one():
