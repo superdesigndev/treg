@@ -1,0 +1,213 @@
+# Deeplead API. Self-verified by the vendor against production with a partner key (ledger in the PR).
+# Prices are Deeplead's partner rates for treg's platform key, quoted by the vendor and metered per
+# call in the `x-deeplead-cost-usd` response header. Keys bought directly from Deeplead pay in
+# credits instead (https://www.deeplead.io/pricing); the body's chargedCredits shows that direct-key
+# equivalent and is not what treg pays.
+provider: deeplead
+source:
+  docs: https://www.deeplead.io/api/v1/docs
+  openapi: https://www.deeplead.io/api/v1/spec.json
+  curated: '2026-11-10'
+pricing_url: https://www.deeplead.io/pricing
+limits: 120 requests/minute per key.
+proposed_capabilities:
+  companies.businesses.search: Search physical business locations.
+  companies.ad_pixels: Find which ad and analytics pixels a company's website runs
+  companies.ad_pixels.websites: List every website that loads a given ad or analytics pixel id
+  web.domain.registration: When a domain was registered, expires and last changed hands, and at which registrar
+  people.email.inbox_placement.start: Test whether mail from your own mailbox lands in the inbox, spam or a tab at Gmail and Outlook
+  people.email.inbox_placement.status: Read where an inbox placement test's email landed at each seed mailbox
+
+endpoints:
+- id: deeplead.businesses.search
+  added: '2026-11-10'
+  domain: companies
+  capability: companies.businesses.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /businesses/search
+  name: Search local businesses
+  summary: Search local businesses from Google Business Profiles
+  input:
+    bodyType: json
+    note: Up to 30 businesses per page. Every row carries rating, review counts per star, website, emails, phones, socials and ad-pixel flags (Meta, Google Ads, GA, TikTok, ChatGPT). `require` filters to rows that have (true) or were checked and lack (false) a field.
+    body:
+      categories: {type: "array[string]", required: true, note: "Google business categories", example: ["Dentist"]}
+      location: {type: string, required: true, note: "a city (\"Austin, TX\"), a US state (\"Texas\") or a country (\"Germany\")", example: "Austin, TX"}
+      page: {type: integer, required: false, note: "1-100, default 1", example: 1}
+      radiusMiles: {type: number, required: false, note: "1-100 around a city, default 30", example: 10}
+      keyword: {type: string, required: false, note: "matched against the business name and categories", example: "Castle Dental"}
+      excludedCategories: {type: "array[string]", required: false}
+      rating: {type: string, required: false, note: "under-4 | 4-to-4.5 | 4.5-plus"}
+      reviews: {type: string, required: false, note: "under-10 | 10-to-100 | 100-plus"}
+      require: {type: object, required: false, note: "e.g. {\"email\": true, \"metaAds\": false}", example: {email: true}}
+  test_request:
+    body: {categories: ["Dentist"], location: "Austin, TX", keyword: "Castle Dental & Orthodontics - Sunset Valley"}
+  cost:
+    type: per_result
+    value: 0.0085
+    currency: USD
+    per: 1
+    unit: record
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-10-26'
+    confidence: documented
+    note: Partner rate per business returned; an empty page is free. The test_request returns one business. Metered per call in the x-deeplead-cost-usd response header.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.websites.pixels
+  added: '2026-11-10'
+  domain: companies
+  capability: companies.ad_pixels
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /websites/pixels
+  name: Find the ad and analytics pixels a website runs
+  summary: Website or domain → which ad and analytics pixels it runs (Meta, Google Ads, TikTok, ChatGPT Ads, LinkedIn…) with their ids
+  input:
+    bodyType: json
+    note: Checks the homepage and every Google Tag Manager container it loads, nested ones included, for meta, tiktok, openai (ChatGPT Ads), google_analytics, google_ads, microsoft_ads, linkedin, pinterest, snapchat, x, reddit, hotjar, microsoft_clarity and callrail, and returns pixel ids where the markup shows them (meta:1234…, google_ads:AW-…). Containers that 50 or more checked websites load belong to a platform or agency and are left out. 9.2M websites are already checked and answer at once with checkedAt; any other website is checked during the call (up to 20 s). 200 with found=false means the homepage never answered and is free.
+    body:
+      website: {type: string, required: true, note: "URL or domain", example: "hubspot.com"}
+  miss: {status: 200, means: "found=false, checkedAt null: the homepage did not answer; free"}
+  test_request:
+    body: {website: "hubspot.com"}
+  cost:
+    type: per_success
+    value: 0.002
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-10-26'
+    confidence: documented
+    note: Partner rate per website whose homepage answered, also when it runs no pixels; a homepage that never answers is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.websites.by_pixel
+  added: '2026-11-10'
+  domain: companies
+  capability: companies.ad_pixels.websites
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /websites/by-pixel
+  name: Find every website that runs the same pixel
+  summary: Pixel id (Meta, Google Ads, Google Analytics, TikTok, ChatGPT Ads) → every website we checked that loads it, so sites with one owner, dealer group or agency show up together
+  input:
+    bodyType: json
+    note: Takes a pixel id as deeplead.websites.pixels returns it (vendor:id). Matches pixels on the homepage and inside the Google Tag Manager containers it loads, nested ones included. 50 websites per page, sorted by domain, with totalCount across all pages and when each website was last checked. 9.4M websites are checked. A pixel on no checked website answers 200 with found=false and is free.
+    body:
+      pixelId: {type: string, required: true, note: "vendor:id, vendor one of meta | google_ads | google_analytics | tiktok | openai", example: "google_analytics:G-C1KY2CVREY"}
+      page: {type: integer, required: false, note: "1-100, default 1; 50 websites per page", example: 1}
+  miss: {status: 200, means: "found=false, totalCount 0: no checked website loads the pixel; free"}
+  test_request:
+    body: {pixelId: "google_analytics:G-C1KY2CVREY"}
+  cost:
+    type: per_result
+    value: 0.001
+    currency: USD
+    per: 1
+    unit: record
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-11-10'
+    confidence: documented
+    note: Partner rate per website returned; a pixel on no checked website is free. The test_request returns the 20 sites of one car dealer group ($0.02). Metered per call in the x-deeplead-cost-usd response header.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.websites.domain_registration
+  added: '2026-11-10'
+  domain: companies
+  capability: web.domain.registration
+  platform: web
+  scope: any_account
+  method: POST
+  path: /websites/domain-registration
+  name: Find when a domain was registered, and at which registrar
+  summary: Website or domain → registration, expiry, last-changed and transfer dates, registrar, nameservers and RDAP statuses
+  input:
+    bodyType: json
+    note: Answers from the registry's last RDAP answer Deeplead stored (6.3M domains). A .com or .net domain never looked up is asked at Verisign during the call; other domains answer only from stored answers. A subdomain answers for the domain it belongs to (shop.acme.com → acme.com). 200 with found=false means no registry knows the domain, or it was never asked; free.
+    body:
+      website: {type: string, required: true, note: "URL or domain", example: "stripe.com"}
+  miss: {status: 200, means: "found=false: the registry does not know the domain, or a non-.com/.net domain was never asked; free"}
+  test_request:
+    body: {website: "stripe.com"}
+  cost:
+    type: per_success
+    value: 0.0005
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-11-10'
+    confidence: documented
+    note: Partner rate per domain the registry knows; a miss is free. Metered per call in the x-deeplead-cost-usd response header.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.deliverability.tests.create
+  added: '2026-11-10'
+  domain: contacts
+  capability: people.email.inbox_placement.start
+  platform: people
+  scope: any_account
+  method: POST
+  path: /deliverability/tests
+  resource_ownership:
+    produces:
+      - {kind: deliverability_test, path: testId}
+  name: Start an inbox placement test for your mailbox
+  summary: Get seed addresses and a testId; send one email to them from your mailbox, then read where it landed
+  input:
+    bodyType: json
+    note: No body. Returns testId, seedEmails and closesAt (60 minutes later). Send one email from the mailbox under test to every seed address with the testId anywhere in the body, then poll deeplead.deliverability.tests.get about once a minute; most seeds report within 2-5 minutes. Send an Idempotency-Key header so a retry never starts a second paid test.
+  test_request:
+    body: {}
+  cost:
+    type: per_call
+    value: 0.45
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-10-26'
+    confidence: documented
+    note: Partner rate per test started; reading its result is free. A 503 (no seed mailbox available) is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.deliverability.tests.get
+  added: '2026-11-10'
+  domain: contacts
+  capability: people.email.inbox_placement.status
+  platform: people
+  scope: any_account
+  method: GET
+  path: /deliverability/tests/{testId}
+  resource_ownership:
+    requires: {kind: deliverability_test, param: testId}
+  name: Read where an inbox placement test's email landed
+  summary: Per seed mailbox, inbox, spam, a Gmail tab or missing, plus an inbox score once the test completes
+  input:
+    pathParams:
+      testId: {type: string, required: true, note: "from deeplead.deliverability.tests.create; only the team that started the test can read it"}
+    note: status is waiting until every seed reported or the 60-minute window closed, then completed with score (inbox share, 0-10). placement per seed is inbox, spam, promotions, social, updates, forums or missing. rspamd carries the content filter's verdict and matched rules when a seed reports one. Poll at most every 30 seconds.
+  untestable: needs a testId the same key created, and placement needs an email sent from the caller's own mailbox
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-10-26'
+    confidence: verified
+    note: Free; the live call's x-deeplead-cost-usd header read 0.
+  docs_url: https://www.deeplead.io/api/v1/docs

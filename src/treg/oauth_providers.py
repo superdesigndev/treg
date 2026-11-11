@@ -1389,6 +1389,31 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
 )
 
+DEEPLEAD = OAuthProvider(
+    service="deeplead",
+    display_name="Deeplead",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Deeplead API key (dl_…)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.deeplead.io/app/api-keys",
+    setup_action_label="Get your Deeplead API key",
+    setup_steps=(
+        "Sign in to Deeplead and open My Account → API.",
+        "Create a key and copy it; it is shown once.",
+    ),
+    setup_note="Lookups spend credits only when they find something; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Local businesses filtered by ad pixels, the pixels any website runs and every site sharing one, domain registration dates, and inbox placement tests.",
+    base_url="https://www.deeplead.io/api/v1",
+    docs_url="https://www.deeplead.io/api/v1/docs",
+    probe_path="/credits",  # free — a bad key gets a 401 here
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -4277,7 +4302,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, DEEPLEAD,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
