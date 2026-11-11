@@ -1430,16 +1430,16 @@ crypto = [
 
 [[package]]
 name = "pympp"
-version = "0.18.0"
+version = "0.22.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "rfc8785" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/f8/8231b6b7532b8187b39b8aa84844549505d24584ef33fa4ed64b59c84403/pympp-0.18.0.tar.gz", hash = "sha256:b3221759535544d97b968366c0d46f0795437c66644ed4fc8274032351ff50b8", size = 541731, upload-time = "2026-10-29T23:37:58.811Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/00/37b0c89d77b02a65923a1c73b956363c1aacf7825f98b7dc68b8e90f6060/pympp-0.22.0.tar.gz", hash = "sha256:27cea850799470e52d296bda5d3f8d3ebf8f26572cdfdf877adf2237a9902dac", size = 898276, upload-time = "2026-11-09T21:57:07.67Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/ad/b3d0ffac4947a91a319b70de1a571bffc0143631f9229695730a8fd7e12f/pympp-0.18.0-py3-none-any.whl", hash = "sha256:8173eb31fcc285b2ed4d36d02e73268fef6cee2455d0a76c2369e038d9b3bfe6", size = 235994, upload-time = "2026-10-29T23:37:57.389Z" },
+    { url = "https://files.pythonhosted.org/packages/95/e1/d40e1d7bb1efa04587ce81b24e54e10f9b0958ba34e8b330047b57eb00d6/pympp-0.22.0-py3-none-any.whl", hash = "sha256:fceab5e4508b59d3ad8b1777fe2b045c35c5def49d6831298dc980307c461e72", size = 412227, upload-time = "2026-11-09T21:57:05.76Z" },
 ]
 
 [package.optional-dependencies]
@@ -1453,7 +1453,6 @@ tempo = [
     { name = "eth-hash", extra = ["pycryptodome"] },
     { name = "propcache" },
     { name = "pydantic" },
-    { name = "pyjwt" },
     { name = "pytempo" },
     { name = "rlp" },
     { name = "urllib3" },
@@ -1462,18 +1461,19 @@ tempo = [
 
 [[package]]
 name = "pytempo"
-version = "0.6.2"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "eth-account" },
     { name = "eth-utils" },
+    { name = "pycryptodome" },
     { name = "rlp" },
     { name = "web3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/52/306de99106c99629d0ad25466ccef40661619541e1a3abcb28c3f5a2dd28/pytempo-0.6.2.tar.gz", hash = "sha256:41b0bd0a312713a6bdfda82227fe7ade812cf1e570a0aace4bca659b6ac13f26", size = 256479, upload-time = "2026-10-27T05:12:11.484Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/f1/a9a9ea543ee8142726e87ab547dfb571d475e3598e3c0827d44a30de6114/pytempo-0.7.0.tar.gz", hash = "sha256:c8e4004a5ba6856ee60dc97b9ec4200c389d9fb8d26386ff369df1f21c51ae98", size = 284706, upload-time = "2026-10-31T22:00:34.566Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/f9/a81084b2bce77addd8f2af53b48aad1eebdc2b4d40e3b4c2339fff448fb7/pytempo-0.6.2-py3-none-any.whl", hash = "sha256:1bd87fc44496388568a9b5cc7f7b120d90458fda79ab2223d4b4542197fca66c", size = 57582, upload-time = "2026-10-27T05:12:09.99Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/41/6687905f232d2974609b2f03b35d989428134959bc698f31514e3a9d2d20/pytempo-0.7.0-py3-none-any.whl", hash = "sha256:f67df3c7933dc7c6aeae30c01ab5f67b3de7dc2c0b4d2b2fd39cfbdd2f20d7c0", size = 68660, upload-time = "2026-10-31T22:00:33.381Z" },
 ]
 
 [[package]]
@@ -1920,7 +1920,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'server'", specifier = ">=11" },
     { name = "posthog", specifier = ">=7.47.3" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.5" },
-    { name = "pympp", extras = ["cdp", "tempo"], marker = "extra == 'server'", specifier = ">=0.18,<0.19" },
+    { name = "pympp", extras = ["cdp", "tempo"], marker = "extra == 'server'", specifier = ">=0.22,<0.23" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "questionary", specifier = ">=2.0" },
     { name = "quickjs", marker = "extra == 'server'", specifier = ">=1.19.4" },

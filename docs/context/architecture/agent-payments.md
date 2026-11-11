@@ -121,8 +121,8 @@ A credit draw moves no money, so the proof must establish key control before any
 x402: the facilitator's `verify` checks the EIP-3009 signature against `from`. MPP pull mode:
 pympp's `validate` recovers only a 65-byte secp256k1 sender signature; keychain, multisig, P256 and
 WebAuthn signatures only *name* their account and are authenticated by the chain at settlement. So
-`MppTempoRail` marks a pull credential deferrable only when its signature is a recovered one
-(`tempo._recovered_sender`); any other MPP payment always settles, credit or not.
+`MppTempoRail` marks a pull credential deferrable only when pympp reports its payer authenticated
+(`Validation.details["payer_verified"]`); any other MPP payment always settles, credit or not.
 
 ## The flow (`application/agent_payments.admit`)
 
@@ -171,14 +171,15 @@ headers (`X-Treg-Payment` among them) and no receipt.
 
 ## Replays
 
-- MPP: the proof is the transaction hash the chain records, in both modes (pull: pympp's
-  canonical-encoding hash of the signed transaction; push: the hash sent). One transfer pays once,
+- MPP: the proof is the transaction hash the chain records, in both modes
+  (`Validation.details["transaction_hash"]`; a transaction a fee payer would co-sign has none yet
+  and is refused). One transfer pays once,
   whichever mode presents it and under whichever challenge it is wrapped.
 - x402: network, asset, payer and the EIP-3009 nonce. The token contract also refuses a reused nonce.
 - The proof row is committed before any settlement, so two concurrent uses of one proof settle at
   most once.
-- `MppTempoRail._check_binding` compares the HMAC-authenticated challenge's route scope with the
-  request; `X402Rail.verify` compares the accepted terms and the resource URL with the offer.
+- `MppTempoRail` passes the request to pympp (`http_request=`), which requires the
+  HMAC-authenticated challenge's route scope (method, route, path, query) to match it; `X402Rail.verify` compares the accepted terms and the resource URL with the offer.
 
 ## The reconciler (`treg-worker agentpay reconcile`)
 
@@ -231,9 +232,9 @@ still `settling`. `pending` (not knowable yet, node unavailable): left for the n
 rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `treg`).
 
 - `MppTempoRail` uses `pympp` (`mpp.server.Mpp`, `mpp.methods.tempo.server.charge`):
-  `validate_credential` to verify without broadcasting, `broadcast_credential` to settle. Two
-  private pympp helpers (the canonical transaction hash, the RLP decoder) are used, so the
-  dependency is pinned below the next minor version.
+  `validate_credential` to verify without broadcasting, `broadcast_credential` to settle, both
+  bound to the request's route. Only public pympp interfaces are used; the dependency is still
+  pinned below the next minor version, as pympp is pre-1.0.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
   With `..._tempo_rpc_api_key` (Tempo's hosted RPC), one `httpx.AsyncClient` carrying it in the
   `tempo-api-key` header serves both pympp (`http_client`) and the reconciler's `evm.Chain`.
@@ -276,7 +277,8 @@ mainnet, or both testnets).
 
 ## Not built
 
-- MPP sessions (payment channels with cumulative vouchers): `pympp` has no session server yet.
+- MPP sessions (payment channels with cumulative vouchers): `pympp` now ships a session server;
+  treg does not use it yet.
 - Reconciling a credit-first authorization that someone other than treg submitted before it
   expired (the money arrives with no `settling` row to resolve).
 - Withdrawing or expiring credit (there is no refund entry).

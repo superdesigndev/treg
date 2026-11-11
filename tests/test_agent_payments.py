@@ -46,11 +46,22 @@ class FakeTempoChain:
         self.broadcasts = 0
         self.fail = False
         self.unknown = False
+        self.payer_verified = True
+        self.co_signed = False
 
     async def validate(self, intent, credential, request):
         from mpp._validation import Validation
 
-        return Validation(credential=credential, details={"mode": "pull"}, intent="charge",
+        payload = credential.payload
+        if payload.get("type") == "hash":
+            details = {"mode": "push", "payer_verified": True,
+                       "transaction_hash": payload["hash"].lower()}
+        else:
+            signed = payload["signature"]
+            details = {"mode": "pull", "payer_verified": self.payer_verified,
+                       "serialized_transaction": signed, "valid_before": None,
+                       "transaction_hash": None if self.co_signed else tx_hash(signed)}
+        return Validation(credential=credential, details=details, intent="charge",
                           request=dict(request), payer=TEMPO_PAYER)
 
     async def broadcast(self, intent, credential, request):
@@ -65,6 +76,12 @@ class FakeTempoChain:
             raise InternalPaymentError()
         self.broadcasts += 1
         return Receipt.success(reference=f"0x{self.broadcasts:064x}")
+
+
+def tx_hash(signed: str) -> str:
+    import hashlib
+
+    return "0x" + hashlib.sha256(signed.encode()).hexdigest()
 
 
 class FakeFacilitator:
@@ -615,23 +632,13 @@ def _tempo_tx(signature: bytes) -> str:
     return "0x76" + rlp.encode([b""] * 13 + [signature]).hex()
 
 
-def test_only_a_recovered_tempo_signature_may_draw_credit():
-    from treg.infra.agent_payments.tempo import _recovered_sender
-
-    assert _recovered_sender(_tempo_tx(b"\x01" * 65))
-    # A keychain signature only NAMES its account (0x03 | address | inner signature); the chain
-    # authenticates it at settlement, so before settlement it proves nothing.
-    assert not _recovered_sender(_tempo_tx(b"\x03" + bytes.fromhex("ab" * 20) + b"\x02" * 65))
-    assert not _recovered_sender("0x76zz")
-
-
 async def test_an_unrecovered_mpp_signature_never_draws_credit(anon: AsyncClient, payments_on,
                                                               chain):
+    chain.payer_verified = False  # a keychain, multisig, P256 or WebAuthn sender
     for n in (1, 2):
         challenge = await anon.get(f"/call/{EP}?aweme_id=7")
-        keychain = b"\x03" + bytes.fromhex(TEMPO_PAYER[2:]) + bytes([n]) * 65
         r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
-            "Authorization": _mpp_credential(challenge, _tempo_tx(keychain))})
+            "Authorization": _mpp_credential(challenge, _tempo_tx(bytes([n]) * 65))})
         assert r.status_code == 200, r.text
         assert r.headers["X-Treg-Payment"] == "paid"
     assert chain.broadcasts == 2  # the wallet held credit, but a named signer must settle
@@ -640,18 +647,26 @@ async def test_an_unrecovered_mpp_signature_never_draws_credit(anon: AsyncClient
 async def test_one_tempo_transfer_is_one_proof_in_either_mode(anon: AsyncClient, payments_on, chain):
     from mpp import Challenge, Credential
 
-    from treg.infra.agent_payments.tempo import _transaction_hash
-
     signed = _tempo_tx(b"\x01" * 65)
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     r = await anon.get(f"/call/{EP}?aweme_id=7",
                        headers={"Authorization": _mpp_credential(challenge, signed)})
     assert r.status_code == 200, r.text
     echo = Challenge.from_www_authenticate(challenge.headers.get_list("www-authenticate")[0]).to_echo()
-    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": _transaction_hash(signed)})
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": tx_hash(signed)})
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
     assert r.status_code == 402 and r.json()["detail"]["reason"] == "payment_replayed"
     assert chain.broadcasts == 1
+
+
+async def test_a_transfer_whose_hash_is_unknown_until_broadcast_is_refused(anon: AsyncClient,
+                                                                          payments_on, chain):
+    chain.co_signed = True  # a fee payer co-signs it, so there is no replay key before broadcast
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"Authorization": _mpp_credential(challenge, _tempo_tx(b"\x01" * 65))})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "malformed_credential"
+    assert chain.broadcasts == 0
 
 
 # ---- settlement that cannot be confirmed ----------------------------------------------------------
