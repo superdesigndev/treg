@@ -18,8 +18,9 @@ def records(request: Request, answer: Answer) -> int | None:
     NDJSON, answers a single input with one line.
     A gzip download (`compress=true`), a body that starts like JSON but does not parse, and any
     other shape cannot be counted. With `include_errors`, an input that found nothing (`dead_page`,
-    for one) comes back as a record with an `error_code`; Bright Data counts it as an error, not a
-    record, and does not bill it."""
+    for one) comes back as a record with an `error_code`; without it, as a stub holding only
+    `timestamp` and `input`. Bright Data counts either as an error, not a record, and does not bill
+    it."""
     raw = answer.raw
     if raw[:2] == b"\x1f\x8b":
         return None
@@ -49,8 +50,13 @@ def records(request: Request, answer: Answer) -> int | None:
 _ENVELOPE = frozenset({"snapshot_id", "status", "message", "error", "errors"})
 
 
+# Without `include_errors`, an input that found nothing comes back as a stub carrying only these keys.
+_STUB = frozenset({"timestamp", "input"})
+
+
 def _billed(items: list) -> int:
-    return sum(1 for item in items if not (isinstance(item, dict) and "error_code" in item))
+    return sum(1 for item in items
+               if not (isinstance(item, dict) and ("error_code" in item or item.keys() <= _STUB)))
 
 
 def no_records(request: Request, answer: Answer) -> bool:
