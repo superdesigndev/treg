@@ -11,7 +11,7 @@ proposed_capabilities:
   companies.funding_round.investors: "List investors in one funding round"
   companies.investors.search: "Find investor firms by identity, location or portfolio activity"
   companies.investors.enrich: "Get an investor firm's profile and funding statistics"
-  companies.investors.deals: "List funding rounds involving an investor firm"
+  companies.investors.deals: "List an investor's investments"
   people.investment_deals: "List funding rounds involving an individual investor"
   companies.location.resolve: "Map location names to filter values"
 
@@ -84,7 +84,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /deals/{id}/investors
-    name: Get a round's investors
+    name: List a funding round's investors
     summary: List the firms, associated people and angel investors for one funding round.
     input:
       pathParams:
@@ -104,7 +104,7 @@ endpoints:
     method: POST
     path: /companies
     name: Search companies
-    summary: Search or batch-lookup companies with firm details and their latest funding round.
+    summary: Find companies and their latest funding round using filters or a list of company identifiers.
     input:
       bodyType: json
       body:
@@ -186,8 +186,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /company/search
-    name: Resolve a company
-    summary: Resolve one company by name, domain, LinkedIn URL or Crunchbase URL.
+    name: Look up companies
+    summary: Look up companies by name, domain, LinkedIn URL or Crunchbase URL.
     input:
       queryParams:
         name: {type: string, required: false, example: Stripe}
@@ -267,8 +267,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /investor/deals
-    name: List an investor's deals
-    summary: List funding rounds involving one investor firm by UUID, domain, LinkedIn or Crunchbase identifier.
+    name: List an investor's investments
+    summary: List an investor's investments, including the companies and funding rounds they invested in.
     input:
       queryParams:
         id: {type: string, required: false, note: "Investor firm UUID"}
@@ -293,8 +293,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /investor/search
-    name: Resolve an investor firm
-    summary: Resolve an investor firm by name, domain, LinkedIn URL or Crunchbase URL.
+    name: Look up investor firms
+    summary: Look up investor firms by name, domain, LinkedIn URL or Crunchbase URL.
     input:
       queryParams:
         name: {type: string, required: false, example: Sequoia Capital}
@@ -402,7 +402,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /person/search
-    name: Resolve a person
+    name: Look up people
     summary: Search people by name, UUID, LinkedIn, Crunchbase or Twitter identifier.
     input:
       queryParams:
@@ -429,8 +429,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /industry/search
-    name: Resolve an industry
-    summary: Resolve an industry or super-category name to a Fundable filter permalink.
+    name: Look up industries
+    summary: Find industries and broader categories by name, with the values needed to filter Fundable searches.
     input:
       queryParams:
         name: {type: string, required: true, example: software}
@@ -450,8 +450,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /location/search
-    name: Resolve a location
-    summary: Resolve a city, state, region or country name to a Fundable filter permalink.
+    name: Look up locations
+    summary: Find cities, states, regions and countries by name, with the values needed to filter Fundable searches.
     input:
       queryParams:
         name: {type: string, required: true, example: San Francisco}
