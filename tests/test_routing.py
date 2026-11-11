@@ -4209,6 +4209,7 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "fiber-ai.people.search": "chargeInfo.creditsCharged; charged per profile returned",
         "leadmagic.x.companies-search-v3": "credits_consumed; free if zero matches",
         "leadmagic.x.employee-finder": "credits_consumed; free if no results",
+        "lusha.companies.enrich": "billing.creditsCharged; a no-match is free",
         "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
         "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
         "quickenrich.companies.search": "meta.credits_used; empty results free",

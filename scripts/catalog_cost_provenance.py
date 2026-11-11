@@ -65,8 +65,6 @@ PROVIDERS: dict[str, dict] = {
                    "url": "https://data.crunchbase.com/docs/using-the-api", "units": {"*": "call"}},
     "leadmagic": {"source": "docs", "confidence": "documented",
                   "url": "https://leadmagic.io/pricing", "units": {"*": "call", "per_result": "record"}},
-    "lusha": {"source": "docs", "confidence": "documented",
-              "url": "https://www.lusha.com/pricing/", "units": {"*": "call", "per_result": "result"}},
     "moz": {"source": "docs", "confidence": "documented",
             "url": "https://moz.com/api/pricing", "units": {"*": "quota_row"}},
     "pdl": {"source": "docs", "confidence": "documented",
@@ -192,8 +190,6 @@ PRICES: dict[str, dict] = {
     "akta.x.product-reviews": {"type": "per_result", "per": 50, "unit": "review"},
     "akta.x.jobs": {"type": "per_result", "per": 10, "unit": "item"},      # 4 credits per 10 listings
     "akta.x.social-posts": {"type": "per_result", "per": 10, "unit": "item"},  # 1 credit per 10 posts
-    "lusha.people.search": {"per": 25, "unit": "result"},            # 1 credit per up to 25 results
-    "lusha.companies.search": {"per": 25, "unit": "result"},
     "leadmagic.x.employee-finder": {"per": 1, "unit": "employee"},
     # 1 credit per 10,000 characters of input
     "diffbot.x.nl-process": _cr(1, "character", per=10000),

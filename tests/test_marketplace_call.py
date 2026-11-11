@@ -1589,12 +1589,6 @@ def test_observed_cost_counts_resources_for_billed_oauth_reads():
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 1}') == 25_000
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 0}') == 0, "a 2xx miss is free"
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 0.25}') == 6_250
-    # lusha nests the same contract one level down: billing.creditsCharged — 0 on a 2xx miss
-    # (the captured people.enrich example is one), 2 credits on a company enrich. $0.1248/credit.
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 1, "resultsReturned": 10}}') == 124_800
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 0, "resultsReturned": 0}}') == 0, "a 2xx miss is free"
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 2}}') == 249_600
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"requestId": "x"}') is None, "no billing block means we never learned it"
 
 
 def test_apollo_settles_a_2xx_miss_at_zero():

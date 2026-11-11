@@ -522,7 +522,6 @@ adapters:
     const: {body.reveal: [phones]}
     test_identity: {first_name: Jane, last_name: Doe, domain: lusha.com}
     out: {phone: "results[0].phones[0].number", line_type: "results[0].phones[0].type", country_code: "results[0].phones[0].countryIso2"}
-    miss: "results[0].phones[0].number == null"
   wiza.people.phone.find:
     accepts: [[linkedin_url], [email], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.individual_reveal.profile_url,
@@ -1146,8 +1145,8 @@ adapters:
     in:  {title: body.filters.contacts.include.jobTitles}
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
-    miss: "results == []"
     position: {page0: body.pagination.page}
+    max: {limit: 100}
     row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
@@ -1205,7 +1204,6 @@ adapters:
     out: {full_name: "results[0].fullName", first_name: "results[0].firstName", last_name: "results[0].lastName",
           title: "results[0].jobTitle", company: "results[0].company.name", linkedin_url: "results[0].socialLinks.linkedin",
           location: "results[0].location.raw"}
-    miss: "results[0].error != null"
   # ---- companies.enrich (batch 5, 2026-08-28) --------------------------------------------------
   orbisearch.companies.enrich:
     accepts: [[domain], [linkedin_url]]
@@ -1408,7 +1406,6 @@ adapters:
           employees: "results[0].employeeCount.exact", founded: "results[0].yearFounded",
           location: "join(results[0].location.city, results[0].location.country)",
           linkedin_url: "results[0].socialLinks.linkedin"}
-    miss: "results[0].name == null"
   # diffbot.companies.enrich: no adapter — its captured example truncates the entity, so `out`
   # cannot be fixture-verified. akta.companies.enrich: example carries location only (no name).
   # coresignal.companies.enrich: no example (402 at capture, empty account).
@@ -1538,8 +1535,8 @@ adapters:
     in:  {domain: body.filters.companies.include.domains}
     in_expr: {body.filters.companies.include.domains: "list(domain)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {companies: results, count: pagination.total}
-    miss: "results == []"
     position: {page0: body.pagination.page}
+    max: {limit: 100}
   fiber-ai.companies.search:
     accepts: [[domain]]
     in:  {}
