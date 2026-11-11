@@ -82,7 +82,7 @@ endpoints:
       body: {ids: ["v1.3J1rAxaCJItvAYiCFRJaszj9lstdGJw"]}
     price: {value: '1', currency: credit, unit: result, note: "1 credit per company returned, plus 1 per premium `reveal` field per company"}
     provenance: {source: observed, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-11', confidence: verified}
-    reserve: {entities: {from: body.ids.*, max: 100}}
+    reserve: {plugin: lusha.company_reveal_credits, max: '1300'}
     verified: 2026-11-11
     example_response: examples/lusha.x.companies-enrich-by-id.json
     docs_url: https://docs.lusha.com/apis/openapi/company-search-and-enrich
@@ -296,15 +296,16 @@ endpoints:
       body:
         companies: {type: array, items: {type: object}, required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. `domain` goes inside each entry: a top-level domain, company_domain, website or company_name is rejected with 'property … should not exist'", example: [{"domain": "lusha.com"}]}
         personas: {type: array, items: {type: string, enum: [decision_maker, potential_champion, end_user]}, required: false, note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (an internal advocate) | end_user (a day-to-day user); omit for all three", example: ["decision_maker"]}
-        contactsLimit: {type: integer, required: false, note: "the spend cap: most contacts returned per company, 1 or more, default 60. Each contact costs 1 credit, so the bill is at most companies × contactsLimit credits. Always set it", example: 5}
+        contactsLimit: {type: integer, required: false, note: "the spend cap: most contacts returned per company, 1 or more, default 60. Each contact costs 1 credit, so one call bills at most companies × contactsLimit credits and never more than its page size (pagination.size, 100 by default). Always set it", example: 5}
         pagination: {type: object, required: false, note: "optional {page, size}; page >= 0 (default 0), size 10-100 (default 100). Pages across the ranked contacts; contactsLimit still bounds what one company can return", example: {"page": 0, "size": 100}}
       note: "returns previews (name, title, company, location, social links, `has`/`canReveal` data-point flags, persona `roles`, relevance `score` 0-1) grouped per company under `results[].contacts`; pass the contact ids to lusha.people.contacts.enrich for emails and phones"
     test_request:
       body: {companies: [{domain: "lusha.com"}], contactsLimit: 1}
     price: {value: '1', currency: credit, unit: result, note: "1 credit per contact returned"}
     provenance: {source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-11-11', confidence: verified}
-    reserve: {rows: {param: body.contactsLimit, default: {value: 60, source: docs}, max: 100}}
-    skipped: "no example_response is shipped: every answer names real people. lusha.x.companies-enrich-by-id is verified on the same billing field"
+    reserve: {plugin: lusha.buying_group_contacts, max: '100'}
+    verified: 2026-11-11
+    example_response: examples/lusha.x.buying-group.json
     docs_url: https://docs.lusha.com/apis/openapi/buying-group
     capability: people.decision_makers
 

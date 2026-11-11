@@ -75,7 +75,7 @@ endpoints:
       body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["emails"]}
     price: {value: '2', currency: credit, unit: result, note: "a matched contact costs 1 credit plus 1 per email and 5 per phone revealed, so an email costs 2 and a phone 6. A contact Lusha cannot match costs 0. A contact this account revealed recently costs 1 less."}
     provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
-    reserve: {entities: {from: body.contacts.*, max: 100}}
+    reserve: {plugin: lusha.contact_enrich_units, max: '700'}
     miss: {when: {path: response.results.0.error, op: present}}
     verified: 2026-08-13
     added: '2026-07-28'
@@ -157,7 +157,7 @@ endpoints:
       body: {ids: ["v1.-R1YwK7SIvBv1FVAOW1zmel9bZ4XD9mxNQ"], reveal: ["emails"]}
     price: {value: '1', currency: credit, unit: result, note: "1 credit per email and 5 per phone revealed, across the batch, so phones for 100 ids cost 500 credits"}
     provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
-    reserve: {entities: {from: body.ids.*, max: 100}}
+    reserve: {plugin: lusha.contact_reveal_credits, max: '600'}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/lusha.people.contacts.enrich.json
@@ -180,9 +180,9 @@ endpoints:
       note: "pass a domain rather than a name when you have one: a name alone is ambiguous"
     test_request:
       body: {companies: [{domain: "lusha.com"}]}
-    price: {value: '2', currency: credit, unit: call, note: "one company costs 2 credits: 1 per company returned plus 1 per started block of 25 companies, and 1 more per premium `reveal` field per company. A company Lusha cannot match costs 0. With ids from lusha.companies.search, lusha.x.companies-enrich-by-id skips the block charge"}
+    price: {value: '2', currency: credit, unit: result, note: "one company costs 2 credits: 1 per company returned plus 1 per started block of 25 companies, and 1 more per premium `reveal` field per company. A company Lusha cannot match costs 0. With ids from lusha.companies.search, lusha.x.companies-enrich-by-id skips the block charge"}
     provenance: {source: observed, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
-    reserve: {entities: {from: body.companies.*, max: 100}}
+    reserve: {plugin: lusha.company_enrich_units, max: '1304'}
     miss: {when: {path: response.results.0.name, op: absent}}
     verified: 2026-07-31
     added: '2026-07-28'
