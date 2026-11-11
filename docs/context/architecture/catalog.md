@@ -282,11 +282,14 @@ to the full core rules, and AIGC generation coverage forbids inferred mappings e
 - `scope_gap: <one line>` says treg's OAuth app lacks a scope for this route. These stay listed on
   purpose: the set of gaps answers "which scopes should the app request". Expect 403 until widened.
 
-Query arrays: `input.queryArrayEncoding` sets one wire format for every array parameter of an
-endpoint. `catalog_store.query_values()` is shared by MCP request assembly and `call_template()`, so
-the schema and the paste-ready command cannot disagree. Nested JSON bodies use dotted keys
-(`params.domain`); `call_template()` unflattens them, while query names that literally contain a
-dot (`user.fields`) stay as written.
+Query arrays: `input.queryArrayEncoding` sets one wire format for every list a caller passes as a
+query value on an endpoint, whatever the parameter's declared type. Under the default `repeated`, a
+list for a parameter declared with another type goes out as repeated keys, which a v2 row refuses
+([money](money.md#rows-in-the-v2-spelling)); `comma` sends the one comma-separated value a provider
+documents instead. `catalog_store.query_values()` is shared by MCP request assembly and
+`call_template()`, so the schema and the paste-ready command cannot disagree. Nested JSON bodies
+use dotted keys (`params.domain`); `call_template()` unflattens them, while query names that
+literally contain a dot (`user.fields`) stay as written.
 
 ## Cost - the file keeps the billing unit, the server computes USD
 
