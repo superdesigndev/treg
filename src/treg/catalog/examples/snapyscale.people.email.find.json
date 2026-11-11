@@ -1,0 +1,21 @@
+{
+  "request_id": "701d62b0-78f8-434f-9302-9c194ffa4591",
+  "status": "not_found",
+  "email": null,
+  "verified": false,
+  "reason": "no_match_in_tested_patterns",
+  "first_name": null,
+  "last_name": null,
+  "match_basis": null,
+  "verification": null,
+  "candidates_checked": 6,
+  "candidate_budget": 6,
+  "identity_confirmed": false,
+  "billing": {
+    "units": 0,
+    "charge_micro_usd": 0,
+    "charge_usd": 0.0,
+    "currency": "USD"
+  },
+  "cached": false
+}

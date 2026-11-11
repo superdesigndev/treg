@@ -16,6 +16,18 @@
 # domain/catalog/routing/adapters.py::verify.
 
 adapters:
+  snapyscale.people.email.find:
+    route: false  # Pilot: a found-result coverage benchmark is still outstanding.
+    accepts: [[first_name, last_name, domain], [full_name, domain]]
+    in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
+    out: {email: email, first_name: first_name, last_name: last_name, verified: verified}
+    miss: "email == null"
+  snapyscale.people.email.verify:
+    route: false  # Pilot capacity and supplier settlement require maintainer coordination.
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "status == 'valid'", status: status}
+    miss: "status == null"
   # ---- people.email.find --------------------------------------------------------------------
   orbisearch.people.email.find:
     accepts: [[first_name, last_name, domain], [linkedin_url]]
