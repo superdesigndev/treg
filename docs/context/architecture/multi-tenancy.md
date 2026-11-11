@@ -172,7 +172,10 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   when set and valid, else the `X-Forwarded-For` entry `TREG_TRUSTED_PROXY_HOPS` from the right, else
   the socket peer. Never the first `X-Forwarded-For` entry, which is the client's own claim. MCP tools
   call the API in process and forward the resolved address (`client_ip.forwarding_headers`) so MCP
-  callers keep their own buckets.
+  callers keep their own buckets. Every per-IP window is built with `ratestore.ip_limit`, which
+  drops the address entry for an address `TREG_RATE_LIMIT_EXEMPT_IPS` names (`client_ip.exempt`);
+  the per-email, per-user and deployment-wide entries beside it still decide, and no money cap is
+  touched. The list is parsed at startup, so a malformed entry refuses to boot.
 - **Turnstile on email start**, the only door minting an inbox proof from a bare HTTP call. Off unless
   site key and secret are set. Every page posting to `/auth/email/start` loads `/captcha.js` and sends
   `captcha_token` (a test enforces it); a script that cannot get a token sends `!blocked`, `!pending`

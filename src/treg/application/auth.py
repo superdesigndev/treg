@@ -288,7 +288,8 @@ async def start_email_login(
         await ratestore.sweep(db, OTP_START_NS)
         allowed = await ratestore.rate_check(
             db, OTP_START_NS,
-            [(f"e:{email}", OTP_START_MAX_PER_EMAIL), (f"i:{client_ip}", OTP_START_MAX_PER_IP)],
+            [(f"e:{email}", OTP_START_MAX_PER_EMAIL),
+             *ratestore.ip_limit(client_ip, OTP_START_MAX_PER_IP, key=f"i:{client_ip}")],
             OTP_START_WINDOW_S,
         )
         await db.commit()
@@ -674,7 +675,8 @@ async def finish_social_check(nonce: str, captcha_token: str, client_ip: str) ->
     async with database.session_maker() as db:
         kept = await ratestore.kv_take(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce)) if nonce else None
         allowed = await ratestore.rate_check(
-            db, SOCIAL_CHECK_RATE_NS, [(f"i:{client_ip}", SOCIAL_CHECK_MAX_PER_IP)], OTP_START_WINDOW_S)
+            db, SOCIAL_CHECK_RATE_NS,
+            ratestore.ip_limit(client_ip, SOCIAL_CHECK_MAX_PER_IP, key=f"i:{client_ip}"), OTP_START_WINDOW_S)
         await db.commit()
     if kept is None:
         raise SocialLoginError("check_expired")

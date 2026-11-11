@@ -216,7 +216,7 @@ async def sso_discover(body: DiscoverIn, request: Request) -> dict:
     async with session_maker() as db:
         await ratestore.sweep(db, "sso_discover")
         allowed = await ratestore.rate_check(db, "sso_discover",
-            [(f"ip:{client_ip.of(request)}", 30)], 900)
+            ratestore.ip_limit(client_ip.of(request), 30, key=f"ip:{client_ip.of(request)}"), 900)
         await db.commit()
     if not allowed:
         raise HTTPException(429, "too many sign-in lookups; try again later")
