@@ -1,0 +1,64 @@
+{
+  "data": {
+    "uuid": "00000l1",
+    "linkedin_username": "canva",
+    "linkedin_official_name": "Canva",
+    "linkedin_id": "2850862",
+    "total_employees": 20019,
+    "growth_periods": [
+      {
+        "month_difference": 6,
+        "change_percentage": 23
+      },
+      {
+        "month_difference": 12,
+        "change_percentage": 68
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "headcount_monthly": [
+      {
+        "employee_count": 9120,
+        "date": "2024-10-01"
+      },
+      {
+        "employee_count": 9168,
+        "date": "2024-11-01"
+      },
+      "… 23 more item(s) truncated"
+    ],
+    "date": "2026-10-01",
+    "headcount_by_function": [
+      {
+        "name": "Arts and Design",
+        "employee_count": 6029,
+        "growth_periods": [
+          {
+            "month_difference": 6,
+            "change_percentage": 33
+          },
+          {
+            "month_difference": 12,
+            "change_percentage": 81
+          }
+        ]
+      },
+      {
+        "name": "Engineering",
+        "employee_count": 2559,
+        "growth_periods": [
+          {
+            "month_difference": 6,
+            "change_percentage": 10
+          },
+          {
+            "month_difference": 12,
+            "change_percentage": 30
+          }
+        ]
+      },
+      "… 9 more item(s) truncated"
+    ]
+  },
+  "credits_consumed": 2.5
+}
