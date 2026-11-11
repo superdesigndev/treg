@@ -442,9 +442,9 @@ def _above(value: object, cap: int) -> bool:
 
 
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
-    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
-    number from 1 to that row's max when the caller sends it, or the routed call is refused before
-    any candidate is held. Neither the child nor the value is named."""
+    """A routed call's own filter that a v2 candidate the route can call maps into its
+    `reserve.rows` count is a whole number from 1 to that row's max when the caller sends it, or the
+    routed call is refused before any candidate is held. Neither the child nor the value is named."""
     for e, ad, _v in candidates:
         rule = (e.get("reserve") or {}).get("rows") or {}
         if not is_v2(e) or not rule.get("param"):
@@ -591,7 +591,6 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         else:
             capped.append((e, ad, v))
     raw = capped
-    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -721,6 +720,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
             orders["rule"] = _endpoints(ruled)
             ranked = ruled
+    _require_counts(ep, [(c.endpoint, c.adapter, c.variant) for c in ranked], contract.filters, identity_given)
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
                 route_rule=route_rule, orders=orders)
 
