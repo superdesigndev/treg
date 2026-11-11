@@ -74,7 +74,7 @@ endpoints:
     body:
     - url: https://www.instagram.com/p/DbTY2uSG3Oj/
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  miss: {when: {any: [[{path: response, op: present}, {path: response.0, op: absent}], [{path: response.0, op: present}, {path: response.*.post_id, op: absent}]]}}
+  miss: {plugin: brightdata.no_records}
   verified: '2026-07-30'
   added: '2026-07-28'
   example_response: examples/brightdata.x.instagram-posts.json
@@ -200,7 +200,7 @@ endpoints:
     body:
     - url: https://www.tiktok.com/@tiktok
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  miss: {when: {any: [[{path: response, op: present}, {path: response.0, op: absent}], [{path: response.0, op: present}, {path: response.*.account_id, op: absent}]]}}
+  miss: {plugin: brightdata.no_records}
   verified: '2026-07-30'
   added: '2026-07-28'
   example_response: examples/brightdata.x.tiktok-profiles.json
@@ -489,7 +489,7 @@ endpoints:
     body:
     - url: https://www.facebook.com/facebook
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
-  miss: {when: {any: [[{path: response, op: present}, {path: response.0, op: absent}], [{path: response.0, op: present}, {path: response.*.name, op: absent}]]}}
+  miss: {plugin: brightdata.no_records}
   verified: '2026-07-30'
   added: '2026-07-28'
   example_response: examples/brightdata.x.facebook-profiles.json

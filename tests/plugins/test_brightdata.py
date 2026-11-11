@@ -19,7 +19,13 @@ def _records(raw: bytes):
     (b"", 0),
     (b"  \n ", 0),
     (b'{"snapshot_id": "s_1"}', 0),
+    (b'{"snapshot_id": "s_1", "message": "m"}', 0),
     (b'{"status": "running"}', 0),
+    (b'{"status": "running", "message": "not ready"}', 0),
+    (b'{"error": "x"}', 0),
+    (b'{"account": "a", "followers": 1}', 1),
+    (b'{"account": "a"}\n', 1),
+    (b'{"error": "x", "error_code": "dead_page", "input": {"url": "a"}}', 0),
     (b'{"a": 1}\n{"a": 2}\n\n{"a": 3}\n', 3),
     (b"url,name\nhttps://a,x\nhttps://b,y\n", 2),
     (b"url,name\n", None),
@@ -30,3 +36,18 @@ def _records(raw: bytes):
 ])
 def test_records_counts_each_delivery_format(raw, count):
     assert _records(raw) == count
+
+
+@pytest.mark.parametrize(("raw", "miss"), [
+    (b"[]", True),
+    (b'{"snapshot_id": "s_1"}', True),
+    (b'[{"error": "x", "error_code": "dead_page"}]', True),
+    (b'[{"followers": 1, "biography": "b"}]', False),
+    (b'[{"error_code": "dead_page"}, {"account": "a"}]', False),
+    (b'{"account": "a"}\n', False),
+    (b"url,name\nhttps://a,x\n", False),
+    (gzip.compress(b'[{"url": "a"}]', mtime=0), False),
+])
+def test_no_records_is_a_miss_only_when_nothing_billable_was_delivered(raw, miss):
+    assert brightdata.no_records(Request(method="POST", query={}, body=None),
+                                 Answer(status=200, headers={}, raw=raw, body=None)) is miss
