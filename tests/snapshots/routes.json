@@ -2040,6 +2040,14 @@
     "methods": [
       "PATCH"
     ],
+    "name": "set_member_spend_cap",
+    "path": "/orgs/{org_id}/members/{user_id}/spend-cap"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
     "name": "set_member_access",
     "path": "/orgs/{org_id}/members/{user_id}/access"
   },

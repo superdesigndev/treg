@@ -164,6 +164,39 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
         })
 
 
+async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession) -> int | None:
+    """Refuse a call that would take this member past their daily spend limit on treg's keys.
+    Returns the member id to attribute the hold to when a limit applies, else None.
+
+    FAIL-CLOSED, like the platform cap: it limits money. SOFT like the tag caps: the figure is an
+    aggregate over `MemberSpend`, so concurrent calls can each pass and together overshoot by at most
+    their estimates. The org balance and the platform daily cap are the hard gates behind it.
+    """
+    cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org)
+    if cap is None:
+        return None
+    try:
+        spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
+    except Exception as exc:  # cannot verify the limit => do not spend
+        logging.getLogger("treg.ledger").warning(
+            "member spend-cap check failed for membership %s: %s", caller.membership.id, exc)
+        raise ReservationFailed("member_spend_cap_unavailable", status_code=429, detail={
+            "error": "member_spend_cap_unavailable",
+            "message": "cannot verify your daily spend limit right now - retry shortly",
+        }) from exc
+    if spent + add_micro > cap:
+        raise ReservationFailed("member_spend_cap_reached", status_code=429, detail={
+            "error": "member_spend_cap_reached",
+            "message": (f"you have reached your daily spend limit on this team "
+                        f"(${ledger.usd(spent):g} of ${ledger.usd(cap):g} today; this call needs "
+                        f"~${ledger.usd(add_micro):g}). It resets at 00:00 UTC. Ask a team admin to "
+                        f"raise it, or use your own key: treg connections connect"),
+            "spent_today_micro": spent, "daily_spend_cap_micro": cap,
+            "estimated_cost_micro": add_micro,
+        })
+    return caller.membership.id
+
+
 def _month_start_utc() -> datetime:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -351,6 +384,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 # must not surface as the team-wide balance error, which names the builder's private numbers.
                 with timing.phase("preflight"), money_stage(db, "preflight"):
                     await _enforce_tag_budgets(caller, meta, db, add_micro=mk.estimate_micro)
+                    member_id = await _enforce_member_spend_cap(caller, charged, db)
                     await _enforce_platform_daily_cap(caller, mk.estimate_micro, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
@@ -360,7 +394,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                             meta={"tier": "oauth" if mk.billed_oauth else "platform",
                                   "provider": mk.provider, "cost_type": mk.cost_type},
                             tags=meta.tags, call_id=call_ref,
-                            purchased_only=_purchased_only(mk.endpoint_id))
+                            purchased_only=_purchased_only(mk.endpoint_id), member_id=member_id)
                 except ledger.InsufficientBalance:
                     await db.rollback()
                     # A refused call asks for a refill too, or a team at $0 with auto top-up on would stay

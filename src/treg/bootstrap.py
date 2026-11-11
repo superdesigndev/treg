@@ -331,6 +331,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/sso/invite-it', ('POST',), 'sso_invite_it'),
     ('/orgs/{org_id}/sso/setup/{intent}', ('POST',), 'sso_setup'),
     ('/orgs/{org_id}/members/{user_id}/cap', ('PATCH',), 'set_member_cap'),
+    ('/orgs/{org_id}/members/{user_id}/spend-cap', ('PATCH',), 'set_member_spend_cap'),
     ('/orgs/{org_id}/members/{user_id}/access', ('PATCH',), 'set_member_access'),
     ('/usage/me', ('GET',), 'my_usage'),
     ('/orgs/{org_id}/members/{user_id}', ('DELETE',), 'remove_member'),

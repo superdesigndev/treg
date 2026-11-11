@@ -15,6 +15,7 @@ sources:
   - src/treg/routers/billing.py
   - src/treg/infra/slack.py
   - tests/test_topup_reconcile.py
+  - tests/test_member_spend_cap.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -654,6 +655,28 @@ today. The first movement of a new UTC day resets it (`_spent_today_values`). A 
 cannot replace it: a busy org's rows touch most heap pages of the day, so no index makes the
 aggregate cheaper than reading the day. `spent_today_from_ledger` computes the same number for
 reconciliation, and `tests/test_daily_spend_counter.py` asserts they agree.
+
+### A daily spend limit per member
+
+`_enforce_member_spend_cap` limits what one member or agent may commit on treg's keys per UTC day.
+`budget_policy.member_daily_spend_cap` picks the figure: the member's own
+`Membership.daily_spend_cap_micro` (-1 = no limit), else the team default
+`Org.member_daily_spend_cap_micro`, which never applies to an owner or admin. NULL everywhere means
+no limit and no extra work on the call.
+
+When a limit applies, `_platform_reserve` passes `member_id` to `ledger.reserve_in_transaction`, which
+writes one `MemberSpend` row in the balance transaction. The row follows its hold like `TagSpend`:
+estimate in flight, consumed figure at settle (restamped to settle time), deleted on release. The
+check reads `ledger.member_spent_since` (one indexed aggregate) and compares it with the charged
+estimate. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
+calls can overshoot by their estimates, and the org balance and platform daily cap stay the hard
+gates. An unlimited member writes no rows, so spend made before a limit applied does not count
+against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
+the hub's own steps are.
+
+The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
+clears it), one member's figure with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
+mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
 
 ## Checking the work (`reconcile.py`)
 

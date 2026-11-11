@@ -50,6 +50,8 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "tag_blocked": "caller",
     "tag_call_cap_reached": "caller",
     "tag_spend_cap_reached": "caller",
+    "member_spend_cap_unavailable": "treg",
+    "member_spend_cap_reached": "caller",
     "insufficient_balance": "caller",
     "free_credit_excludes_video": "caller",
     # treg's OWN vendor account for the provider is out (balance/quota) — a 503 the caller cannot
@@ -165,6 +167,7 @@ class MembershipSnapshot:
     tool_access: list | None
     project_access: list | None
     pinned_tags: dict | None
+    daily_spend_cap_micro: int | None = None
 
 
 @dataclass(frozen=True)
@@ -186,6 +189,7 @@ class OrgSnapshot:
     autotopup_max_per_hour: int = 0
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
     created_at: Any = None
+    member_daily_spend_cap_micro: int | None = None
 
 
 @dataclass(frozen=True)
@@ -228,6 +232,7 @@ class CallerSnapshot:
                                 if membership.project_access is not None else None),
                 pinned_tags=(dict(membership.pinned_tags)
                              if membership.pinned_tags is not None else None),
+                daily_spend_cap_micro=membership.daily_spend_cap_micro,
             ),
             user=UserSnapshot(id=caller.user.id, email=caller.user.email),
             org=OrgSnapshot(
@@ -248,6 +253,7 @@ class CallerSnapshot:
                 archive_opt_out_at=getattr(org, 'archive_opt_out_at', None),
                 first_call_at=org.first_call_at,
                 created_at=getattr(org, "created_at", None),
+                member_daily_spend_cap_micro=org.member_daily_spend_cap_micro,
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,

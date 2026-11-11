@@ -101,6 +101,24 @@ def _effective_daily_cap(org: Org) -> int:
     return own if own > 0 else get_settings().platform_daily_cap_micro
 
 
+MEMBER_SPEND_EXEMPT_ROLES = frozenset({"owner", "admin"})
+
+
+def member_daily_spend_cap(membership, org: Org) -> int | None:
+    """The daily spend limit on treg's keys that applies to one member, in micro-USD, or None.
+
+    The member's own figure wins (-1 = no limit). Without one, the team default applies to every
+    member and agent, but never to an owner or admin: the people who set limits are not held by them.
+    """
+    own = membership.daily_spend_cap_micro
+    if own is not None:
+        return None if own < 0 else int(own)
+    if membership.role in MEMBER_SPEND_EXEMPT_ROLES:
+        return None
+    team = org.member_daily_spend_cap_micro
+    return None if team is None or team < 0 else int(team)
+
+
 async def _tag_budget(db: AsyncSession, org_id: int, dim: str, val: str,
                       create: bool = False) -> TagBudgetResult:
     """This team's budget row for one tag value, creating it on first sighting when asked.
