@@ -447,7 +447,7 @@ endpoints:
       source_url: https://api.fiber.ai/ai-docs/slushieRun.md
       checked: '2026-08-17'
       confidence: documented
-      note: "2 credits for NL interpretation on the FIRST page only, plus 1 credit per company or profile returned. A 1-result first page is therefore 3 credits. Later pages are 1/result with no interpretation charge. cost.value is the per-result component; budget the +2 on page one."
+      note: "2 credits for NL interpretation on the FIRST page only, plus 1 credit per company or profile returned. A 1-result first page is therefore 3 credits. Later pages are 1/result with no interpretation charge. The reserve and estimate include the +2 on the first page (no non-empty pageToken), so max-cost checks hold the real first-page charge."
     docs_url: https://api.fiber.ai/ai-docs/slushieRun.md
 
   - id: fiber-ai.people.github.to_linkedin.trigger

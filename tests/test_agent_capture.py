@@ -200,7 +200,9 @@ async def test_promotion_link_survives_a_rotate(env):
 async def test_call_emits_one_tool_called_event(env, posthog_events):
     """The audit funnel also mirrors each /call to PostHog (when a key is set): one `tool_called`
     per call, carrying the runtime attribution and — for own tools — the upstream host as vendor."""
-    r = await env.c.get("/call/alpha/ok", headers=_h(env.member, "claude-code"))
+    r = await env.c.get("/call/alpha/ok", headers={**_h(env.member, "claude-code"),
+                                                   "X-Treg-Mcp-Client": "cursor", "X-Treg-Client-Version": "0.28.0",
+                                                   "X-Treg-Session": "0123456789abcdef", "X-Treg-Agent": "codex"})
     assert r.status_code == 200
     (e,) = await posthog_events()
     assert e["distinct_id"] == "m@x.dev"
@@ -213,6 +215,9 @@ async def test_call_emits_one_tool_called_event(env, posthog_events):
     assert p["call_ref"] == r.headers["X-Treg-Call-Id"]
     assert p["cached"] is False and p["smoothed"] is None and p["hit"] is None
     assert p["ua_family"] == "python-httpx" and p["user_agent"].startswith("python-httpx/")
+    assert p["client_version"] == "0.28.0", "the CLI release, so an output change can be compared across versions"
+    assert p["session"] == "0123456789abcdef" and p["agent"] == "codex", "links one agent task's calls"
+    assert p["mcp_client"] is None, "only the MCP surfaces' own traffic names an MCP host"
     assert "capacity_signal" not in p, "a capacity reading belongs to catalog calls only"
 
 
@@ -235,6 +240,33 @@ async def test_checkin_flips_connected(env):
 
     listed = (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json()
     assert listed[0]["connected"] is True, "the poll must see the check-in synchronously"
+
+
+async def test_roster_probes_each_agent_once_and_never_walks_its_history(env):
+    called, idle, elsewhere = [await _agent(env, name) for name in ("called-bot", "idle-bot", "elsewhere-bot")]
+    async with session_maker() as s:
+        other = Org(name="Other", slug="other")
+        s.add(other)
+        await s.flush()
+        s.add_all([CallRecord(org_id=org_id, user_email=email, tool_name="t", method="GET", path="/",
+                              status_code=200)
+                   for org_id, email in [(env.org_id, called["email"])] * 50 + [(other.id, elsewhere["email"])]])
+        await s.commit()
+    statements = []
+
+    def record_sql(conn, cursor, statement, parameters, context, executemany):
+        if "callrecord" in statement.lower():
+            statements.append(statement.lower())
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record_sql)
+    try:
+        listed = (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json()
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record_sql)
+    assert {a["email"]: a["connected"] for a in listed} == {
+        called["email"]: True, idle["email"]: False, elsewhere["email"]: False}
+    probes = [sql for sql in statements if "exists" in sql]
+    assert len(probes) == 1 and "distinct" not in probes[0], statements
 
 
 async def test_members_roster_carries_agent_name_and_owner(env):
@@ -301,6 +333,25 @@ async def test_rotation_requires_a_new_key_checkin(env, route, archive_enabled):
     assert (await env.c.post("/agents/checkin", headers=_h(new["token"]))).status_code == 200
     assert (await env.c.get(_connection_path(env, new), headers=_h(env.owner))).json() == {"connected": True}
     assert (await env.c.get(settings, headers=_h(env.owner))).json()["archive"] is archive_enabled
+
+
+async def test_first_call_reports_check_in_then_the_first_tool(env):
+    path = f"/orgs/{env.org_id}/first-call"
+    first = await env.c.get(path, headers=_h(env.member))
+    assert first.status_code == 200 and first.json() == {"connected": False, "first_call": None}
+    assert first.headers["cache-control"] == "no-store"
+    assert (await env.c.post("/agents/checkin", headers=_h(env.member))).status_code == 200
+    assert (await env.c.get(path, headers=_h(env.member))).json() == {"connected": True, "first_call": None}
+    assert (await env.c.get("/call/alpha/ok", headers=_h(env.member))).status_code == 200
+    await audit.drain()
+    body = (await env.c.get(path, headers=_h(env.member))).json()
+    assert body["connected"] is True and body["first_call"]["tool"] == "alpha"
+    async with session_maker() as s:
+        other = Org(name="Other", slug="other")
+        s.add(other)
+        await s.commit()
+        other_id = other.id
+    assert (await env.c.get(f"/orgs/{other_id}/first-call", headers=_h(env.member))).status_code == 403
 
 
 async def test_connection_requires_admin_in_the_selected_org(env):

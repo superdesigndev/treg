@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-11-10T15:42:56.507Z",
+    "input": {
+      "url": "https://www.amazon.com/dp/B08N5WRWNW"
+    },
+    "error": "The navigation resulted in a dead page (404 status code)",
+    "error_code": "dead_page"
+  }
+]

@@ -6,12 +6,14 @@ import math
 import re
 from typing import Literal
 
+from .. import plugins
+from . import outcome
+from .schema.v2 import is_v2
+
 
 STRICT_ENDPOINTS = frozenset({
     "leadsforge.people.email.find",
-    "hunter.people.email.find",
     "findymail.search.name",
-    "hunter.companies.emails",
     "leadmagic.x.employee-finder",
     "seranking.google.keywords.volume",
 })
@@ -44,11 +46,17 @@ def _email(value) -> bool:
 
 
 def has_result_rules(endpoint_id: str) -> bool:
-    """Only verified, configured hit/miss adapters opt into result-aware cache behavior."""
+    """Only verified, configured hit/miss adapters opt into result-aware cache behavior; on a v2
+    row the miss is the row's own rule, for a 2xx or a 4xx status, beside a verified adapter."""
     from .store import load
 
     adapter = load().adapters.get(endpoint_id)
-    return adapter is not None and adapter.verified and bool(adapter.miss.strip())
+    if adapter is None or not adapter.verified:
+        return False
+    endpoint = load().by_id.get(endpoint_id)
+    if endpoint is not None and is_v2(endpoint):
+        return isinstance(endpoint.get("miss"), dict)
+    return bool(adapter.miss.strip())
 
 
 def verdict(endpoint_id: str, status: int, body: bytes) -> str | None:
@@ -95,12 +103,17 @@ def _dotted(document: object, dotted: str) -> object:
 def _expect_failure(endpoint_id: str, doc: object) -> str | None:
     from .store import load
 
-    rule = (load().by_id.get(endpoint_id) or {}).get("expect")
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return outcome.expect_failure(endpoint, doc)
+    rule = endpoint.get("expect")
     if not isinstance(rule, dict) or not rule.get("json_path"):
         return None
     path = str(rule["json_path"])
     actual = _dotted(doc, path)
-    if actual == rule.get("equals"):
+    # `misses` lists the values that mean "looked, found nothing": an answer for the adapter to
+    # judge, not a failure that leaves the hit verdict undecided.
+    if actual == rule.get("equals") or actual in (rule.get("misses") or ()):
         return None
     return f"{path}={json.dumps(actual, ensure_ascii=True, default=str)[:80]}"
 
@@ -133,6 +146,19 @@ def _declared_miss(endpoint_id: str, status: int, body: bytes) -> bool:
         return False
 
 
+def _judged(endpoint: dict, status: int, body: bytes, doc: object) -> Result:
+    """A v2 row's 2xx answer through its one outcome declaration, in the result vocabulary."""
+    answer = plugins.Answer(status=status, headers={}, raw=body, body=doc)
+    judged = outcome.judge(endpoint, status, doc, answer=answer)
+    if judged.cause == "expect":
+        return Result("error", "expect_failed")
+    if judged.cause == "error":
+        return Result("error", "provider_error", empty=outcome.miss_holds(endpoint, doc, answer=answer))
+    if not isinstance(doc, (dict, list)):
+        return Result("unknown", "invalid_shape")
+    return Result("empty", "adapter_miss") if judged.state == "miss" else Result("found", "adapter_hit")
+
+
 def classify(endpoint_id: str, status: int, body: bytes) -> Result:
     if not 200 <= status < 300:
         # A declared miss is an answer ("nobody has it"), not a failure: without this every miss
@@ -146,6 +172,11 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         doc = json.loads(body)
     except (ValueError, RecursionError):
         return Result("unknown", "invalid_json")
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return _judged(endpoint, status, body, doc)
     if _expect_failure(endpoint_id, doc) is not None:
         # The provider's own success rule failed: whatever the adapter reads off the remains, this
         # is not an answer to the question, found or empty. Neither cached nor counted.
@@ -178,12 +209,11 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         if status == "succeeded" and _email(email):
             return Result("found", "email")
         return Result("unknown", "invalid_shape")
-    if endpoint_id in ("hunter.people.email.find", "findymail.search.name"):
-        field = "data" if endpoint_id == "hunter.people.email.find" else "contact"
-        if not isinstance(doc, dict) or field not in doc:
+    if endpoint_id == "findymail.search.name":
+        if not isinstance(doc, dict) or "contact" not in doc:
             return Result("unknown", "invalid_shape")
-        person = doc[field]
-        if field == "contact" and person is None:
+        person = doc["contact"]
+        if person is None:
             return Result("empty", "no_email")
         if not isinstance(person, dict) or "email" not in person:
             return Result("unknown", "invalid_shape")
@@ -208,17 +238,12 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         return Result("found", "keyword_data") if found else Result("empty", "no_keyword_data")
     if not isinstance(doc, dict):
         return Result("unknown", "invalid_shape")
-    if endpoint_id == "hunter.companies.emails":
-        data = doc.get("data")
-        rows = data.get("emails") if isinstance(data, dict) else None
-        fields, reason = ("value",), "emails"
-    else:
-        rows = doc.get("data")
-        fields, reason = ("name", "full_name", "first_name", "profile_url"), "people"
+    rows = doc.get("data")
     if not isinstance(rows, list):
         return Result("unknown", "invalid_shape")
     if not rows:
-        return Result("empty", "no_" + reason)
+        return Result("empty", "no_people")
+    fields = ("name", "full_name", "first_name", "profile_url")
     if all(isinstance(row, dict) and any(_text(row.get(f)) for f in fields) for row in rows):
-        return Result("found", reason)
+        return Result("found", "people")
     return Result("unknown", "invalid_shape")

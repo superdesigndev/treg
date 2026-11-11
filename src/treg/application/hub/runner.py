@@ -1,4 +1,4 @@
-"""The hub runner, JSON road: the graph, the waves, the steps (docs/HUB-DECISIONS.md).
+"""The hub runner, JSON road: the graph, the waves, the steps.
 
 A run is `POST /call/<team>.<name>` with the inputs as a JSON body. The runner resolves the
 manifest's references into a graph, starts every ready step (four at a time), and runs each
@@ -10,7 +10,7 @@ Two teams meet in one run: the CALLER (identity and money) and the MAKER (the to
 names). A catalog step runs as the caller: their balance, their rules, their key if they have
 one for the provider, else treg's. A step on one of the maker's own tools runs as the maker:
 their registered key, unmetered, their tool. That is how a shared recipe can use a key the
-caller never holds (HUB-DECISIONS round 2 q9).
+caller never holds.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from ...infra.money_session import money_session
 from ...models import HubRun, HubTool, Org
 from ..call.types import CallContext, CallFailure, CallInput, ResolutionFailed, UpstreamResponse
 from ..call.reserve import reserve_admission
+from ..call.settle import hold_admission_wait_s
 
 RUN_MAX_COST_HEADER = "X-Treg-Run-Max-Cost"
 DEFAULT_RUN_MAX_COST_MICRO = 1_000_000      # $1.00 for the whole run, seller price included later
@@ -184,9 +185,11 @@ async def run_hub_tool(
     # The hold is the most the maker can earn on this run: a recipe's fixed price, or a script's
     # `max_price_usd` (the cap on its ctx.charge lines, which the caller saw before the run).
     reserve_micro = pricing["price_micro"] + pricing["max_charge_micro"]
+    price_reserved_at = time.monotonic()
     price_held = await _reserve_price(parent, tool, run_id, reserve_micro)
     if price_held > ceiling:
-        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_run_max_cost")
+        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                           reserved_at=price_reserved_at, success=False, reason="hub_run_max_cost")
         raise ResolutionFailed("hub_run_failed", status_code=402, detail={
             "error": "hub_run_max_cost", "max_cost_micro": ceiling, "price_micro": price_held,
             "run_id": run_id, "charged_micro": 0, "trace": [],
@@ -195,7 +198,7 @@ async def run_hub_tool(
         if tool.kind == "script":
             return await _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
                                           upstream_client, execute_child, started, audit_client,
-                                          price_held, pricing)
+                                          price_held, pricing, price_reserved_at)
         g = hub_graph.build(manifest["steps"])
         wall_deadline = started + manifest["limits"]["wall_s"]
 
@@ -347,7 +350,8 @@ async def run_hub_tool(
         trace.sort(key=lambda e: (e["wave"], e["name"], e.get("item") or 0))
         ms_total = int((time.monotonic() - started) * 1000)
         if stop is not None:
-            await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason=stop.kind)
+            await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                               reserved_at=price_reserved_at, success=False, reason=stop.kind)
             detail = {**stop.detail, "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
                       "charged_micro": spent, "price_micro": 0, "trace": trace}
             await _record(tool, parent, run_id, "failed" if stop.kind == "hub_step_failed" else "stopped",
@@ -356,7 +360,8 @@ async def run_hub_tool(
             raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=_public_detail(detail))
 
         output = refs.resolve(manifest["output"], scope, g.positions)
-        earned = await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=True,
+        earned = await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                                    reserved_at=price_reserved_at, success=True,
                                     actual=0 if _empty_answer(output, list(output)) else None)
         body_out = {
             "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
@@ -370,7 +375,7 @@ async def run_hub_tool(
         return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
 
 
-    # The seller's price (docs/HUB-DECISIONS.md): one extra hold `{run}:price` on the CALLER
+    # The seller's price: one extra hold `{run}:price` on the CALLER
     # at run start, settled to the MAKER as `earned` credit on success, released on failure. Not
     # charged when the caller IS the maker (their own tool, and the publish check run), so the check
     # never costs the seller their own price.
@@ -383,10 +388,12 @@ async def run_hub_tool(
     try:
         return await _after_reserve()
     except (CallFailure, asyncio.CancelledError):
-        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_run_stopped")
+        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                           reserved_at=price_reserved_at, success=False, reason="hub_run_stopped")
         raise
     except Exception as exc:
-        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_run_crashed")
+        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                           reserved_at=price_reserved_at, success=False, reason="hub_run_crashed")
         raise ResolutionFailed("hub_run_failed", status_code=424, detail={
             "error": "hub_run_crashed", "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
             "kind": type(exc).__name__, "charged_micro": 0, "price_micro": 0, "trace": [],
@@ -422,7 +429,8 @@ async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str, reserv
 
 
 async def _close_price(tool: HubTool, run_id: str, held: int, *, success: bool, reason: str = "",
-                       actual: int | None = None, payer_org_id: int | None = None) -> int:
+                       actual: int | None = None, payer_org_id: int | None = None,
+                       reserved_at: float | None = None) -> int:
     """Settle the price to the maker (success) or give it back to the caller (failure). `actual` is
     the real price for a variable-price tool: that much is paid to the maker and the rest of the held
     amount is refunded to the caller. `None` settles the full held amount (a flat price). Returns
@@ -435,7 +443,8 @@ async def _close_price(tool: HubTool, run_id: str, held: int, *, success: bool, 
     operation = "hub" if success and (actual is None or actual > 0) else "release"
     async with (
         money_admission.admit(
-            money_admission.require_balance_orgs([payer_org_id]), operation=operation),
+            money_admission.require_balance_orgs([payer_org_id]), operation=operation,
+            max_wait_s=hold_admission_wait_s([reserved_at])),
         money_session(session_maker()) as s,
     ):
         if success:
@@ -654,7 +663,7 @@ def _json(value, status: int, headers: dict[str, str]) -> UpstreamResponse:
 
 async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
                            upstream_client, execute_child, started, audit_client, price_held=0,
-                           pricing=None):
+                           pricing=None, price_reserved_at=None):
 
     manifest = tool.manifest
     run_id = parent.call_ref
@@ -780,7 +789,8 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
                                           charges=charges, max_charge_micro=charge_cap)
     except sandbox.SandboxError as exc:
         ms_total = int((time.monotonic() - started) * 1000)
-        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_script_failed")
+        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                           reserved_at=price_reserved_at, success=False, reason="hub_script_failed")
         detail = {"error": "hub_script_failed", "kind": exc.kind, "message": exc.message,
                   "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
                   "charged_micro": spent, "price_micro": 0, "trace": trace, "log": log}
@@ -791,7 +801,8 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
     missing = [f for f in fields if f not in output]
     ms_total = int((time.monotonic() - started) * 1000)
     if missing:
-        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_output_invalid")
+        await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                           reserved_at=price_reserved_at, success=False, reason="hub_output_invalid")
         detail = {"error": "hub_output_invalid", "missing": missing, "run_id": run_id,
                   "recipe": f"{tool.tool_id}@{tool.version}", "charged_micro": spent,
                   "price_micro": 0, "trace": trace, "log": log,
@@ -811,7 +822,8 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
     # An answer with every declared field empty earns no seller price, whatever the script
     # charged. Its lines stay in the trace.
     empty = _empty_answer(output, fields)
-    earned = await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=True,
+    earned = await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
+                                reserved_at=price_reserved_at, success=True,
                                 actual=0 if empty else min(charged_micro, price_held))
     body_out = {"run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
                 "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,

@@ -15,9 +15,15 @@ serves every capability, so the capability-specific part is contract-driven maps
   table change. A team that opted out of the archive gets no answer columns.
 
 Every identifier is HMAC-SHA256 under `call_events_hmac_secret`, after one normalization
-(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle), so
-a find's `answer_keys['email']` equals a later verify's `input_keys['email']`. No raw email,
-name, domain, phone or URL is ever emitted.
+(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle, phone
+numbers to their E.164 digits), so a find's `answer_keys['email']` equals a later verify's
+`input_keys['email']`. A phone written without its country code gets no key: its digits alone
+could be another country's number. A keyed phone also records its country calling code
+(`answer_values['phone_calling_code']`, `input_meta['calling_code']`), which names no person. No raw email,
+name, domain, phone or URL is ever emitted. `answer_values` does carry raw segment text as the
+provider wrote it (at most 256 characters): a company's industry, size and HQ location, and a
+person's `location`, which can name a city. That is personal data next to the person's keys, kept
+on purpose so analysis can derive country and region later; Iceberg retention bounds it.
 
 The expensive part (reading bodies, hashing) is a builder the sink runs in its flusher; what is
 computed on the call path is a handful of attribute reads.
@@ -61,7 +67,8 @@ _ROLE_LOCALS = frozenset({
     "inquiries", "jobs", "mail", "marketing", "no-reply", "noreply", "office", "press", "sales",
     "support", "team", "webmaster",
 })
-_VALUE_MAX = 64
+_VALUE_MAX = 256
+_SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
 
@@ -93,6 +100,8 @@ def normalize(field: str, value: Any) -> str | None:
         return v.lower()
     if field in _DOMAIN_KEYS:
         return _host(v) or None
+    if field == "phone" or field.endswith("_phone"):
+        return P.e164_digits(v)
     if field in ("linkedin_url", "linkedin_handle"):
         handle = P.linkedin_handle(v) if field == "linkedin_url" else v.strip("/")
         return handle.lower().strip("/") if handle else _host(v) or None
@@ -136,6 +145,7 @@ def adapter_fingerprint(adapter: Adapter) -> str:
     if cached is not None and cached[0] is adapter:
         return cached[1]
     spec = {"accepts": adapter.accepts, "in": adapter.in_map, "in_expr": adapter.in_expr,
+            **({"in_read": adapter.in_read} if adapter.in_read else {}),
             "const": adapter.const, "out": adapter.out_map, "miss": adapter.miss,
             "verdict": adapter.verdict, "verdicts": adapter.verdicts}
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -171,6 +181,22 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             v = v[0]
         if v not in (None, ""):
             given[field_name] = v
+    # An expression that is just an identity field (`body.url: linkedin_url`, used where the
+    # body is an array) reads back like a plain `in` entry; computed ones cannot be inverted.
+    for target, expr in (adapter.in_expr or {}).items():
+        if isinstance(expr, str) and expr in contract.identity_types and expr not in given:
+            v = P.get_path(doc, target)
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[expr] = v
+    # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
+    for field_name, expr in (adapter.in_read or {}).items():
+        if field_name in contract.identity_types:
+            try:
+                v = P.evaluate(expr, doc)
+            except (TypeError, ValueError, AttributeError, IndexError):
+                continue  # a malformed request reads back as nothing, never as a failed event
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[field_name] = v
     # A provider often takes more shapes than the adapter sends: the router sends `full_name`,
     # while a direct caller of the same finder may send `first_name` + `last_name`. A request
     # parameter named exactly like an identity field means that field; derivation then joins
@@ -184,8 +210,9 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     return given
 
 
-def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
-    """(input columns, the normalized identity) for what the caller asked."""
+def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
+    """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
+    hashing, so published route rules match calls exactly as their events record them."""
     identity, _ = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
             if (n := normalize(k, identity.get(k))) is not None}
@@ -194,14 +221,81 @@ def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
     domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm), None)
     if domain is None and "@" in norm.get("email", ""):
         domain = norm["email"].rsplit("@", 1)[1]
+    # `acme.fr.` is acme.fr written with the DNS root.
+    domain = domain.rstrip(".") if domain else domain
     if domain and "." in domain:
         meta["domain_class"] = domain_class(domain)
         meta["tld"] = domain.rsplit(".", 1)[1]
+    if (code := P.calling_code(identity.get("phone"))) is not None:
+        meta["calling_code"] = code
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
+    return ("+".join(variant) if variant else None), meta, norm
+
+
+_DOMAIN_CLASSES = frozenset({"company", "webmail", "edu", "gov"})
+# Placeholder values for asking which variant a call carrying some identity fields is recorded as.
+_SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email": "ann.lee@example.com",
+           "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
+           "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
+           "first_name": "Ann", "last_name": "Lee"}
+_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {"type": "object"}}
+
+
+def _sample(contract: Contract, key: str):
+    return _SAMPLE.get(key, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(key)), "example"))
+
+
+def recorded_variants(contract: Contract) -> dict[str, dict]:
+    """Each `input_type` this contract's calls can be recorded as, with the widest identity a call
+    recorded as it can carry. A variant an earlier one always shadows (`{ai_overview, q}` behind
+    `{q}`) is never recorded and is absent."""
+    out: dict[str, dict] = {}
+    for variant in contract.identity:
+        name = "+".join(variant)
+        fields = {k: _sample(contract, k) for k in variant}
+        if segment(contract, fields)[0] != name:
+            continue
+        for key in contract.identity_types:
+            if key not in fields and segment(contract, {**fields, key: _sample(contract, key)})[0] == name:
+                fields[key] = _sample(contract, key)
+        out[name] = fields
+    return out
+
+
+def _tld(value: str) -> bool:
+    # The last label of a lower-cased host, as `segment` records it: an internationalized name
+    # stays in its own script.
+    return 0 < len(value) <= 63 and value == value.lower() and "." not in value \
+        and not any(c.isspace() for c in value)
+
+
+def _calling_code(value: str) -> bool:
+    return value.isdigit() and 1 <= len(value) <= 3
+
+
+def segment_checks(contract: Contract) -> dict:
+    """Every key `segment` can produce for this contract's calls, each with a test of a value it
+    can record: a recorded variant for `input_type`, a lower-cased label for `tld`."""
+    checks: dict = {"input_type": recorded_variants(contract).__contains__}
+    if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
+        checks["tld"] = _tld
+        checks["domain_class"] = _DOMAIN_CLASSES.__contains__
+    if "phone" in contract.identity_types:
+        checks["calling_code"] = _calling_code
+    for k, spec in (contract.filters or {}).items():
+        if (spec or {}).get("analytics") == "value":
+            checks[k] = lambda v: True
+    return checks
+
+
+def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
+    """(input columns, the normalized identity) for what the caller asked."""
+    input_type, meta, norm = segment(contract, given)
+    variant = tuple(input_type.split("+")) if input_type else None
     cols = {
-        "input_type": "+".join(variant) if variant else None,
+        "input_type": input_type,
         "input_id": (keyed("\x1f".join(f"{k}={norm[k]}" for k in variant)) if variant else None),
         "input_keys": {k: keyed(v) for k, v in norm.items()} or None,
         "input_meta": meta or None,
@@ -220,7 +314,20 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
         return None
     if not isinstance(doc, (dict, list)):
         return None
-    return safe_output(adapter.from_upstream(doc), capability=capability)
+    raw = adapter.from_upstream(doc)
+    core = safe_output(raw, capability=capability)
+    # The Arena keeps only the booleans and numbers it ranks on (`valid`, `score`, …) and blanks
+    # the rest as likely masking flags. A field the contract records and declares `bool`, `int` or
+    # `float` is the provider's verdict (`name_match`, `ported`), kept when it has that type.
+    contract = catalog_store.load().contracts.get(capability)
+    for field_name, spec in (contract.output if contract else {}).items():
+        spec = spec or {}
+        kind = _SCALAR_TYPES.get(str(spec.get("type")))
+        v = raw.get(field_name)
+        if kind and spec.get("analytics", "skip") != "skip" and isinstance(v, kind) \
+                and (kind is bool or not isinstance(v, bool)):
+            core[field_name] = v
+    return core
 
 
 def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None) -> dict:
@@ -236,6 +343,11 @@ def answer_columns(contract: Contract, output: dict, input_norm: dict | None = N
             if n is None:
                 continue
             keys[field_name] = keyed(n)
+            if field_name == "phone" or field_name.endswith("_phone"):
+                # The country a number dials into: no person in it, and the segment country
+                # analysis needs when the provider names none.
+                if (code := P.calling_code(f"+{n}")) is not None:
+                    values[f"{field_name}_calling_code"] = code
             if "@" in n:
                 local, dom = n.rsplit("@", 1)
                 p = "" if field_name == "email" else f"{field_name}_"
@@ -254,14 +366,17 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
          request_body: bytes | None = None, identity: dict | None = None,
          answer_status: int | None = None, answer_body: bytes | None = None,
          output: dict | None = None, answers_allowed: bool = True, retained_extra: int = 0,
-         **columns: Any) -> None:
+         route_rule: dict[str, str] | None = None, **columns: Any) -> None:
     """Queue one event. Cheap and never raising: the bodies are read later, in the flusher.
 
     `identity` (a routed parent's caller fields) or `query_items` + `request_body` (a direct
     call's vendor request) say what was asked; `output` (a routed parent's core) or
     `answer_status` + `answer_body` (a vendor answer) what came back. Everything the builder
     keeps alive counts against the sink's byte budget: the bodies, the query, and
-    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows)."""
+    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows).
+    `route_rule` (a routed parent's ordering: `route_order`, which of header, rule, quality or
+    default decided it, plus `route_rules_version` and `route_rule` when published rules are on)
+    joins `input_meta`, so analysis can split a segment by the rules it ran under."""
     try:
         if not sink.enabled():
             return
@@ -281,8 +396,11 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
                     + sum(len(k) + len(v) for k, v in query))
 
         def build() -> dict:
-            return _derived(endpoint_id, capability, query, request_body, identity,
-                            answer_status, answer_body, output, answers_allowed)
+            out = _derived(endpoint_id, capability, query, request_body, identity,
+                           answer_status, answer_body, output, answers_allowed)
+            if route_rule:
+                out["input_meta"] = {**(out.get("input_meta") or {}), **route_rule}
+            return out
 
         sink.emit(event, build, retained_bytes=retained)
     except Exception:  # noqa: BLE001 — an event must never surface into a call

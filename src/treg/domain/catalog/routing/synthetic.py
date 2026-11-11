@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from .contracts import Adapter, Contract
+from .plan import bills_miss
 
 ROUTED_KIND = "routed"
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
-                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison"}
+                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
+                   "url": "https://example.com"}
 ROUTED_PROVIDER = "treg"
 
 
@@ -29,21 +31,23 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         return None
     prices = sorted(p for p in ((cost_view(e.get("cost"), e["provider"]) or {}).get("usd") for e in kids) if p is not None)
     lo, hi = (prices[0], prices[-1]) if prices else (None, None)
-    # A child priced per call or per result bills its provider's answer even when treg judges it a
-    # miss and moves on: the caller pays those too. Only per-success and free children are free
-    # on a miss.
-    billed_miss = sorted(e["id"] for e in kids
-                         if ((e.get("cost") or {}).get("type") not in ("per_success", "free", None)))
+    # A child priced per call bills its provider's answer even when treg judges it a miss and moves
+    # on: the caller pays those too. A per-success or per-result child is free on a miss unless its
+    # cost bills one (`plan.bills_miss`), the same rule ranking prices.
+    billed_miss = sorted(e["id"] for e in kids if bills_miss(e.get("cost")))
     max_usd = contract.default_max_cost_usd or 1.00
     body = {}
     variants = " | ".join("{" + ", ".join(v) + "}" for v in contract.identity)
     for variant in contract.identity:
         for k in variant:
             body.setdefault(k, {"type": contract.identity_types.get(k, "str"), "required": False,
-                                "note": f"identity key (part of {', '.join('+'.join(v) for v in contract.identity if k in v)})"})
+                                "note": "; ".join(["identity"] + ([contract.identity_notes[k]]
+                                                                  if k in contract.identity_notes else []))})
     for k, spec in (contract.filters or {}).items():
         body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
-                            "note": f"filter — default {(spec or {}).get('default')!r}" + (f"; {spec.get('note')}" if (spec or {}).get("note") else "")})
+                            "note": "; ".join(["filter"]
+                                              + ([f"default {spec['default']!r}"] if (spec or {}).get("default") is not None else [])
+                                              + ([spec["note"]] if (spec or {}).get("note") else []))})
     cap = contract.capability
     # The section its providers file under, so the platform page shows the row beside theirs.
     domains = [e["domain"] for e in children if e.get("domain")]
@@ -60,28 +64,36 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         "name": f"{cap} — routed: best of {len(kids)} providers, own keys first",
         "summary": contract.summary,
         "input": {"bodyType": "json", "body": body,
-                  "note": (f"Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), "
-                           f"matches each provider on the variants it accepts ({variants}) and sends each provider only "
-                           f"the fields it wants. "
-                           "On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost "
-                           f"(default ${contract.default_max_cost_usd or 1.00:g} per call; misses on per-success providers are free). Options ride as "
-                           "headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), "
-                           "X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The "
-                           "response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
-                           + (f" X-Treg-Route-Verify: true checks a hit with {contract.check.endpoint} in the same call, "
-                              "at that call's own price, and reports it in _treg.verification "
-                              "{verdict, checked, served_by, cost_micro}." if contract.check else ""))},
+                  "note": ("Send what you know; treg sends each provider only the fields it accepts "
+                           f"({variants})"
+                           + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
+                           + (". Omit a field you don't have: a url field holding something else, such as N/A, "
+                              "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
+                           + ". On a miss it tries the next provider, cheapest first. Options are "
+                           "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
+                           "X-Treg-Served-By names the provider."
+                           + (" When you sent a domain, _treg.domain_match says whether the hit's mailbox domain "
+                              "matches it." if contract.advice_domain_mismatch else "")
+                           + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
+                              "at that call's own price, in _treg.verification." if contract.check else "")
+                           + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "
+                              f"{contract.confirm}, each attempt at its own price, in _treg.confirmation."
+                              if contract.confirm else "")
+                           + (" X-Treg-Route-Decisive: true counts an answer only when its verdict is "
+                              + " or ".join(contract.verdict_decisive) + ", asking up to two more providers (best measured "
+                              "first, each at its own price), in _treg.decision." if contract.verdict_decisive else ""))},
         "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, "…") for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
         "cost": {"type": "per_success", "value": lo, "currency": "USD", "per": 1, "unit": "call",
                  "source": "inferred", "confidence": "documented", "checked": None,
                  # No single quote is honest when children bill their misses: a $0 floor reads
                  # as "free". Quote nothing.
                  **({"varies": True} if billed_miss else {}),
-                 "note": ((("NOT free: misses are billed too. " if billed_miss else "")
-                           + f"the children's range ${lo:g}–${hi:g} per hit, 0% markup; you pay the child that served "
-                           f"AND every child tried before it that bills a miss ({len(billed_miss)} of {len(kids)} do), "
-                           f"up to X-Treg-Route-Max-Cost (default ${max_usd:g} a call). X-Treg-Route-Exclude them, or "
-                           "X-Treg-Route-Waterfall: 0, to pay for one provider only")
+                 "note": (("Not free: " if billed_miss else "")
+                          + f"${lo:g}–${hi:g} per hit across {len(kids)} providers, 0% markup"
+                          + (f". A call also pays each provider tried before the hit that bills a miss "
+                             f"({len(billed_miss)} of {len(kids)} do), up to X-Treg-Route-Max-Cost (default "
+                             f"${max_usd:g}); X-Treg-Route-Waterfall: 0 pays for one provider only"
+                             if billed_miss else "; misses are free")
                           if lo is not None else "children unpriced")},
         "miss_billed_by": billed_miss,
         "cost_range_usd": [lo, hi],

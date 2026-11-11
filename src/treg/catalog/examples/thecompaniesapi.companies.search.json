@@ -6,10 +6,7 @@
         "industries": [
           "digital-payments",
           "cryptocurrency-trading",
-          "mobile-payments",
-          "online-transactions-processing",
-          "banking",
-          "… 32 more item(s) truncated"
+          "… 4 more item(s) truncated"
         ],
         "industry": "financial-services",
         "languages": [
@@ -32,12 +29,12 @@
         "colorPrimary": "#012169",
         "cover": {
           "height": 1260,
-          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/covers/paypal.com.jpg",
+          "src": "https://thecompaniesapi.s3.fr-p…",
           "width": 2400
         },
         "logoSquare": {
           "height": 200,
-          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/logos/square/paypal.com.jpg",
+          "src": "https://thecompaniesapi.s3.fr-p…",
           "width": 200
         }
       },
@@ -58,31 +55,22 @@
         ],
         "subsidiaries": [
           {
-            "description": "We provide the global commerce tools people need to build businesses, accept payments, and enable commerce for their users.",
+            "description": "We provide the global commerce …",
             "domain": "braintreepayments.com",
             "name": "Braintree"
           },
           {
-            "description": "Founded in 2012 and based in Downtown, Los Angeles, Honey is the easiest way to save when shopping online! We currently have a coupon applying browser extension (available on Google Chrome, Safari, Firefox, etc.",
+            "description": "Founded in 2012 and based in Do…",
             "domain": "joinhoney.com",
             "name": "Honey"
           },
-          {
-            "description": "At Venmo, we're working to build a payment experience that's simple, delightful and connected.",
-            "domain": "venmo.com",
-            "name": "Venmo"
-          },
-          {
-            "description": "Xoom is a leading digital money transfer provider that enables consumers to send money, pay international bills, or reload phones for family and friends around the world.",
-            "domain": "xoom.com",
-            "name": "Xoom, A PayPal Service"
-          }
+          "… 2 more item(s) truncated"
         ]
       },
       "descriptions": {
-        "primary": "HELP US REIMAGINE MONEY. At PayPal, we believe that now is the time to democratize financial services so that moving and managing money is a right for all citizens, not just the affluent. We are driven by this purpose, and we uphold our cultural values of collaboration, innovation, wellness and incl",
-        "tagline": "Pay, send and save money with PayPal",
-        "website": "From paying friends to saving money or getting cash back when you shop, explore what the new PayPal app has to offer."
+        "primary": "HELP US REIMAGINE MONEY. At Pay…",
+        "tagline": "Pay, send and save money with P…",
+        "website": "From paying friends to saving m…"
       },
       "domain": {
         "alias": "www.paypal.com",
@@ -105,7 +93,7 @@
               "lat": 37.3361663,
               "lon": -121.890591
             },
-            "raw": "San Jose, Santa Clara County, California, United States"
+            "raw": "San Jose, Santa Clara County, C…"
           },
           "city": {
             "code": "san-jose|california|us",
@@ -165,29 +153,17 @@
             "pattern": "[F].[L]",
             "usagePercentage": 3.4849
           },
-          {
-            "pattern": "[F][L]",
-            "usagePercentage": 0.4555
-          },
-          {
-            "pattern": "[L1][F]",
-            "usagePercentage": 0.3687
-          },
-          {
-            "pattern": "[F]",
-            "usagePercentage": 0.3326
-          },
-          "… 6 more item(s) truncated"
+          "… 4 more item(s) truncated"
         ]
       },
       "socials": {
         "facebook": {
           "id": "paypalturkiye",
-          "url": "https://www.facebook.com/paypalturkiye"
+          "url": "https://www.facebook.com/paypal…"
         },
         "linkedin": {
           "idNumeric": "1482",
-          "url": "https://www.linkedin.com/company/1482"
+          "url": "https://www.linkedin.com/compan…"
         },
         "twitter": {
           "id": "paypal",
@@ -208,10 +184,7 @@
         "industries": [
           "telecommunications-carriers",
           "mobile-network-operator",
-          "technology-information-and-internet",
-          "digital-services",
-          "fintech",
-          "… 21 more item(s) truncated"
+          "… 4 more item(s) truncated"
         ],
         "industry": "telecommunications",
         "languages": [
@@ -221,7 +194,7 @@
         "nameAlts": [
           "ayoba"
         ],
-        "nameLegal": "MTN Group Management Services (Pty) Ltd",
+        "nameLegal": "MTN Group Management Services (…",
         "totalEmployees": "over-10k",
         "totalEmployeesExact": 42880,
         "yearFounded": 1994,
@@ -233,54 +206,36 @@
       "assets": {
         "cover": {
           "height": 630,
-          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/covers/mtn.com.jpg",
+          "src": "https://thecompaniesapi.s3.fr-p…",
           "width": 1200
         },
         "logoSquare": {
           "height": 200,
-          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/logos/square/mtn.com.jpg",
+          "src": "https://thecompaniesapi.s3.fr-p…",
           "width": 200
         }
       },
       "companies": {
         "subsidiaries": [
           {
-            "description": "Lonestar Cell is the leading GSM communication company in Liberia that has been operating since June 2001.",
-            "descriptionShort": "Lonestar Cell is the leading GSM communication company in Liberia that has been operating since June 2001.",
+            "description": "Lonestar Cell is the leading GS…",
+            "descriptionShort": "Lonestar Cell is the leading GS…",
             "domain": "lonestarcell.com",
             "name": "Lonestar Cell MTN"
           },
           {
-            "description": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
-            "descriptionShort": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
+            "description": "Launched in 1994, the MTN Group…",
+            "descriptionShort": "Launched in 1994, the MTN Group…",
             "domain": "mtn.com.af",
             "name": "MTN Afghanistan"
           },
-          {
-            "description": "Welcome to MTN Benin.",
-            "descriptionShort": "Welcome to MTN Benin.",
-            "domain": "mtn.bj",
-            "name": "MTN Bénin"
-          },
-          {
-            "description": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
-            "descriptionShort": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
-            "domain": "mtn.ci",
-            "name": "MTN Côte d'Ivoire"
-          },
-          {
-            "description": "MTN Congo, entreprise de téléphonie Mobile est née du rachat le 9 décembre 2005 de LIBERTIS Telecom qui avait déjà 6 années d’existence au Congo.",
-            "descriptionShort": "MTN Congo, entreprise de téléphonie Mobile est née du rachat le 9 décembre 2005 de LIBERTIS Telecom qui avait déjà 6 années d’existence au Congo.",
-            "domain": "mtn.cg",
-            "name": "MTN CONGO"
-          },
-          "… 11 more item(s) truncated"
+          "… 4 more item(s) truncated"
         ]
       },
       "descriptions": {
-        "primary": "MTN Group Limited entered the telecommunications scene at the dawn of South Africa's democracy, in 1994. In 1998, we began our expansion by acquiring licences in Rwanda, Uganda and Swaziland. Since then, we continued to grow, with a view of bringing world-class telecommunications and digital service",
+        "primary": "MTN Group Limited entered the t…",
         "tagline": "MTN Group",
-        "website": "MTN is Africa's largest mobile network operator, sharing the benefits of a modern connected life with 288m customers in 18 markets across Africa"
+        "website": "MTN is Africa's largest mobile …"
       },
       "domain": {
         "alias": "www.mtn.com",
@@ -302,7 +257,7 @@
               "lat": -33.973749784437,
               "lon": 18.461498093311278
             },
-            "raw": "Main Street, Newlands, Cape Town, City of Cape Town, Western Cape, 7700, South Africa"
+            "raw": "Main Street, Newlands, Cape Tow…"
           },
           "city": {
             "code": "cape-town|western-cape|za",
@@ -355,31 +310,19 @@
             "pattern": "[F]",
             "usagePercentage": 0.1431
           },
-          {
-            "pattern": "[L]",
-            "usagePercentage": 0.0511
-          },
-          {
-            "pattern": "[F][L]",
-            "usagePercentage": 0.0204
-          },
-          {
-            "pattern": "[F1][L]",
-            "usagePercentage": 0.0204
-          },
-          "… 5 more item(s) truncated"
+          "… 4 more item(s) truncated"
         ]
       },
       "socials": {
         "facebook": {
           "id": "mtnloaded",
-          "url": "http://www.facebook.com/mtnloaded"
+          "url": "http://www.facebook.com/mtnload…"
         },
         "linkedin": {
           "id": "mtn",
           "idNumeric": "165065",
-          "salesNavigatorUrl": "https://www.linkedin.com/sales/company/165065",
-          "url": "https://linkedin.com/company/mtn"
+          "salesNavigatorUrl": "https://www.linkedin.com/sales/…",
+          "url": "https://linkedin.com/company/mt…"
         },
         "twitter": {
           "id": "MTNGroup",
@@ -417,5 +360,5 @@
     }
   ],
   "_scrubbed": true,
-  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+  "_note": "captured live 2026-08-28 via tr…"
 }

@@ -234,7 +234,7 @@ Yes. Instagram profiles, posts, hashtags and comments; TikTok profiles, videos, 
 All through the same treg.to MCP connection, no platform approval required.
 
 **What about Twitter MCP?**
-The catalog has both the official X API (requires your own $200/mo key) and independent providers
+The catalog has both the official X API ($0.005 a post on treg's key) and independent providers
 that answer the same queries at $0.001 per call. Connect via MCP and your agent sees both options.
 
 **Can I scrape Reddit or other platforms?**

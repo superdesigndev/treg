@@ -1,6 +1,6 @@
-"""`treg run` — grants for local CLI execution (docs/CLI-RUN-PLAN.md).
+"""`treg run` — grants for local CLI execution (docs/context/architecture/local-run.md).
 
-Three layers, mirroring the plan's §12: pure unit tests on `localrun` (profile merge, deny
+Three layers: pure unit tests on `localrun` (profile merge, deny
 semantics, validation), endpoint tests on /grant + /run-report (custody, opt-in, deny, audit,
 health feedback, params, cross-org), and client tests on `cmd_run` (env composition, exit codes,
 verdict reporting) with subprocess/network mocked.
@@ -17,6 +17,7 @@ from httpx import AsyncClient
 from treg import cli as _cli
 from treg import localrun
 from treg.models import Tool
+from conftest import verified_signup, accept_with_code
 
 
 @pytest.fixture(autouse=True)
@@ -359,7 +360,7 @@ async def test_grant_refused_for_viewer_who_may_still_call(clients: AsyncClient)
     await clients.post("/tools", json={"name": "stripe", "base_url": "http://upstream", "secret_id": sid,
                                        "cli": {"enabled": True}}, headers=h)
     code = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "vi@x.dev", "role": "viewer"}, headers=h)).json()["code"]
-    vtok = (await clients.post("/invites/accept", json={"code": code, "email": "vi@x.dev"})).json()["token"]
+    vtok = (await accept_with_code(clients, json={"code": code, "email": "vi@x.dev"})).json()["token"]
     vh = {"X-Treg-Token": vtok}
     assert (await clients.get("/call/stripe/anything", headers=vh)).status_code == 200   # viewer may call
     r = await clients.post("/tools/stripe/grant", json={"argv": []}, headers=vh)
@@ -399,7 +400,7 @@ async def test_delete_secret_blocked_when_used_by_cli_inject(clients: AsyncClien
 
 async def test_grant_cross_org_isolation(clients: AsyncClient):
     await _mk_tool(clients, cli=_ENV_CLI)
-    other = (await clients.post("/users", json={"email": "eve@other.dev"})).json()["token"]
+    other = (await verified_signup(clients, json={"email": "eve@other.dev"})).json()["token"]
     r = await clients.post("/tools/stripe/grant", json={"argv": []},
                            headers={"X-Treg-Token": other})
     assert r.status_code == 404                                     # her org has no such tool
@@ -748,7 +749,7 @@ async def test_owner_only_binding_and_runner_proof(clients: AsyncClient, monkeyp
                                        "cli": {"enabled": True, "bin": "printenv", "inject": [{"via": "env", "name": "X"}]}})
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "memberb@x.dev", "role": "member"})).json()
-    tokB = (await clients.post("/invites/accept", json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
+    tokB = (await accept_with_code(clients, json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
     hb = {"X-Treg-Token": tokB}
 
     # A1 — member B cannot bind the owner's secret to a tool B controls

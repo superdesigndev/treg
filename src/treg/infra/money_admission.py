@@ -1,8 +1,9 @@
 """Optional money admission outside database sessions; PostgreSQL remains the authority.
 
 A lease reduces contention, never replaces a money lock or proves a transaction has stopped.
-Reserve wait timeouts refuse before the database; other timeouts and store failures fall back
-to the original database path. Lease loss never cancels
+Reserve wait timeouts refuse before the database. Every other operation keeps waiting, still
+without a database connection, for a longer budget before it falls back to the original database
+path; store failures fall back at once. Lease loss never cancels
 an in-flight transaction. Callers put the entire session (including rollback/close) inside admit,
 and do not call admit again inside that scope.
 
@@ -33,6 +34,7 @@ _MODES = frozenset({"disabled", "redis", "fallback"})
 _REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_not_configured",
                       "lease_lost", "missing_identity", "gate_error"})
 _BOUNDS_MS = (10, 50, 100, 250, 1000, 5000)
+_SETTLE_WAIT_LEASES = 2
 _local_locks: weakref.WeakValueDictionary[int, asyncio.Lock] = weakref.WeakValueDictionary()
 _local_loop = None
 _clock = time.monotonic
@@ -312,8 +314,21 @@ async def _release_safely(gate: _Gate) -> None:
         raise cancelled
 
 
+def _wait_budget(operation: str, settings, max_wait_s: float | None) -> float:
+    if operation == "reserve":
+        return settings.money_admission_wait_s
+    budget = min(max(settings.money_admission_wait_s,
+                     _SETTLE_WAIT_LEASES * settings.money_admission_lease_s),
+                 settings.hold_grace_s / 2)
+    if max_wait_s is not None:
+        budget = min(budget, max_wait_s)
+    return max(0.0, budget)
+
+
 @asynccontextmanager
-async def admit(org_ids: Iterable[int | None], *, operation: str) -> AsyncIterator[None]:
+async def admit(org_ids: Iterable[int | None], *, operation: str,
+                max_wait_s: float | None = None) -> AsyncIterator[None]:
+    """`max_wait_s` caps a non-reserve wait for a caller with its own deadline."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.
@@ -338,7 +353,8 @@ async def admit(org_ids: Iterable[int | None], *, operation: str) -> AsyncIterat
                 observation.transition("redis", "waiting")
                 gate = _Gate(observation, settings.money_admission_lease_s)
                 try:
-                    reason = await gate.acquire(ids, settings.money_admission_wait_s)
+                    reason = await gate.acquire(
+                        ids, _wait_budget(operation, settings, max_wait_s))
                 except Exception:  # noqa: BLE001 - the gate cannot turn a charge into a free call
                     observation.kv_errors += 1
                     reason = "gate_error"

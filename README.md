@@ -83,7 +83,7 @@ treg resources list --provider fishaudio --kind voice
 With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
 account boundary.
 
-Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies.
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.
@@ -95,9 +95,8 @@ Discover what your team has shared: `treg tool ls` · check credential health: `
 /plugin install treg@treg
 ```
 
-Installs with no token and no configuration. The skill loads as `treg:treg` and, on its first run,
-walks your agent through the rest — the CLI, sign-in, then `treg mcp install` — so you end up with
-the command line **and** treg's tools. Other agents: `npx skills add superdesigndev/treg -s treg`
+Installs the treg skill and treg's tools with no token and no configuration. Run `/mcp`, pick
+treg and sign in; the tools appear after it. Other agents: `npx skills add superdesigndev/treg -s treg`
 (or see [Workflow skills](#workflow-skills) for the rest).
 See [docs/CLAUDE-PLUGIN.md](docs/CLAUDE-PLUGIN.md). MiniMax Code / MiniMax Agent users: the same
 skill ships via the MiniMax Plugin Marketplace ([docs/MINIMAX-PLUGIN.md](docs/MINIMAX-PLUGIN.md)).
@@ -109,19 +108,22 @@ Ready-made recipes your agent runs end to end, every call through treg:
 | Skill | What your agent can do |
 |---|---|
 | [`treg`](skills/treg/SKILL.md) | Find and call any tool in the catalog, plus your own tools |
-| [`web-access`](skills/web-access/SKILL.md) | Read the live web without local scrapers: free search and page reads first, then the right platform job for social, stores, reviews, maps and papers, with treg falling back to the next vendor when one fails |
+| [`web-access`](skills/web-access/SKILL.md) | When your agent's own web tools fall short, read the live web without local scrapers: free search and page reads first, then the right platform job for social, stores, reviews, maps and papers, with treg falling back to the next vendor when one fails |
 | [`lead-signals`](skills/lead-signals/SKILL.md) | Find in-market buyers from public signals (complaints, job changes, hiring, funding, tool adoption) and monitor a topic, competitor or account list for them ([treg.to/leads-signals](https://treg.to/leads-signals)) |
 | [`recruit`](skills/recruit/SKILL.md) | Turn a LinkedIn job post into a ranked shortlist: criteria from the post, people search, filters with reasons, one line on why each fits, cited evidence (posts, GitHub, talks, tenure, job change) under a per-candidate spend cap, then a checked personal email and phone, with a run file of counts, evidence and the vendor trail per candidate |
 | [`make-ugc`](skills/make-ugc/SKILL.md) | Make AI UGC videos: trending hooks, a presenter, talking-head clips, captions ([treg.to/ugc](https://treg.to/ugc)) |
 | [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
 
-`install.sh` installs all of them for you except `jev-memory`, which is opt-in. To add them to an existing agent instead
-([skills.sh](https://skills.sh) CLI):
+`install.sh` installs only `treg` and names the others in one line; your agent offers them after
+sign-in and the first call. Name the ones you want with
+`sh -s -- --skills lead-signals,recruit` (or `--skills all`; the opt-in `jev-memory` and `rea-growth` are never in that set). In Claude Code each one is
+also its own plugin in treg's marketplace: `/plugin install recruit@treg`, or pick them from `/plugin`. To add
+them to an existing agent instead ([skills.sh](https://skills.sh) CLI):
 
 ```bash
 npx skills add superdesigndev/treg                        # every public skill
 npx skills add superdesigndev/treg --skill lead-signals   # just one
-treg skill bootstrap                                      # same set, with the treg CLI you already have
+treg skill bootstrap --skills all                         # the installer's set, with the treg CLI you already have
 ```
 
 The workflow skills run on treg, so set it up first (the Quickstart above, or point your agent at
@@ -243,8 +245,7 @@ treg run gh -- pr list
 ```
 
 `--local` (default) runs on your machine. Server-side CLI execution (`--server`) is disabled globally.
-For a whole session, `treg shell start` opens a subshell where every registered CLI injects
-automatically — just use `stripe`, `gh`, … normally; `exit` reverts. `treg runs` is the audit log.
+`treg runs` is the audit log.
 
 ### 3. Skills
 
@@ -281,7 +282,7 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
-The CLI sends anonymous command usage to PostHog when using treg.to (no arguments or credentials).
+The CLI and its installer send anonymous usage to PostHog when using treg.to (no arguments or credentials).
 Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 See [analytics details](USAGE.md#anonymous-usage-analytics).
 
@@ -295,7 +296,7 @@ and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
 ```bash
 treg org create "Acme"                        # make a team, become owner
 treg org invite teammate@acme.com             # invite by email (pick role + tool access)
-treg org join <code> --email you@acme.com     # accept an invite (creates you if new)
+treg org join <code>                          # accept an invite (sign in as the invited email first)
 treg org ls | use <slug> | members            # switch orgs, see the roster
 treg org access <member> --tools a,b          # per-member tool access (admin+)
 ```
@@ -386,9 +387,11 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
 | `TREG_CLIENT_IP_HEADER`                   | *(empty)*                       | a header only your edge can set, used as the client address for every per-IP limit (`cf-connecting-ip` behind Cloudflare) |
 | `TREG_TRUSTED_PROXY_HOPS`                 | `1`                             | without that header: the `X-Forwarded-For` entry this many hops from the RIGHT (the one your nearest proxy appended); `0` when clients connect directly. The first entry is client-written and never trusted |
+| `TREG_RATE_LIMIT_EXEMPT_IPS`              | *(empty)*                       | comma-separated addresses or CIDR blocks exempt from every per-IP limit (an authorized security test, a monitoring probe); per-email, per-user and deployment-wide limits still apply. A malformed entry refuses to start |
 | `TREG_REQUIRED_EXTENSIONS`                | *(empty)*                       | comma-separated policy extensions (`treg.extensions` entry points) that must be installed, else startup fails. treg.to runs a private abuse-policy extension this way; it can only restrict ([policy extensions](docs/context/architecture/policy-extensions.md)) |
-| `TREG_TURNSTILE_SITE_KEY` / `_SECRET`     | *(empty)*                       | Cloudflare Turnstile on every email sign-in form; either empty = off. The site key is served in `/captcha.js`, the secret only reaches siteverify |
-| `TREG_TURNSTILE_MODE`                     | `observe`                       | `observe` logs each outcome and changes nothing; `enforce` refuses a code to a missing or invalid token, and gives no signup credit when Cloudflare cannot answer |
+| `TREG_TURNSTILE_SITE_KEY` / `_SECRET`     | *(empty)*                       | Cloudflare Turnstile on every email sign-in form and on a new address's first GitHub/Google sign-in; either empty = off. The site key is served in `/captcha.js`, the secret only reaches siteverify |
+| `TREG_TURNSTILE_MODE`                     | `observe`                       | `observe` logs each outcome and changes nothing; `enforce` refuses a code to a missing or invalid token, gives no signup credit when Cloudflare cannot answer, and gives a new GitHub/Google user signup credit only on a passed check |
+| `TREG_TURNSTILE_SOCIAL`                   | `true`                          | `false` skips the check on a new address's first GitHub/Google sign-in, which then gets signup credit as with no widget; the email door is unchanged |
 | `TREG_TURNSTILE_HOSTNAMES`                | *(empty)*                       | comma-separated hosts a token must be solved on; empty = the `TREG_PUBLIC_URL` host (and its known aliases) |
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
 | `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
@@ -470,8 +473,7 @@ treg/
 │   └── web/             # dashboard, landing, tutorial, llms.txt, skill.md, install.sh
 ├── tests/               # pytest suite (CI + local default: pytest-xdist -n auto)
 ├── docs/
-│   ├── context/         # design fragments (codemap system) + generated index
-│   └── ONBOARDING.md    # first-time bootstrap
+│   └── context/         # design fragments (codemap system) + generated index
 ├── USAGE.md             # full treg CLI reference
 └── pyproject.toml
 ```

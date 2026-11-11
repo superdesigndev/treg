@@ -1,9 +1,9 @@
 # List your API on treg
 
-treg is the tool catalog for AI agents: ~2,600 endpoints across ~40 providers, discoverable by
-*capability* ("get a domain's backlink summary") rather than by vendor name. Agents search the
-catalog, compare providers side by side on price / measured success rate / speed, and call your
-API through treg's proxy with the credential injected server-side.
+treg is the tool catalog for AI agents: endpoints discoverable by *capability* ("get a domain's
+backlink summary") rather than by vendor name. Agents search the catalog, compare providers side
+by side on price / measured success rate / speed, and call your API through treg's proxy with the
+credential injected server-side.
 
 **What listing gets you:**
 
@@ -59,8 +59,7 @@ Or open an issue or PR on this repo yourself, with:
 8. **A self-verification ledger**: before submitting, run every `test_request` live against your
    own account and record, per endpoint, the HTTP status, the cost your YAML claims, and the cost
    your meter actually charged (charge field, rate-card endpoint, or balance delta), dated. Docs
-   drift; meters don't — a real submission's docs-transcribed price was 5× under what the meter
-   charged. Deliberate-miss test targets must be labeled as such, with the hit price observed
+   drift; meters don't. Deliberate-miss test targets must be labeled as such, with the hit price observed
    once on a real target.
 9. **A full-surface map**: every documented operation, marked catalogued or excluded-with-reason —
    including the free count/preview routes and your cheapest operation tiers, which are the ones
@@ -105,8 +104,9 @@ ACMESEO = OAuthProvider(
 )
 ```
 
-…added to the `REGISTRY` tuple, plus a neutral lettermark at `src/treg/web/logos/acmeseo.svg`
-and the two test-list additions (`test_every_provider_is_registered`, `test_key_providers`).
+…added to the provider tuple that builds `REGISTRY`, plus a neutral lettermark at
+`src/treg/web/logos/acmeseo.svg` (`test_every_provider_has_a_logo` fails without it). The
+registry-wide tests pick the new entry up on their own; no test list needs editing.
 
 If your API answers HTTP 200 even for a bad key, the entry instead names the body field that
 distinguishes them (`token_verify_field`, `token_ok_field`/`token_ok_value`, or
@@ -124,6 +124,8 @@ source:
   curated: 2026-08-12
 limits: "60 requests/minute per key"
 pricing_url: https://acmeseo.example/pricing
+defaults:                                # what every row inherits
+  provenance: {source: docs, source_url: 'https://acmeseo.example/pricing', checked: '2026-08-12', confidence: documented}
 endpoints:
   - id: acmeseo.web.backlinks.summary
     capability: web.backlinks.summary     # the cross-provider join key, from capabilities.yaml
@@ -132,22 +134,16 @@ endpoints:
     method: GET
     path: /backlinks/summary
     name: "Backlink summary"
-    summary: "Aggregate backlink profile of a domain or URL"   # vendor's wording, verbatim
+    summary: "Aggregate backlink profile of a domain or URL"   # what the tool does (catalog-schema.md)
     input:
       queryParams:
         target: {type: string, required: true, note: "domain or full URL", example: "moz.com"}
         mode:   {type: string, required: false, note: "one of domain | url", example: "domain"}
     test_request:                          # the CHEAP call verification replays
       queryParams: {target: "moz.com", mode: "domain"}
-    cost:
-      type: per_success                    # errors free
-      value: 0.002
-      currency: USD
-      source: docs
-      source_url: https://acmeseo.example/pricing
-      checked: 2026-08-12
-      confidence: documented
+    price: {value: '0.002', currency: USD, per: 1, unit: call}   # misses and errors free by default
     docs_url: https://docs.acmeseo.example/backlinks-summary
+    added: 2026-08-12                      # written by scripts/catalog_added.py
   # …7–14 more endpoints, same shape
 ```
 
@@ -172,7 +168,7 @@ with our meter gets corrected from the observed charge.
 ```bash
 # 1. Live bogus-key test: a garbage key POSTed to /connections/token must come back rejected
 # 2. Live verification of every endpoint's test_request (with the test credential, from env)
-TREG_CATALOG_CRED='<key>' uv run python scripts/catalog_verify.py acmeseo.yaml
+TREG_CATALOG_CRED='<key>' uv run python scripts/catalog_verify.py acmeseo --write
 # 3. Schema + referential integrity
 uv run python scripts/catalog_validate.py     # must exit 0
 # 4. The full test suite
@@ -213,7 +209,7 @@ Recorded reasons from past reviews, so nobody wastes a cycle:
 
 ## Keeping your listing healthy
 
-- **Prices moved?** Tell us or PR the `cost` blocks — stale prices are flagged after 90 days.
+- **Prices moved?** Tell us or PR the `price` and `provenance` keys — stale prices are flagged after 90 days.
 - **Routes changed?** If you publish OpenAPI, a re-ingest regenerates your extended tier from
   the spec; the curated core file is updated by hand, so breaking changes there need a heads-up.
 - **Success rates are public.** treg aggregates observed success rate and latency per endpoint

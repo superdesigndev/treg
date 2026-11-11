@@ -1,5 +1,5 @@
 import { storageSet, storageRemove } from './storage.js'
-import { requestJson } from '../api'
+import { requestJson, withReportRetry } from '../api'
 import { LS } from './constants.js'
 
 export default {
@@ -15,6 +15,8 @@ async api(path, opts={}){
         this.sessionMode=false; location.reload();
       }, () => this.sessionMode);
     },
+// The heavy dashboard reports (usage, spend by tag, observed agents) share a small server-side gate.
+reportApi(path){ return withReportRetry(() => this.api(path)); },
 save(){ storageSet(LS, JSON.stringify(this.cfg)); },
 connected(slug){ return this.sessionMode || !!this.cfg.orgs[slug]; },
 toggleTheme(){ this.theme=this.theme==='dark'?'light':'dark'; document.documentElement.dataset.theme=this.theme; storageSet('treg-theme',this.theme); },
@@ -52,7 +54,7 @@ switchOrg(o){ this.parkCredentialIssue(); this.ticket('agentIssue'); this.ticket
       if(!this.connected(o.slug)){ this.addOrg=true; return; }
       // The previous team's balance and auto top-up settings must not be shown, or paid against,
       // while the new team's load: they arrive with loadBilling.
-      this.billing=null; this.topupOpen=false;
+      this.billing=null; this.billingNote=''; this.topupOpen=false;
       if(this.sessionMode){ this.activeSlug=o.slug; storageSet('treg-active',o.slug); }
       else { this.cfg.active=o.slug; this.save(); }
       this.loadAll(); this.intercomUpdate(); },

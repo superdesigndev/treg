@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from contextlib import nullcontext
 from contextvars import ContextVar
 from types import SimpleNamespace
@@ -95,6 +96,11 @@ async def _close(sessions, org_id: int, call_id: str, *, admission=None) -> int:
             return result
 
 
+async def _after_loop_pause(coroutine):
+    time.sleep(0.3)
+    return await coroutine
+
+
 async def _hot_org_isolation(engine, *, admission=None, isolates: bool | None = None) -> dict:
     isolates = bool(admission) if isolates is None else isolates
     hot, calls = await _funded_holds("admission-hot", 6)
@@ -133,13 +139,14 @@ async def _hot_org_isolation(engine, *, admission=None, isolates: bool | None = 
                             await asyncio.sleep(0.005)
                 blocked_occupancy = pooled.pool.checkedout()
                 assert blocked_occupancy == expected
-                other_task = asyncio.create_task(_close(sessions, other, other_call, admission=admission))
+                other_task = asyncio.create_task(
+                    _after_loop_pause(_close(sessions, other, other_call, admission=admission)))
                 tasks.append(other_task)
-                completed, _ = await asyncio.wait({other_task}, timeout=0.25)
                 if isolates:
-                    assert completed and await other_task == 70, "unrelated org must retain DB capacity"
+                    assert await other_task == 70, "unrelated org must retain DB capacity"
                     assert len(pids) == 1, "same-org waiters must remain outside the DB pool"
                 else:
+                    completed, _ = await asyncio.wait({other_task}, timeout=0.25)
                     assert not completed, "baseline must demonstrate pool starvation"
                 await holder.rollback()
                 assert await asyncio.gather(*tasks) == [70] * len(tasks)
@@ -210,7 +217,8 @@ async def test_admission_timeout_keeps_accounting_safe_but_loses_pool_isolation(
     monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
     monkeypatch.setattr(get_settings(), "money_admission_org_ids", [])
     monkeypatch.setattr(get_settings(), "money_admission_wait_s", 0.05)
-    monkeypatch.setattr(get_settings(), "money_admission_lease_s", 15)
+    # Settlement waits twice the lease before falling back; keep that inside the test's window.
+    monkeypatch.setattr(get_settings(), "money_admission_lease_s", 1)
     money_admission.snapshot()
     # A long-held row outlasts the admission budget. Accounting still completes exactly once,
     # but fallback callers can fill the old pool: availability fallback is not hard isolation.
@@ -372,6 +380,8 @@ async def test_admission_timeout_preserves_foreign_lease_and_settles_once(
     org, [call] = await _funded_holds("admission-timeout", 1)
     key, token = f"money-admission:org:{org}", uuid4().hex
     monkeypatch.setattr(get_settings(), "money_admission_wait_s", 0.05)
+    # The settlement budget (twice the lease) must expire before the foreign lease does.
+    monkeypatch.setattr(get_settings(), "money_admission_lease_s", 1)
     assert await local_redis[1].acquire_lease(key, token, 5000) == "acquired"
     try:
         results = await asyncio.gather(*[

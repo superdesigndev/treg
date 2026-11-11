@@ -328,16 +328,16 @@ def test_ingesters_are_byte_deterministic(tmp_path, monkeypatch):
     openrouter_doc = yaml.safe_load(openrouter_path.read_text())
     priced = next(ep for ep in openrouter_doc["endpoints"] if ep["id"].endswith("hailuo-test"))
     assert priced["input"]["body"]["generate_audio"]["default"] is True
-    assert [row["value"] for row in priced["cost"]["table"]] == [0.05, 0.1]
-    assert priced["cost"]["fallback"]["value"] >= 0.5
-    assert priced["cost"]["confidence"] == "documented"
+    assert [row["value"] for row in priced["price"]["table"]] == ["0.05", "0.1"]
+    assert float(priced["price"]["fallback"]["value"]) >= 0.5
+    assert "provenance" not in priced and "settle" not in priced and "tier" not in priced
     assert priced["domain"] == "models"
     assert "capability" not in priced
     assert priced["verified"] == "2026-09-02"
     assert priced["example_response"] == "examples/openrouter.json"
     unbounded = next(ep for ep in openrouter_doc["endpoints"] if ep["id"].endswith("unbounded"))
-    assert unbounded["cost"]["confidence"] == "unknown"
-    assert unbounded["cost"]["value"] is None
+    assert unbounded["provenance"]["confidence"] == "unknown"
+    assert unbounded["price"]["value"] is None and unbounded["settle"] is None
     assert not any(ep["id"].endswith("curated") for ep in openrouter_doc["endpoints"])
 
     replicate_path, _ = ingest.ingest_replicate(False)

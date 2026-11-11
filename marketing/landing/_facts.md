@@ -109,14 +109,14 @@ LeadMagic $0.025 · Lusha $0.2496 · Coresignal $0.392.
 | Coresignal | free (ids only; the cost lands on collect) | — (1) | — |
 | Hunter Discover | free | 100% (24) | 1.7 s |
 | The Companies API | $0.0019 / company returned; free with `simplified=true` | 100% (338) | 0.3 s |
-| Lusha | $0.004992 / up to 25 results | — (0) | — |
+| Lusha | $0.1248 / up to 25 results | — (0) | — |
 | LeadMagic | $0.025 / company returned | 70% (10) | 3.2 s |
 | Apollo | $0.026 / page returned | — (0) | — |
 | Diffbot | $0.0299 / record returned | 100% (5) | 0.7 s |
-| PDL | $0.38 / record returned | — (0) | — |
+| PDL | $0.10 / record returned | — (0) | — |
 | Crunchbase | own key only, no per-call price | — (2) | — |
 
-**200× spread for the same job, and the cheapest is free.** This table is the single most defensible
+**50× spread for the same job, and the cheapest is free.** This table is the single most defensible
 asset in this whole cluster.
 
 ### Company signals and funding (`F-51`)
@@ -139,7 +139,7 @@ ScrapeCreators LinkedIn company page $0.00188.
 | TikTok ad library | Apify | $0.003 / result | — | — |
 | TikTok ad library | tikhub | $0.001 | none of 7 recorded successful — returns 405 on its documented shape | — |
 | LinkedIn ads search | ScrapeCreators | $0.00188 | — | — |
-| LinkedIn ads search | tikhub | $0.004 | — | — |
+| LinkedIn ads search | HarvestAPI | $0.0016 | — | — |
 
 ### Social platforms — endpoints per platform, `GET /catalog/platforms` (`F-70`)
 

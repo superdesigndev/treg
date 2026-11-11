@@ -11,6 +11,8 @@ limits: "Enrichment 15,000 records/5h and 75,000/week; search 7,500 records/5h a
 expect: &found
   json_path: status
   equals: ok
+  # A 200 `not_found` is a free miss, not a failure: the adapter's `miss` judges it.
+  misses: [not_found]
 proposed_capabilities:
   linkedin.profile.search: Find professional profiles by name and company
   people.audiences.maid: Convert an email to mobile advertising IDs

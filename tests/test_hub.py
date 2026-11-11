@@ -115,7 +115,7 @@ def test_refusals_name_field_and_rule(change, field, rule_words):
 
 
 # ---------------------------------------------------------------------------------------------
-# Pricing: one rule per kind (docs/hub-pricing-decisions.md round 4, 2026-09-24). A steps recipe
+# Pricing: one rule per kind. A steps recipe
 # has one fixed price; a script declares `max_price_usd` and prices itself with ctx.charge.
 
 def _no_price(m):
@@ -613,6 +613,16 @@ async def test_catalog_get_answers_for_a_hub_id_and_hides_what_the_maker_hides(c
     assert (await clients.get("/catalog/endpoints/nobody.nothing")).status_code == 404
 
 
+async def test_catalog_gets_view_of_a_hub_id_is_its_contract(clients: AsyncClient, hub_on, platform_on):
+    from toon_format import decode
+    tool_id = await _publish_live(clients)
+    r = await clients.get(f"/catalog/endpoints/{tool_id}", headers={"X-Treg-View": "1"})
+    assert r.status_code == 200 and r.headers["X-Treg-View"] == "1"
+    page = decode(r.json()["text"])
+    assert page["id"] == tool_id and page["maker"] == r.json()["data"]["endpoint"]["provider"]
+    assert page["call"].startswith(f"treg call {tool_id} --data") and page["health"].startswith("live")
+
+
 async def test_catalog_get_on_a_hub_id_with_the_flag_off_is_a_plain_404(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     tool_id = await _publish_live(clients)
     monkeypatch.setenv("TREG_HUB_ENABLED", "0")
@@ -993,7 +1003,7 @@ async def test_earnings_report_carries_the_average_price(clients: AsyncClient, h
 
 
 # ---------------------------------------------------------------------------------------------
-# Listing (docs/hub-listing-decisions.md round 2, 2026-09-24): `listed` is a request; a superadmin
+# Listing: `listed` is a request; a superadmin
 # approves or rejects it; only an approved tool is in search; the approval outlives a version.
 
 ADMIN = "hub-admin-token"
@@ -1044,7 +1054,8 @@ async def test_only_an_approved_tool_is_in_search(clients: AsyncClient, hub_on, 
     row = [r for r in body["results"] if r["id"] == tool_id][0]
     assert row["kind"] == "hub" and row["provider"] and row["price_line"].startswith("seller ")
     assert row["cost"]["usd"] == 0.011 and row["price_range"] == "$0.011/run (from the maker's own tests)" and "score" in row and "script" not in row and "uses" not in row
-    assert body["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response" or tool_id in json.dumps(body["hints"])
+    exact = (await clients.get("/catalog/search", params={"q": tool_id})).json()
+    assert exact["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response"
     assert (await clients.delete(f"/hub/tools/{tool_id}")).status_code == 200      # retired never appears
     assert tool_id not in await _search_ids(clients)
 
@@ -1205,7 +1216,7 @@ async def test_mcp_catalog_search_returns_an_approved_hub_tool(clients: AsyncCli
 
 
 # ---------------------------------------------------------------------------------------------
-# Phase 10.3: the public run log (docs/hub-listing-decisions.md, decisions 3-5).
+# Phase 10.3: the public run log.
 
 async def test_the_public_page_shows_recent_runs_and_never_the_caller_inputs_or_output(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     pub = await _live_tool_with_readme(clients, monkeypatch, price=0.01)
@@ -1424,7 +1435,7 @@ async def test_a_price_edit_on_a_script_moves_its_cap(clients: AsyncClient, hub_
 
 
 # ---------------------------------------------------------------------------------------------
-# Capability (docs/hub-listing-decisions.md round 3): the maker proposes a catalog job; the approval
+# Capability: the maker proposes a catalog job; the approval
 # sets it; the tool then sits beside that job's providers in catalog_get, with a seeded success rate.
 
 CAP = "tiktok.video.comments"           # EP's own job, with several catalog providers

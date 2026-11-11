@@ -22,7 +22,10 @@ from test_routing import ROUTED, _relay_by_provider, enrichment_on  # noqa: F401
 
 
 def _example(endpoint_id: str):
-    path = catalog_store.example_path(endpoint_id)
+    endpoint = catalog_store.load().by_id[endpoint_id]
+    terminal_file = endpoint.get("terminal_example_file") if endpoint.get("async") else None
+    path = (catalog_store.CATALOG_DIR / catalog_store.EXAMPLES_DIRNAME / terminal_file
+            if terminal_file else catalog_store.example_path(endpoint_id))
     return json.loads(path.read_text()) if path else None
 
 

@@ -26,7 +26,6 @@ from .application.onboard.sandbox import (
     DEFAULTS as DEFAULTS,
     MAX_SECRETS as MAX_SECRETS,
     MAX_TOOLS as MAX_TOOLS,
-    SAMPLE_SKILLS as SAMPLE_SKILLS,
     SANDBOX_DOMAIN as SANDBOX_DOMAIN,
     SANDBOX_TTL_MIN as SANDBOX_TTL_MIN,
     gc as gc,

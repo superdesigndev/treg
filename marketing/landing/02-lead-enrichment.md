@@ -76,22 +76,22 @@ eleven providers for that one job: and this is the sharpest price spread in the 
 | **Akta** | free | 100% (248 calls) | 3.2 s |
 | **Hunter Discover** | free | 100% (24 calls) | 1.7 s |
 | **The Companies API** | $0.0019 | 100% (339 calls) | 0.3 s |
-| **Lusha** | $0.004992 per 25 results | not yet measured |: |
+| **Lusha** | $0.1248 per 25 results | not yet measured |: |
 | **LeadMagic** | $0.025 | 70% (10 calls) | 3.2 s |
 | **Apollo** | $0.026 per page | not yet measured |: |
 | **Diffbot** | $0.0299 | 100% (5 calls) | 0.7 s |
-| **PDL** | $0.38 | not yet measured |: |
+| **PDL** | $0.10 | not yet measured |: |
 | **Crunchbase** | own key only |: |: |
 
-Same job. **A 200× spread, and the cheapest option is free.** Coverage differs, which is exactly why the
-price is not the only column: but nobody should pay $0.38 a record without knowing $0.0019 was on the
+Same job. **A 50× spread, and the cheapest option is free.** Coverage differs, which is exactly why the
+price is not the only column: but nobody should pay $0.10 a record without knowing $0.0019 was on the
 table.
 
 **It finds the people.** Two routes, and the cheaper one is usually the right one. If you want everyone
 at a company, `hunter.companies.emails` returns the known addresses at a domain in a single call,
 **100% success across 597 calls, 0.4 s median**, the fastest endpoint in this whole workflow. If you want
 one named person, `hunter.people.email.find` costs $0.0245 and **only charges when it finds someone**
-(100% across 582 calls, 1.4 s). Enrichment fills thin profiles: Hunter $0.0245 (356 calls, 0.3 s),
+(100% across 582 calls, 1.4 s). Enrichment fills thin profiles: Hunter $0.0049 (356 calls, 0.3 s),
 Apollo $0.026 (263 calls, 0.3 s), LeadMagic $0.025, Coresignal $0.392.
 
 **It verifies before you send: and this is the step that matters most.** Verification is the single
@@ -179,7 +179,7 @@ about $12.50: and Hunter's finder does not charge you for the ones it cannot fin
 **Why not just call the providers directly?**
 Because this workflow is not one provider. Finding companies, identifying people and verifying email are
 three different products, and the vendor that is best at one is rarely best at the others: the table
-above is 200× wide for a single job. Holding accounts with all of them to find out is the expensive way
+above is 50× wide for a single job. Holding accounts with all of them to find out is the expensive way
 to learn it. If you already pay for one, connect it and those calls route through your key, unmetered.
 treg.to is closer to OpenRouter for agent tools than to a data vendor: one base URL, one token, many
 providers behind it.
@@ -198,9 +198,9 @@ you anything on treg.to.)*
 
 **How much does a call cost?**
 A found work email is $0.0245 with Hunter and a miss is free. Verification is $0.00625. Company search
-ranges from free to $0.38 a record depending on provider. The exact price is shown before the call, and
+ranges from free to $0.10 a record depending on provider. The exact price is shown before the call, and
 treg.to adds no markup to what the provider charges. New teams start with $1.00 of free credit: enough
-for roughly 40 verified email lookups before you spend anything.
+for roughly 30 verified email lookups before you spend anything.
 
 **Which agents does it work with?**: `S-OBJ-AGENTS`
 

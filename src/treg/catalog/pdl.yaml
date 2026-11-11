@@ -189,6 +189,7 @@ endpoints:
       currency: USD
       per: 1
       unit: record
+      bills_miss: true
       source: docs
       source_url: https://support.peopledatalabs.com/hc/en-us/articles/25794271805211-Pricing-credits
       checked: '2026-10-21'

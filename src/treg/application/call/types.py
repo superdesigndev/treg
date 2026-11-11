@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Literal, Protocol
 
@@ -34,7 +34,10 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "provider_resource_state_failed": "treg",
     "capability_pinned": "caller",
     "policy_denied": "caller",
+    # An installed policy extension refused treg's money for this call (`call_admission`).
+    "admission_denied": "caller",
     "daily_cap_reached": "caller",
+    "org_endpoint_quota_exceeded": "caller",
     "public_demo_rate_limited": "caller",
     "trial_allowance_unavailable": "treg",
     "trial_allowance_reached": "caller",
@@ -48,6 +51,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "tag_call_cap_reached": "caller",
     "tag_spend_cap_reached": "caller",
     "insufficient_balance": "caller",
+    "free_credit_excludes_video": "caller",
     # treg's OWN vendor account for the provider is out (balance/quota) — a 503 the caller cannot
     # fix, answered before any hold exists, with the same-capability alternatives named.
     "provider_capacity": "treg",
@@ -56,6 +60,9 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
     "share_busy": "caller",
+    # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
+    # refused before it was sent, not charged; a routed job moves to its next provider.
+    "provider_rate_limited": "treg",
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
     "route_no_candidate": "caller",
@@ -128,6 +135,20 @@ class RequestBody(Protocol):
     async def read(self) -> bytes: ...
 
 
+class EmptyBody:
+    """The body of a call treg makes itself with nothing to send: a provider listing, a task poll."""
+
+    async def _nothing(self) -> AsyncIterator[bytes]:
+        return
+        yield b""
+
+    def stream(self) -> AsyncIterator[bytes]:
+        return self._nothing()
+
+    async def read(self) -> bytes:
+        return b""
+
+
 @dataclass(frozen=True)
 class UserSnapshot:
     id: int | None
@@ -164,6 +185,7 @@ class OrgSnapshot:
     first_call_at: Any
     autotopup_max_per_hour: int = 0
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
+    created_at: Any = None
 
 
 @dataclass(frozen=True)
@@ -225,6 +247,7 @@ class CallerSnapshot:
                 autotopup_max_per_hour=int(getattr(org, 'autotopup_max_per_hour', 0) or 0),
                 archive_opt_out_at=getattr(org, 'archive_opt_out_at', None),
                 first_call_at=org.first_call_at,
+                created_at=getattr(org, "created_at", None),
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,
@@ -274,6 +297,8 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    quota_admissions: set[tuple[int, str]] = field(default_factory=set)
+    quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
     tool_name: str | None = None
     endpoint_id: str | None = None
@@ -284,6 +309,10 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
+    # archived answer was served.
+    # A routed parent attributes its order only to children that did (route.py `_note_call`).
+    reached_provider: bool = False
 
 
 @dataclass(frozen=True)
@@ -306,6 +335,9 @@ class IdempotentReplay:
     media_type: str
     charged_micro: int
     call_ref: str
+    # `(key_hash, content_hash)` when the row dropped its own copy: the bytes are read by
+    # `idempotency.resolve_archived_replay` AFTER the request's session closes (non-negotiable 3).
+    archive: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)

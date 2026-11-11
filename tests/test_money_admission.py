@@ -85,7 +85,7 @@ class LeaseStore:
 def gate(monkeypatch):
     settings = SimpleNamespace(
         money_admission_enabled=True, money_admission_org_ids=[],
-        money_admission_wait_s=0.5, money_admission_lease_s=0.15)
+        money_admission_wait_s=0.5, money_admission_lease_s=0.15, hold_grace_s=60)
     store = LeaseStore()
     monkeypatch.setattr(admission, "get_settings", lambda: settings)
     monkeypatch.setattr(kv, "configured", lambda: True)
@@ -818,3 +818,152 @@ async def test_metrics_are_fixed_dimension_and_execution_excludes_wait_and_clean
     assert "org_id" not in row and "call_id" not in row
     assert sum(v for k, v in row.items() if k.startswith("wait_bucket_")) == 100
     assert admission.snapshot() == []
+
+
+@pytest.mark.parametrize("operation", ["close", "deferred", "release", "async", "hub"])
+async def test_non_reserve_keeps_waiting_past_the_reserve_budget_for_the_lease(gate, operation):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.1)
+    started = time.monotonic()
+    async with admission.admit([7], operation=operation):
+        assert time.monotonic() - started >= 0.09
+        assert store.values["money-admission:org:7"][0] != "another-owner"
+    assert not store.values
+    [row] = completed()
+    assert row["mode"] == "redis" and row["operation"] == operation
+    assert row["fallback_wait_timeout"] == 0
+    assert row["wait_max_ms"] >= 90 and row["wait_bucket_le_100_ms"] == 0
+
+
+@pytest.mark.parametrize("operation", ["close", "deferred", "release", "async", "hub"])
+async def test_non_reserve_falls_back_only_at_the_extended_deadline(gate, operation):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    started = time.monotonic()
+    async with admission.admit([7], operation=operation):
+        assert time.monotonic() - started >= 2 * settings.money_admission_lease_s
+        assert not admission._local_lock(7).locked()
+    [row] = completed()
+    assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
+    assert row["wait_max_ms"] >= 2 * settings.money_admission_lease_s * 1000
+    assert row["rejected"] == row["failed"] == 0
+    assert store.values["money-admission:org:7"][0] == "another-owner"
+
+
+async def test_non_reserve_wait_is_never_shorter_than_the_reserve_wait(gate):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.2
+    settings.money_admission_lease_s = 0.01
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    started = time.monotonic()
+    async with admission.admit([7], operation="close"):
+        assert time.monotonic() - started >= 0.2
+
+
+@pytest.mark.parametrize("max_wait_s, floor", [(0.05, 0.05), (0.001, 0), (-3, 0)])
+async def test_caller_cap_is_a_hard_bound_on_the_extended_wait(gate, max_wait_s, floor):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.1
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    started = time.monotonic()
+    async with admission.admit([7], operation="async", max_wait_s=max_wait_s):
+        elapsed = time.monotonic() - started
+    assert floor <= elapsed < settings.money_admission_wait_s
+    [row] = completed()
+    assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
+
+
+async def test_settlement_wait_leaves_half_the_hold_grace_for_the_session(gate):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    settings.money_admission_lease_s = 30
+    settings.hold_grace_s = 0.2
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    started = time.monotonic()
+    async with admission.admit([7], operation="close"):
+        elapsed = time.monotonic() - started
+    assert 0.1 <= elapsed < 0.2
+    [row] = completed()
+    assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
+
+
+async def test_reserve_still_refuses_at_the_configured_wait(gate):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    started = time.monotonic()
+    with pytest.raises(admission.ReserveAdmissionTimeout):
+        async with admission.admit([7], operation="reserve", max_wait_s=60):
+            pytest.fail("a timed-out reserve must not enter its money session")
+    assert time.monotonic() - started < settings.money_admission_lease_s
+
+
+@pytest.mark.parametrize("failure", ["kv_unavailable", "kv_not_configured"])
+async def test_kv_failure_falls_back_without_the_extended_wait(gate, monkeypatch, failure):
+    settings, store = gate
+    settings.money_admission_lease_s = 30
+    if failure == "kv_unavailable":
+        store.unavailable = True
+    else:
+        monkeypatch.setattr(kv, "configured", lambda: False)
+    started = time.monotonic()
+    async with admission.admit([7], operation="close"):
+        assert time.monotonic() - started < settings.money_admission_wait_s
+    [row] = completed()
+    assert row["mode"] == "fallback" and row["fallback_" + failure] == 1
+
+
+async def test_cancellation_during_the_extended_wait_releases_every_gate(gate):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    store.values["money-admission:org:9"] = ("another-owner", time.monotonic() + 10)
+
+    async def settling():
+        async with admission.admit([3, 9], operation="close"):
+            pytest.fail("a cancelled waiter must not enter its money session")
+
+    task = asyncio.create_task(settling())
+    await asyncio.sleep(0.1)
+    assert not task.done()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert list(store.values) == ["money-admission:org:9"]
+    assert store.values["money-admission:org:9"][0] == "another-owner"
+    assert not admission._local_lock(3).locked()
+    assert not admission._local_lock(9).locked()
+    [row] = completed()
+    assert row["cancelled"] == 1 and row["fallback_wait_timeout"] == 0
+    assert row["waiting"] == row["active"] == 0
+
+
+async def test_only_the_local_head_waiter_polls_during_the_extended_wait(gate, monkeypatch):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.02
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.1)
+    original = store.acquire_lease
+    pollers = []
+
+    async def acquire_lease(*args):
+        pollers.append(asyncio.current_task())
+        return await original(*args)
+
+    monkeypatch.setattr(store, "acquire_lease", acquire_lease)
+    entered = []
+
+    async def settling(n):
+        async with admission.admit([7], operation="close"):
+            entered.append(n)
+            await asyncio.sleep(0)
+
+    first = asyncio.create_task(settling(1))
+    await asyncio.sleep(0)
+    second = asyncio.create_task(settling(2))
+    await asyncio.gather(first, second)
+    assert entered == [1, 2]
+    assert len(pollers) > 2
+    assert pollers[-1] is second and set(pollers[:-1]) == {first}
+    [row] = completed()
+    assert row["completed"] == 2 and row["fallback_wait_timeout"] == 0

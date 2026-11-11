@@ -1,4 +1,4 @@
-"""Step B′ of docs/PROVIDER-CAPACITY-PLAN.md — overflow routes, the signature table and the
+"""Provider capacity: overflow routes, the signature table and the
 aggregator envelopes. Fixtures are recorded aggregator bodies (PII hashed) from the 2026-08-26
 mapping run. No call-path involvement."""
 
@@ -209,6 +209,38 @@ def test_signature_table_classifies_balance_quota_and_burst():
     assert S.is_exhausting(S.classify("findymail", 402, {}, b"x")) and not S.is_exhausting(None)
 
 
+_OUT_OF_CREDITS = [
+    ("wiza", 400, b'{"status":{"code":400,"message":"Insufficient API credits. You need 2 credits for company enrichment."}}',
+     b'{"status":{"code":400,"message":"company_domain is invalid"}}'),
+    ("coingecko", 401, b'{"status":{"timestamp":"2026-11-03T16:15:06.855+00:00","error_code":10003,'
+     b'"error_message":"API subscription deactivated. Please reactivate your account via '
+     b'https://www.coingecko.com/en/api/pricing or submit a ticket at: https://support.coingecko.com"}}',
+     b'{"status":{"error_code":10002,"error_message":"API Key Missing"}}'),
+    ("dropcontact", 403, b'{"error":true,"reason":"You submitted 1 valid items but only have 0 credits left","success":false}',
+     b'{"error":true,"reason":"Invalid API key","success":false}'),
+    ("aviato", 400, b'{"message":"Insufficient credits. Need 15, have 1.25."}',
+     b'{"message":"linkedinURL must be a valid URL"}'),
+    ("orbisearch", 403, b'{"detail":"Insufficient credits: 0 available, 0.2 needed"}',
+     b'{"detail":"Not authenticated"}'),
+]
+
+
+@pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
+def test_an_out_of_credits_answer_is_a_balance_signature(provider, status, out, _):
+    sig = S.classify(provider, status, {}, out)
+    assert sig is not None and sig.kind == "balance" and S.is_exhausting(sig)
+
+
+@pytest.mark.parametrize("provider, status, _, other", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
+def test_the_same_status_with_another_body_is_no_capacity_signal(provider, status, _, other):
+    assert S.classify(provider, status, {}, other) is None
+
+
+def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
+    sig = S.classify("dropcontact", 403, {}, b'{"error":true,"reason":"You submitted 5 valid items but only have 2 credits left"}')
+    assert not S.is_exhausting(sig)
+
+
 _NOW = datetime(2026, 1, 2, 23, 59, 59)
 _NOW_EPOCH = int(_NOW.replace(tzinfo=timezone.utc).timestamp())
 
@@ -350,19 +382,19 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
-    "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
+    "apify", "branddev", "brightdata", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "dropleads",  # free trial was not exhausted; no provider-specific 402 body recorded
-    "wiza",  # The funded grant was not exhausted; no provider-specific body was forced
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
     "olostep",  # funded credit balance remains; documented 402 was not forced
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
     "search1api",  # funded credits remain; documented generic 402 was not deliberately forced
+    "bravesearch",  # prepaid credits remain; no empty-credit response was deliberately forced
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
@@ -392,6 +424,7 @@ _UNRECORDED_SIGNATURE = {
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
+    "theirstack",  # funded API credits remain; the documented 402 body was not observed
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }
