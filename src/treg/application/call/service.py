@@ -21,6 +21,7 @@ from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
 from ...domain.catalog import outcome as catalog_outcome
+from ...domain.catalog import reported_charge
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
@@ -41,7 +42,7 @@ from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import keyslots
+from . import admission, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -433,6 +434,32 @@ def _with_body(response: UpstreamResponse, body: bytes) -> UpstreamResponse:
                     if k.lower() not in (b"content-length", b"content-encoding"))
     return UpstreamResponse(response.status, headers + ((b"content-length", str(len(body)).encode()),),
                             _one_chunk(body), response.close)
+
+
+KEEP_REPORTED_CHARGE_HEADER = "x-treg-keep-reported-charge"
+
+
+def answer_for_caller(endpoint_id: str | None, body: bytes, headers) -> bytes:
+    """A metered 2xx answer as the caller receives it: with `strip_reported_charge` on, without the
+    member its row's settlement reads the provider's own charge from, unless the request sends
+    `X-Treg-Keep-Reported-Charge`. `body` itself when nothing is removed."""
+    if not get_settings().strip_reported_charge:
+        return body
+    if (headers.get(KEEP_REPORTED_CHARGE_HEADER) or "").strip().lower() in ("1", "true", "yes", "on"):
+        return body
+    return reported_charge.without(
+        reported_charge.path_of(catalog_store.load().by_id.get(endpoint_id or "")), body)
+
+
+def _without_reported_charge(
+    request: _ApplicationRequest, mk: MarketplaceCall, response: UpstreamResponse, body: bytes,
+) -> tuple[UpstreamResponse, bytes]:
+    """The response carrying `answer_for_caller`'s bytes. Settlement, outcome and the archive have
+    already read the provider's own."""
+    if not 200 <= response.status < 300 or not _identity_encoded(response):
+        return response, body
+    served = answer_for_caller(mk.endpoint_id, body, request.headers)
+    return (response, body) if served is body else (_with_body(response, served), served)
 
 
 def _redact_error_body(
@@ -1260,6 +1287,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         ), request, call_ref)
         request.context.endpoint_id = mk.endpoint_id
 
+    if mk is not None and mk.metered:
+        # Before anything reaches the provider on treg's account: the public-resource check below,
+        # the direct reserve and an overflow-only attempt all spend it.
+        try:
+            await _await_before_reserve(admission.admit(db, mk, caller), request, call_ref)
+        except CallFailure as exc:
+            # treg wrote this refusal and it holds no credential, so it is recorded as it stands.
+            _audit(exc.status_code, charged_micro=0, refused_by=_refusal_kind(exc.status_code),
+                   answered=False, error_response=f"treg: {exc.detail}"[:_ERROR_RESPONSE_MAX])
+            raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
     if mk is not None and mk.tier == "platform" and mk.public_resource_ids:
@@ -1933,6 +1970,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # need the original body) but before the body reaches the caller or the replay store.
         if response.status >= 400 and spooled_bytes is None:
             response, body = _redact_error_body(response, body, tool, secrets)
+        # From here `body` is the answer as the caller receives it: the replay store and the task
+        # record hold those bytes. `answer` stays the provider's, for the outcome headers below.
+        answer = body
+        if spooled_bytes is None and not streaming_free_result:
+            response, body = _without_reported_charge(request, mk, response, body)
         if idem_key:
             # Here, and not earlier: this is the first point where BOTH the response and what it
             # actually cost are known, and a replay has to hand back the real charge rather than the
@@ -1965,9 +2007,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if served_via:
             _set_response_header(response, "X-Treg-Served-Via", served_via)
         elif (200 <= response.status < 300 and spooled_bytes is None and not deferred
-                and (upstream_failed := catalog_results.fails_expect(mk.endpoint_id, body))):
+                and (upstream_failed := catalog_results.fails_expect(mk.endpoint_id, answer))):
             # The provider answered 2xx but its own success rule says the request failed (a
-            # DataForSEO task status other than 20000). The body is relayed untouched and the
+            # DataForSEO task status other than 20000). The body is relayed as any 2xx is and the
             # charge is what the provider reported; this header is how the caller learns it.
             _set_response_header(response, "X-Treg-Upstream-Failed", upstream_failed)
         if not served_via and capacity_signal in capacity_signatures.EXHAUSTING_KINDS:

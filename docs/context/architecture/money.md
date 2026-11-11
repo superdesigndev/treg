@@ -233,7 +233,8 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
 - **Only `reserve` may shed load.** When its budget (`money_admission_wait_s`) expires it releases
   partial gates and raises `ReserveAdmissionTimeout`, which `reserve.reserve_admission` maps to a 429
   (`money_admission_timeout`, blame `treg`) with a randomized `Retry-After` between
-  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. Every other
+  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. A routed call
+  answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
   and cleanup must run.
@@ -960,6 +961,10 @@ the actual estimate with margin before opening its transaction. Direct calls set
 `X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
 route's remainder. A refusal is a 402 `route_max_cost` that moves no money. Overflow inherits the
 field and checks its own estimate; a preceding direct charge reduces the remainder.
+
+Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))
+may refuse a call on treg's money with a 403 (`funds_required` or `own_key_required`); like the
+ceiling it moves no money.
 
 With a `ceiling_param` declared (AGENTS.md non-negotiable 4), the appended USD figure is the largest
 provider charge that still settles within the ceiling after `with_margin` (which rounds up); at margin

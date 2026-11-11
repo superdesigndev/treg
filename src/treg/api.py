@@ -29,6 +29,7 @@ from sqlmodel import select
 
 from . import archive, crypto, localrun, oauth_providers, ratestore
 from .application import asynctasks as async_task_app
+from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
 from .domain.catalog import store as catalog_store
@@ -709,7 +710,8 @@ _ROUTED_CHILD_WINDOW = timedelta(hours=1)
 
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
-    call_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+    call_id: str, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What one of this team's calls asked and what came back — the archive's copy.
 
@@ -718,7 +720,9 @@ async def get_call_result(
 
     A 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered
     platform call, or an own-key call whose answer fit the size cap while recording was on. The
-    audit row keeps the identities of the exact bytes the caller received. Own-tool calls are
+    audit row keeps the identities of the provider's bytes; a metered answer is returned as its
+    caller received it: where treg removes the provider's reported charge, without it unless this
+    request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
     relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
     with a `note` saying which. A routed call's answer is its children's: its row lists them in
     `children`, each readable here by its call ref. The request shape is the vendor-facing one
@@ -775,6 +779,11 @@ async def get_call_result(
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
+    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
+          and (text := (found.get("response") or {}).get("body_text")) is not None):
+        # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
+        out["response"]["body_text"] = call_service.answer_for_caller(
+            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
     return out
 
 

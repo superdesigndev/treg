@@ -18,6 +18,8 @@ sources:
   - src/treg/application/call/types.py
   - src/treg/application/asynctasks.py
   - src/treg/application/call/keyslots.py
+  - src/treg/domain/catalog/reported_charge.py
+  - tests/test_reported_charge.py
   - src/treg/alembic/versions/0069_platform_key_slot.py
   - tests/test_platform_accounts.py
   - src/treg/client_identity.py
@@ -189,7 +191,7 @@ only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uni
 normalized re-check that still finds a credential, a credential that cannot be rendered, or a body
 that cannot be decoded replaces the whole body with a `response_redacted` error. An unchanged body
 keeps its bytes and encoding; a masked one is re-sent identity-encoded with a fresh
-`Content-Length`. 2xx bodies are untouched.
+`Content-Length`. 2xx bodies are untouched, save the one member below.
 
 A failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so masking sees
 every byte; one too large is replaced on a credentialed call and streamed untouched
@@ -197,6 +199,30 @@ every byte; one too large is replaced on a credentialed call and streamed untouc
 bodies on unmetered paths are kept for evidence only when `Content-Length` is declared and within
 `evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
+
+### The provider's reported charge
+
+`strip_reported_charge` (`TREG_STRIP_REPORTED_CHARGE`, off by default) removes the provider's own
+charge from a metered 2xx answer before the caller sees it (AGENTS.md non-negotiable 4). The member
+is the one the row's settlement reads: `reported_charge.path_of` takes a v2 row's
+`settle.reported.path`, or a row in today's spelling's `cost.reported_charge.path` under
+`response` (the move `scripts/catalog_v2.py` makes), so both spellings strip alike; a
+header-reported charge, a usage meter and a provider read hard-coded in `_observed_cost_micro` name
+no member. `reported_charge.without` is pure: it finds the selected objects as `paths.select`
+walks them, cuts every occurrence of the member out of each and keeps every other byte (indentation,
+separators, escapes, number spellings); an answer that is not one UTF-8 JSON document, a path
+selecting nothing or one ending in an index or a filter returns the bytes unchanged.
+
+`service._without_reported_charge` applies it at one place: in the metered hand-off after
+settlement, capacity signals, classification, the audit row, overflow and error masking, before
+the idempotent store and the task record (`POST /tasks/{call_id}` compares the answer the caller
+holds). A served archive hit and an overflow answer pass the same point; the archive recorded the
+provider's bytes earlier, so a repeat hit settles from the charge it carries. `X-Treg-Upstream-Failed`
+reads the provider's bytes. `X-Treg-Keep-Reported-Charge` (truthy) keeps the member; `X-Treg-*`
+headers are never relayed, and a routed child inherits it with the rest of its parent's headers.
+Non-2xx, encoded, streamed free fetches and spooled answers are never rewritten. `GET
+/calls/{id}/result` applies `answer_for_caller` to a metered row's archived bytes.
+`tests/test_reported_charge.py` covers the function and both surfaces.
 
 ## Connection discipline: a call in flight holds no DB connection
 
