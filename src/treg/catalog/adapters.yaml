@@ -1525,7 +1525,7 @@ adapters:
     out: {full_name: output.profile.name, first_name: output.profile.first_name, last_name: output.profile.last_name,
           headline: output.profile.headline, location: output.profile.locality, followers: output.profile.follower_count,
           connections: output.profile.connection_count, about: output.profile.summary, linkedin_url: output.profile.url}
-    miss: "output.found == false"
+    miss: "at_least(output.found == false, linkedin_profile_is_shell(output.profile))"
   justoneapi.x.linkedin-get-user-detail-v1:
     accepts: [[linkedin_handle]]
     in:  {linkedin_handle: queryParams.username}
@@ -2911,7 +2911,7 @@ adapters:
     out: {full_name: output.data.name, headline: output.data.headline, location: output.data.location,
           followers: output.data.followers, about: output.data.about,
           linkedin_url: "fmt('https://www.linkedin.com/in/{}', output.data.publicIdentifier)"}
-    miss: "output.found == false"
+    miss: "at_least(output.found == false, linkedin_profile_is_shell(output.data))"
   anyapi.linkedin.user.profile.full:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
@@ -2919,7 +2919,7 @@ adapters:
           last_name: output.data.lastName, headline: output.data.headline, location: output.data.location,
           followers: output.data.followerCount, connections: output.data.connectionsCount,
           about: output.data.about, linkedin_url: output.data.url}
-    miss: "output.found == false"
+    miss: "at_least(output.found == false, linkedin_profile_is_shell(output.data))"
   crawl4ai.google.serp.organic:
     accepts: [[q]]
     in: {q: queryParams.q}
