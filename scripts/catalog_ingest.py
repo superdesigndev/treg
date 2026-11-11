@@ -169,7 +169,7 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
 
 
 def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True,
-                       carry_input: bool = True) -> int:
+                       carry_input: bool = True, fresh_price_note: bool = False) -> int:
     """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
@@ -199,8 +199,10 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     learn what the file already knew. `--refresh` re-fetches the docs; re-verifying is what
     replaces a proven request, not re-ingesting.
 
-    A generated note is the exception inside a carried `cost` or `price`: it describes today's rate
+    A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
     card (AnyAPI's sources and failover ceiling), so the fresh one is written over the carried one.
+    With `fresh_price_note` (AnyAPI) the same holds for a carried v2 `price`; every other provider
+    keeps its reviewed `price` whole, note included.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
     old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
@@ -217,8 +219,8 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
         if not prev or prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
             place_added(ep)
             continue
-        fresh_note = next((ep[key].get("note") for key in ("cost", "price") if isinstance(ep.get(key), dict)),
-                          None)
+        fresh_notes = {key: ep[key].get("note") for key in (("cost", "price") if fresh_price_note else ("cost",))
+                       if isinstance(ep.get(key), dict)}
         carried_fields = [
             "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
             # Reviewed per-row facts no spec carries: a price read from the provider's own bill
@@ -259,9 +261,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
                 continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
-        for key in ("cost", "price"):
-            if fresh_note and isinstance(ep.get(key), dict):
-                ep[key] = {**ep[key], "note": fresh_note}
+        for key, note in fresh_notes.items():
+            if note and isinstance(ep.get(key), dict):
+                ep[key] = {**ep[key], "note": note}
         if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
@@ -299,9 +301,10 @@ def place_added(ep: dict) -> None:
 
 
 def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
-                   *, carry_capability: bool = True, carry_input: bool = True) -> Path:
+                   *, carry_capability: bool = True, carry_input: bool = True,
+                   fresh_price_note: bool = False) -> Path:
     carried = carry_verification(provider, endpoints, carry_capability=carry_capability,
-                                 carry_input=carry_input)
+                                 carry_input=carry_input, fresh_price_note=fresh_price_note)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -1646,7 +1649,7 @@ def ingest_anyapi(refresh: bool = False):
         "(provenance.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve",
         "by design; every response reports its exact charge as costUsd, which the settle default in",
         "anyapi.yaml settles on. price.note tells the caller the failover ceiling and how to cap it.",
-    ], carry_capability=True, carry_input=False)
+    ], carry_capability=True, carry_input=False, fresh_price_note=True)
     return out, {"endpoints": len(endpoints)}
 
 

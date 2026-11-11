@@ -200,7 +200,8 @@ conflict on. It is not `verified` and not `source.curated`.
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
-  priced row's `price` (under a freshly generated `price.note`, when the ingester writes one)
+  priced row's `price` (a freshly generated `price.note` replaces the carried one only for an
+  ingester that opts in, AnyAPI)
   together with its `provenance` (an absent one stays absent and inherits the
   provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
   once the fresh row declares `resource_ownership.requires`.
