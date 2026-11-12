@@ -180,14 +180,33 @@ async def test_a_missing_required_parameter_logs_its_name_and_rule(clients: Asyn
 
 def test_a_refused_parameter_is_named_only_when_declared(lines):
     for parameter in ("queryParams.aweme_id", "queryParams.someone@example.com", "aweme_id",
-                      "query.count", "someone@example.com"):
+                      "query.count", "someone@example.com", "queryParams.aweme_id.someone@example.com"):
         failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
                                    rule="undeclared", detail=SECRET_INPUT)
         call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
                          provider="tikhub", tier="platform", refused_by="request", failure=failure,
                          answered=False)
     assert [line["parameter"] for line in lines()] == [
-        "queryParams.aweme_id", "undeclared", "aweme_id", "query.count", "undeclared"]
+        "queryParams.aweme_id", "undeclared", "aweme_id", "query.count", "undeclared", "undeclared"]
+
+
+@pytest.mark.parametrize(("endpoint_id", "parameter", "logged"), [
+    ("coingecko.coins.get", "pathParams.coin_id", "pathParams.coin_id"),
+    ("coingecko.coins.get", "pathParams.coin_id.someone@example.com", "undeclared"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.ads", "body.include.ads"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.someone@example.com", "undeclared"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.ads.someone@example.com", "undeclared"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.0", "body.include.0"),
+    ("cloro.ai-search.chatgpt.shopping", "body", "body"),
+])
+def test_every_part_of_a_logged_parameter_is_declared(lines, endpoint_id, parameter, logged):
+    failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
+                               rule="required", detail=SECRET_INPUT)
+    call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=endpoint_id,
+                     provider="p", tier="platform", refused_by="request", failure=failure,
+                     answered=False)
+    (line,) = lines()
+    assert line["parameter"] == logged
 
 
 def test_a_parameter_in_the_refusal_detail_is_read_and_list_values_are_not(lines):

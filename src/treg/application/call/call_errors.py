@@ -48,6 +48,7 @@ _CLASS_OF_STATUS = {
 CALLER_SIDE = frozenset({"caller_balance_or_cap", "caller_policy", "caller_provider_account"})
 _UPSTREAM_ANSWERS = frozenset({"route_caller_fault", "route_not_found"})
 _LOCATIONS = {"query": "queryParams", "path": "pathParams"}
+_FLAT = ("pathParams", "queryParams")
 
 
 def classify(status: int, *, tier: str | None, refused_by: str | None = None,
@@ -72,22 +73,41 @@ def classify(status: int, *, tier: str | None, refused_by: str | None = None,
     return by, cls
 
 
+def _scopes(spec: object) -> list[Mapping]:
+    """Where a declared field's own fields are declared: its `properties`, or its items'."""
+    if not isinstance(spec, Mapping):
+        return []
+    items = spec.get("items")
+    found = (spec.get("properties"), items.get("properties") if isinstance(items, Mapping) else None)
+    return [scope for scope in found if isinstance(scope, Mapping)]
+
+
 def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
-    """The parameter a refusal names, when the endpoint declares it; `undeclared` for a name the
-    caller made up, which is request content and never logged."""
+    """The parameter a refusal names when every part of it is declared by the endpoint (an array
+    index aside); `undeclared` otherwise, since a name the caller made up is request content and
+    never logged. A path placeholder may be declared with the query parameters."""
     if not name:
         return None
     inputs = (catalog_store.load().by_id.get(endpoint_id or "") or {}).get("input") or {}
     head, _, rest = name.partition(".")
     location = _LOCATIONS.get(head, head)
+    if location in _FLAT:
+        flat = {key for where in _FLAT if isinstance(inputs.get(where), Mapping)
+                for key in inputs[where]}
+        return name if not rest or rest in flat else "undeclared"
     declared = inputs.get(location)
-    if isinstance(declared, Mapping):
-        field = next((p for p in rest.split(".") if p and not p.isdigit()), None)
-    else:
-        field, declared = head, {k: v for d in inputs.values() if isinstance(d, Mapping)
-                                 for k, v in d.items()}
-    fields = declared.get("properties") if isinstance(declared.get("properties"), Mapping) else {}
-    return name if field is None or field in declared or field in fields else "undeclared"
+    if not isinstance(declared, Mapping):
+        return name if any(isinstance(d, Mapping) and name in d for d in inputs.values()) \
+            else "undeclared"
+    scopes = [declared, *_scopes(declared)]
+    for part in rest.split(".") if rest else ():
+        if part.isdigit():
+            continue
+        spec = next((scope[part] for scope in scopes if part in scope), None)
+        if spec is None:
+            return "undeclared"
+        scopes = _scopes(spec)
+    return name
 
 
 def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,

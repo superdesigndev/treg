@@ -15,7 +15,9 @@
 -- because treg's own spend-cap store did not answer is `cap` here and `treg_capacity` there; a
 -- provider's 400 that its documentation says means an empty account is `caller_input` here; a 403
 -- for an operator's quota is `policy` here and `treg_policy` there; a 402 on treg's pay-per-use
--- OAuth app is the team's account here and treg's there).
+-- OAuth app is the team's account here and treg's there; treg's own refusals at the relay stage,
+-- recorded without a `refused_by` (its account's declared rate, a credential it could not inject,
+-- an address it would not reach, an answer over its buffer), are `upstream` here and `treg` there).
 --
 -- DuckDB over the Iceberg catalog attached as `treg`. Replace the fixed UTC bounds; keep the window
 -- bounded, since a day costs the same scan whatever the filters select.
