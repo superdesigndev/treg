@@ -72,6 +72,7 @@ from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
 from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
+from ...domain import money as ledger
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
@@ -177,6 +178,19 @@ MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
+
+
+def _held_micro(cand: Candidate) -> int:
+    """What this candidate's call would hold against the caller's ceiling (see `_platform_reserve`)."""
+    return ledger.with_margin(cand.price_micro or 0) if cand.price_micro else 0
+
+
+def _over_ceiling(held: int | None, remaining: int) -> str:
+    """The skip note: the hold that did not fit and the ceiling left, so a caller can size it."""
+    if not isinstance(held, int):
+        return "would exceed max cost"
+    return (f"would exceed max cost: would hold ${ledger.usd(held):g} (price at the requested size, "
+            f"rounded up to the provider's billing block, plus margin), ${ledger.usd(max(0, remaining)):g} left")
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -929,13 +943,17 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
     # On a search, rank() puts specificity ahead of price, so candidates[0] can cost more than a
     # later one. Refuse only when none of them fit the ceiling, and name the true minimum.
+    # The ceiling is compared with what a child would hold: its price at the requested size
+    # (`cost_at`: rows rounded up to the provider's billing block) with treg's margin, the same
+    # figure `_platform_reserve` checks, so no candidate is planned in only to be refused there.
     if options.max_cost_micro is not None and all(
-            (cand.price_micro or 0) > options.max_cost_micro for cand in plan.candidates):
-        cheapest = min(plan.candidates, key=lambda cand: cand.price_micro or 0)
+            _held_micro(cand) > options.max_cost_micro for cand in plan.candidates):
+        cheapest = min(plan.candidates, key=_held_micro)
         raise ResolutionFailed("route_max_cost", status_code=402, detail={
             "error": "route_max_cost", "endpoint_id": ep["id"], "max_cost_micro": options.max_cost_micro,
-            "cheapest_micro": cheapest.price_micro, "plan": plan.view()["plan"],
-            "message": f"the cheapest candidate ({cheapest.endpoint['id']}) costs more than {MAX_COST_HEADER}"})
+            "cheapest_micro": _held_micro(cheapest), "plan": plan.view()["plan"],
+            "message": (f"the cheapest candidate ({cheapest.endpoint['id']}) would hold "
+                        f"${ledger.usd(_held_micro(cheapest)):g}, more than {MAX_COST_HEADER}")})
     tried: list[Attempt] = []
     spent = 0
     errors = 0
@@ -980,8 +998,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quality = None
                 ordered_on = on
         n, cand = queue.pop(0)
-        if options.max_cost_micro is not None and spent + (cand.price_micro or 0) > options.max_cost_micro:
-            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, "would exceed max cost"))
+        if options.max_cost_micro is not None and spent + _held_micro(cand) > options.max_cost_micro:
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
+                                 _over_ceiling(_held_micro(cand), options.max_cost_micro - spent)))
             cost_capped = True
             continue
         if rejected_by and (cand.endpoint["provider"] in rejected_by or not _free_on_failure(cand)):
@@ -1012,8 +1031,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         except CallFailure as exc:
             _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
+                held = (exc.detail or {}).get("estimated_cost_micro") if isinstance(exc.detail, dict) else None
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
-                                     "would exceed max cost"))
+                                     _over_ceiling(held, (options.max_cost_micro or 0) - spent)))
                 cost_capped = True
                 continue
             if exc.kind == "org_endpoint_quota_exceeded":

@@ -1467,6 +1467,20 @@ async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cos
     assert all(t["outcome"] in ("miss", "skipped") for t in r.json()["_treg"]["tried"]) and r.json()["_treg"]["charged_micro"] == 0
 
 
+async def test_a_ceiling_at_the_catalog_price_skips_a_child_whose_hold_carries_margin(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """The child holds its price plus margin, so a ceiling set to the bare price cannot fit it: the
+    route skips it before any byte goes upstream and says what it would hold and what was left."""
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.25)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})] * 6}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Nobody Here", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Max-Cost": "0.0245", "X-Treg-Route-Prefer": "hunter"})
+    hunter = next(t for t in r.json()["_treg"]["tried"] if t["provider"] == "hunter")
+    assert hunter["outcome"] == "skipped" and "hunter" not in [p for p, *_ in seen]
+    assert "would hold $0.030625" in hunter["detail"] and "$0.0245 left" in hunter["detail"]
+
+
 async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
