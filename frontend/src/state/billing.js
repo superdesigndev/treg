@@ -126,8 +126,9 @@ usdField(micro){ return micro==null || micro<0 ? '' : (micro/1e6).toFixed(2); },
 usdValue(text){ const t=String(text??'').trim().replace(/^\$/,''); if(!t) return null;
       const n=Number(t); return Number.isFinite(n) && n>=0 ? Math.round(n*1e6) : NaN; },
 async saveMemberCap(){ this.memberCapErr='';
-      const micro=this.usdValue(this.memberCapUsd);
-      if(Number.isNaN(micro)){ this.memberCapErr='Enter a dollar amount, or leave it empty for no limit.'; return; }
+      const t=String(this.memberCapUsd??'').trim();
+      if(t && !/^\d+$/.test(t)){ this.memberCapErr='Enter a whole dollar amount, or leave it empty for no limit.'; return; }
+      const micro=t ? Number(t)*1e6 : null;
       this.memberCapBusy=true;
       try{
         this.capCfg=await this.api(`/orgs/${this.activeOrgId}/settings`,

@@ -19,7 +19,7 @@ export default {
     <button type="button" class="it-trigger" :aria-label="'About ' + title" :aria-describedby="id">
       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" /><path d="M10 9v5M10 6v1" /></svg>
     </button>
-    <span :id="id" role="tooltip" class="it-tip"><strong>{{title}}</strong><span>{{text}}</span></span>
+    <span :id="id" role="tooltip" class="it-tip"><strong>{{title}}</strong><span>{{text}}</span><slot /></span>
   </span>
 </template>
 

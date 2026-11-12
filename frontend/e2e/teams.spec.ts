@@ -65,16 +65,37 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
   // The team's daily spend default lives behind the Spend / day header, in a dialog.
   const setAll = page.getByRole('button', { name: 'Set for all' })
   await setAll.click()
-  const dialog = page.getByRole('dialog', { name: 'Daily spend for every member' })
-  await dialog.getByRole('textbox', { name: 'Daily spend limit for every member' }).fill('5')
+  const dialog = page.getByRole('dialog', { name: 'Daily spend for each member/agent' })
+  await dialog.getByRole('spinbutton', { name: 'Daily spend limit for every member' }).fill('5')
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'All: $5.00' })).toBeVisible()
   await page.reload()
+  // The owner never follows the team default, so their row offers only No limit and Custom.
+  const ownerSpend = page.getByRole('combobox', { name: /^Daily spend limit for / }).first()
+  await expect(ownerSpend.locator('option')).toHaveText(['No limit', 'Custom'])
+  await expect(ownerSpend).toHaveValue('none')
   await page.getByRole('button', { name: 'All: $5.00' }).click()
-  await dialog.getByRole('textbox', { name: 'Daily spend limit for every member' }).fill('')
-  await dialog.getByRole('button', { name: 'Save' }).click()
+  await dialog.getByRole('button', { name: 'Remove limit' }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(setAll).toBeVisible()
+
+  // One member's own limit: a menu of team default / no limit / custom. A custom amount saves when
+  // the box loses focus, takes whole dollars only, and survives a reload.
+  const spend = page.getByRole('combobox', { name: /^Daily spend limit for / }).first()
+  await spend.selectOption('custom')
+  const amount = page.getByRole('spinbutton', { name: /^Custom daily spend for / }).first()
+  await expect(amount).toBeFocused()
+  await amount.fill('7')
+  await amount.blur()
+  await expect(page.getByRole('status').filter({ hasText: 'Spend limit saved for' })).toBeVisible()
+  await page.reload()
+  await expect(spend).toHaveValue('custom')
+  await expect(amount).toHaveValue('7')
+  await spend.selectOption('none')
+  await expect(amount).toHaveCount(0)
+  await page.reload()
+  await expect(spend).toHaveValue('none')
 
   // Spend per API key, on this signed-in session: the suite's sign-ins sit at the per-IP code limit.
   // Both the API Keys column and the Usage chart wait for the rollup, then read it.
