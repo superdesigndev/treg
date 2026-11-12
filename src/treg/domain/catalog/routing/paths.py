@@ -482,6 +482,17 @@ def current_role(history: Any) -> dict | None:
     return max(pool, key=start)  # max keeps the first of equal starts
 
 
+def flagged(items: Any, *flags: Any) -> dict | None:
+    """`flagged(experiences, 'isMatched', 'isCurrent')` — the first object whose first flag is true;
+    when none has it, the first whose next flag is true, and so on. None when no flag is set."""
+    rows = [r for r in items if isinstance(r, dict)] if isinstance(items, list) else []
+    for flag in flags:
+        hit = next((r for r in rows if get_path(r, str(flag)) is True), None)
+        if hit is not None:
+            return hit
+    return None
+
+
 def past_titles(history: Any) -> list | None:
     """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
     carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
@@ -648,7 +659,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "flagged": flagged, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

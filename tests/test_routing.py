@@ -133,6 +133,9 @@ def test_expression_language():
     assert P.evaluate("split_first(data.name)", {"data": {"name": "Patrick Collison"}}) == "Patrick"
     assert P.evaluate("split_last(data.name)", {"data": {"name": "Patrick"}}) is None
     assert P.evaluate("join(a, b)", {"a": "Patrick", "b": "Collison"}) == "Patrick Collison"
+    jobs = {"jobs": [{"n": "a", "now": True}, {"n": "b", "hit": True}]}
+    assert P.evaluate("get(flagged(jobs, 'hit', 'now'), 'n')", jobs) == "b"
+    assert P.evaluate("get(flagged(jobs, 'missing', 'now'), 'n')", jobs) == "a"
     assert P.evaluate("one_place(location)", {"location": " Dublin "}) == "Dublin"
     assert P.evaluate("one_place(location)", {"location": "London, United Kingdom"}) is None
     assert P.evaluate("choose(unlocked, email, null)", {"unlocked": False, "email": "j***@x.io"}) is None
@@ -2372,7 +2375,9 @@ def test_a_people_search_adapter_lists_its_wider_variants_first():
 def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
     """A row map that cannot read the provider's body hands the caller the vendor's own row
     (dropleads' camelCase leads, aiark's employer under company.summary): every routed adapter
-    maps rows, and each example row comes back with contract keys only."""
+    maps rows, and each example row comes back with contract keys only. A row is a person a caller
+    can act on: a name and a way to reach or check them (title, profile or email), not a bare URL
+    (enrichlayer without `enrich`) or a bare name (fiber-ai before its map)."""
     cat = catalog_store.load()
     contract = cat.contracts["people.search"]
     for eid, ad in cat.adapters.items():
@@ -2385,6 +2390,7 @@ def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
         for row in [r for r in ad.from_upstream(example).get("people") or [] if not isinstance(r, str)]:
             assert isinstance(row, dict) and set(row) <= set(contract.row_fields), (eid, row)
             assert any(row.get(k) for k in contract.row_needs), (eid, row)
+            assert row.get("name") and any(row.get(k) for k in ("title", "profile_url", "email")), (eid, row)
 
 
 def adapter_accepts_of(adapter, identity):
