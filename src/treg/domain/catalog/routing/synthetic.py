@@ -16,6 +16,11 @@ ROUTED_PROVIDER = "treg"
 _DECLARED = ("type", "format", "items", "enum", "min", "max", "minLength", "maxLength", "minItems", "maxItems")
 
 
+def _placeholder(declared: object) -> object:
+    types = declared if isinstance(declared, list) else [declared]
+    return "…" if "string" in types else next((_PLACEHOLDERS[t] for t in types if t in _PLACEHOLDERS), "…")
+
+
 def _declared(spec: dict | None) -> dict:
     spec = spec or {"type": "string"}
     return {k: spec[k] for k in _DECLARED if k in spec}
@@ -91,7 +96,7 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                            + (" X-Treg-Route-Decisive: true counts an answer only when its verdict is "
                               + " or ".join(contract.verdict_decisive) + ", asking up to two more providers (best measured "
                               "first, each at its own price), in _treg.decision." if contract.verdict_decisive else ""))},
-        "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, _PLACEHOLDERS.get(body[k].get("type"), "…")) for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
+        "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, _placeholder(body[k].get("type"))) for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
         "cost": {"type": "per_success", "value": lo, "currency": "USD", "per": 1, "unit": "call",
                  "source": "inferred", "confidence": "documented", "checked": None,
                  # No single quote is honest when children bill their misses: a $0 floor reads

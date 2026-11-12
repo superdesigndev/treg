@@ -255,6 +255,28 @@ def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention
             C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
 
 
+def test_a_contract_field_may_declare_a_list_of_types():
+    """The one vocabulary allows a type list; a contract that writes one loads, and its routed row's
+    call template holds a placeholder the parameter check accepts."""
+    from treg.domain.catalog import params
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    doc = {"contracts": {"x.extract": {
+        "identity": [{"q": {"type": ["array", "object"]}}],
+        "filters": {"shape": {"type": ["array", "object"]}},
+        "output": {"data": {"type": ["array", "object"], "required": True}}, "miss": "data == null"}}}
+    contract = C.parse_contracts(doc)["x.extract"]
+    assert contract.identity_specs["q"]["type"] == ["array", "object"]
+    assert contract.filters["shape"]["type"] == ["array", "object"]
+    assert contract.output["data"]["type"] == ["array", "object"]
+    adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"data": "data"}, "data == null", verified=True)
+                for eid in ("a.extract", "b.extract")}
+    endpoints = [{"id": eid, "provider": eid.split(".")[0]} for eid in adapters]
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: None)
+    q = row["test_request"]["body"]["q"]
+    assert params.refusal(row["input"]["body"]["q"], q) is None
+
+
 def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_integer_filter_and_shows_on_the_routed_row():
     from treg.domain.catalog.routing import contracts as C
 

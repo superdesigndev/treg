@@ -428,9 +428,9 @@ _EARLIER = {"str": "string", "text": "string", "int": "integer", "float": "numbe
 def _field_spec(raw: object) -> dict:
     """A contract field written as a type word (`string`) or as a spec mapping, as a spec."""
     spec = dict(raw) if isinstance(raw, dict) else {"type": str(raw)}
-    if spec.get("type") == "url":
-        spec["format"] = "url"
-    if spec.get("type") in _EARLIER:
+    if isinstance(spec.get("type"), str) and spec["type"] in _EARLIER:
+        if spec["type"] == "url":
+            spec["format"] = "url"
         spec["type"] = _EARLIER[spec["type"]]
     if "max" in spec and spec.get("type") == "string":
         spec["maxLength"] = spec.pop("max")
