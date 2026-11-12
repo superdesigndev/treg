@@ -2798,41 +2798,35 @@ adapters:
     row: {name: "join(firstName, lastName)", title: "currentPositions[0].title", company: "currentPositions[0].companyName", location: location.linkedinText, profile_url: linkedinUrl, summary: summary}
 
   # ---- AnyAPI (PR #398) --------------------------------------------------------------------------
-  # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. A
-  # profile miss is `found: false, data: null`; a search miss is `found: true` with an empty list,
-  # so list rows test `coalesce(list, []) == []`. AnyAPI BILLS a miss on profile and post rows
-  # (2026-09-19 probe); `reported_charge` settles that charge ahead of the miss rule, as HarvestAPI.
-  # Left out on purpose: linkedin.email (a $0.011 billed miss in a waterfall of free misses),
-  # tiktok.profile_videos (contract identity is sec_uid, the row takes a handle).
+  # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. The rows
+  # hold the miss rules (a profile miss is `found: false, data: null`; a search miss is `found: true`
+  # with an empty list); these adapters only map fields. Left out on purpose: linkedin.email (a
+  # $0.011 billed miss in a waterfall of free misses), tiktok.profile_videos (contract identity is
+  # sec_uid, the row takes a handle).
   anyapi.x.search.posts:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.tweets, []) == []"
   anyapi.x.user.posts.timeline:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.tweets, []) == []"
   anyapi.x.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {username: output.data.handle, name: output.data.displayName, followers: output.data.followers,
           following: output.data.following, posts_count: output.data.tweets,
           is_verified: output.data.verified, description: output.data.bio}
-    miss: "output.found == false"
   anyapi.x.post.comments:
     accepts: [[tweet_id]]
     in:  {}
     in_expr: {body.url: "fmt('https://x.com/i/status/{}', tweet_id)"}
     test_identity: {tweet_id: "20"}
     out: {comments: output.data.items, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.tiktok.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -2840,65 +2834,53 @@ adapters:
           nickname: output.data.displayName, followers: output.data.followers, following: output.data.following,
           likes: output.data.likes, videos_count: output.data.videos, is_verified: output.data.verified,
           biography: output.data.bio}
-    miss: "output.found == false"
   anyapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.videos, []) == []"
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
     out: {users: output.data.users, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.users, []) == []"
   anyapi.tiktok.video.comments:
     accepts: [[url]]
     in:  {url: body.url}
     out: {comments: output.data.comments, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.comments, []) == []"
   anyapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.instagram.user.reels:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.reels, []) == []"
   anyapi.instagram.post.detail:
     accepts: [[url]]
     in:  {url: body.url}
     out: {id: output.data.id, shortcode: output.data.shortcode, likes: output.data.likes,
           owner_username: output.data.owner}
-    miss: "output.found == false"
   anyapi.instagram.post.comments:
     accepts: [[url]]
     in:  {url: body.url}
     out: {comments: output.data.comments, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.comments, []) == []"
   anyapi.instagram.hashtag.posts:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.reels, []) == []"
   anyapi.facebook.user.posts:
     accepts: [[url]]
     in:  {url: body.url}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.linkedin.user.profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
     out: {full_name: output.data.name, headline: output.data.headline, location: output.data.location,
           followers: output.data.followers, about: output.data.about,
           linkedin_url: "fmt('https://www.linkedin.com/in/{}', output.data.publicIdentifier)"}
-    miss: "output.found == false"
   anyapi.linkedin.user.profile.full:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
@@ -2906,7 +2888,6 @@ adapters:
           last_name: output.data.lastName, headline: output.data.headline, location: output.data.location,
           followers: output.data.followerCount, connections: output.data.connectionsCount,
           about: output.data.about, linkedin_url: output.data.url}
-    miss: "output.found == false"
   crawl4ai.google.serp.organic:
     accepts: [[q]]
     in: {q: queryParams.q}
@@ -2919,24 +2900,20 @@ adapters:
     in:  {q: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language, body.limit: limit}
     out: {results: output.data.results, count: "len(output.data.results)"}
-    miss: "coalesce(output.data.results, []) == []"
   anyapi.google.serp.news:
     accepts: [[q]]
     in:  {q: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language, body.limit: limit}
     out: {results: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.google.serp.maps.place:
     accepts: [[q]]
     in:  {q: body.query}
     out: {places: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.google.keywords.ideas:
     accepts: [[keyword]]
     in:  {keyword: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language}
     out: {keywords: output.data.suggestions, count: "len(output.data.suggestions)"}
-    miss: "coalesce(output.data.suggestions, []) == []"
 
   # ---- open web -----------------------------------------------------------------------------
   bravesearch.web.search:
@@ -3215,8 +3192,6 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
-    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3268,7 +3243,6 @@ adapters:
     in_expr: {body.limit: limit}
     test_identity: {url: "https://www.iana.org", q: domain}
     out: {results: output.data.results, count: "len(output.data.results)"}
-    miss: "coalesce(output.data.results, []) == []"
   tavily.web.map:
     accepts: [[url], [url, q]]
     in: {url: body.url, q: body.instructions}
@@ -3301,7 +3275,6 @@ adapters:
     in: {url: body.url}
     in_expr: {body.limit: limit}
     out: {pages: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
 
   # ---- Fetchin LinkedIn reads ---------------------------------------------------------------
   fetchinio.linkedin.user.profile:
@@ -3604,7 +3577,6 @@ adapters:
     in: {place_id: body.placeId}
     in_expr: {body.limit: "at_most(limit, 100)", body.sort: sort}
     out: {reviews: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   litescrape.google.maps.reviews:
     accepts: [[place_id]]
     in: {place_id: queryParams.place_id}
@@ -3623,7 +3595,6 @@ adapters:
     in: {page_id: body.pageId, company_name: body.companyName}
     out: {ads: output.data.ads, page_id: "output.data.ads[0].pageId", count: "len(output.data.ads)",
           next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.ads, []) == []"
   adyntel.meta-ads.library.advertiser:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
