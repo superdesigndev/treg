@@ -3245,7 +3245,6 @@ adapters:
     in: {url: body.url, q: body.instructions}
     in_expr: {body.limit: limit}
     max: {limit: 20}
-    # Ranked at one page, the price routing gave it before its bill followed the returned count.
     cost_units: "1"
     out: {results: results, count: "len(results)"}
   olostep.web.map.search:
