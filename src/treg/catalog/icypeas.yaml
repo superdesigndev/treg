@@ -195,7 +195,7 @@ endpoints:
         file: {type: string, required: true, note: "the file id returned by icypeas.bulk.search — returns that job's rows in input order", example: "L3mhHKAB9iupLhv96W-F"}
         limit: {type: integer, required: false, min: 1, max: 100, note: "rows per page, default 10, MAX 100", example: 10}
         next: {type: boolean, required: false, note: "true = next page, false = previous page, used with `sorts`"}
-        sorts: {type: "array", items: {type: string}, required: false, note: "the pagination cursor echoed by the previous response — pass it back to page further"}
+        sorts: {type: "array", items: {type: [boolean, number, string]}, required: false, note: "the pagination cursor echoed by the previous response — pass it back to page further"}
       note: "Free. Watch icypeas.search.files.read for `finished`, then page through the rows here. Rate limited to 30 calls/min"
     test_request:
       body: {mode: "bulk", file: "L3mhHKAB9iupLhv96W-F", limit: 1}

@@ -6221,7 +6221,7 @@ endpoints:
     body:
       targets:
         type: array
-        items: {type: string}
+        items: {type: [object, string]}
         required: false
         note: target domains and subdomains required field you can specify domains and subdomains in this field; domains and subdomains should be specified without https:// and www.; you can set up to 1000 domains or subdomains
         example:
@@ -7541,7 +7541,7 @@ endpoints:
         example:
         - seo marketing
       bid:
-        type: integer
+        type: "number"
         required: false
         note: the maximum custom bid required field the collected data will be based on this value it stands for the price you are willing to pay for an ad; the higher value you specify here, the higher values you will get in the returned metrics learn more in this help center article
         example: 999
@@ -7805,7 +7805,7 @@ endpoints:
         note: full name of search engine location optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_code you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can r
         example: United States
       location_code:
-        type: string
+        type: "integer"
         required: false
         note: search engine location code optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_name you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can receive t
       language_name:

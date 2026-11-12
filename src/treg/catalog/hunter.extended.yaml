@@ -21,19 +21,25 @@ endpoints:
         required: false
         note: natural-language description of the companies to find; either query or at least one filter is required
       headquarters_location:
-        type: string
+        type: [object, string]
+        note: "{include, exclude}: arrays of {continent}, {business_region}, {country} (ISO-2), with state, county or city"
         required: false
       industry:
-        type: string
+        type: [object, string]
+        note: "{include, exclude}: arrays of Hunter industry names"
         required: false
       headcount:
-        type: string
+        type: [array, string]
+        items: {type: string}
+        note: "ranges: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+"
         required: false
       company_type:
-        type: string
+        type: [object, string]
+        note: "{include, exclude}: arrays such as privately held, public company, non profit"
         required: false
       technology:
-        type: string
+        type: [object, string]
+        note: "{include, exclude, match}: technology slugs; match is any or all"
         required: false
       limit:
         type: integer

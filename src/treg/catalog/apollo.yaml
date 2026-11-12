@@ -100,7 +100,7 @@ endpoints:
         "organization_num_employees_ranges[]": {type: array, items: {type: string}, required: false, note: "employee-count bands as 'min,max' strings", example: ["1,10"]}
         "contact_email_status[]": {type: array, items: {type: string}, required: false, note: "verified, unverified, likely to engage, unavailable"}
         "currently_using_any_of_technology_uids[]": {type: array, items: {type: string}, required: false, note: "tech-stack filter, e.g. salesforce"}
-        "revenue_range[min]": {type: integer, required: false, note: "annual revenue floor, integer with no symbols"}
+        "revenue_range[min]": {type: [integer, string], required: false, note: "annual revenue floor, integer with no symbols"}
         "revenue_range[max]": {type: integer, required: false, note: "annual revenue ceiling"}
         page: {type: integer, required: false, note: "1-based; max 500 pages", example: 1}
         per_page: {type: integer, required: false, note: "max 100", example: 1}

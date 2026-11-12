@@ -6287,7 +6287,7 @@ endpoints:
           type: integer
           note: Offset cursor for pagination, obtained from the last response
         sort_type:
-          type: string
+          type: [integer, string]
           note: 'Sort type: 0=Comprehensive, 1=Most Likes, 2=Latest'
         publish_time:
           type: string

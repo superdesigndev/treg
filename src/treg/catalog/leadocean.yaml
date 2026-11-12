@@ -109,10 +109,11 @@ endpoints:
         q: {type: string, required: false}
         name: {type: string, required: false}
         domain: {type: string, required: false}
-        industry: {type: string, required: false}
+        industry: {type: array, items: {type: string}, required: false, note: "one or more of LeadOcean's industry values"}
         hqCountry: {type: string, required: false}
         cursor: {type: string, required: false}
         limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+      queryArrayEncoding: comma
     test_request: {queryParams: {domain: stripe.com, limit: 1}}
     example_response: examples/leadocean.companies.search.json
     cost: *search_cost
@@ -158,8 +159,9 @@ endpoints:
         q: {type: string, required: false}
         name: {type: string, required: false}
         domain: {type: string, required: false}
-        industry: {type: string, required: false}
+        industry: {type: array, items: {type: string}, required: false, note: "one or more of LeadOcean's industry values"}
         hqCountry: {type: string, required: false}
+      queryArrayEncoding: comma
     test_request: {queryParams: {domain: stripe.com}}
     example_response: examples/leadocean.companies.count.json
     cost: *count_cost

@@ -42,7 +42,7 @@ endpoints:
         items: {type: string}
       languages: &id007
         type: array
-        items: {type: string}
+        items: {type: [object, string]}
       education: &id008
         type: array
         items: {type: string}
@@ -59,7 +59,7 @@ endpoints:
         type: array
         items: {type: string}
       company: &id013
-        type: array
+        type: [array, string]
         items: {type: string}
       past_company: &id014
         type: array

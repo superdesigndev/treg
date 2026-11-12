@@ -192,7 +192,7 @@ endpoints:
     input: &verified_person_input
       bodyType: json
       body:
-        id: {type: string, required: false}
+        id: {type: [integer, string], required: false}
         first_name: {type: string, required: false, example: Jane}
         last_name: {type: string, required: false, example: Doe}
         name: {type: string, required: false, example: Jane Doe}
@@ -202,9 +202,9 @@ endpoints:
         linkedin_url: {type: string, required: false, example: https://www.linkedin.com/in/example}
         email_verification_type:
           type: string
+          note: "valid_only or valid_and_catchall (the default)"
           required: false
           default: valid_and_catchall
-          enum: [valid_only, valid_and_catchall]
       note: Supply at least one documented identity. valid_only excludes catch-all addresses.
     test_request:
       body: {name: Jane Doe, organization_name: Example, domain: example.com, email_verification_type: valid_and_catchall}

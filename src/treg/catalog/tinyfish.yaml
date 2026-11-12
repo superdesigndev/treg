@@ -45,7 +45,7 @@ endpoints:
       queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "TinyFish API documentation"}
-        domain_type: {type: string, required: true, default: web, enum: [web], example: web}
+        domain_type: {type: string, required: true, default: web, example: web}
         purpose: {type: string, required: false, note: "Describe what the results will be used for."}
         location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
         language: {type: string, required: false, example: en}
@@ -113,7 +113,7 @@ endpoints:
       queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "browser agent benchmark"}
-        domain_type: {type: string, required: true, default: research_paper, enum: [research_paper], example: research_paper}
+        domain_type: {type: string, required: true, default: research_paper, example: research_paper}
         purpose: {type: string, required: false}
         language: {type: string, required: false, example: en}
         include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
@@ -147,9 +147,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, example: ["https://example.com"]}
         purpose: {type: string, required: false}
-        format: {type: string, required: false, default: markdown, enum: [html, markdown, json], note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
+        format: {type: string, required: false, default: markdown, note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
         links: {type: boolean, required: false, default: false}
         image_links: {type: boolean, required: false, default: false}
         page_metadata: {type: boolean, required: false, default: false}

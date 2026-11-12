@@ -101,7 +101,7 @@ endpoints:
       queryParams:
         source: {type: string, required: true, note: "regional database code — selects which country's index answers", example: "us"}
       body:
-        keywords: {type: array, items: {type: string}, required: true, note: "1 to 5,000 keywords", example: ["seo platform"]}
+        keywords: {type: [array, string], items: {type: string}, required: true, note: "1 to 5,000 keywords", example: ["seo platform"]}
         sort: {type: string, required: false, note: "volume | cpc | difficulty | competition"}
         sort_order: {type: string, required: false, note: "asc | desc"}
         history_from: {type: string, required: false, note: "first month of volume history, YYYY-MM-DD"}
@@ -219,7 +219,7 @@ endpoints:
         domain: {type: string, required: false, note: "the domain to analyse — supply either domain or url", example: "seranking.com"}
         url: {type: string, required: false, note: "analyse one page instead of the whole domain"}
         type: {type: string, required: false, note: "organic (default) | adv — `adv` returns the paid keywords instead"}
-        with_subdomains: {type: boolean, required: false, note: "default true"}
+        with_subdomains: {type: [boolean, integer], required: false, note: "default true"}
         page: {type: integer, required: false, note: "1-based page number; default 1"}
         limit: {type: integer, required: false, note: "1 to 1,000, default 100. Pricing is flat per request, so a LARGE limit is the cheap choice here", example: 100}
         order_field: {type: string, required: false, note: "column to sort by"}

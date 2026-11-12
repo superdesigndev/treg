@@ -40,7 +40,7 @@ endpoints:
     input:
       queryParams:
         email: {type: string, required: true, note: "email address to verify", example: "dev@bounceban.com"}
-        mode: {type: string, required: false, enum: [regular, deepverify], default: regular, note: "deepverify assumes the domain matches the person's current company"}
+        mode: {type: string, required: false, default: regular, note: "deepverify assumes the domain matches the person's current company"}
       note: "The standard endpoint waits up to 15 seconds. A 200 response can have status=verifying; poll bounceban.people.email.verify.status with its id (treg call --await does this), at most every 30 seconds and for five minutes. Platform calls always use full verification: the zero-cost disable_catchall_verify option is not exposed on this tool."
     test_request: {queryParams: {email: "dev@bounceban.com"}}
     cost:

@@ -178,7 +178,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordsInfo"}
         params: {type: object, required: true}
-        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
+        id: {type: [integer, string], required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keywords": {type: array, items: {type: string}, required: true, note: "1 to 1,000 keywords", example: ["seo"]}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
@@ -212,7 +212,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getRelatedKeywords"}
         params: {type: object, required: true}
-        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
+        id: {type: [integer, string], required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the seed keyword", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "default false"}

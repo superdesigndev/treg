@@ -2040,7 +2040,7 @@ adapters:
   justoneapi.x.twitter-search-v1:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
-    const: {queryParams.searchType: TOP, queryParams.cursor: "0"}
+    const: {queryParams.searchType: Top, queryParams.cursor: "0"}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
   tikhub.x.twitter-web-fetch-search-timeline:
     accepts: [[q]]
@@ -2373,7 +2373,7 @@ adapters:
   justoneapi.x.linkedin-get-post-reactions-v1:
     accepts: [[post_id]]
     in:  {post_id: queryParams.postId}
-    const: {queryParams.page: "1", queryParams.type: ALL}
+    const: {queryParams.page: "1", queryParams.type: all}
     out: {reactions: data.data, count: data.total}
 
   aviato.linkedin.post.comments:
@@ -2386,7 +2386,7 @@ adapters:
   justoneapi.x.linkedin-get-post-comments-v1:
     accepts: [[post_id]]
     in:  {post_id: queryParams.postId}
-    const: {queryParams.page: "1", queryParams.sortOrder: RELEVANCE, queryParams.postType: ACTIVITY}
+    const: {queryParams.page: "1", queryParams.sortOrder: relevance, queryParams.postType: activity}
     out: {comments: data.data, count: data.total}
 
   dataforseo.web.anchors.list:

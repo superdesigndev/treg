@@ -5193,7 +5193,6 @@ endpoints:
         required: false
         note: Maximum number of results to return (1-10, default 10).
         min: 1
-        max: 10
         example: 3
       query:
         type: string
@@ -6453,11 +6452,6 @@ endpoints:
         type: string
         required: false
         note: Filter by upload recency. Omit for any time.
-        enum:
-        - today
-        - this_week
-        - this_month
-        - this_year
     bodyType: json
     queryArrayEncoding: comma
   price:

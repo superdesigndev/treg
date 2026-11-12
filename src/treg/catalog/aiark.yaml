@@ -29,7 +29,7 @@ endpoints:
         contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: "Native person, role, location, skill and education filters."}
         lists: {type: object, required: false, note: Exclude temporary people_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
-        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+        size: {type: integer, required: true, min: 1, max: 100, example: 1}
       note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages. A successful response includes a single-use trackId that expires after six hours.
     platform_request: {body.size: 1}
     test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
@@ -93,7 +93,7 @@ endpoints:
         account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
         lists: {type: object, required: false, note: Exclude temporary company_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
-        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+        size: {type: integer, required: true, min: 1, max: 100, example: 1}
       note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages.
     platform_request: {body.size: 1}
     test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}

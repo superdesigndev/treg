@@ -247,7 +247,6 @@ endpoints:
         type: integer
         required: false
         min: 1
-        max: 10
         note: 'Requested result count, 1 to 10. A best-effort hint: Google may return fewer rows, and results are
           never padded.'
       as_dt:
@@ -1624,8 +1623,6 @@ endpoints:
       next_page_token:
         type: string
         required: false
-        minLength: 16
-        maxLength: 4096
         note: Opaque continuation token returned by a previous Maps Posts response.
       hl:
         type: string
@@ -3716,7 +3713,6 @@ endpoints:
       timeout:
         type: number
         required: false
-        max: 90.0
         note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
           is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
           On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
