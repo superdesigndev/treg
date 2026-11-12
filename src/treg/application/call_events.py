@@ -61,7 +61,7 @@ COLUMNS = (
     "answer_values", "answer_flags",
 )
 
-_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v|u|p\d+|s\d+)$")
+_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v|u|p\d+|s\d+(?:\.\d+)?)$")
 _DOMAIN_KEYS = ("domain", "company_domain", "website")
 _ROLE_LOCALS = frozenset({
     "admin", "billing", "careers", "contact", "enquiries", "hello", "help", "hr", "info",

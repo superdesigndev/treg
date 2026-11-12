@@ -222,7 +222,7 @@ not a column: no table changes.
 
 | Field | Value |
 | --- | --- |
-| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child (null on a root) |
+| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child, `s1.0` on a hub `for_each` item (null on a root) |
 | `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
 | `status`, `refused_by` | the status of this attempt (the caller's, except on a direct attempt overflow served), and treg's refusal mechanism as the event's `refused_by` |
@@ -281,6 +281,9 @@ class, refuser, tier and endpoint, with per-class totals, leaving caller-side cl
 `include_caller_side` is set to true. An event has only `status_code`, `refused_by` and
 `credential_tier`, so the query's class is the coarser reading: a refusal kind or a provider's
 documented error code that changes the class shows only in the log line; a missing credential is
-`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A direct
+`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A routed
+parent the provider refused (`route_caller_fault`) is `refused_by` `request` in its event, so the
+query counts it under treg while its line says `upstream`; for the treg-or-upstream split of wrong
+parameters read the log line, or the query's `root_calls` for calls that are not routed. A direct
 attempt that overflow later served still logs its line and keeps its event, as both record the
 attempt.

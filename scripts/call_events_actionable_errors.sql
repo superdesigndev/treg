@@ -18,6 +18,9 @@
 -- OAuth app is the team's account here and treg's there; treg's own refusals at the relay stage,
 -- recorded without a `refused_by` (its account's declared rate, a credential it could not inject,
 -- an address it would not reach, an answer over its buffer), are `upstream` here and `treg` there;
+-- a routed parent the provider refused (`route_caller_fault`) is `refused_by = 'request'`, so it is
+-- `treg` here and `upstream` there: for the treg-or-upstream split of wrong parameters on routed
+-- calls read the log line, and read `root_calls` here only for calls that are not routed;
 -- a 404 for want of a credential is `not_found` here, left in, since an event cannot tell an
 -- endpoint only the team's own key serves (`caller_provider_account` there, caller-side) from one
 -- treg's key should serve but this deployment has none for (`our_provider_account` there)).
