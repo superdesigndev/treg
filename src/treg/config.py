@@ -382,6 +382,7 @@ class Settings(BaseSettings):
     platform_key_wiza: str = ""  # Bearer; prepaid API credits, no vendor auto-top-up
     platform_key_limadata: str = ""  # x-api-key; monthly credits with configured auto top-up
     platform_key_getleadsio: str = ""  # Bearer; 1,000 promotional database credits, capped treg trial
+    platform_key_capturekit: str = ""  # x-api-key header; prepaid credits
     platform_key_adyntel: str = ""  # JSON body api_key; PAYG credits, manual top-up
     platform_email_adyntel: str = ""  # JSON body email paired with the Adyntel API key
     platform_key_scrubby: str = ""  # x-api-key; prepaid verification credits
