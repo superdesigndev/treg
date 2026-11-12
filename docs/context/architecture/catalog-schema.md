@@ -76,11 +76,11 @@ or a spec (`{linkedin_url: {type: string, format: url}}`).
 range, and each item of an array. It does not read an object's `properties`: a row's body is checked
 field by field at the top level (a field declared by a dotted name, `pagination.limit`, reads the
 nested value), so a field nested inside a declared object is declared but not checked. A null or
-empty value is not sent and meets an optional spec. A query, path or form value is a string read by the declared type (ASCII digits for an integer, a
-decimal for a number, `true`/`false`, JSON for an object or array; a repeated parameter is an array);
-a JSON body value keeps its JSON type, except that an integer may be ASCII digits, as the count rule
-reads it. A query array that is not JSON (a comma list) is relayed unread. The refusal names the
-declared rule, never the value. Where the request path calls it:
+empty value is not sent and meets an optional spec. A query, path or form value is a string read by
+the declared type (ASCII digits for an integer, a decimal for a number, `true`/`false`, JSON for an
+object or array; a repeated parameter is an array); a JSON body value keeps its JSON type, except
+that an integer may be ASCII digits, as the count rule reads it. A query array that is not JSON (a
+comma list) is relayed unread. The refusal names the declared rule, never the value. Where the request path calls it:
 [proxy model](proxy-model.md#catalog-request-checks) and [catalog](catalog.md) routing.
 
 **The rewrite into it**: `scripts/catalog_param_types.py` (dry run by default, `--apply`), kept for
@@ -88,11 +88,11 @@ re-runs and called by the extended-file ingest so generated rows come out in the
 each word, writes a union as a type list, takes the type an `anyOf` declares, gives an untyped spec
 object when its example, default, test request or note shows a structure and string otherwise, gives
 a bare array its `items` from what the catalog shows of its values (the row's example, default, enum
-and test request, the same parameter on the provider's other rows, a JSON sample in its note) and
-string otherwise, widens a type its own test request would break, renames range keys and
-`format: uri`, moves an array's item enum into `items`, and writes enum entries YAML reads as another
-type in the declared one (`off` in a string enum). It prints every inferred type for a person to
-correct.
+and test request, the same parameter on the provider's other rows, a JSON sample or an object shape
+such as `{name, operator, value}` in its note) and string otherwise, widens a type its own test
+request would break, renames range keys and `format: uri`, moves an array's item enum into `items`,
+and writes enum entries YAML reads as another type in the declared one (`off` in a string enum). It
+prints every inferred type for a person to correct.
 
 ## Two spellings, one resolved row
 

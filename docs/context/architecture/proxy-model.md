@@ -308,7 +308,8 @@ nested in a declared object's `properties` is not checked, nor is any field of a
 value outside its type, enum or range is a 400 `catalog_parameter_invalid` naming the parameter
 (`queryParams.limit`, `body.urls`, `body.0.limit` in a task array) and the declared rule, never the
 value. An undeclared parameter is relayed as sent, a body that does not parse is left for the
-provider, and a body that repeats a JSON field is relayed as sent once every value passes. The routed road reads the same function
+provider, and a body that repeats a JSON field is relayed as sent once every value passes. The
+routed road reads the same function
 ([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)), and its plan runs each
 child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`) to drop a
 child that would refuse it.
@@ -385,8 +386,8 @@ A `kind: routed` row (`treg.<capability>`, [catalog](catalog.md) § Routing) nev
 credential ladder itself. `service._execute_call` hands it to `application/call/route.py`, which
 first holds each identity and filter field the caller sent to its contract spec (`catalog.params`,
 after `invalid_identity` reads `format: url` fields; a 400 `catalog_parameter_invalid` naming the
-field before any child is planned or held), then runs each child endpoint through this same use case as a child `CallContext` (`call_ref`
-`{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
+field before any child is planned or held), then runs each child endpoint through this same use
+case as a child `CallContext` (`call_ref` `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
 `deferred_settles` and leaves its hold open; a child that is not billable or settles at a
 provider-reported zero releases at once so it never blocks the next child's reserve. The parent
