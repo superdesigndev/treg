@@ -304,11 +304,11 @@ anything is held or relayed: `_enforce_declared_query` reads each query and path
 `_enforce_catalog_body` each top-level body field (a dotted name reads the nested value; a JSON
 array body is read task by task, a form body as strings, each value of a repeated JSON field), both
 through `catalog.params.refusal` ([catalog schema](catalog-schema.md#parameter-types)). A field
-nested in a declared object's `properties` is not checked, nor is any field of a multipart body. A value outside its type, enum or range is a 400
-`catalog_parameter_invalid` naming the parameter (`queryParams.limit`, `body.urls`, `body.0.limit` in
-a task array) and the declared rule, never the value. An undeclared parameter is
-relayed as sent, a body that does not parse is left for the provider, and a body that repeats a
-JSON field is relayed as sent once every value passes. The routed road reads the same function
+nested in a declared object's `properties` is not checked, nor is any field of a multipart body. A
+value outside its type, enum or range is a 400 `catalog_parameter_invalid` naming the parameter
+(`queryParams.limit`, `body.urls`, `body.0.limit` in a task array) and the declared rule, never the
+value. An undeclared parameter is relayed as sent, a body that does not parse is left for the
+provider, and a body that repeats a JSON field is relayed as sent once every value passes. The routed road reads the same function
 ([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)), and its plan runs each
 child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`) to drop a
 child that would refuse it.
