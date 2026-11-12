@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "tool": "url-codec",
+  "result": {
+    "action": "encode",
+    "text": "hello%20world%20%26%20cats"
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "tool": "date-timezone",
+  "result": {
+    "input": "March 14, 2026 3:00 PM",
+    "sourceTimezone": "America/Chicago",
+    "targetTimezone": "UTC",
+    "utc": "2026-03-14T20:00:00.000Z",
+    "iso": "2026-03-14T20:00:00+00:00",
+    "unix": 1773518400
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk work, use our paid Apify actor: date-timezone-normalizer.",
+    "apify": "https://apify.com/tidybytetools",
+    "actor": "https://apify.com/tidybytetools/date-timezone-normalizer"
+  }
+}

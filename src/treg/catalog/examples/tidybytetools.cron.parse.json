@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "tool": "cron-parse",
+  "result": {
+    "expression": "0 9 * * 1-5",
+    "fields": {
+      "seconds": [
+        0
+      ],
+      "minutes": [
+        0
+      ],
+      "hours": [
+        9
+      ],
+      "days": "*",
+      "months": "*",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "summary": "minutes 0; hours 9; every day of the month; every month; Monday, Tuesday, Wednesday, Thursday, Friday",
+    "timezone": "UTC",
+    "next": [
+      "2026-11-11T09:00:00.000Z",
+      "2026-11-12T09:00:00.000Z",
+      "2026-11-13T09:00:00.000Z"
+    ]
+  },
+  "quota": {
+    "allowed": true,
+    "used": 1,
+    "limit": 50,
+    "remaining": 49,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools"
+  }
+}

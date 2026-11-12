@@ -150,6 +150,9 @@ platforms:
   weather: {label: "Weather", category: "Research & public data", summary: "Daily weather forecasts for a place."}
   account: {label: "The provider account itself — usage, quota, balance (not a content platform)", category: "Other"}
 
+  # --- Data & text compute (caller-supplied text; no upstream crawl or enrichment) ----------
+  data: {label: "Data & text tools", category: "Other", summary: "Repair, format, hash, convert and inspect text or data the caller already has."}
+
   # --- Market data: prices & financial markets --------------------------------------------------
   crypto: {label: "Crypto Market Data", category: "Market data", featured: 1, summary: "Live and historical prices, market caps, trends and exchanges across 17,000+ coins."}
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}

@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "tool": "text-diff",
+  "result": {
+    "added": 1,
+    "removed": 1,
+    "unchanged": 2,
+    "patch": "--- a\n+++ b\n one\n-two\n+two changed\n three",
+    "edits": [
+      {
+        "op": "equal",
+        "a": "one",
+        "b": "one"
+      },
+      {
+        "op": "delete",
+        "a": "two"
+      },
+      {
+        "op": "insert",
+        "b": "two changed"
+      },
+      {
+        "op": "equal",
+        "a": "three",
+        "b": "three"
+      }
+    ]
+  },
+  "quota": {
+    "allowed": true,
+    "used": 2,
+    "limit": 50,
+    "remaining": 48,
+    "reset": "2026-11-12T00:00:00.000Z"
+  },
+  "upsell": {
+    "message": "This free API is for small, one-off jobs. For bulk or heavier work, use our paid Apify actors.",
+    "apify": "https://apify.com/tidybytetools"
+  }
+}
