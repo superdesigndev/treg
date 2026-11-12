@@ -1,0 +1,102 @@
+[
+ {
+  "recordType": "stock",
+  "ticker": "GOOGL",
+  "exchange": "NASDAQ",
+  "exchangeName": "NASDAQ",
+  "name": "Alphabet Inc Class A",
+  "type": "stock",
+  "currency": "USD",
+  "country": "US",
+  "kgMid": "/m/07zln7n",
+  "price": 340.59,
+  "previousClose": 349.22,
+  "open": 348.275,
+  "high": 350.66,
+  "low": 339.0801,
+  "change": -8.630005,
+  "changePercent": -2.4712229,
+  "fiftyTwoWeekHigh": 408.61,
+  "fiftyTwoWeekLow": 244.15,
+  "marketCap": 4142180605662.2314,
+  "peRatio": 17.110922,
+  "dividendYield": 0.25837517,
+  "volume": 25528080,
+  "avgVolume": 19.90483,
+  "beta": 1.2076,
+  "sharesOutstanding": 5868000000,
+  "sector": "Interactive media",
+  "isDelayed": false,
+  "lastUpdateTimestamp": 1792197000,
+  "timezone": "America/New_York",
+  "utcOffset": -14400,
+  "brandColor": "#ED161E",
+  "afterHours": {
+   "price": 339.96,
+   "change": -0.6300049,
+   "changePercent": -0.18497458,
+   "lastUpdateTimestamp": 1792195198
+  },
+  "marketHours": {
+   "open": {
+    "year": 2026,
+    "month": 10,
+    "day": 16,
+    "hour": 9,
+    "minute": 30
+   },
+   "close": {
+    "year": 2026,
+    "month": 10,
+    "day": 16,
+    "hour": 16
+   }
+  },
+  "baseCurrency": null,
+  "quoteCurrency": null,
+  "baseName": null,
+  "quoteName": null,
+  "companyKgMid": "/g/11bwcf511s",
+  "nextEarningsDate": {
+   "year": 2026,
+   "month": 9,
+   "day": 4,
+   "hour": 4
+  },
+  "company": {
+   "description": "Alphabet Inc. is an American multinational technology conglomerate holding company headquartered in Mountain View, California. It was created through a restructuring of Google on October 2, 2015, and became the parent holding company of Google and several former Google subsidiaries. Alphabet is listed on the large-cap section of the Nasdaq under the ticker symbols GOOGL and GOOG; both classes of stock are components of major stock market indices such as the S&P 500 and Nasdaq-100. Alphabet has been described as a Big Tech company. As of July 2026, it is the third largest publicly traded company in the world by market capitalization.\nThe establishment of Alphabet Inc. was prompted by a desire to make the core Google business \"cleaner and more accountable\" while allowing greater autonomy to group companies that operate in businesses other than Internet services. Founders Larry Page and Sergey Brin announced their resignation from their executive posts in December 2019, with the CEO role to be filled by Sundar Pichai, who is also the CEO of Google. Page and Brin remain employees, board members, and controlling shareholders of Alphabet Inc.",
+   "ceo": "Sundar Pichai",
+   "employees": 198933,
+   "founded": {
+    "year": 2015,
+    "month": 10,
+    "day": 2
+   },
+   "hq": {
+    "city": "Mountain View",
+    "state": "California",
+    "country": "United States",
+    "countryCode": "US",
+    "address": "1600 Amphitheatre Parkway"
+   },
+   "website": "https://abc.xyz/",
+   "wikipediaUrl": "https://en.wikipedia.org/wiki/Alphabet_Inc."
+  },
+  "classification": {
+   "labels": [
+    {
+     "name": "Stock",
+     "description": "Ownership of a fraction of a corporation and the right to claim a share of the corporation's assets and profits equal to the amount of stock owned"
+    },
+    {
+     "name": "US listed security",
+     "description": "Listed on NASDAQ"
+    },
+    {
+     "name": "US headquartered",
+     "description": "Headquartered in Mountain View, California, United States"
+    }
+   ]
+  }
+ }
+]
