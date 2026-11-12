@@ -1146,9 +1146,9 @@ def _marketplace_no_credential(
     lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
     if ep is not None:
         lines.extend(_capability_alternatives(ep))
-    kind = "platform_key_missing" if ep is not None and _platform_key_missing(ep, provider) \
-        else "credential_missing"
-    return ResolutionFailed(kind, status_code=404, detail="\n".join(lines))
+    ours = ep is not None and _platform_key_missing(ep, provider)
+    return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
+                            log_kind="platform_key_missing" if ours else None)
 
 
 def _platform_key_missing(ep: dict, provider) -> bool:

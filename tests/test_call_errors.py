@@ -292,13 +292,22 @@ async def test_an_own_tool_answer_is_read_with_the_codes_of_its_hosts_provider(
     ("anymailfinder.account", "credential_missing", "caller_provider_account", True),
 ])
 async def test_a_missing_credential_is_the_account_of_whoever_should_hold_the_key(
-        clients: AsyncClient, lines, target, kind, expected, caller_side):
+        clients: AsyncClient, monkeypatch, lines, target, kind, expected, caller_side):
+    refusals = []
+    emit = call_errors.emit
+
+    def keep(*args, failure=None, **kw):
+        refusals.append(failure)
+        emit(*args, failure=failure, **kw)
+
+    monkeypatch.setattr(call_errors, "emit", keep)
     r = await clients.get(f"/call/{target}")
     assert r.status_code == 404, r.text
     assert "platform_key_missing" not in r.text
     (line,) = lines()
     assert (line["kind"], line["by"], line["error_class"], line["caller_side"]) == (
         kind, "treg", expected, caller_side)
+    assert [failure.kind for failure in refusals] == ["credential_missing"]
 
 
 def test_a_routed_child_carries_its_step(lines):

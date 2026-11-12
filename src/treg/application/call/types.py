@@ -85,8 +85,8 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "response_buffer_limit": ("treg", "treg_error"),
     "refresh_failed": ("org_connection", "caller_provider_account"),
     "credential_missing": ("org_connection", "caller_provider_account"),
-    # A catalog call treg's own key should serve, with no key or allow-list entry for its provider
-    # in this deployment: the caller sees `credential_missing`'s answer.
+    # The `log_kind` of a `credential_missing` treg's own key should have served: this deployment
+    # has no key or allow-list entry for the provider.
     "platform_key_missing": ("treg", "our_provider_account"),
     "authorization_required": ("org_connection", "caller_provider_account"),
     "method_mismatch": ("caller", "caller_input"),
@@ -101,8 +101,10 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
 class CallFailure(Exception):
     """A call failure translated once by the HTTP adapter.
 
-    `parameter` and `rule` name the request field a refusal is about and the rule it broke, for the
-    `call_error` log line only (call_errors.py); the caller sees `detail` alone."""
+    `parameter` and `rule` name the request field a refusal is about and the rule it broke, and
+    `log_kind` the failure kind read in place of `kind` where the refusal the caller sees as one
+    kind has two causes; all three are for the `call_error` log line only (call_errors.py), and the
+    caller sees `detail` alone."""
 
     def __init__(
         self,
@@ -113,6 +115,7 @@ class CallFailure(Exception):
         retry_after_s: int | None = None,
         parameter: str | None = None,
         rule: str | None = None,
+        log_kind: str | None = None,
     ) -> None:
         super().__init__(str(detail))
         self.kind = kind
@@ -124,6 +127,7 @@ class CallFailure(Exception):
         self.parameter = parameter if parameter is not None else (
             named if isinstance(named, str) else None)
         self.rule = rule
+        self.log_kind = log_kind
 
 
 class IntakeFailed(CallFailure):

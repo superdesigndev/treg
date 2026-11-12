@@ -151,8 +151,8 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
          headers=None, host: str | None = None) -> None:
     """Log one line for a call that failed (status 400 or above); never raises.
 
-    `failure` is the refusal treg raised: its `kind`, and the `parameter` and `rule` it names, are
-    read; `kind` stands in when there is none. `body` and `headers` are the provider's error answer,
+    `failure` is the refusal treg raised: its `log_kind` or else `kind`, and the `parameter` and
+    `rule` it names, are read; `kind` stands in when there is none. `body` and `headers` are the provider's error answer,
     read only for its documented error code (`domain.capacity.signatures`), decoded by its
     `Content-Encoding`; no part of them is logged. An own tool's `host` names the provider whose
     codes are read when its base URL is on that host, the generic ones alone otherwise; the line's
@@ -162,7 +162,7 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
     try:
         catalog = catalog_store.load().by_id
         endpoint_id = endpoint_id if endpoint_id in catalog else None
-        kind = getattr(failure, "kind", None) or kind
+        kind = getattr(failure, "log_kind", None) or getattr(failure, "kind", None) or kind
         signal = None
         if refused_by is None and kind is None and body is not None:
             encoding = next((v.decode("latin-1") for k, v in headers or ()

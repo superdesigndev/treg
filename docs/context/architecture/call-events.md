@@ -228,7 +228,7 @@ router's fallback on a root and `execute_call` on a child (`call_errors.emit`). 
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
 | `error_class` | one word below |
 | `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
-| `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`) |
+| `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`), or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer (`balance`, `quota`, `burst`), per `domain/capacity/signatures.py` |
 | `parameter`, `rule` | for treg's own refusal of a request: the field it is about (`queryParams.limit`, `body.urls.0`; `undeclared` for a name the endpoint does not declare, a field refused as undeclared, or an index that is not a short index into a field declared an array; a JSON key may hold dots, so it is never read as a path) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform` for a limit of treg's shared key, `authorization_method`, `unsupported`). Both ride on the refusal (`CallFailure.parameter`, `.rule`), never in what the caller sees |
 
@@ -245,13 +245,12 @@ an out-of-credit answer, documented or matched by the `unrecorded` phrase check,
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
 OAuth app it is `our_provider_account`, like every error on treg's own key. An own tool's answer is
 read with the documented errors of the provider whose base URL is on the tool's host (its line's
-`provider` stays null), or with the generic ones and the phrase check when none is. A
-catalog call refused for want of a credential (404) is `caller_provider_account`
-(`credential_missing`) when only the team's own key can serve the endpoint, and
-`our_provider_account` (`platform_key_missing`, the same answer to the caller) when treg's own key
-or the anonymous fallback should serve it but the deployment has no key or allow-list entry for its
-provider. A routed parent the
-provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`; one refused because
+`provider` stays null), or with the generic ones and the phrase check when none is. A catalog call
+refused for want of a credential (404, `credential_missing` to the caller and the Arena) is
+`caller_provider_account` when only the team's own key can serve the endpoint, and
+`our_provider_account` (`kind` `platform_key_missing`, the refusal's internal `log_kind`) when
+treg's own key or the anonymous fallback should serve it but the deployment has no key or allow-list
+entry for its provider. A routed parent the provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`; one refused because
 treg's capacity took every candidate away (`route_no_candidate` answered 503) is `treg_capacity`.
 The answer is decoded by its `Content-Encoding` before its error code is read. A failed hub run is
 read by the error its detail names when that is a known failure kind: a crash in treg
