@@ -96,6 +96,21 @@ def phrase(*parts: Any) -> str | None:
     return " ".join(words) if words else None
 
 
+def people_text(full_name: Any, title: Any, company_domain: Any, where: Any) -> str | None:
+    """`people_text('Jane Doe', 'CTO', 'stripe.com', 'Ireland')` → "Jane Doe, CTO at stripe.com in
+    Ireland": who (the name, the title, both, or "people" when only the company is known), at the
+    company, in the place, as a profile search reads a brief. A title lists several roles as written.
+    None when it names no person, role or company; a part that is not a string is left out."""
+    said = lambda v: v.strip() if isinstance(v, str) and v.strip() else None  # noqa: E731
+    name, role, domain, at = said(full_name), said(title), said(company_domain), said(where)
+    if not (name or role or domain):
+        return None
+    text = ", ".join(w for w in (name, role) if w) or "people"
+    if domain:
+        text += f" at {domain}"
+    return f"{text} in {at}" if at else text
+
+
 def place(*parts: Any) -> str | None:
     """`place(city, state, country)` → "Berlin, Germany": the non-empty parts, in order, each once."""
     seen: list[str] = []
@@ -642,7 +657,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,

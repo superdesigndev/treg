@@ -271,9 +271,9 @@ def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_int_filter_and_sho
 
 
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
-    """people.search builds `q` from the caller's title and location, but only for a provider that
-    accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
-    {title} still gets exactly the title, and a {company_domain} request still skips exa."""
+    """people.search builds `q` from the caller's title, company and place, but only for a provider
+    that accepts none of the caller's own fields: exa joins a {title} or {company_domain, title}
+    request, and a provider that takes {title} still gets exactly the title."""
     from treg.domain.catalog.routing.contracts import adapter_accepts
     from treg.domain.catalog.routing.plan import unscoped
 
@@ -285,7 +285,7 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     exa = cat.adapters["exa.people.search"]
     assert adapter_accepts(exa, ident) == ("q",) and not unscoped(exa, contract, ident)
     _, body = exa.to_upstream(ident, ("q",))
-    assert body["query"] == "Product Manager Seattle, United States developer tools"
+    assert body["query"] == "Product Manager in Seattle, United States developer tools"
     icy = cat.adapters["icypeas.people.search"]
     variant = adapter_accepts(icy, ident)
     assert variant == ("title",)
@@ -293,7 +293,8 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
         "currentJobTitle": {"include": ["Product Manager"]}, "location": {"include": ["Seattle, United States"]},
         "keyword": {"include": ["developer tools"]}}, "a provider that takes the title gets it unchanged"
     scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
-    assert unscoped(exa, contract, scoped) == ("company_domain",), "a text match cannot scope by company"
+    assert not unscoped(exa, contract, scoped), "the stand-in carries the company"
+    assert exa.to_upstream(scoped, adapter_accepts(exa, scoped))[1]["query"] == "CTO at stripe.com"
     with pytest.raises(ValueError, match="stand_in"):
         from treg.domain.catalog.routing import contracts as C
         C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
@@ -303,7 +304,7 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
 def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
     """exa and parallel write the company into the text of a `q` the caller sent, so a
     {company_domain, q} request ("executives" at openai.com) reaches them; a {company_domain, title}
-    request, whose `q` treg would build from the title, still skips them."""
+    request reaches them through the stand-in, which carries the company itself."""
     from treg.domain.catalog.routing.contracts import adapter_accepts
     from treg.domain.catalog.routing.plan import unscoped
 
@@ -315,7 +316,8 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
         assert adapter_accepts(ad, asked) == ("q",) and not unscoped(ad, contract, asked)
         assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
         scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
-        assert unscoped(ad, contract, scoped) == ("company_domain",), "a domain on a built q is a guess"
+        assert not unscoped(ad, contract, scoped)
+        assert ad.to_upstream(scoped, ("q",))[1][field] == "CTO at stripe.com", "the domain is said once"
     # A provider that answers this shape by company alone drops what q asked; one with the title
     # in its variant still answers {q, title}
     for eid in ("crawl4ai.people.search", "icypeas.people.search"):
@@ -348,6 +350,97 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
     titled, _ = canonical_identity(contract, {"title": "CTO"})
     assert expr_only.to_upstream(titled, ("q",))[1]["query"] == "CTO"
     assert not unscoped(expr_only, contract, titled)
+
+
+@pytest.mark.parametrize("sent, text", [
+    ({"title": "Head of Tax"}, "Head of Tax"),
+    ({"full_name": "Alice Cooper"}, "Alice Cooper"),
+    ({"company_domain": "stripe.com"}, "people at stripe.com"),
+    ({"company_domain": "stripe.com", "title": "Head of Tax"}, "Head of Tax at stripe.com"),
+    ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie"}, "Head of Tax at stripe.com in Ireland"),
+    ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie", "location": "Dublin, Ireland"},
+     "Head of Tax at stripe.com in Dublin, Ireland"),
+    ({"company_domain": "stripe.com", "full_name": "Alice Cooper"}, "Alice Cooper at stripe.com"),
+    ({"full_name": "Alice Cooper", "title": "CTO", "country": "de"}, "Alice Cooper, CTO in Germany"),
+    ({"company_domain": "stripe.com", "title": "CFO, Head of Finance or Controller"},
+     "CFO, Head of Finance or Controller at stripe.com"),
+    ({"company_domain": ["stripe.com"], "title": "CTO"}, "CTO"),
+])
+def test_the_people_search_stand_in_says_who_at_which_company_where(sent, text):
+    """The stand-in `q` is a sentence a profile search reads: who, at the company, in the place."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    cat = catalog_store.load()
+    ident, _ = canonical_identity(cat.contracts["people.search"], sent)
+    exa = cat.adapters["exa.people.search"]
+    assert exa.with_stand_in(ident)["q"] == text
+    assert adapter_accepts(exa, ident) == ("q",)
+
+
+def test_stand_in_carries_names_only_keys_its_expression_reads():
+    from treg.domain.catalog.routing import contracts as C
+    doc = {"identity": [{"q": "str"}, {"title": "str"}, {"company_domain": "str"}], "output": {"a": "str"},
+           "miss": "a == null", "filters": {"country": "str"}, "stand_in": {"q": "join(title, country)"}}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "stand_in_carries": {"q": ["title", "country"]}}}})[
+        "y"].stand_in_carries == {"q": ("title", "country")}
+    for bad in ({"q": ["company_domain"]}, {"title": ["q"]}, {"q": []}, {"q": ["nope"]}, {"q": ["q"]}, ["q"]):
+        with pytest.raises(ValueError, match="stand_in_carries"):
+            C.parse_contracts({"contracts": {"y": {**doc, "stand_in_carries": bad}}})
+
+
+def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
+    """parallel has no country field of its own; the stand-in sentence says the country, so it
+    answers the question asked. A `q` the caller wrote gets no stand-in, so there it is ignored."""
+    from treg.domain.catalog.routing.plan import ignored_filters
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    parallel = cat.adapters["parallel.people.search"]
+    built, _ = canonical_identity(contract, {"company_domain": "stripe.com", "title": "CTO", "country": "ie"})
+    assert ignored_filters(parallel, contract, built, {"company_domain", "title", "country"}) == ()
+    written, _ = canonical_identity(contract, {"q": "CTO at stripe.com", "country": "ie"})
+    assert ignored_filters(parallel, contract, written, {"q", "country"}) == ("country",)
+
+
+@pytest.fixture
+def all_people_search_on(monkeypatch, platform_on):
+    provs = sorted({e["provider"] for e in catalog_store.load().for_capability("people.search")})
+    for p in provs:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper().replace('-', '_')}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(provs))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("identity", [
+    {"company_domain": "example.com", "title": "Head of Tax", "country": "gb"},
+    {"company_domain": "example.com", "title": "Head of Tax"},
+    {"company_domain": "example.com"},
+])
+async def test_a_company_scoped_request_offers_the_free_text_providers_last(
+        clients, all_people_search_on, monkeypatch, identity):
+    """The stand-in makes exa and parallel candidates for a company-scoped request without moving
+    anyone: every other provider keeps its order, and the two follow them, since a built `q` covers
+    none of the caller's keys. Only a prefer rule or route rule moves them up."""
+    import dataclasses
+    cat = catalog_store.load()
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    ep = cat.by_id["treg.people.search"]
+    plan = await call_route.build_plan(ep, identity, caller, options)
+    order = [c.endpoint["id"] for c in plan.candidates]
+    q_only = ["parallel.people.search", "exa.people.search"]
+    assert order[-2:] == q_only and "exa.people.search" not in {d["endpoint_id"] for d in plan.dropped}
+    exa = next(c for c in plan.candidates if c.endpoint["id"] == "exa.people.search")
+    assert exa.variant == ("q",) and exa.ignored == ()
+    _, body = exa.adapter.to_upstream(plan.identity, exa.variant)
+    assert body["query"].startswith(identity.get("title", "people") + " at example.com")
+    preferred = await call_route.build_plan(ep, identity, caller, call_route.RouteOptions.from_headers(
+        lambda key: "exa" if key == call_route.PREFER_HEADER else None))
+    assert preferred.candidates[0].endpoint["id"] == "exa.people.search", "a prefer moves it up"
+    for eid in q_only:
+        monkeypatch.setitem(cat.adapters, eid, dataclasses.replace(cat.adapters[eid], _stand_in={}))
+    without = await call_route.build_plan(ep, identity, caller, options)
+    assert [c.endpoint["id"] for c in without.candidates] == order[:-2], "nobody else moved"
 
 
 @pytest.fixture

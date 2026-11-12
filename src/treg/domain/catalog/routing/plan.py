@@ -40,6 +40,9 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     limit-less child last, so a free-on-miss role finder fell behind a search that bills its empty
     answers."""
     used = _used_keys(adapter)
+    # A filter written into a stand-in's text (`q` "… in Germany") reaches the provider there.
+    for k in _stand_in_sent(adapter, identity):
+        used |= _carried(contract, k, identity)
     return tuple(k for k in (contract.filters or ()) if k != "limit"
                  and identity.get(k) not in (None, "") and (given is None or k in given)
                  and (k not in used or _unmappable(adapter, k, identity)))
@@ -58,6 +61,20 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
         return all(P.evaluate(e, identity) in (None, "", []) for e in exprs)
     except Exception:  # noqa: BLE001 - ranking must never crash on an expression
         return False
+
+
+def _carried(contract: Contract, key: str, identity: dict[str, Any]) -> set[str]:
+    """The caller's keys a stand-in `key` built from `identity` holds in its text: the contract's
+    `stand_in_carries`, each only when sent as a string (a text skips anything else)."""
+    return {n for n in contract.stand_in_carries.get(key, ()) if isinstance(identity.get(n), str)}
+
+
+def _stand_in_sent(adapter: Adapter, identity: dict[str, Any]) -> set[str]:
+    """Stand-in keys this adapter's request carries: ones its matched variant names that the caller
+    left empty."""
+    stand_in = getattr(adapter, "_stand_in", None) or {}
+    variant = set(adapter_accepts(adapter, identity) or ()) if stand_in else set()
+    return {k for k in stand_in if k in variant and identity.get(k) in (None, "")}
 
 
 def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> tuple[str, ...]:
@@ -83,10 +100,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
             used |= names & standing
         else:
             used |= {n for n in names if identity.get(n) is None or isinstance(identity[n], str)}
-    # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
-    for k, expr in stand_in.items():
+    # A stand-in this adapter sends carries the keys the contract says its text holds
+    # (`stand_in_carries`: `q` from title and company), each only as a string
+    for k in stand_in:
         if k in used and k in standing:
-            used |= set(re.findall(r"[A-Za-z_]\w*", expr))
+            used |= _carried(contract, k, identity)
     # A free-text key the caller wrote rides only in the variant the adapter matched, or in a key
     # the contract says carries it (`carried_by`: q in title). One that answers {company_domain, q}
     # by {company_domain} alone, or {full_name, q} by the name, drops what q asked for.
