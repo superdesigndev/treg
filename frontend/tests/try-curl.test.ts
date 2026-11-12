@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import computed from '../src/state/catalogComputed.js'
 
 // The arguments a shell hands curl when it runs the Try it line as copied.
-const argv = (curl: string) => execFileSync('sh', ['-c', `${curl.replace(/^curl /, 'set -- ')}\nprintf '%s\\0' "$@"`])
+const argv = (curl: string) => execFileSync('sh', { input: `${curl.replace(/^curl /, 'set -- ')}\nprintf '%s\\0' "$@"` })
   .toString().split('\0')
 
 test('the curl line hands curl a header or form value with backslashes and quotes as typed', () => {
