@@ -252,7 +252,11 @@ the installer did, and leaves its outcome in `update-state.json`. `TREG_NO_AUTO_
 
 The binary records the Python CLI's `cli_command_completed` (same vocabulary and opt-outs, [cli](cli.md)
 "Anonymous CLI analytics"; the command name is the Python handler's, so one command keeps one name)
-plus `arch` and `channel`. At the end of a command the event is appended to
+plus `arch` and `channel`. A `usage_error` also names the command it happened in (`in_command`) and,
+when the unknown word is a Python CLI command this binary lacks or a program `treg <program>` runs
+there, that command (`missing_command`, from the fixed table in `app.go`); what was typed is never
+sent. Option names count only where they stand alone, so a subcommand list such as `agent-new` is not
+read as `-n`. At the end of a command the event is appended to
 `telemetry-queue.jsonl` beside the config; a later command sends the queue to its registry's
 `/cli/events` on a goroutine while it works, through the command's own connection pool (one per
 process, `api.Transport`), so no command waits on analytics and none is lost to a process that
