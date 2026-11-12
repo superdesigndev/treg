@@ -196,7 +196,11 @@ def test_a_refused_parameter_is_named_only_when_declared(lines):
     ("cloro.ai-search.chatgpt.shopping", "body.include.ads", "body.include.ads"),
     ("cloro.ai-search.chatgpt.shopping", "body.include.someone@example.com", "undeclared"),
     ("cloro.ai-search.chatgpt.shopping", "body.include.ads.someone@example.com", "undeclared"),
-    ("cloro.ai-search.chatgpt.shopping", "body.include.0", "body.include.0"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.0", "undeclared"),
+    ("anyapi.google.serp.maps", "body.categoryFilterWords.0", "body.categoryFilterWords.0"),
+    ("cloro.ai-search.chatgpt.shopping", "body.15551234567", "undeclared"),
+    ("cloro.ai-search.chatgpt.shopping", "body.include.ads.15551234567", "undeclared"),
+    ("coingecko.coins.get", "queryParams.15551234567", "undeclared"),
     ("cloro.ai-search.chatgpt.shopping", "body", "body"),
 ])
 def test_every_part_of_a_logged_parameter_is_declared(lines, endpoint_id, parameter, logged):

@@ -23,6 +23,9 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "hub_not_runnable": ("treg", "treg_error"),
     "hub_input_invalid": ("caller", "caller_input"),
     "hub_run_failed": ("upstream", "upstream_error"),
+    # A hub run refused because the tool's own price passes the caller's ceiling (a
+    # `hub_run_failed` whose detail names it).
+    "hub_run_max_cost": ("caller", "caller_balance_or_cap"),
     "hub_busy": ("caller", "treg_policy"),
     "hub_price_unaffordable": ("caller", "caller_balance_or_cap"),
     "unknown_endpoint": ("caller", "not_found"),

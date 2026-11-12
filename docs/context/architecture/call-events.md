@@ -216,8 +216,8 @@ collapsed. So a find's `answer_keys['email']` equals a later verify's `input_key
 Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
 logger, `call_error` followed by JSON, where its outcome is final: the call's audit (every resolved
 catalog call, a routed child, check or poll included, and own tools), an unresolved catalog call,
-a routed parent, a hub refusal, and the router's fallback for a refusal nothing audited
-(`call_errors.emit`). It is a log line, not a column: no table changes.
+a routed parent, a hub run that failed or was refused, and the router's fallback for a refusal
+nothing audited (`call_errors.emit`). It is a log line, not a column: no table changes.
 
 | Field | Value |
 | --- | --- |
@@ -230,7 +230,7 @@ a routed parent, a hub refusal, and the router's fallback for a refusal nothing 
 | `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
 | `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`) |
 | `signal` | the provider's documented error read from its answer (`balance`, `quota`, `burst`), per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for treg's own refusal of a request: the field it is about (`queryParams.limit`; `undeclared` for a name the endpoint does not declare) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform` for a limit of treg's shared key, `authorization_method`, `unsupported`). Both ride on the refusal (`CallFailure.parameter`, `.rule`), never in what the caller sees |
+| `parameter`, `rule` | for treg's own refusal of a request: the field it is about (`queryParams.limit`, `body.urls.0`; `undeclared` for a name the endpoint does not declare, or an index into a field not declared an array) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform` for a limit of treg's shared key, `authorization_method`, `unsupported`). Both ride on the refusal (`CallFailure.parameter`, `.rule`), never in what the caller sees |
 
 `error_class` is read in order from the failure kind (its class sits beside its blame in
 `types.FAILURE_KINDS`, one table for both), else `refused_by`, else the provider's documented error,

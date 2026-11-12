@@ -91,6 +91,7 @@ from .settle import (
     _read_evidence,
 )
 from .types import (
+    FAILURE_KINDS,
     AuthorizationFailed,
     CallContext,
     CallFailure,
@@ -904,10 +905,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     client=_client_name(request), refused_by=_refusal_kind(exc.status_code),
                     telemetry={"call_ref": call_ref, "endpoint_id": hub_row.tool_id,
                                "provider": "hub", "credential_tier": "hub", **_tag_telemetry(meta)})
-                call_errors.emit(exc.status_code, org_id=caller.org_id, call_ref=call_ref, road="hub",
-                                 provider="hub", tier="hub",
-                                 refused_by=_refusal_kind(exc.status_code), failure=exc,
-                                 answered=False)
+            run_failed = exc.kind == "hub_run_failed"
+            stopped_as = exc.detail.get("error") if run_failed and isinstance(exc.detail, dict) else None
+            known = stopped_as in FAILURE_KINDS
+            call_errors.emit(exc.status_code, org_id=caller.org_id, call_ref=call_ref, road="hub",
+                             provider="hub", tier="hub",
+                             refused_by=None if run_failed else _refusal_kind(exc.status_code),
+                             failure=None if known else exc, kind=stopped_as if known else None,
+                             answered=False)
             raise
         request.state.call_audited = True
         request.state.call_cost_micro = charged

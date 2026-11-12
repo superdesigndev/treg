@@ -82,9 +82,17 @@ def _scopes(spec: object) -> list[Mapping]:
     return [scope for scope in found if isinstance(scope, Mapping)]
 
 
+def _is_array(spec: object) -> bool:
+    if not isinstance(spec, Mapping):
+        return False
+    kind = spec.get("type")
+    kinds = kind if isinstance(kind, list) else [kind]
+    return "items" in spec or any(k in ("array", "list") for k in kinds)
+
+
 def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
-    """The parameter a refusal names when every part of it is declared by the endpoint (an array
-    index aside); `undeclared` otherwise, since a name the caller made up is request content and
+    """The parameter a refusal names when every part of it is declared by the endpoint (an index
+    only into a declared array); `undeclared` otherwise, since a name the caller made up is request content and
     never logged. A path placeholder may be declared with the query parameters."""
     if not name:
         return None
@@ -100,8 +108,12 @@ def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
         return name if any(isinstance(d, Mapping) and name in d for d in inputs.values()) \
             else "undeclared"
     scopes = [declared, *_scopes(declared)]
+    spec: object = None
     for part in rest.split(".") if rest else ():
         if part.isdigit():
+            if not _is_array(spec):
+                return "undeclared"
+            spec = spec.get("items")
             continue
         spec = next((scope[part] for scope in scopes if part in scope), None)
         if spec is None:

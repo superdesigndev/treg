@@ -661,6 +661,27 @@ async def _live_tool_with_readme(clients, monkeypatch, price=0.01):
     return r.json()
 
 
+async def test_a_failed_run_logs_one_call_error_line_for_the_run(
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, caplog):
+    import logging
+    from treg.application.call import call_errors
+    tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
+    caplog.set_level(logging.INFO, logger=call_errors.log.name)
+    call_errors.log.addHandler(caplog.handler)
+    try:
+        run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
+    finally:
+        call_errors.log.removeHandler(caplog.handler)
+    assert run.status_code == 424
+    lines = [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+             if r.name == call_errors.log.name]
+    (root,) = [line for line in lines if line["road"] == "hub"]
+    assert (root["call_ref"], root["status"], root["kind"]) == (run.headers["X-Treg-Call-Id"], 424, "hub_run_failed")
+    assert (root["by"], root["error_class"], root["step"]) == ("upstream", "upstream_error", None)
+    assert any(line["step"] and line["status"] == 500 for line in lines)
+
+
 async def test_the_public_page_shows_the_contract_and_hides_the_makers_side(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     pub = await _live_tool_with_readme(clients, monkeypatch)
     tool_id = pub["tool_id"]
