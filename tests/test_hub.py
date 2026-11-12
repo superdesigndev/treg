@@ -1767,3 +1767,39 @@ async def test_an_open_route_looks_up_a_key_once_a_minute(clients: AsyncClient, 
         hub_gate._readers.clear()
         monkeypatch.delenv("TREG_HUB_USERS", raising=False)
         get_settings.cache_clear()
+
+
+async def test_a_for_each_runs_failed_items_log_as_its_steps_not_as_calls(
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, caplog):
+    import logging
+    import re
+    from treg.application.call import call_errors
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": ["a", "b", "c"]}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}},
+                               {"name": "each", "call": EP, "input": {"aweme_id": "$v"},
+                                "for_each": "$people.data", "as": "v"}],
+                        output={"leads": "$each"})
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})
+    assert r.status_code == 201 and r.json()["status"] == "live", r.text
+    tool_id = r.json()["tool_id"]
+    first, rate_limited = _fake_relay(200, b'{"data": ["a", "b", "c"]}'), _fake_relay(429, b'{}')
+    seen = []
+
+    async def relay(*a, **k):
+        seen.append(1)
+        return await (first if len(seen) == 1 else rate_limited)(*a, **k)
+    monkeypatch.setattr(call_service, "relay", relay)
+    caplog.set_level(logging.INFO, logger=call_errors.log.name)
+    call_errors.log.addHandler(caplog.handler)
+    try:
+        run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
+    finally:
+        call_errors.log.removeHandler(caplog.handler)
+    assert run.status_code == 424, run.text
+    lines = [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+             if r.name == call_errors.log.name]
+    (root,) = [line for line in lines if line["step"] is None]
+    assert (root["road"], root["call_ref"]) == ("hub", run.headers["X-Treg-Call-Id"])
+    items = [line for line in lines if line["step"] is not None]
+    assert items and all(re.fullmatch(r"s1\.\d", line["step"]) and line["status"] == 429 for line in items)
