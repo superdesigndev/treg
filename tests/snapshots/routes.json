@@ -939,6 +939,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "ai_ugc_video_skill_md",
+    "path": "/skills/ai-ugc-video/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "feedback_md",
     "path": "/feedback.md"
   },
@@ -1103,6 +1112,15 @@
     ],
     "name": "ugc_page",
     "path": "/ugc"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "aigc_page",
+    "path": "/aigc"
   },
   {
     "kind": "APIRoute",
