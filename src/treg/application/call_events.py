@@ -69,6 +69,8 @@ _ROLE_LOCALS = frozenset({
     "support", "team", "webmaster",
 })
 _VALUE_MAX = 256
+# `limit` or `country_code(country)`: an `in_expr` a filter's value can be read back through.
+_FILTER_CALL = re.compile(r"[a-z_][a-z0-9_]*\(\s*([a-z_][a-z0-9_]*)\s*\)|([a-z_][a-z0-9_]*)")
 _SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
@@ -184,11 +186,21 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             given[field_name] = v
     # An expression that is just an identity field (`body.url: linkedin_url`, used where the
     # body is an array) reads back like a plain `in` entry; computed ones cannot be inverted.
+    # A filter is read back the same way, and through a one-argument function of it
+    # (`country_code(country)`): the value sent is that filter's category, though not always its
+    # caller's spelling.
+    readable = {**contract.identity_types, **(contract.filters or {})}
     for target, expr in (adapter.in_expr or {}).items():
-        if isinstance(expr, str) and expr in contract.identity_types and expr not in given:
-            v = P.get_path(doc, target)
-            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
-                given[expr] = v
+        if not isinstance(expr, str):
+            continue
+        m = _FILTER_CALL.fullmatch(expr.strip())
+        name = expr if expr in contract.identity_types else (m.group(1) or m.group(2)) if m else None
+        if name is None or name not in readable or name in given \
+                or (name in contract.identity_types and name != expr):
+            continue
+        v = P.get_path(doc, target)
+        if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+            given[name] = v
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
         if field_name in contract.identity_types:
@@ -202,7 +214,7 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     # while a direct caller of the same finder may send `first_name` + `last_name`. A request
     # parameter named exactly like an identity field means that field; derivation then joins
     # the shapes, so both direct calls get the routed call's `input_id`.
-    for field_name in contract.identity_types:
+    for field_name in readable:
         if field_name in given:
             continue
         v = doc_body.get(field_name, query.get(field_name))
@@ -232,9 +244,11 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
-    if (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+    if variant is not None and (segmenter := SEGMENTERS.get(contract.segments)) is not None:
         # Categories only: the raw title, query, name or place never reaches the event. A value
-        # a filter already records (`country`) keeps its own spelling.
+        # a filter already records (`country`) keeps its own spelling. A request read back into
+        # no complete variant carries no filters either, so its categories would claim "none
+        # sent" for what was only unreadable: it records none.
         meta.update({k: v for k, v in segmenter.compute(identity).items() if k not in meta})
         meta["segments_version"] = segmenter.version
     return ("+".join(variant) if variant else None), meta, norm
@@ -374,8 +388,10 @@ def answer_columns(contract: Contract, output: dict, input_norm: dict | None = N
         elif mode == "value" and (s := _stringify(v)) is not None:
             values[field_name] = s
     segmenter = SEGMENTERS.get(contract.segments)
-    if segmenter is not None and segmenter.answer is not None and asked is not None:
-        if counts := segmenter.answer(asked, output):
+    if segmenter is not None and segmenter.answer is not None:
+        # Without the question (a request that cannot be read back) the row counts still hold;
+        # only the checks against it are absent.
+        if counts := segmenter.answer(asked or {}, output):
             values.update(counts)
             values["segments_version"] = segmenter.version
     return {"answer_keys": keys or None, "answer_values": values or None,

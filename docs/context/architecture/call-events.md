@@ -127,7 +127,12 @@ and returns categories, each a word from the set's fixed vocabulary; `segment` a
 `input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
 vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
-keys. The same function serves the event and the route rule's match, so a measured segment and
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`),
+filters included: an `in_expr` that is a filter (`body.limit: limit`) or one function of it
+(`country_code(country)`) reads back as that filter, so a routed child lands in its parent's
+segment. Its `country_raw_case` is the spelling it sent the provider, not the caller's; group
+routed calls by the parent's. A request read back into no complete variant carries no filters, so
+it records no categories rather than "none sent". The same function serves the event and the route rule's match, so a measured segment and
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 
@@ -137,7 +142,7 @@ import them instead of keeping its own copy.
 | --- | --- | --- |
 | `title_class` | `none`, `leader`, `function`, `multi`, `other` | `multi`: several titles in one string (`,` `/` `\|` `;` ` or `); `leader`: function `executive` (CEO, founder, owner, president, managing director, partner, Geschäftsführer, directeur général, amministratore delegato, director general) |
 | `title_function` | `sales`, `marketing`, `product`, `data`, `engineering`, `it_security`, `hr_talent`, `finance`, `operations`, `customer`, `legal`, `design`, `education`, `healthcare`, `real_estate`, `executive`, `other`, `none` | first matching pattern in `TITLE_FUNCTIONS` |
-| `title_seniority` | `c_level_founder`, `vp`, `head_director`, `manager_lead`, `individual`, `none` | first matching pattern in `TITLE_SENIORITIES` |
+| `title_seniority` | `c_level_founder`, `vp`, `head_director`, `manager_lead`, `individual`, `none` | first matching pattern in `TITLE_SENIORITIES`; `president` after `vice` is a VP |
 | `title_lang`, `q_lang` | `en`, `non_en`, `none` | a non-ASCII letter or a listed non-English role word |
 | `title_words` | `1-2`, `3-4`, `5+`, `none` | words in the title |
 | `has_country` | `true`, `false` | |
@@ -155,14 +160,15 @@ A set may also count how an answer's rows fit the question; `people_search` writ
 `answer_values` as decimal strings, beside `segments_version`. Nothing from a row leaves, only the
 counts. A direct call is counted over every row its adapter mapped, in the contract's row shape,
 not the Arena's shorter reading; a routed parent over its assembled answer. A check the question
-gives nothing to judge by is absent, not zero.
+gives nothing to judge by is absent, not zero; a request that cannot be read back still records
+`rows`, `rows_with_profile_url` and `rows_dup`.
 
 | Key | Counts | Present when |
 | --- | --- | --- |
 | `rows` | rows in `people` | the answer has a `people` list |
 | `rows_with_profile_url` | rows with an `http(s)` profile URL on a dotted host | always with `rows` |
 | `rows_dup` | rows repeating an earlier row's person (same LinkedIn handle or URL, else same name and company) | always with `rows` |
-| `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain), or whose company name is its first label | `company_domain` was asked |
+| `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain of it); a row with no domain, when its name minus a legal form (`Inc`, `GmbH`) is exactly the domain's first label (`MetaMask` is not meta.com) | `company_domain` was asked |
 | `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
 | `rows_country_match` | rows whose location names the asked country (by name, a US state, never a two-letter part) | the asked country is an ISO code or name |
 

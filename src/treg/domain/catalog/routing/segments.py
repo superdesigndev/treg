@@ -51,16 +51,16 @@ TITLE_FUNCTIONS: tuple[tuple[str, str], ...] = (
     ("education", r"teacher|professor|lecturer|\bdean\b|school|faculty|academic"),
     ("healthcare", r"nurse|physician|doctor|medical|clinical|dentist|pharmac|therap"),
     ("real_estate", r"real estate|realtor|broker|property|leasing"),
-    ("executive", r"\bceo\b|founder|owner|president|managing director|general manager|geschaftsf"
+    ("executive", r"\bceo\b|founder|owner|(?<!vice )(?<!vice-)president|managing director|general manager|geschaftsf"
                   r"|geschäftsf|gesch\.f|chief executive|\bpartner\b|principal|directeur g[ée]n[ée]ral"
                   r"|director general|amministratore delegato"),
 )
 # (seniority, pattern); the first match wins, a title matching none is `individual`.
 TITLE_SENIORITIES: tuple[tuple[str, str], ...] = (
-    ("c_level_founder", r"\bc[a-z]{1,2}o\b|chief|president|founder|owner|\bpartner\b"
+    ("c_level_founder", r"\bc[a-z]{1,2}o\b|chief|(?<!vice )(?<!vice-)president|founder|owner|\bpartner\b"
                         r"|managing director|geschäftsf|geschaftsf|amministratore delegato"
                         r"|directeur g[ée]n[ée]ral|director general"),
-    ("vp", r"\bvp\b|\bsvp\b|\bevp\b|vice president"),
+    ("vp", r"\bvp\b|\bsvp\b|\bevp\b|vice[ -]president"),
     ("head_director", r"\bhead\b|director|directeur|direttore|directora?\b|leiter|diretor"),
     ("manager_lead", r"manager|\blead\b|responsabile|gerente|supervisor|coordinator"),
 )
@@ -353,13 +353,25 @@ def _person_key(row: dict) -> str | None:
     return f"n:{name}|{_squash(_row_text(row, 'company', 'company_name', 'companyName'))}" if name else None
 
 
+# Legal-form words a company name may end in: `Stripe, Inc.` is the company at stripe.com.
+_LEGAL_FORMS = frozenset({
+    "inc", "incorporated", "llc", "llp", "ltd", "limited", "corp", "corporation", "co", "company",
+    "plc", "gmbh", "ag", "sa", "sas", "sarl", "srl", "spa", "bv", "nv", "ab", "as", "oy", "kk",
+    "pte", "pty", "pvt", "lda", "ltda"})
+
+
 def _company_match(row: dict, domain: str) -> bool:
+    """The row's company is the asked one: its domain is the asked domain or a subdomain of it,
+    or, for a row with no domain, its name minus a legal form is the domain's first label.
+    A longer name is another company (`MetaMask` is not meta.com, `Applebee's` not apple.com)."""
     row_domain = _host(_row_text(row, "company_domain", "domain", "company_website", "website"))
-    if row_domain and (row_domain == domain or row_domain.endswith("." + domain)):
-        return True
+    if row_domain:
+        return row_domain == domain or row_domain.endswith("." + domain)
     label = _squash(domain.split(".", 1)[0])
-    name = _squash(_row_text(row, "company", "company_name", "companyName", "organization"))
-    return bool(label and name) and (name == label or (len(label) >= 4 and name.startswith(label)))
+    words = re.findall(r"[^\W_]+", _row_text(row, "company", "company_name", "companyName", "organization").casefold())
+    while len(words) > 1 and words[-1] in _LEGAL_FORMS:
+        words.pop()
+    return bool(label) and "".join(words) == label
 
 
 def people_search_answer(asked: dict, output: dict) -> dict[str, str]:

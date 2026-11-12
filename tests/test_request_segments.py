@@ -35,6 +35,11 @@ from treg.domain.catalog.routing import segments as S
     ("Jefe de Ventas", "function", "sales", "individual", "non_en"),
     ("Head of Tax", "function", "finance", "head_director", "en"),
     ("HR Business Partner", "function", "hr_talent", "c_level_founder", "en"),
+    # a vice president is a VP however it is spelled, never a president
+    ("Vice President of Sales", "function", "sales", "vp", "en"),
+    ("Vice-President, Engineering", "multi", "engineering", "vp", "en"),
+    ("Vice President", "other", "other", "vp", "en"),
+    ("President", "leader", "executive", "c_level_founder", "en"),
     ("Partnerships Manager", "other", "other", "manager_lead", "en"),
     ("Astronaut", "other", "other", "individual", "en"),
     ("高级产品经理", "other", "other", "individual", "non_en"),
@@ -222,8 +227,10 @@ def test_answer_columns_record_counts_with_the_version_and_no_row_value():
     dumped = json.dumps(values).lower()
     for raw in ("ann", "acme", "berlin", "linkedin", "sales"):
         assert raw not in dumped
-    # without the question there is nothing to count against
-    assert ev.answer_columns(_contract(), {"people": _ROWS})["answer_values"] is None
+    # without the question the row counts still hold; only the checks against it are absent
+    assert ev.answer_columns(_contract(), {"people": _ROWS})["answer_values"] == {
+        "rows": "5", "rows_with_profile_url": "2", "rows_dup": "2",
+        "segments_version": S.PEOPLE_SEARCH.version}
     # a contract with no segment set counts nothing
     assert ev.answer_columns(catalog_store.load().contracts["people.email.find"], {"email": None},
                              None, asked)["answer_values"] is None
@@ -237,3 +244,40 @@ def test_a_direct_answer_counts_every_mapped_row_not_only_the_arenas_first_few()
     assert len(core["people"]) == 40 and core["people"][0]["profile_url"]
     counts = ev.answer_columns(_contract(), core, None, {"title": "Software Engineer"})["answer_values"]
     assert counts["rows"] == counts["rows_with_profile_url"] == counts["rows_title_match"] == "40"
+
+
+@pytest.mark.parametrize("row, match", [
+    ({"company": "Acme", "company_domain": "acme.example"}, True),
+    ({"company": "Acme", "company_domain": "eu.acme.example"}, True),
+    ({"company": "Stripe, Inc."}, False),
+    ({"company": "Acme, Inc."}, True),
+    ({"company": "ACME GmbH"}, True),
+    # a longer name is another company, and a row's own other domain outranks its name
+    ({"company": "Acmesoft"}, False),
+    ({"company": "Acme", "company_domain": "acmesoft.example"}, False),
+    ({"company": "Acme Platforms"}, False),
+    ({}, False),
+])
+def test_a_row_matches_the_asked_company_by_domain_or_its_exact_name(row, match):
+    assert S._company_match(row, "acme.example") is match
+
+
+def test_a_routed_child_records_the_filters_its_request_carries():
+    cat = catalog_store.load()
+    adapter = cat.adapters["crawl4ai.people.search"]
+    sent = {"company_domain": "acme.example", "title": "VP Sales", "country": "US",
+            "location": "Austin", "limit": 40}
+    body = json.dumps({"where": {"company": {"domain": "acme.example", "country": "us", "city": "Austin"},
+                                 "person": {"title": "VP Sales"}}, "limit": 40}).encode()
+    parent = ev.segment(_contract(), sent)[1]
+    child = ev.segment(_contract(), ev.vendor_identity(adapter, _contract(), (), body))[1]
+    keys = ("has_country", "country_iso2", "has_location", "location_kind", "limit_bucket",
+            "title_class", "title_function", "title_seniority")
+    assert {k: child[k] for k in keys} == {k: parent[k] for k in keys}
+    # the child records the spelling it sent the provider, not the caller's
+    assert parent["country_raw_case"] == "upper" and child["country_raw_case"] == "lower"
+
+
+def test_a_request_read_back_into_no_variant_records_no_request_categories():
+    _, meta, _ = ev.segment(_contract(), {"limit": 5})
+    assert meta == {}
