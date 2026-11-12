@@ -782,6 +782,12 @@ async def test_platform_model_selector_rejects_duplicate_json_keys(
         "/call/openrouter.x.google-veo-3-1-lite", content=body,
         headers={"content-type": "application/json"})
     assert response.status_code == 400
+    assert response.json()["detail"]["parameter"] == "body.model"
+    response = await clients.post(
+        "/call/openrouter.x.google-veo-3-1-lite",
+        content=body.replace(b"black-forest-labs/flux-3-video", b"google/veo-3.1-lite"),
+        headers={"content-type": "application/json"})
+    assert response.status_code == 400
     assert "repeats JSON field" in response.json()["detail"]
 
 
