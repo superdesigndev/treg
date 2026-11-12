@@ -531,9 +531,8 @@ async def create_invite(
     if body.landing is not None and not _LANDING_RE.match(body.landing):
         raise HTTPException(status_code=422, detail="landing must be a detail path like /app/skills/<name>")
     code = crypto.new_token()
-    # A SECOND secret for the email link only. The admin gets `code` back (out-of-band relay) so the
-    # code can never be a sign-in factor; `email_token` is never returned here — only the inbox sees
-    # it, which is what lets /auth/invite-signin treat it like an emailed OTP and mint a session.
+    # A second secret for the email link only, never returned here. Neither it nor `code` signs anyone
+    # in; /auth/invite-signin only prefills the invitee's address on the login page.
     email_token = crypto.new_token()
     invite = Invite(
         org_id=org_id, email=email, role=body.role,
