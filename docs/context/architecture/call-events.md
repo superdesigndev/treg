@@ -4,8 +4,10 @@ status: shipped
 sources:
   - src/treg/call_events.py
   - src/treg/application/call_events.py
+  - src/treg/domain/catalog/routing/segments.py
   - src/treg/catalog/contracts.yaml
   - tests/test_call_events.py
+  - tests/test_request_segments.py
 ---
 
 # Call events
@@ -99,7 +101,8 @@ The stream has no map type; they travel as JSON objects (`json` columns):
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), `calling_code` of an international input phone
-  (`44`, `1`), plus any filter declared `analytics: value`. A routed
+  (`44`, `1`), plus any filter declared `analytics: value`, plus the categories of the contract's
+  segment set (`segments:` on the contract, below). A routed
   parent also carries `route_order` and `route_retry_order` (what decided its order) and, with published rules on,
   `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
@@ -113,6 +116,38 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `domain_match` comparison is disclosed to callers on a routed email-find hit as
   `_treg.domain_match` / `X-Treg-Domain-Match` (see [catalog.md](catalog.md)); this event flag
   stays the analytics form.
+
+## Request segments
+
+A contract may name a segment set (`segments: people_search`), defined once in
+`domain/catalog/routing/segments.py`. Its function reads the identity and filters after derivation
+and returns categories, each a word from the set's fixed vocabulary; `segment` adds them to
+`input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
+vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
+in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
+keys. The same function serves the event and the route rule's match, so a measured segment and
+a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
+import them instead of keeping its own copy.
+
+`people_search` (version 1), each key always present unless noted:
+
+| Key | Vocabulary | From |
+| --- | --- | --- |
+| `title_class` | `none`, `leader`, `function`, `multi`, `other` | `multi`: several titles in one string (`,` `/` `\|` `;` ` or `); `leader`: function `executive` (CEO, founder, owner, president, managing director, partner, Geschäftsführer, directeur général, amministratore delegato, director general) |
+| `title_function` | `sales`, `marketing`, `product`, `data`, `engineering`, `it_security`, `hr_talent`, `finance`, `operations`, `customer`, `legal`, `design`, `education`, `healthcare`, `real_estate`, `executive`, `other`, `none` | first matching pattern in `TITLE_FUNCTIONS` |
+| `title_seniority` | `c_level_founder`, `vp`, `head_director`, `manager_lead`, `individual`, `none` | first matching pattern in `TITLE_SENIORITIES` |
+| `title_lang`, `q_lang` | `en`, `non_en`, `none` | a non-ASCII letter or a listed non-English role word |
+| `title_words` | `1-2`, `3-4`, `5+`, `none` | words in the title |
+| `has_country` | `true`, `false` | |
+| `country_iso2` | an upper-case ISO 3166 alpha-2 code; absent when the value names none | `us`, `US`, `United States`, `uk` -> `US`, `GB` |
+| `country_raw_case` | `upper`, `lower`, `name`, `other`, `none` | how the caller spelled it (`US`, `us`, `Germany`, `Us`) |
+| `has_location` | `true`, `false` | |
+| `location_kind` | `city`, `region`, `country_name`, `unknown`, `none` | short place lists and region words (`Greater`, `area`, `county`) |
+| `limit_bucket` | `<=5`, `6-10`, `11-25`, `>25`, `none` | the effective limit, the contract default when none is sent |
+| `q_words` | `1-3`, `4-8`, `9+`, `none` | |
+| `q_has_place` | `true`, `false`, `none` | a country, region or major city named in `q` |
+| `name_given` | `true`, `false` | `full_name` present after derivation |
+| `has_keywords` | `true`, `false` | |
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 

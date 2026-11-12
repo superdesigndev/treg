@@ -292,6 +292,16 @@ def _country_code(v: Any) -> str | None:
     return next((code for code, name in names.items() if name.lower() == key), None)
 
 
+def iso_country(v: Any) -> str | None:
+    """`TH`, `th`, `Thailand` or `uk` -> `th`/`gb`; None when the value names no ISO country."""
+    return _country_code(v)
+
+
+def country_names() -> frozenset[str]:
+    """Every ISO 3166 country's common name, lower-cased."""
+    return frozenset(n.lower() for n in _table("countries.json").values())
+
+
 def country_code(v: Any) -> Any:
     """`country_code('United Kingdom')` → 'gb': the ISO 3166 alpha-2 code, lowercase, for providers that
     take only a code. A value that names no ISO country passes through, so the provider still says why."""

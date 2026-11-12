@@ -45,6 +45,7 @@ from ..domain.arena import safe_output
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog.routing import paths as P
 from ..domain.catalog.routing.contracts import Adapter, Contract, canonical_identity
+from ..domain.catalog.routing.segments import SEGMENTERS
 
 SCHEMA_VERSION = 1
 ANALYTICS_MODES = ("key", "value", "skip")
@@ -231,6 +232,11 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
+    if (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+        # Categories only: the raw title, query, name or place never reaches the event. A value
+        # a filter already records (`country`) keeps its own spelling.
+        meta.update({k: v for k, v in segmenter.compute(identity).items() if k not in meta})
+        meta["segments_version"] = segmenter.version
     return ("+".join(variant) if variant else None), meta, norm
 
 
@@ -287,6 +293,9 @@ def segment_checks(contract: Contract) -> dict:
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value":
             checks[k] = lambda v: True
+    if (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+        for k, vocab in segmenter.vocab.items():
+            checks.setdefault(k, vocab if callable(vocab) else vocab.__contains__)
     return checks
 
 

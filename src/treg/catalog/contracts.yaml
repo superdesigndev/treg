@@ -444,6 +444,9 @@ contracts:
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
+    # Categories of the request (title class, function, seniority, country spelling, limit) that
+    # call events record and route rules may match on; never the title or query itself.
+    segments: people_search
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
