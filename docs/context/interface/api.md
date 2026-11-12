@@ -4,6 +4,8 @@ status: shipped
 sources:
   - src/treg/application/key_spend.py
   - src/treg/routers/media.py
+  - src/treg/page_media.py
+  - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
@@ -419,8 +421,13 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from
   `marketing/landing/*.md`; never hand-edit it. `/resources` is the only page linking them.
-- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images,
-  video and fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable.
+- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images and
+  fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable. Page videos
+  are not in Git: `web/media-videos.json` maps each `/media/` path to a content-addressed copy
+  under `site/` in the public media bucket (`ugc/tutorial.<digest>.mp4`, cached immutable), and
+  the path answers a 302 (`max-age=300`) to that copy's public URL (the pictures' base, or
+  `/media-files/`). `scripts/publish_page_media.py` uploads a new or edited video and records it;
+  a test fails when a page names a video the manifest lacks.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
