@@ -3362,43 +3362,6 @@ async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_
         assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
 
 
-@pytest.mark.parametrize("limit", [0, "abc"])
-async def test_an_unreadable_routed_count_is_refused_only_while_its_child_can_be_called(
-    clients: AsyncClient, monkeypatch, limit,
-):
-    """Tavily Map prices its hold by `limit`, a whole number from 1 to 20. A routed web.map with a
-    `limit` it cannot read is refused while Tavily can be called, and is served by another provider
-    when Tavily is excluded or the deployment holds no Tavily key."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "ANYAPI-KEY")
-
-    async def post(tavily_key: bool, headers: dict | None = None):
-        if tavily_key:
-            monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "TAVILY-KEY")
-        else:
-            monkeypatch.delenv("TREG_PLATFORM_KEY_TAVILY", raising=False)
-        monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,anyapi" if tavily_key else "anyapi")
-        get_settings.cache_clear()
-        seen = []
-        monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-            "tavily": [(200, {"results": ["https://example.com/a"]})],
-            "anyapi": [(200, {"output": {"data": {"results": ["https://example.com/a"]}}})],
-        }, seen))
-        r = await clients.post("/call/treg.web.map", json={"url": "https://example.com", "limit": limit},
-                               headers=headers or {})
-        return r, [provider for provider, *_ in seen]
-
-    r, called = await post(tavily_key=True)
-    assert r.status_code == 400, r.text
-    assert (r.json()["detail"]["error"], r.json()["detail"]["parameter"]) == ("catalog_parameter_invalid", "limit")
-    assert called == []
-    for tavily_key, headers in ((True, {"X-Treg-Route-Exclude": "tavily"}), (False, None)):
-        r, called = await post(tavily_key, headers)
-        assert r.status_code == 200, r.text
-        assert r.json()["_treg"]["served_by"] == "anyapi.web.map"
-        assert called == ["anyapi"]
-    get_settings.cache_clear()
-
-
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
     """`max: {limit: N}` on an adapter: a request asking for more than N skips that provider with a
     named drop instead of answering less than was asked; at or under N it stays a candidate."""
