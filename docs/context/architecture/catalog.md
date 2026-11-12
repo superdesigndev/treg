@@ -1222,20 +1222,23 @@ an invalid extra never disables the primary.
   `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
 - **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
   identity key to an expression over the identity and filters. people.search builds `q` as a
-  sentence (`people_text`): who (name, title, both, or "people"), "at <domain>", "in <location,
-  else the country's name>", so "Head of Tax at stripe.com in Ireland" or "people at stripe.com".
+  sentence (`people_text`): who (name, title, both, or "people"), "at <domain>", "in <location>,
+  <country's name>" (the country left out when the location says it), so "Head of Tax at
+  stripe.com in Ireland" or "people at stripe.com".
   `adapter_accepts` tries the caller's own fields first and builds the stand-in only when an
   adapter accepts none of them, so exa and parallel (`{q}` only) can answer a `{title}`,
   `{company_domain}` or `{company_domain, title}` request while every other provider's request is
   unchanged. The stand-in never enters the plan's identity; `to_upstream` fills it for the matched
   variant. The contract's `stand_in_carries` names the identity keys and filters the stand-in's
-  text holds; `unscoped` counts those as sent and `ignored_filters` as used (each only as a
-  string: the text skips a list). A key the expression reads but `stand_in_carries` leaves out
+  text may hold; `unscoped` counts one as sent and `ignored_filters` as used only when its value
+  changes this call's text (a list, or a country code with no name, does not, so strict filters
+  still drop the provider). A key the expression reads but `stand_in_carries` leaves out
   keeps its scoping guard, and the loader refuses a carried key the expression does not read.
   A stand-in covers none of the caller's keys in `rank`'s specificity, so its provider follows
   every provider that takes the caller's fields and enters earlier only through `prefer`,
   `prefer_when`, the prefer header or a route rule. exa and parallel also fold `company_domain`
-  into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once), and
+  into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
+  said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
   that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
   `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent

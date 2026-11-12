@@ -360,6 +360,7 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
     ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie"}, "Head of Tax at stripe.com in Ireland"),
     ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie", "location": "Dublin, Ireland"},
      "Head of Tax at stripe.com in Dublin, Ireland"),
+    ({"title": "CTO", "location": "Cambridge", "country": "us"}, "CTO in Cambridge, United States"),
     ({"company_domain": "stripe.com", "full_name": "Alice Cooper"}, "Alice Cooper at stripe.com"),
     ({"full_name": "Alice Cooper", "title": "CTO", "country": "de"}, "Alice Cooper, CTO in Germany"),
     ({"company_domain": "stripe.com", "title": "CFO, Head of Finance or Controller"},
@@ -398,6 +399,27 @@ def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
     assert ignored_filters(parallel, contract, built, {"company_domain", "title", "country"}) == ()
     written, _ = canonical_identity(contract, {"q": "CTO at stripe.com", "country": "ie"})
     assert ignored_filters(parallel, contract, written, {"q", "country"}) == ("country",)
+    # Carried only when the value reaches the text: beside a location too, but not as a code with no name
+    placed, _ = canonical_identity(contract, {"title": "CTO", "location": "Cambridge", "country": "us"})
+    assert ignored_filters(parallel, contract, placed, {"title", "location", "country"}) == ()
+    unnamed, _ = canonical_identity(contract, {"title": "CTO", "country": "zz"})
+    assert ignored_filters(parallel, contract, unnamed, {"title", "country"}) == ("country",)
+
+
+def test_a_domain_is_said_only_as_the_whole_host():
+    """A caller's `q` naming another host keeps the asked domain in the text, so the company scope
+    is not silently lost."""
+    from treg.domain.catalog.routing import paths as P
+    assert P.evaluate("phrase(q, d)", {"q": "CEOs at example.com", "d": "example.com"}) == "CEOs at example.com"
+    assert P.evaluate("phrase(q, d)", {"q": "CEOs at Example.com.", "d": "example.com"}) == "CEOs at Example.com."
+    for q in ("CEOs at example.com.au", "CEOs at sub.example.com", "CEOs at my-example.com"):
+        assert P.evaluate("phrase(q, d)", {"q": q, "d": "example.com"}) == f"{q} example.com"
+    cat = catalog_store.load()
+    asked, _ = canonical_identity(cat.contracts["people.search"],
+                                  {"q": "CEOs at example.com.au", "company_domain": "example.com"})
+    assert cat.adapters["exa.people.search"].to_upstream(asked, ("q",))[1]["query"] == "CEOs at example.com.au example.com"
+    assert cat.adapters["parallel.people.search"].to_upstream(asked, ("q",))[1]["objective"] == \
+        "CEOs at example.com.au example.com"
 
 
 @pytest.fixture
