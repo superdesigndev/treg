@@ -153,3 +153,17 @@ async def test_bad_limits_are_refused(clients, platform_on):
                                 json={"daily_spend_cap_micro": -2})).status_code == 422
     settings = (await clients.get(f"/orgs/{org_id}/settings")).json()
     assert settings["member_daily_spend_cap_micro"] is None
+
+
+async def test_a_call_refused_for_dollars_does_not_use_a_call_slot(clients, platform_on):
+    org_id = await _org_id(clients)
+    agent = await _agent(clients, org_id, "rep-4", daily_call_cap=2, daily_spend_cap_micro=EP_MICRO)
+    assert (await _call(clients, agent["token"], 1)).status_code == 200
+    for n in (2, 3, 4):
+        r = await _call(clients, agent["token"], n)
+        assert r.json()["detail"]["error"] == "member_spend_cap_reached"
+    await clients.patch(f"/orgs/{org_id}/members/{agent['user_id']}/spend-cap",
+                        json={"daily_spend_cap_micro": -1})
+    assert (await _call(clients, agent["token"], 5)).status_code == 200, "slot 2 is still free"
+    r = await _call(clients, agent["token"], 6)
+    assert r.status_code == 429 and "daily usage limit" in r.json()["detail"]

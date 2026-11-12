@@ -1,5 +1,7 @@
 """Framework-neutral authorization for a resolved proxied call."""
 
+import logging
+
 from ... import oauth_providers
 from ... import sandbox as demo_sandbox
 from ...infra.db import session_maker
@@ -9,6 +11,8 @@ from ...domain.governance import usage as usage_policy
 from ...domain.identity.access import Caller, _role_at_least
 from ...models import Tool
 from .types import AuthorizationFailed
+
+log = logging.getLogger("treg.call")
 
 
 async def authorize_call(
@@ -46,6 +50,19 @@ async def authorize_call(
                 raise AuthorizationFailed(
                     "public_demo_rate_limited", status_code=429, detail=exc.detail) from exc
         await db.commit()
+
+
+async def return_daily_slot(caller: Caller) -> None:
+    """Undo `authorize_call`'s call-count slot for a call refused by the member's spend limit, so
+    a member stopped by dollars does not also burn their call count. Best-effort."""
+    if caller.membership.daily_call_cap < 0 or demo_sandbox.is_sandbox(caller.org):
+        return
+    try:
+        async with session_maker() as db:
+            await usage_policy.return_daily_slot(db, caller.membership.id)
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 - the refusal stands either way
+        log.warning("daily-cap slot return failed for membership %s: %s", caller.membership.id, exc)
 
 
 async def enforce_public_demo_limit(client_ip: str) -> None:

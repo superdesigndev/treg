@@ -67,6 +67,18 @@ async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int) -> boo
     return result.rowcount == 1
 
 
+async def return_daily_slot(db: AsyncSession, membership_id: int) -> None:
+    """Give back one slot `take_daily_slot` admitted today, for a call a later gate refused before
+    anything was spent. Only today's counter moves, and never below 0. Does not commit."""
+    today = utcnow_naive().date()
+    await db.execute(
+        update(Membership)
+        .where(Membership.id == membership_id, Membership.calls_today_day == today,
+               Membership.calls_today > 0)
+        .values(calls_today=Membership.calls_today - 1)
+    )
+
+
 async def seed_counter(db: AsyncSession, membership: Membership, user_email: str) -> None:
     """Start the counter from today's journal - called when a cap is set on a member who was
     unlimited until now. Only capped members are counted on the call path, so without this a

@@ -44,7 +44,7 @@ from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
 from . import admission, keyslots
-from .authorize import authorize_call, enforce_public_demo_limit
+from .authorize import authorize_call, enforce_public_demo_limit, return_daily_slot
 from .evidence import (
     _ERROR_BODY_SLICE,
     _ERROR_CALLER_BODY_MAX,
@@ -1435,6 +1435,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
                                        _ERROR_RESPONSE_MAX)))
+            if exc.kind == "member_spend_cap_reached":
+                await return_daily_slot(caller)
             raise
     body = b""
     task_answer: bytes | None = None

@@ -674,6 +674,10 @@ gates. An unlimited member writes no rows, so spend made before a limit applied 
 against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
 the hub's own steps are.
 
+The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
+this limit refuses the call, the call service gives that slot back (`usage.return_daily_slot`), so a
+member stopped by dollars does not also lose calls. The first limit reached stops the member.
+
 The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
 clears it), one member's figure with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
 mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
