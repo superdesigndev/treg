@@ -1625,7 +1625,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
-    row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
+    row reserve for an expensive model. These pins never apply to a team's own key, which meets only
+    the declarations every tier is held to.
     """
     if ep.get("id") == "leadocean.people.search":
         limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []

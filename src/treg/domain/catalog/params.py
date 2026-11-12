@@ -184,7 +184,6 @@ def refusal(spec: Mapping | None, value: object, *, text: bool = False) -> str |
     return _range_reason(kind, spec, read)
 
 
-
 _BOUNDS = {"min": ("integer", "number"), "max": ("integer", "number"), "minLength": ("string",),
            "maxLength": ("string",), "minItems": ("array",), "maxItems": ("array",)}
 
