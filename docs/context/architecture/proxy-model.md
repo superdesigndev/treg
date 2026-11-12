@@ -318,11 +318,11 @@ child's adapter-built request through these checks (`_query_refusal`, `_body_ref
   `endpoint_id`, `parameter` (`queryParams.limit`, `body.urls`, `body.0.limit` in a task array),
   `rule` (`type`, `repeat`, `enum`, `range`, `length`, `array_length`, `items:<rule>`), `tier` and
   `road`, never the value. `road` is `catalog` (a direct call), `routed` (a routed call's own
-  identity or filter field; `tier` is `routed`), `routed_plan` (a child the routed plan would drop,
-  at the tier the plan gave it) or `routed_child` (that child's own request when it is sent). `tier`
-  is the one the call resolved to, or `none` when another rule refused the call first. Counting
-  `catalog` and `routed` lines counts the calls refuse mode would answer 400; `routed_plan` lines
-  count children it would leave out of a plan.
+  identity or filter field; `tier` is `routed`) or `routed_plan` (a child the routed plan would
+  drop, at the tier the plan gave it; that child's own request writes no second line when it is
+  sent). `tier` is the one the call resolved to, or `none` when another rule refused the call
+  first. Counting `catalog` and `routed` lines counts the calls refuse mode would answer 400;
+  `routed_plan` lines count children it would leave out of a plan.
 - **`refuse`**: a 400 `catalog_parameter_invalid` naming the parameter and the declared rule, never
   the value, and nothing is charged; the routed plan drops the child as `needs <parameter>: <rule>`.
 

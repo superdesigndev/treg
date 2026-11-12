@@ -1531,16 +1531,21 @@ def _enforce_strict_body(ep: dict, body: bytes) -> None:
         if valid and isinstance(maximum, int):
             valid = len(value) <= maximum
         if not valid:
+            bounded = isinstance(minimum, int), isinstance(maximum, int)
             expected = (
-                f"between {minimum} and {maximum}" if minimum != maximum
-                else f"exactly {minimum}"
+                (f"between {minimum} and {maximum}" if minimum != maximum else f"exactly {minimum}")
+                if bounded == (True, True)
+                else f"at least {minimum}" if bounded[0]
+                else f"at most {maximum}" if bounded[1]
+                else None
             )
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "parameter": f"body.{name}",
-                    "message": f"{ep['id']} requires {expected} item in body.{name}",
+                    "message": (f"{ep['id']} requires {expected} item in body.{name}" if expected
+                                else f"{ep['id']} requires an array in body.{name}"),
                 },
             )
         if ep.get("body_allowlist") and isinstance(value, list):
@@ -2356,10 +2361,12 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     )
 
 
-async def _resolve_marketplace_call(ep: dict, *, road: str = "catalog", **resolution) -> MarketplaceCall:
+async def _resolve_marketplace_call(ep: dict, *, log_would_refuse: bool = True,
+                                    **resolution) -> MarketplaceCall:
     """Resolve a catalog call (`_resolve_catalog_tier`). In log mode (`TREG_PARAM_CHECK`) each
     declared parameter the check would refuse is relayed as before and logged once, with the tier
-    the call resolved to (`none` when it did not resolve)."""
+    the call resolved to (`none` when it did not resolve); a routed child's own check is not logged,
+    its plan already wrote the line."""
     would: list[tuple[str, str]] = []
     tier = "none"
     try:
@@ -2367,8 +2374,8 @@ async def _resolve_marketplace_call(ep: dict, *, road: str = "catalog", **resolu
         tier = call.tier
         return call
     finally:
-        for parameter, rule in would:
-            would_refuse(ep["id"], parameter, rule, tier, road)
+        for parameter, rule in would if log_would_refuse else ():
+            would_refuse(ep["id"], parameter, rule, tier, "catalog")
 
 
 async def _resolve_catalog_tier(
@@ -2660,7 +2667,7 @@ async def resolve_marketplace_target(
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
     request_headers=None,
     authorization_method: str = "",
-    road: str = "catalog",
+    log_would_refuse: bool = True,
 ) -> MarketplaceCall:
     if oauth_providers.is_paused(ep.get("provider")):
         raise provider_paused(ep["provider"], ep["id"])
@@ -2682,7 +2689,7 @@ async def resolve_marketplace_target(
             resolve_call=resolve_call,
             request_headers=request_headers,
             authorization_method=authorization_method,
-            road=road,
+            log_would_refuse=log_would_refuse,
         )
 
 

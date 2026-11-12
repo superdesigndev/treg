@@ -1001,7 +1001,7 @@ async def test_a_child_whose_request_breaks_its_declaration_is_dropped_not_calle
 
 async def test_in_log_mode_the_child_is_kept_and_its_drop_is_logged(clients, monkeypatch, caplog):
     """In log mode the plan keeps the child and sends its request as before; the drop it would have
-    made, and the child's own check, each write one line naming the parameter and never the value."""
+    made writes one line naming the parameter and never the value, and the child's own check none."""
     caplog.set_level(logging.INFO, logger="treg.param_check")
     response, seen = await _route_tavily_over_its_max_results(clients, monkeypatch, "log", {
         "tavily": [(200, {"results": [{"title": "Example", "url": "https://example.com", "content": "x"}],
@@ -1017,8 +1017,6 @@ async def test_in_log_mode_the_child_is_kept_and_its_drop_is_logged(clients, mon
     assert lines == [
         'catalog_parameter_would_refuse {"endpoint_id":"tavily.web.search","parameter":"body.max_results",'
         '"rule":"range","tier":"platform","road":"routed_plan"}',
-        'catalog_parameter_would_refuse {"endpoint_id":"tavily.web.search","parameter":"body.max_results",'
-        '"rule":"range","tier":"platform","road":"routed_child"}',
     ]
 
 

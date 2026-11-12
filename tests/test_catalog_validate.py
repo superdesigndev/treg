@@ -53,6 +53,27 @@ def test_catalog_body_required_arrays_remain_required():
     assert exc.value.detail["parameter"] == "body.items"
 
 
+@pytest.mark.parametrize(("bounds", "value", "message"), [
+    ({}, "a=b", "example.items requires an array in body.cookies"),
+    ({"minItems": 1}, [], "example.items requires at least 1 item in body.cookies"),
+    ({"maxItems": 1}, ["a", "b"], "example.items requires at most 1 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 2}, [], "example.items requires between 1 and 2 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 1}, [], "example.items requires exactly 1 item in body.cookies"),
+])
+def test_a_strict_array_refusal_names_only_the_bounds_it_declares(bounds, value, message):
+    endpoint = {
+        "id": "example.items",
+        "method": "POST",
+        "body_allowlist": True,
+        "input": {"body": {"cookies": {"type": "array", **bounds}}},
+    }
+
+    with pytest.raises(ResolutionFailed) as exc:
+        resolve._enforce_catalog_body(endpoint, json.dumps({"cookies": value}).encode())
+    assert exc.value.status_code == 400
+    assert exc.value.detail["message"] == message
+
+
 def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
     base = {
         "type": "per_success", "value": 5, "currency": "credit", "per": 1,
