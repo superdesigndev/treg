@@ -330,7 +330,8 @@ class OrgPatchIn(BaseModel):
 
 class OrgSettingsIn(BaseModel):
     daily_cap_micro: int | None = None
-    # The daily spend limit every member and agent gets (not owners or admins). null clears it.
+    # The daily spend limit every member and agent gets (not owners or admins). Setting it, or
+    # null to clear it, also clears each member's and agent's own figure: it applies to all.
     member_daily_spend_cap_micro: int | None = None
     platform_overflow: bool | None = None  # False = opt out of the overflow relay
     archive: bool | None = None  # False = opt out of the archive (archive.md, "Opting out")
@@ -1614,6 +1615,7 @@ async def set_org_settings(
         _check_spend_cap(body.member_daily_spend_cap_micro, "member_daily_spend_cap_micro",
                          allow_none_limit=False)
         org.member_daily_spend_cap_micro = body.member_daily_spend_cap_micro
+        await budget_policy.reset_member_spend_caps(db, org_id)
     if "platform_overflow" in sent and body.platform_overflow is not None:
         org.platform_overflow_disabled = not body.platform_overflow
     if "archive" in sent and body.archive is not None:

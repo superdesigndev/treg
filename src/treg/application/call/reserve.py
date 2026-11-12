@@ -5,7 +5,7 @@ import random
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -185,14 +185,17 @@ async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSes
             "message": "cannot verify your daily spend limit right now - retry shortly",
         }) from exc
     if spent + add_micro > cap:
-        raise ReservationFailed("member_spend_cap_reached", status_code=429, detail={
+        resets_at = _day_start_utc() + timedelta(days=1)
+        wait_s = max(1, int((resets_at - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()))
+        raise ReservationFailed("member_spend_cap_reached", status_code=429, retry_after_s=wait_s, detail={
             "error": "member_spend_cap_reached",
             "message": (f"you have reached your daily spend limit on this team "
-                        f"(${ledger.usd(spent):g} of ${ledger.usd(cap):g} today; this call needs "
-                        f"~${ledger.usd(add_micro):g}). It resets at 00:00 UTC. Ask a team admin to "
-                        f"raise it, or use your own key: treg connections connect"),
+                        f"(${ledger.usd(spent):.2f} of ${ledger.usd(cap):.2f} today). It resets at "
+                        f"00:00 UTC, in {wait_s // 3600} h {wait_s % 3600 // 60} min. Ask a team "
+                        f"admin to raise your limit."),
             "spent_today_micro": spent, "daily_spend_cap_micro": cap,
             "estimated_cost_micro": add_micro,
+            "resets_at": resets_at.isoformat() + "Z", "retry_after_s": wait_s,
         })
     return caller.membership.id
 

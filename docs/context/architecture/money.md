@@ -668,7 +668,8 @@ When a limit applies, `_platform_reserve` passes `member_id` to `ledger.reserve_
 writes one `MemberSpend` row in the balance transaction. The row follows its hold like `TagSpend`:
 estimate in flight, consumed figure at settle (restamped to settle time), deleted on release. The
 check reads `ledger.member_spent_since` (one indexed aggregate) and compares it with the charged
-estimate. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
+estimate. The refusal carries `resets_at` (the next 00:00 UTC) and a matching `Retry-After`, so an
+agent waits instead of retrying. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
 calls can overshoot by their estimates, and the org balance and platform daily cap stay the hard
 gates. An unlimited member writes no rows, so spend made before a limit applied does not count
 against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
@@ -679,7 +680,9 @@ this limit refuses the call, the call service gives that slot back (`usage.retur
 member stopped by dollars does not also lose calls. The first limit reached stops the member.
 
 The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
-clears it), one member's figure with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
+clears it). Setting it means "this, for all": `budget_policy.reset_member_spend_caps` clears every
+member's and agent's own figure in the same transaction; owners and admins keep theirs. One
+member's figure is set with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
 mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
 
 ## Checking the work (`reconcile.py`)

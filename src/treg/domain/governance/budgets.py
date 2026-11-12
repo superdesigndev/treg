@@ -3,13 +3,13 @@
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...caller_metadata import _MAX_BUDGET_DIMS, _META_KEY_RE
 from ...config import get_settings
-from ...models import Org, TagBudget
+from ...models import Membership, Org, TagBudget
 from ..identity.access import Caller
 
 
@@ -117,6 +117,22 @@ def member_daily_spend_cap(membership, org: Org) -> int | None:
         return None
     team = org.member_daily_spend_cap_micro
     return None if team is None or team < 0 else int(team)
+
+
+async def reset_member_spend_caps(db: AsyncSession, org_id: int) -> int:
+    """Put every member and agent of the team back on the team default; returns how many changed.
+
+    Setting the team default means "this, for all": each member's or agent's own figure (an amount
+    or -1) is cleared. Owners and admins keep theirs, because the team default never applies to
+    them. Does not commit.
+    """
+    result = await db.execute(
+        update(Membership)
+        .where(Membership.org_id == org_id,
+               Membership.role.not_in(MEMBER_SPEND_EXEMPT_ROLES),  # type: ignore[union-attr]
+               Membership.daily_spend_cap_micro.is_not(None))  # type: ignore[union-attr]
+        .values(daily_spend_cap_micro=None))
+    return int(result.rowcount or 0)
 
 
 async def _tag_budget(db: AsyncSession, org_id: int, dim: str, val: str,

@@ -61,6 +61,11 @@ async def test_team_default_limits_members_and_agents_but_not_the_owner(clients,
     detail = refused.json()["detail"]
     assert detail["error"] == "member_spend_cap_reached"
     assert detail["spent_today_micro"] == EP_MICRO and detail["daily_spend_cap_micro"] == EP_MICRO
+    # An agent learns when to try again instead of retrying until midnight.
+    assert detail["resets_at"].endswith("T00:00:00Z")
+    assert 0 < int(refused.headers["Retry-After"]) == detail["retry_after_s"] <= 86400
+    assert "Ask a team admin to raise your limit" in detail["message"]
+    assert "connections connect" not in detail["message"]
 
     owner_token = clients.headers["X-Treg-Token"]
     for n in (3, 4):
@@ -167,3 +172,21 @@ async def test_a_call_refused_for_dollars_does_not_use_a_call_slot(clients, plat
     assert (await _call(clients, agent["token"], 5)).status_code == 200, "slot 2 is still free"
     r = await _call(clients, agent["token"], 6)
     assert r.status_code == 429 and "daily usage limit" in r.json()["detail"]
+
+
+async def test_setting_the_team_default_replaces_member_limits_but_not_an_owners(clients, platform_on):
+    org_id = await _org_id(clients)
+    owner_id = await _owner_id(clients, org_id)
+    capped = await _agent(clients, org_id, "rep-5", daily_spend_cap_micro=5 * EP_MICRO)
+    free = await _agent(clients, org_id, "rep-6", daily_spend_cap_micro=-1)
+    await clients.patch(f"/orgs/{org_id}/members/{owner_id}/spend-cap",
+                        json={"daily_spend_cap_micro": 7 * EP_MICRO})
+
+    r = await clients.patch(f"/orgs/{org_id}/settings", json={"member_daily_spend_cap_micro": EP_MICRO})
+    assert r.status_code == 200, r.text
+    for agent in (capped, free):
+        row = await _member(clients, org_id, agent["user_id"])
+        assert row["daily_spend_cap_micro"] is None
+        assert row["effective_daily_spend_cap_micro"] == EP_MICRO
+    owner = await _member(clients, org_id, owner_id)
+    assert owner["daily_spend_cap_micro"] == 7 * EP_MICRO, "the default never applies to an owner"
