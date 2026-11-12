@@ -38,7 +38,7 @@ func Main(argv []string, stderr io.Writer) int {
 	env := commands.NewEnv(cfg, json, org)
 	background := len(argv) > 0 && strings.HasPrefix(argv[0], "__")
 	if !background {
-		go telemetry.Flush(context.Background(), api.RegistryURL(cfg), api.Transport())
+		go telemetry.Claim()(context.Background(), api.RegistryURL(cfg), api.Transport())
 		if exe, err := update.Executable(); err == nil {
 			update.RemoveLeftover(exe)
 			if len(argv) == 0 || argv[0] != "update" {
