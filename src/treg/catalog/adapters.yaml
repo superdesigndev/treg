@@ -3747,10 +3747,11 @@ adapters:
     # Each returned person uses a search record, so larger requests use another routed provider.
     max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
-    # country takes ISO alpha-2 codes; city is a comma-separated list of city keywords, so only
-    # the place's first part goes (a whole "London, United Kingdom" would OR two keywords).
+    # country takes ISO alpha-2 codes. city holds city keywords only, comma-separated (OR): a
+    # location in one part goes there; one in several parts ("London, United Kingdom", "Oregon,
+    # United States") has no faithful field, so it is reported ignored rather than cut to a city.
     in_expr: {queryParams.limit: limit, queryParams.country: "upper(country_code(country))",
-              queryParams.city: "first_part(location)"}
+              queryParams.city: "one_place(location)"}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
     # The person sits under profile_data, the current job under contact_data: without name and url a

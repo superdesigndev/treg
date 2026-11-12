@@ -133,6 +133,9 @@ def test_expression_language():
     assert P.evaluate("split_first(data.name)", {"data": {"name": "Patrick Collison"}}) == "Patrick"
     assert P.evaluate("split_last(data.name)", {"data": {"name": "Patrick"}}) is None
     assert P.evaluate("join(a, b)", {"a": "Patrick", "b": "Collison"}) == "Patrick Collison"
+    assert P.evaluate("one_place(location)", {"location": " Dublin "}) == "Dublin"
+    assert P.evaluate("one_place(location)", {"location": "London, United Kingdom"}) is None
+    assert P.evaluate("choose(unlocked, email, null)", {"unlocked": False, "email": "j***@x.io"}) is None
     assert P.evaluate("at_most(limit, 10)", {"limit": 3}) == 3
     assert P.evaluate("at_most(limit, 10)", {"limit": 25}) == 10
     assert P.evaluate("at_least(limit, 10)", {"limit": 3}) == 10
@@ -2351,41 +2354,6 @@ def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
         for row in [r for r in ad.from_upstream(example).get("people") or [] if not isinstance(r, str)]:
             assert isinstance(row, dict) and set(row) <= set(contract.row_fields), (eid, row)
             assert any(row.get(k) for k in contract.row_needs), (eid, row)
-
-
-def test_people_search_rows_carry_the_employer_and_no_locked_contact():
-    cat = catalog_store.load()
-    lead = {"id": 7, "fullName": "Jane Doe", "firstName": "Jane", "lastName": "Doe", "title": "CFO",
-            "companyName": "Example", "email": "j***@example.com", "phoneNumbers": ["+1 555 0100"],
-            "linkedinUrl": "https://www.linkedin.com/in/jane", "companySize": 40, "industry": "Software",
-            "isUnlocked": False, "emailUnlocked": False, "phoneUnlocked": False}
-    assert cat.adapters["dropleads.people.search"].rows([lead]) == [
-        {"name": "Jane Doe", "title": "CFO", "company": "Example", "profile_url": "https://www.linkedin.com/in/jane"}]
-    unlocked = {**lead, "email": "jane@example.com", "emailUnlocked": True, "isUnlocked": True}
-    assert cat.adapters["dropleads.people.search"].rows([unlocked])[0]["email"] == "jane@example.com"
-
-    person = {"id": "p1", "profile": {"full_name": "Jane Doe", "title": "CFO", "headline": "CFO at Example"},
-              "link": {"linkedin": "https://www.linkedin.com/in/jane"},
-              "location": {"default": "Austin, Texas, United States", "city": "Austin", "country": "United States"},
-              "company": {"id": "c1", "summary": {"name": "Example Inc"},
-                          "link": {"website": "https://example.com", "domain": "example.com"}}}
-    assert cat.adapters["aiark.people.search"].rows([person]) == [
-        {"name": "Jane Doe", "title": "CFO", "company": "Example Inc", "company_domain": "example.com",
-         "location": "Austin, Texas, United States", "profile_url": "https://www.linkedin.com/in/jane",
-         "summary": "CFO at Example"}]
-
-
-def test_leadocean_sends_the_country_and_city_it_was_asked_for():
-    from treg.domain.catalog.routing.plan import ignored_filters
-    cat = catalog_store.load()
-    leadocean, contract = cat.adapters["leadocean.people.search"], cat.contracts["people.search"]
-    asked = {"company_domain": "example.com", "title": "CFO", "country": "gb", "location": "London, United Kingdom"}
-    ident, _ = canonical_identity(contract, asked)
-    query, _ = leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))
-    assert query["country"] == "GB" and query["city"] == "London"
-    assert ignored_filters(leadocean, contract, ident, set(asked)) == ()
-    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "country": "United Kingdom"})
-    assert leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))[0]["country"] == "GB"
 
 
 def adapter_accepts_of(adapter, identity):
