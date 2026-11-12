@@ -193,6 +193,30 @@ test("a tool drawer's primary button is the next step to an agent using the tool
   await expect(drawer.locator('.td-stats')).toContainText('your account')
 })
 
+test("a tool drawer names each parameter's type in words", async ({ page }) => {
+  await signIn(page, 'param-types')
+  await page.goto('/app/marketplace/tavily')
+  await page.locator('.pl-tool', { has: page.getByText('Search the open web', { exact: true }) }).click()
+  const type = (name: string) => page.getByRole('complementary', { name: 'Tool details' })
+    .locator('.td-params dt', { has: page.getByText(name, { exact: true }) }).locator('span')
+  await expect(type('include_answer')).toHaveText('boolean or string')
+  await expect(type('include_domains')).toHaveText('array of string')
+  await expect(type('query')).toHaveText('string')
+})
+
+test("Try it uploads the parts a tool's verified request sends as files", async ({ page }) => {
+  await signIn(page, 'try-upload')
+  await page.goto('/app/marketplace/fishaudio')
+  await page.getByRole('button', { name: /create private voice/ }).click()
+  await page.getByRole('complementary', { name: 'Tool details' }).getByRole('button', { name: 'Try it', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: /fishaudio\.voices\.create/ })
+  await dialog.getByRole('button', { name: 'CLI', exact: true }).click()
+  await expect(dialog.locator('pre').last()).toContainText('--upload voices=@<reference-audio>')
+  await expect(dialog.locator('pre').last()).toContainText('--form title=')
+  await dialog.getByRole('button', { name: 'API', exact: true }).click()
+  await expect(dialog.locator('pre').last()).toContainText('-F "voices=@<reference-audio>"')
+})
+
 test('a provider key saved as a secret is a connection: listed on Connections, not among Secrets', async ({ page }) => {
   await signIn(page, 'named-key')
   await page.goto('/app#secrets')

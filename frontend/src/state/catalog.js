@@ -294,6 +294,13 @@ endpointConnectLabel(e){
       add('headers','Headers', i.headers);
       add('body','Body', i.body, i.bodyType);
       return out; },
+// A declared type in a few words, the way `treg catalog get` says it: `array of string`,
+    // `boolean or string`, `string (url)`.
+    paramType(spec){
+      const t=spec&&spec.type; if(!t) return '';
+      const inner=t==='array' && spec.items ? this.paramType(spec.items) : '';
+      const label=Array.isArray(t) ? t.join(' or ') : inner ? 'array of '+inner : String(t);
+      return spec.format ? label+' ('+spec.format+')' : label; },
 // Examples arrive as real JSON values, so an array or object has to be stringified rather than
     // rendered as "[object Object]".
     fmtExample(v){ return (typeof v==='object') ? JSON.stringify(v) : String(v); },

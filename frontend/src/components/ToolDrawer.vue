@@ -69,7 +69,7 @@ export default {
         <p class="td-loc">{{s.label}}<span v-if="s.type">{{s.type}}</span></p>
         <dl class="td-params">
           <div v-for="p in s.rows" :key="p.name">
-            <dt><code>{{p.name}}</code><span v-if="p.type">{{p.type}}</span><em v-if="p.required">required</em></dt>
+            <dt><code>{{p.name}}</code><span v-if="paramType(p)">{{paramType(p)}}</span><em v-if="p.required">required</em></dt>
             <dd v-if="p.note || p.example!=null">{{p.note}}<code v-if="p.example!=null" class="td-ex">{{fmtExample(p.example)}}</code></dd>
           </div>
         </dl>
