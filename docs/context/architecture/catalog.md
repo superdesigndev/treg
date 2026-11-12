@@ -133,8 +133,9 @@ reseller, OpenRouter, Replicate) share the per-model key and sit on one comparis
 - Under the `AI generation` category, platform means the generated-media modality. Text-to-video and
   image-to-video stay separate because their inputs and prices differ.
 - `purchased_credit_only: true` on a platform makes every metered call on it payable from purchased
-  credit only; free credit does not cover it (money.md, "Purchased-only holds"). `video-gen`
-  declares it. The rule follows the endpoint's `platform`, not its id, so new rows inherit it.
+  credit only; free credit does not cover it (money.md, "Purchased-only holds"). No platform sets
+  it today; `video-gen` carries it as `false`, and setting it to `true` restores the gate. The rule
+  follows the endpoint's `platform`, not its id, so new rows inherit it.
 
 ### `<service>.yaml`
 
