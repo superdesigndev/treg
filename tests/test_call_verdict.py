@@ -85,7 +85,7 @@ def test_adapter_verdict_maps_only_name_allowed_words():
 def test_contract_verdict_must_map_into_its_words():
     with pytest.raises(ValueError, match="verdict"):
         C.parse_contracts({"contracts": {"x.verify": {
-            "identity": [{"email": "str"}], "output": {"status": {"type": "str"}},
+            "identity": [{"email": "string"}], "output": {"status": {"type": "string"}},
             "verdict": {"from": "status", "words": ["valid"], "map": {"ok": "fine"}}}}})
 
 

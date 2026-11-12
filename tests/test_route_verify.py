@@ -158,11 +158,11 @@ async def test_the_check_wins_over_a_verified_claim_it_does_not_confirm(
 
 def test_disagree_advice_needs_a_verified_output():
     from treg.domain.catalog.routing import contracts as C
-    base = {"identity": [{"email": "str"}], "output": {"email": {"type": "str"}, "verified": {"type": "bool"}}}
+    base = {"identity": [{"email": "string"}], "output": {"email": {"type": "string"}, "verified": {"type": "boolean"}}}
     check = {"endpoint": VERIFY, "field": "email"}
     with pytest.raises(ValueError, match="verified"):
         C.parse_contracts({"contracts": {"x.find": {
-            **base, "output": {"email": {"type": "str"}}, "check": {**check, "disagree_advice": "x"}}}})
+            **base, "output": {"email": {"type": "string"}}, "check": {**check, "disagree_advice": "x"}}}})
     c = C.parse_contracts({"contracts": {"x.find": {**base, "check": {**check, "disagree_advice": "x"}}}})
     assert c["x.find"].check.disagree_advice == "x"
 

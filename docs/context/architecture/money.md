@@ -784,7 +784,7 @@ row.
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
 - **The request it can price.** On every tier, before anything is held, `price_call` refuses with
   `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
-  type is not a list (an undeclared one is not judged), and a `reserve.rows` count the request
+  type is not an array (an undeclared one is not judged), and a `reserve.rows` count the request
   carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
   takes the default). The refusal names the parameter, never its value.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads

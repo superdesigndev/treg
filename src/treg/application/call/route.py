@@ -235,7 +235,7 @@ def _other_subject(contract, identity: dict, core: dict) -> str | None:
     identity field the contract also returns), else None. A renamed profile reports its new handle,
     a wrong match someone else's: `_complete_check` tells them apart by a second provider."""
     for k in contract.output:
-        if k in contract.identity_types and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
+        if k in contract.identity_specs and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
             if _subject(k, core[k]) != _subject(k, identity[k]):
                 return _subject(k, core[k])
     return None
@@ -484,17 +484,17 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
-    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    Required array fields are `[]`, never `null`: the catalog types `results` / `people` / … as arrays,
     and callers (and the miss rule `results == []`) treat null as a broken response rather than an
-    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    empty one. The list's companion `count` (integer) is `0`; every other scalar — including other integers
     such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
     """
     out = {}
     for k, spec in contract.output.items():
         t = (spec or {}).get("type")
-        if t == "list":
+        if t == "array":
             out[k] = []
-        elif t == "int" and k == "count":
+        elif t == "integer" and k == "count":
             out[k] = 0
         else:
             out[k] = None
@@ -505,7 +505,7 @@ def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
     for k in contract.required_output:
-        if (contract.output.get(k) or {}).get("type") == "list":
+        if (contract.output.get(k) or {}).get("type") == "array":
             return k
     return None
 

@@ -125,7 +125,7 @@ def _contract(tool_id: str) -> tuple[list[str], str | None] | None:
         return None
     fields = list(contract.output)
     list_field = next((f for f, spec in contract.output.items()
-                       if (spec or {}).get("type") == "list" and (spec or {}).get("required")), None)
+                       if (spec or {}).get("type") == "array" and (spec or {}).get("required")), None)
     return fields, list_field
 
 

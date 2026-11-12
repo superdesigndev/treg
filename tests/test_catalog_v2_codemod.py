@@ -143,7 +143,7 @@ def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_er
     assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
 
 
-@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
+@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array", "items": {"type": "string"}}])
 def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
     change = codemod.rewrite({"id": "demo.x", "input": {"body": {"domain": spec, "roles": {"type": "string"}}},
                               "cost": {"type": "per_result", "value": 1, "reserve": {"entities": {}},

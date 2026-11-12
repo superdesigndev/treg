@@ -383,6 +383,21 @@ def answer_bar(routing: dict | None) -> dict:
             if contract.get("complete") else None}
 
 
+def type_label(spec: dict) -> str | None:
+    """A declared type in a few words: `array of string`, `boolean or object`, `string (url)`."""
+    declared = spec.get("type")
+    if isinstance(declared, list):
+        label = " or ".join(str(t) for t in declared)
+    elif not declared:
+        return None
+    else:
+        label = str(declared)
+        items = spec.get("items")
+        if declared == "array" and isinstance(items, dict) and (inner := type_label(items)):
+            label = f"array of {inner}"
+    return f"{label} ({spec['format']})" if spec.get("format") else label
+
+
 def params_view(inp: dict) -> dict:
     """What to send, by location, required first. A nested object becomes dotted names; prose that
     three or more params share is said once, in `params_shared`."""
@@ -395,7 +410,7 @@ def params_view(inp: dict) -> dict:
             if isinstance(props, dict) and props:
                 walk(props, where, f"{prefix}{name}.")
                 continue
-            rows.append({"in": where, "name": f"{prefix}{name}", "type": str(spec.get("type") or "") or None,
+            rows.append({"in": where, "name": f"{prefix}{name}", "type": type_label(spec),
                          "required": bool(spec.get("required")), "_prose": (spec.get("note") or "").strip(),
                          "_spec": spec})
 
@@ -415,13 +430,18 @@ def params_view(inp: dict) -> dict:
         prose = r.pop("_prose")
         if prose and prose not in shared:
             parts.append(prose)
+        items = spec.get("items") if isinstance(spec.get("items"), dict) else {}
         if isinstance(spec.get("enum"), list) and spec["enum"]:
             parts.append("one of: " + " | ".join(as_sent(v) for v in spec["enum"]))
+        if isinstance(items.get("enum"), list) and items["enum"]:
+            parts.append("each one of: " + " | ".join(as_sent(v) for v in items["enum"]))
         if "default" in spec:
             parts.append(f"default {as_sent(spec['default'])}")
-        lo, hi = spec.get("min"), spec.get("max")
-        if lo is not None or hi is not None:
-            parts.append(f"range {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
+        for word, low, high in (("range", "min", "max"), ("length", "minLength", "maxLength"),
+                                ("items", "minItems", "maxItems")):
+            lo, hi = spec.get(low), spec.get(high)
+            if lo is not None or hi is not None:
+                parts.append(f"{word} {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
         r["note"] = " · ".join(p.rstrip(".") if i else p for i, p in enumerate(parts) if p) or None
     return {"params_note": inp.get("note"),
             "params_shared": [{"params": ", ".join(names), "note": prose} for prose, names in shared.items()] or None,
