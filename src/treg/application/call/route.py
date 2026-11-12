@@ -1359,7 +1359,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                   **({"verification": _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
                                   **({"dropped": plan.dropped} if plan.dropped else {})}}
-            _summarize(parent, hit=False, tried_count=len(tried))
+            # The event reads the empty answer the caller got, so its counts say 0 rather than
+            # nothing (`rows: 0` on a people search that found no one).
+            _summarize(parent, hit=False, tried_count=len(tried), output=body_out["output"])
             _audit_parent(parent, ep, 200, spent, audit_client)
             headers = {"X-Treg-Providers-Tried": ",".join(t.provider for t in tried), "X-Treg-Route-Outcome": "miss",
                        **({"X-Treg-Route-Capped": "true"} if cost_capped else {})}
@@ -1484,7 +1486,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"ignored_filters": ignored} if ignored else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
-    _summarize(parent, served_by=served, tried_count=len(tried), output=output,
+    _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)

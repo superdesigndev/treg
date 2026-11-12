@@ -171,7 +171,8 @@ import them instead of keeping its own copy.
 A set may also count how an answer's rows fit the question; `people_search` writes these to
 `answer_values` as decimal strings, beside `segments_version`. Nothing from a row leaves, only the
 counts. A direct call is counted over every row its adapter mapped, in the contract's row shape,
-not the Arena's shorter reading; a routed parent over its assembled answer. A check the question
+not the Arena's shorter reading; a routed parent over the answer it returned, an empty one
+included, so a routed miss records `rows: 0`. A check the question
 gives nothing to judge by is absent, not zero; a request that cannot be read back still records
 `rows`, `rows_with_profile_url` and `rows_dup`.
 
