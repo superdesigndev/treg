@@ -1008,7 +1008,11 @@ adapters:
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
     out: {people: items, count: totalItems}
     miss: "items == []"
-    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url}
+    # The employer is the experience the search matched (else the current one), as a company
+    # object or a bare companyName.
+    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url,
+          company: "coalesce(get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.name'), get(flagged(experiences, 'isMatched', 'isCurrent'), 'companyName'))",
+          company_domain: "get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.domain')"}
   hunter.companies.emails:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
@@ -3399,6 +3403,8 @@ adapters:
 
   # Search returns profile URLs; full profile enrichment remains a direct provider option.
   enrichlayer.people.search:
+    # A routed row would be a bare profile URL at three credits; cheaper children cover every variant.
+    route: false
     # name, role and company are independent query filters: send every one the caller gave.
     accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title], [full_name],
               [title, company_domain], [company_domain], [title]]
