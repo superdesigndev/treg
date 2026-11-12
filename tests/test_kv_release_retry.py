@@ -32,7 +32,14 @@ async def local_redis():
     store = kv.RedisStore(url)
     key = f"treg-test:release-retry:{uuid4().hex}"
     try:
-        assert await store.ping()
+        # CI scheduling can exhaust a single PING's budget. Retry only readiness; the operations
+        # under test keep their production deadlines.
+        try:
+            async with asyncio.timeout(5):
+                while not await store.ping():
+                    await asyncio.sleep(0.05)
+        except TimeoutError as exc:
+            raise AssertionError("disposable Redis did not become ready within the setup deadline") from exc
         yield store, key
     finally:
         await store._client.delete(key)
