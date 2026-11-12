@@ -129,15 +129,15 @@ endpoints:
     test_request: {body: {url: "https://example.com", format: md}}
     cost:
       type: per_success
-      value: 0.15
+      value: 0.25
       currency: credit
       per: 1
       unit: page
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-08'
+      checked: '2026-11-12'
       confidence: verified
-      note: "treg's account price: 0.15 credits per page at every effort (archived, plain, PDF, browser, hard); with proxy: isp 0.30, residential 0.60 (also a country with no isp addresses). Blocked and failed pages are free. The x-c4-cost header settles the charge (0.150 observed live 2026-10-08 at efforts 0, 1, 2 and 3; 0.30 isp and 0.60 residential observed live 2026-10-17 for gb)."
+      note: "treg's account price: 0.25 credits per page at the archived, plain, PDF and browser efforts, 3.70 at the hard effort; proxy prices (isp, residential) as before. Blocked and failed pages are free. The hold is one page at 0.25; the x-c4-cost header settles the actual charge, a hard page included."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt
@@ -343,15 +343,15 @@ endpoints:
     test_request: {queryParams: {q: "best crm software", country: us}}
     cost:
       type: per_success
-      value: 0.15
+      value: 0.38
       currency: credit
       per: 1
       unit: page
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-09'
+      checked: '2026-11-12'
       confidence: verified
-      note: "treg's account price: 0.15 credits per Google page of 10 results, so num=30 costs 0.45; a 4xx or 5xx is free. The hold is one page; the x-c4-cost header settles the actual charge (0.150 for num=10 and 0.450 for num=30 observed live 2026-10-09)."
+      note: "treg's account price: 0.38 credits per Google page of 10 results, so num=30 costs 1.14; a 4xx or 5xx is free. The hold is one page; the x-c4-cost header settles the actual charge."
     verified: '2026-10-09'
     added: '2026-10-09'
     docs_url: https://crawl4ai.com/llms.txt
@@ -380,17 +380,17 @@ endpoints:
     test_request: {body: {urls: ["https://example.com"], format: md}}
     cost:
       type: per_success
-      value: 3.75
-      fallback: {value: 3.75, note: "25 URLs at the flat page price, when the stream ends without its summary line."}
+      value: 6.25
+      fallback: {value: 6.25, note: "25 URLs at the 0.25 page price, when the stream ends without its summary line."}
       currency: credit
       unit: call
       settle: usage
       usage: {path: summary.cost, unit: credit}
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-05'
+      checked: '2026-11-12'
       confidence: verified
-      note: "Each URL costs like a scrape (a flat 0.15 credits on treg's account) and its line carries that cost; the closing summary line carries the total, which settles the call. The 3.75-credit hold is 25 URLs at that price."
+      note: "Each URL costs like a scrape on treg's account (0.25 credits, 3.70 at the hard effort) and its line carries that cost; the closing summary line carries the total, which settles the call. The 6.25-credit hold is 25 URLs at 0.25."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt
@@ -417,18 +417,18 @@ endpoints:
     test_request: {body: {urls: ["https://example.com"]}}
     cost:
       type: per_success
-      value: 75
-      fallback: {value: 75, note: "500 URLs at the job's flat 0.15 credits per URL, when the finished job reports no usage.cost."}
+      value: 125
+      fallback: {value: 125, note: "500 URLs at the job's 0.25 credits per URL, when the finished job reports no usage.cost."}
       currency: credit
       unit: call
       settle: usage
       usage: {path: usage.cost, unit: credit}
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-05'
+      checked: '2026-11-12'
       confidence: verified
-      display: {unit: URL, value: 0.15}
-      note: "A job costs a flat 0.15 credits per URL on treg's account (usage.unit_cost 0.150, observed 2026-10-08); the finished job's usage.cost (after refunds for failed URLs) settles the call. The 75-credit hold is 500 URLs. Job ids may name their region (j_sin-…) and can be read from any region."
+      display: {unit: URL, value: 0.25}
+      note: "A job costs 0.25 credits per URL on treg's account, 3.70 for a URL that needs the hard effort; the finished job's usage.cost (after refunds for failed URLs) settles the call. The 125-credit hold is 500 URLs. Job ids may name their region (j_sin-…) and can be read from any region."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt
@@ -505,18 +505,18 @@ endpoints:
     test_request: {body: {url: "https://example.com/", depth: 1, max_pages: 3}}
     cost:
       type: per_success
-      value: 75.15
-      fallback: {value: 75.15, note: "500 pages at 0.15 credits plus the job's unit, when the finished job reports no usage.cost."}
+      value: 125.15
+      fallback: {value: 125.15, note: "500 pages at 0.25 credits plus the job's unit, when the finished job reports no usage.cost."}
       currency: credit
       unit: call
       settle: usage
       usage: {path: usage.cost, unit: credit}
       source: observed
       source_url: https://crawl4ai.com/llms.txt
-      checked: '2026-10-11'
+      checked: '2026-11-12'
       confidence: verified
-      display: {unit: page, value: 0.15, variable: true}
-      note: "Each page fetched at treg's scrape price of 0.15 credits; the finished job's usage.cost settles the call (0.150 observed 2026-10-11 for a one-page job). The 75.15-credit hold is the 500-page maximum."
+      display: {unit: page, value: 0.25, variable: true}
+      note: "Each page fetched at treg's scrape price (0.25 credits, 3.70 at the hard effort); the finished job's usage.cost settles the call. The 125.15-credit hold is the 500-page maximum."
     verified: '2026-10-11'
     added: '2026-10-11'
     docs_url: https://crawl4ai.com/llms.txt
@@ -1970,15 +1970,15 @@ endpoints:
           example: coffee
     cost:
       type: per_success
-      value: 0.15
+      value: 0.23
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-12'
       confidence: verified
-      note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.23 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -3852,15 +3852,15 @@ endpoints:
           example: nasa
     cost:
       type: per_success
-      value: 0.35
+      value: 0.64
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-12'
       confidence: verified
-      note: 'treg''s account price: 0.35 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.64 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -4917,15 +4917,15 @@ endpoints:
     strict_query: true
     cost:
       type: per_success
-      value: 0.5
+      value: 1.15
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-31'
+      checked: '2026-11-12'
       confidence: verified
-      note: 'treg''s account price: 0.5 credits per company found; a 404 (Lead has no such company) is free.
+      note: 'treg''s account price: 1.15 credits per company found; a 404 (Lead has no such company) is free.
         The x-c4-cost header settles the actual charge.'
     miss:
       status: 404
@@ -4953,8 +4953,8 @@ endpoints:
       (department: marketing, sales, engineering,
       product, finance, hr, operations, legal, it, design, executive; seniority: owner_founder, c_level, vp, director,
       manager; decision_role for decision makers), by a person''s name (`where.person.name`), by company country,
-      city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), one
-      price a call at any limit. An empty answer is free. About 0.2 s.'
+      city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), each
+      person returned priced. An empty answer is free. About 0.2 s.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4973,17 +4973,17 @@ endpoints:
           required: false
           note: default 10, up to 100
     cost:
-      type: per_success
-      value: 0.5
+      type: per_result
+      value: 0.35
       currency: credit
       per: 1
-      unit: call
+      unit: record
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-31'
+      checked: '2026-11-12'
       confidence: verified
-      note: 'treg''s account price: 0.5 credits per answer with at least one person, whatever the limit; an empty
-        answer is free. The x-c4-cost header settles the actual charge.'
+      note: 'treg''s account price: 0.35 credits per person returned; an empty answer is free. The x-c4-cost header
+        settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
       body:

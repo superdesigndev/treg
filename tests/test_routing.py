@@ -3734,6 +3734,7 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     reported_zero = {
         "blitzapi.companies.search": "fair_usage.records_used; empty pages use zero records",
         "blitzapi.people.search": "fair_usage.records_used; empty pages use zero records",
+        "crawl4ai.people.search": "x-c4-cost header; an empty answer charges 0",
         "crustdata.companies.jobs.search": "X-Credits-Used header; empty results consume none",
         "crustdata.companies.search": "X-Credits-Used header; charged per company returned",
         "crustdata.people.search": "X-Credits-Used header; charged per profile returned",
