@@ -129,7 +129,7 @@ def test_a_contract_without_a_segment_set_records_none():
 
 
 def test_a_contract_naming_an_unknown_segment_set_does_not_load():
-    contract = {"identity": [{"q": "str"}], "output": {"rows": {"type": "list"}}, "miss": "rows == []",
+    contract = {"identity": [{"q": "string"}], "output": {"rows": {"type": "array"}}, "miss": "rows == []",
                 "segments": "nope"}
     with pytest.raises(ValueError, match="segments names one of"):
         C.parse_contracts({"contracts": {"x.search": contract}})
@@ -312,7 +312,7 @@ def _sent(adapter, variant, field):
 def _mixed(adapter, contract, field):
     """Every expression sending the field also names another field (`coalesce(location, country)`,
     a `join`), so the value sent cannot say which field it came from."""
-    names = set(contract.identity_types) | set(contract.filters or {})
+    names = set(contract.identity_specs) | set(contract.filters or {})
     exprs = [e for e in (adapter.in_expr or {}).values()
              if isinstance(e, str) and re.search(rf"\b{field}\b", e)]
     return bool(exprs) and all(set(re.findall(r"[a-z_][a-z0-9_]*", e)) & (names - {field}) for e in exprs)
@@ -336,7 +336,7 @@ def test_every_field_a_child_sends_reads_back_in_its_callers_category(endpoint_i
         assert _category(field, given[field]) == _category(field, _CALLER[field]), field
     # every identity field read back is the caller's, whatever the adapter sent it through, unless
     # a mixed expression built it (exa's `q` joins the title and place into the query it sends)
-    for field in set(given) & set(contract.identity_types):
+    for field in set(given) & set(contract.identity_specs):
         if not _mixed(adapter, contract, field):
             assert _category(field, given[field]) == _category(field, _CALLER[field]), field
 

@@ -478,9 +478,9 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                      f"(filters: value or skip), got {mode!r}")
         for k, spec in (c.get("filters") or {}).items():
             if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
-                    spec.get("type") != "int" or type(spec.get("min")) is not int or spec["min"] < 1
+                    spec.get("type") != "integer" or type(spec.get("min")) is not int or spec["min"] < 1
                     or ("max" in spec and (type(spec["max"]) is not int or spec["max"] < spec["min"]))):
-                raise ValueError(f"contract {cap}: filters.{k} range needs type int, a whole min of at least 1 "
+                raise ValueError(f"contract {cap}: filters.{k} range needs type integer, a whole min of at least 1 "
                                  f"and, when declared, a whole max of at least min, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),

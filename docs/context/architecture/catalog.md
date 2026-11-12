@@ -1094,13 +1094,14 @@ request (a number, or a string of ASCII digits) rather than letting it answer le
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
-before any candidate is held. A filter with its own range is checked against it first; where the
-child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
-is not reached. A child whose request, as its adapter builds it for this identity, breaks the
-child's own declarations (the check it runs before a hold) is then dropped from the plan as
-`needs <child parameter>: <rule>`, never the value, rather than answer a 400 the router reads as
-the caller's fault; with none left the routed call answers 422 `route_no_candidate`. `verified` is
-filled only from an explicit mailbox deliverability verdict, never a lookup-success flag.
+before any candidate is held. A filter's own range is read by the parameter check before planning
+([catalog schema](catalog-schema.md#parameter-types)); where the child's adapter also declares that
+`max`, a larger value drops the child instead. A child whose request, as its adapter builds it for
+this identity, breaks the child's own declarations (the check it runs before a hold) is then dropped
+from the plan as `needs <child parameter>: <rule>`, never the value, rather than answer a 400 the
+router reads as the caller's fault; with none left the routed call answers 422
+`route_no_candidate`. `verified` is filled only from an explicit mailbox deliverability verdict,
+never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that
