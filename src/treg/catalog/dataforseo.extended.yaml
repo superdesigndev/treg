@@ -4767,7 +4767,7 @@ endpoints:
         note: <em>number of adults</em><br>optional field<br>if you don't specify this field, two adults will be used by default<br>example:<br><code>1</code>
       children:
         type: array
-        items: {type: string}
+        items: {type: integer}
         required: false
         note: <em>number and age of children</em><br>optional field<br>if you don't specify this field, no children will be included in the search;<p>set the following value if you want to include one 14-years-old child:<br><code>[14]</code><br>set the following value if you want to include one 13-years-old child
       load_prices_by_dates:
@@ -4869,7 +4869,7 @@ endpoints:
         example: 2
       children:
         type: array
-        items: {type: string}
+        items: {type: integer}
         required: false
         note: 'number and age of children optional field if you don’t specify this field, no children will be included in the search; age of child can be from 0 to 17; note that you can specify up to 6 persons including both adults and children set the following value if you want to include one 14-year-old child: '
         example:
