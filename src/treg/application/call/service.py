@@ -1435,7 +1435,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
                                        _ERROR_RESPONSE_MAX)))
-            if exc.kind == "member_spend_cap_reached":
+            if exc.kind in ("member_spend_cap_reached", "member_spend_cap_unavailable"):
                 await return_daily_slot(caller)
             raise
     body = b""

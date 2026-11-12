@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.create_table(
         "memberspend",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("org_id", sa.Integer(), sa.ForeignKey("org.id"), nullable=False),
+        sa.Column("org_id", sa.Integer(), nullable=False),
         sa.Column("membership_id", sa.Integer(), nullable=False),
         sa.Column("hold_id", sa.String(), nullable=False),
         sa.Column("settled", sa.Boolean(), nullable=False),

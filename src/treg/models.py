@@ -1203,8 +1203,9 @@ class MemberSpend(SQLModel, table=True):
                       Index("ix_memberspend_org_created", "org_id", "created_at"))
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
-    # Not a foreign key: removing a member leaves today's rows for the ledger to reconcile against.
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and removing
+    # a member leaves today's rows for the ledger to reconcile against.
+    org_id: int
     membership_id: int
     hold_id: str = Field(index=True)
     settled: bool = Field(default=False)

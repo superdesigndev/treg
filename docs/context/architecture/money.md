@@ -16,6 +16,7 @@ sources:
   - src/treg/infra/slack.py
   - tests/test_topup_reconcile.py
   - tests/test_member_spend_cap.py
+  - src/treg/alembic/versions/0102_member_daily_spend_cap.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -676,8 +677,9 @@ against it. Own-key calls never reach it. The hub seller's price hold is not att
 the hub's own steps are.
 
 The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
-this limit refuses the call, the call service gives that slot back (`usage.return_daily_slot`), so a
-member stopped by dollars does not also lose calls. The first limit reached stops the member.
+this limit refuses the call, or cannot be checked, the call service gives that slot back
+(`usage.return_daily_slot`), so a member stopped by dollars, or retrying an unavailable check, does
+not also lose calls. `memberspend` has no foreign keys; team deletion clears it with the team. The first limit reached stops the member.
 
 The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
 clears it). Setting it means "this, for all": `budget_policy.reset_member_spend_caps` clears every

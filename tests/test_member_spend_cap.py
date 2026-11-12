@@ -139,14 +139,19 @@ async def test_unlimited_members_write_no_spend_rows_and_a_release_removes_its_r
 async def test_the_limit_refuses_when_spend_cannot_be_read(clients, platform_on, monkeypatch):
     org_id = await _org_id(clients)
     await clients.patch(f"/orgs/{org_id}/settings", json={"member_daily_spend_cap_micro": 1_000_000})
-    agent = await _agent(clients, org_id, "rep-3")
+    agent = await _agent(clients, org_id, "rep-3", daily_call_cap=1)
+    real = ledger.member_spent_since
 
     async def _boom(db, membership_id, since):
         raise RuntimeError("ledger unavailable")
 
     monkeypatch.setattr(ledger, "member_spent_since", _boom)
-    r = await _call(clients, agent["token"], 1)
-    assert r.status_code == 429 and r.json()["detail"]["error"] == "member_spend_cap_unavailable"
+    for n in (1, 2, 3):
+        r = await _call(clients, agent["token"], n)
+        assert r.status_code == 429 and r.json()["detail"]["error"] == "member_spend_cap_unavailable"
+    # Retrying the unavailable refusal did not use up the member's one call a day.
+    monkeypatch.setattr(ledger, "member_spent_since", real)
+    assert (await _call(clients, agent["token"], 4)).status_code == 200
 
 
 async def test_bad_limits_are_refused(clients, platform_on):
