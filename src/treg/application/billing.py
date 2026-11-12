@@ -2424,6 +2424,8 @@ async def start_checkout(org_id: int, plan: str, *, price_id: str, base: str, em
             api_key=settings.stripe_secret_key, mode="subscription", customer=customer_id,
             idempotency_key=f"enterprise-checkout-{checkout_token}", expires_at=now + 1800,
             line_items=[{"quantity": 1, "price": price_id}],
+            allow_promotion_codes=slug in {value.strip() for value in
+                settings.enterprise_sso_promo_org_slugs.split(",") if value.strip()},
             metadata=metadata, subscription_data={"metadata": metadata},
             success_url=f"{base}/app?sso=success#billing",
             cancel_url=f"{base}/app?sso=cancelled#billing")

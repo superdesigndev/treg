@@ -622,6 +622,7 @@ class Settings(BaseSettings):
     # Price keeps that plan out of Checkout; no per-checkout products are created.
     enterprise_sso_only_price_id: str = ""
     enterprise_sso_bundle_price_id: str = ""
+    enterprise_sso_promo_org_slugs: str = ""
     # Optional deployment-specific checkout floors. Keep vendor costs and commercial policy out
     # of the portable defaults; hosted deployments set these alongside their Stripe Prices.
     enterprise_sso_only_min_price_usd: int = 0
