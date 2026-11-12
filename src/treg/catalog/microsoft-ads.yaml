@@ -79,7 +79,7 @@ endpoints:
     input:
       body:
         AdGroupId: {type: integer, required: true, example: 1122334455}
-        AdTypes: {type: array, required: true, note: "which ad types to return — e.g. [\"ResponsiveSearch\",\"ExpandedText\",\"ResponsiveAd\",\"Product\"]. An ad type you do not ask for is simply absent from the result", example: ["ResponsiveSearch"]}
+        AdTypes: {type: array, items: {type: string}, required: true, note: "which ad types to return — e.g. [\"ResponsiveSearch\",\"ExpandedText\",\"ResponsiveAd\",\"Product\"]. An ad type you do not ask for is simply absent from the result", example: ["ResponsiveSearch"]}
         ReturnAdditionalFields: {type: string, required: false}
       bodyType: json
       note: "responsive search ads return Headlines[] and Descriptions[] as asset-link arrays rather than flat strings, so the creative text is nested a level deeper than in older ad types"

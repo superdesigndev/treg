@@ -339,11 +339,13 @@ endpoints:
       bodyType: json
       body:
         domains:
-          type: array[string]
+          type: array
+          items: {type: string}
           required: false
           example: [example.com]
         companyNames:
-          type: array[string]
+          type: array
+          items: {type: string}
           required: false
           example: [Example]
       note: Supply domains and/or companyNames; the combined maximum is 50.

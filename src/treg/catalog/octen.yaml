@@ -23,19 +23,19 @@ endpoints:
       body:
         query: {type: string, required: true, example: "Octen API documentation"}
         count: {type: integer, required: false, default: 5, min: 1, max: 100}
-        include_domains: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
-        include_text: {type: "array[string]", required: false}
-        exclude_text: {type: "array[string]", required: false}
+        include_domains: {type: array, items: {type: string}, required: false}
+        exclude_domains: {type: array, items: {type: string}, required: false}
+        include_text: {type: array, items: {type: string}, required: false}
+        exclude_text: {type: array, items: {type: string}, required: false}
         time_basis: {type: string, required: false, default: auto, enum: [auto, published, crawled]}
         time_range: {type: string, required: false, enum: [day, week, month, year, d, w, m, y]}
         start_time: {type: string, required: false}
         end_time: {type: string, required: false}
-        language: {type: "array[string]", required: false}
+        language: {type: array, items: {type: string}, required: false}
         highlight: {type: object, required: false, note: "Optional enable and max_tokens controls; highlights do not incur the full-content surcharge."}
         full_content: {type: object, required: false, note: "Set enable=true for full page content. Only returned full-content results beyond 10 cost extra."}
         format: {type: string, required: false, default: text, enum: [markdown, text]}
-        safesearch: {type: string, required: false, default: strict, enum: [off, strict]}
+        safesearch: {type: string, required: false, default: strict, enum: ["off", strict]}
         include_images: {type: boolean, required: false, default: false}
     test_request: {body: {query: "Octen API documentation", count: 1}}
     cost:
@@ -101,13 +101,13 @@ endpoints:
       body:
         query: {type: string, required: true, example: "Octen AI"}
         count: {type: integer, required: false, default: 5, min: 1, max: 100}
-        include_domains: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        include_domains: {type: array, items: {type: string}, required: false}
+        exclude_domains: {type: array, items: {type: string}, required: false}
         time_basis: {type: string, required: false, default: auto, enum: [auto, published, crawled]}
         time_range: {type: string, required: false, enum: [day, week, month, year, d, w, m, y]}
         start_time: {type: string, required: false}
         end_time: {type: string, required: false}
-        language: {type: "array[string]", required: false}
+        language: {type: array, items: {type: string}, required: false}
         highlight: {type: object, required: false}
         full_content: {type: object, required: false, note: "Set enable=true for full page content. Only returned full-content results beyond 10 cost extra."}
         subjects: {type: object, required: false, note: "Subject grouping is enabled by default; accepts enable, count, and max_sub_news."}
@@ -139,7 +139,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
         mode: {type: string, required: false, default: standard, enum: [standard, advanced, auto]}
         query: {type: string, required: false, note: "Return intent-focused highlights instead of complete page content."}
         max_age_seconds: {type: integer, required: false, default: 86400, min: 300, max: 31536000}

@@ -93,7 +93,7 @@ endpoints:
         keywordSeed: {type: object, required: false, note: "{\"keywords\":[\"coffee beans\"]} — up to 20 seeds", example: {"keywords": ["coffee beans"]}}
         urlSeed: {type: object, required: false, note: "{\"url\":\"https://example.com\"} — ideas from a page's content"}
         siteSeed: {type: object, required: false, note: "{\"site\":\"example.com\"} — ideas from a whole domain"}
-        geoTargetConstants: {type: array, required: false, note: "e.g. [\"geoTargetConstants/2840\"] = United States; omit for worldwide", example: ["geoTargetConstants/2840"]}
+        geoTargetConstants: {type: array, items: {type: string}, required: false, note: "e.g. [\"geoTargetConstants/2840\"] = United States; omit for worldwide", example: ["geoTargetConstants/2840"]}
         language: {type: string, required: false, note: "e.g. \"languageConstants/1000\" = English", example: "languageConstants/1000"}
         includeAdultKeywords: {type: boolean, required: false, example: false}
         keywordPlanNetwork: {type: string, required: false, note: "GOOGLE_SEARCH | GOOGLE_SEARCH_AND_PARTNERS (default)", example: "GOOGLE_SEARCH"}
@@ -125,8 +125,8 @@ endpoints:
       pathParams:
         customer_id: {type: string, required: true, note: "digits only", example: "6186675831"}
       body:
-        keywords: {type: array, required: true, note: "up to 10,000 keyword strings in one request", example: ["coffee beans", "espresso machine"]}
-        geoTargetConstants: {type: array, required: false, example: ["geoTargetConstants/2840"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "up to 10,000 keyword strings in one request", example: ["coffee beans", "espresso machine"]}
+        geoTargetConstants: {type: array, items: {type: string}, required: false, example: ["geoTargetConstants/2840"]}
         language: {type: string, required: false, example: "languageConstants/1000"}
         keywordPlanNetwork: {type: string, required: false, example: "GOOGLE_SEARCH"}
         historicalMetricsOptions: {type: object, required: false, note: "{\"yearMonthRange\":{\"start\":{\"year\":2025,\"month\":\"AUGUST\"},\"end\":{\"year\":2026,\"month\":\"JULY\"}}} for the monthly series"}
@@ -158,7 +158,7 @@ endpoints:
       pathParams:
         customer_id: {type: string, required: true, note: "digits only", example: "6186675831"}
       body:
-        operations: {type: array, required: true, note: "[{\"update\":{\"resourceName\":\"customers/6186675831/campaignBudgets/123\",\"amountMicros\":\"50000000\"},\"updateMask\":\"amountMicros\"}] — updateMask is mandatory and lists exactly the fields being changed", example: [{"update": {"resourceName": "customers/6186675831/campaignBudgets/123", "amountMicros": "50000000"}, "updateMask": "amountMicros"}]}
+        operations: {type: array, items: {type: object}, required: true, note: "[{\"update\":{\"resourceName\":\"customers/6186675831/campaignBudgets/123\",\"amountMicros\":\"50000000\"},\"updateMask\":\"amountMicros\"}] — updateMask is mandatory and lists exactly the fields being changed", example: [{"update": {"resourceName": "customers/6186675831/campaignBudgets/123", "amountMicros": "50000000"}, "updateMask": "amountMicros"}]}
         validateOnly: {type: boolean, required: false, note: "true dry-runs the mutation and changes nothing — ALWAYS send this first; the adwords scope has no read-only mode, so validateOnly is the only safety rail", example: true}
       bodyType: json
       note: "amountMicros is the DAILY budget in micros of the account currency: $1 = 1000000. Get the budget resourceName from a GAQL query on campaign_budget first. Spends real money on the next impression — treg's audit log records the call, but the change is immediate and irreversible"

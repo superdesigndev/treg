@@ -101,7 +101,7 @@ endpoints:
       queryParams:
         source: {type: string, required: true, note: "regional database code — selects which country's index answers", example: "us"}
       body:
-        keywords: {type: "array[string]", required: true, note: "1 to 5,000 keywords", example: ["seo platform"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "1 to 5,000 keywords", example: ["seo platform"]}
         sort: {type: string, required: false, note: "volume | cpc | difficulty | competition"}
         sort_order: {type: string, required: false, note: "asc | desc"}
         history_from: {type: string, required: false, note: "first month of volume history, YYYY-MM-DD"}

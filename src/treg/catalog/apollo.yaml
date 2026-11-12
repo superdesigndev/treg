@@ -92,14 +92,14 @@ endpoints:
     summary: "Search Apollo's 200M+ contacts by title, seniority, company, location or tech (free)"
     input:
       queryParams:
-        "person_titles[]": {type: "array[string]", required: false, note: "job titles, matched loosely (OR across the list)", example: ["head of marketing"]}
-        "person_seniorities[]": {type: "array[string]", required: false, note: "owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"}
-        "person_locations[]": {type: "array[string]", required: false, note: "where the PERSON lives", example: ["California, US"]}
-        "organization_locations[]": {type: "array[string]", required: false, note: "where their COMPANY's HQ is"}
-        "q_organization_domains_list[]": {type: "array[string]", required: false, note: "restrict to employees of these company domains; max 1,000", example: ["apollo.io"]}
-        "organization_num_employees_ranges[]": {type: "array[string]", required: false, note: "employee-count bands as 'min,max' strings", example: ["1,10"]}
-        "contact_email_status[]": {type: "array[string]", required: false, note: "verified, unverified, likely to engage, unavailable"}
-        "currently_using_any_of_technology_uids[]": {type: "array[string]", required: false, note: "tech-stack filter, e.g. salesforce"}
+        "person_titles[]": {type: array, items: {type: string}, required: false, note: "job titles, matched loosely (OR across the list)", example: ["head of marketing"]}
+        "person_seniorities[]": {type: array, items: {type: string}, required: false, note: "owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"}
+        "person_locations[]": {type: array, items: {type: string}, required: false, note: "where the PERSON lives", example: ["California, US"]}
+        "organization_locations[]": {type: array, items: {type: string}, required: false, note: "where their COMPANY's HQ is"}
+        "q_organization_domains_list[]": {type: array, items: {type: string}, required: false, note: "restrict to employees of these company domains; max 1,000", example: ["apollo.io"]}
+        "organization_num_employees_ranges[]": {type: array, items: {type: string}, required: false, note: "employee-count bands as 'min,max' strings", example: ["1,10"]}
+        "contact_email_status[]": {type: array, items: {type: string}, required: false, note: "verified, unverified, likely to engage, unavailable"}
+        "currently_using_any_of_technology_uids[]": {type: array, items: {type: string}, required: false, note: "tech-stack filter, e.g. salesforce"}
         "revenue_range[min]": {type: integer, required: false, note: "annual revenue floor, integer with no symbols"}
         "revenue_range[max]": {type: integer, required: false, note: "annual revenue ceiling"}
         page: {type: integer, required: false, note: "1-based; max 500 pages", example: 1}
@@ -152,13 +152,13 @@ endpoints:
     summary: "Search Apollo's companies by industry, headcount, revenue, funding or technology — hits carry 6/12/24-month headcount growth, the hiring/growth signal"
     input:
       queryParams:
-        "q_organization_domains_list[]": {type: "array[string]", required: false, note: "restrict to these domains; max 1,000", example: ["apollo.io"]}
-        "organization_num_employees_ranges[]": {type: "array[string]", required: false, note: "employee-count bands as 'min,max' strings", example: ["1,10"]}
-        "organization_locations[]": {type: "array[string]", required: false, note: "company HQ locations", example: ["California, US"]}
-        "organization_not_locations[]": {type: "array[string]", required: false, note: "locations to EXCLUDE"}
+        "q_organization_domains_list[]": {type: array, items: {type: string}, required: false, note: "restrict to these domains; max 1,000", example: ["apollo.io"]}
+        "organization_num_employees_ranges[]": {type: array, items: {type: string}, required: false, note: "employee-count bands as 'min,max' strings", example: ["1,10"]}
+        "organization_locations[]": {type: array, items: {type: string}, required: false, note: "company HQ locations", example: ["California, US"]}
+        "organization_not_locations[]": {type: array, items: {type: string}, required: false, note: "locations to EXCLUDE"}
         "revenue_range[min]": {type: integer, required: false, note: "annual revenue floor, integer with no symbols"}
         "revenue_range[max]": {type: integer, required: false, note: "annual revenue ceiling"}
-        "currently_using_any_of_technology_uids[]": {type: "array[string]", required: false, note: "tech-stack filter, e.g. salesforce"}
+        "currently_using_any_of_technology_uids[]": {type: array, items: {type: string}, required: false, note: "tech-stack filter, e.g. salesforce"}
         latest_funding_amount_range: {type: object, required: false, note: "min/max of the most recent funding round"}
         total_funding_range: {type: object, required: false, note: "min/max of total funding raised"}
         page: {type: integer, required: false, example: 1}
@@ -223,8 +223,8 @@ endpoints:
     summary: "Search news articles about specific companies — hires, funding and other signal categories"
     input:
       queryParams:
-        "organization_ids[]": {type: "array[string]", required: true, note: "Apollo company ids to search news for — resolve with apollo.companies.search first"}
-        "categories[]": {type: "array[string]", required: false, note: "event categories, e.g. hires, investment"}
+        "organization_ids[]": {type: array, items: {type: string}, required: true, note: "Apollo company ids to search news for — resolve with apollo.companies.search first"}
+        "categories[]": {type: array, items: {type: string}, required: false, note: "event categories, e.g. hires, investment"}
         "published_at[min]": {type: string, required: false, note: "YYYY-MM-DD", example: "2026-01-01"}
         "published_at[max]": {type: string, required: false, note: "YYYY-MM-DD"}
         page: {type: integer, required: false, example: 1}
@@ -261,7 +261,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        details: {type: "array[object]", required: true, note: "1-10 objects (max 10 per request), each carrying the same identifier keys as /people/match — email, first_name, last_name, domain, linkedin_url, …", example: [{"first_name": "Tim", "last_name": "Cook", "domain": "apple.com"}]}
+        details: {type: array, items: {type: object}, required: true, note: "1-10 objects (max 10 per request), each carrying the same identifier keys as /people/match — email, first_name, last_name, domain, linkedin_url, …", example: [{"first_name": "Tim", "last_name": "Cook", "domain": "apple.com"}]}
       queryParams:
         reveal_personal_emails: {type: boolean, required: false, note: "applies to the whole batch"}
         reveal_phone_number: {type: boolean, required: false, note: "applies to the whole batch; +8 credits per mobile found, and requires webhook_url"}

@@ -27,8 +27,8 @@ endpoints:
         max_results: {type: integer, required: false, default: 5, min: 1, max: 50}
         page: {type: integer, required: false, default: 1, min: 1, max: 100, note: "Only some engines support pagination."}
         image: {type: boolean, required: false, default: false}
-        include_sites: {type: "array[string]", required: false}
-        exclude_sites: {type: "array[string]", required: false}
+        include_sites: {type: array, items: {type: string}, required: false}
+        exclude_sites: {type: array, items: {type: string}, required: false}
         language: {type: string, required: false}
         time_range: {type: string, required: false, enum: [day, week, month, year]}
       note: "Single search only. Full-page result crawling uses the BYOK tool because its successful-page charge is not reported per call."
@@ -58,8 +58,8 @@ endpoints:
         max_results: {type: integer, required: true, min: 1, max: 50}
         crawl_results: {type: integer, required: true, min: 1, max: 50, note: "Must not exceed max_results."}
         search_service: {type: string, required: false}
-        include_sites: {type: "array[string]", required: false}
-        exclude_sites: {type: "array[string]", required: false}
+        include_sites: {type: array, items: {type: string}, required: false}
+        exclude_sites: {type: array, items: {type: string}, required: false}
         language: {type: string, required: false}
         time_range: {type: string, required: false, enum: [day, week, month, year]}
     cost: {type: per_success, value: 1, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "One search credit plus one credit for each result page crawled successfully; your own key pays Search1API directly."}
@@ -82,8 +82,8 @@ endpoints:
         search_service: {type: string, required: false, enum: [google, bing, duckduckgo, yahoo, hackernews, reuters]}
         max_results: {type: integer, required: false, default: 5, min: 1, max: 50}
         image: {type: boolean, required: false, default: false}
-        include_sites: {type: "array[string]", required: false}
-        exclude_sites: {type: "array[string]", required: false}
+        include_sites: {type: array, items: {type: string}, required: false}
+        exclude_sites: {type: array, items: {type: string}, required: false}
         language: {type: string, required: false}
         time_range: {type: string, required: false, enum: [day, week, month, year]}
       note: "Single query without result crawling; a team's raw tool can send batch requests."
@@ -130,7 +130,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         enableFallback: {type: boolean, required: false, default: true}
       note: "A target page's 404 or 410 costs Search1API one credit; treg cannot prove that charge from the error body, so its shared tier absorbs it."
     test_request: {body: {url: "https://example.com"}}
@@ -153,7 +153,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         type: {type: string, required: false, enum: [sitemap, all]}
     test_request: {body: {url: "https://example.com", type: sitemap}}
     cost: *one_credit
@@ -197,7 +197,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         prompt: {type: string, required: false, example: "Extract the page title."}
         response_format: {type: object, required: true, note: "Use {type: json_schema, json_schema: <JSON Schema>}; the live API rejects omission despite its docs."}
     test_request: {body: {url: "https://example.com", prompt: "Extract the page title.", response_format: {type: json_schema, json_schema: {type: object, properties: {title: {type: string}}, required: [title]}}}}
@@ -221,7 +221,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         format: {type: string, required: false, default: png, enum: [png, jpeg, webp]}
         full_page: {type: boolean, required: false, default: false}
         viewport:
@@ -259,7 +259,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         type: {type: string, required: false, enum: [sitemap, all]}
       note: "The 20-credit charge is incurred when Search1API accepts the task, even if its later workflow fails."
     test_request: {body: {url: "https://example.com", type: sitemap}}

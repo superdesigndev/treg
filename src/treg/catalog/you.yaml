@@ -28,10 +28,10 @@ endpoints:
         freshness: {type: string, required: false, note: "day | week | month | year, or YYYY-MM-DDtoYYYY-MM-DD"}
         country: {type: string, required: false, note: "Supported country code."}
         language: {type: string, required: false, note: "Supported BCP 47 language tag."}
-        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
-        include_domains: {type: "array[string]", required: false, maxItems: 500}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
-        boost_domains: {type: "array[string]", required: false, maxItems: 500}
+        safesearch: {type: string, required: false, enum: ["off", moderate, strict]}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        boost_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
         knowledge: {type: string, required: false, enum: [core], note: "Include licensed structured results at no extra charge."}
       note: "For query-focused passages use you.web.search.highlights. Full-page extraction has separate cache-only and BYOK live catalog tools."
     test_request: {body: {query: "site:example.com Example Domain", count: 1}}
@@ -75,8 +75,8 @@ endpoints:
         freshness: {type: string, required: false}
         country: {type: string, required: false}
         language: {type: string, required: false}
-        include_domains: {type: "array[string]", required: false, maxItems: 500}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
     platform_request: {body.extraction.extraction_mode: highlights}
     test_request: {body: {query: "site:example.com Example Domain", count: 1, extraction: {extraction_mode: highlights}}}
     cost: *search_cost
@@ -109,8 +109,8 @@ endpoints:
         freshness: {type: string, required: false}
         country: {type: string, required: false}
         language: {type: string, required: false}
-        include_domains: {type: "array[string]", required: false, maxItems: 500}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
       note: "Cache-only extraction has no per-page add-on. Live and blended full-page extraction use a separate BYOK catalog tool."
     platform_request: {body.extraction.extraction_mode: full_page, body.extraction.extraction_source: cache}
     test_request: {body: {query: "site:example.com Example Domain", count: 1, extraction: {extraction_mode: full_page, extraction_source: cache, full_page: {extraction_formats: [markdown]}}}}
@@ -170,8 +170,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
-        formats: {type: "array[string]", required: false, enum: [html, markdown, metadata], example: [markdown]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        formats: {type: array, items: {type: string, enum: [html, markdown, metadata]}, required: false, example: [markdown]}
         crawl_timeout: {type: integer, required: false, default: 10, min: 1, max: 60}
         max_age: {type: integer, required: false, min: 0, note: "Maximum age of cached content in seconds."}
     test_request: {body: {urls: ["https://example.com"], formats: [markdown]}}
@@ -209,10 +209,10 @@ endpoints:
         freshness: {type: string, required: false}
         country: {type: string, required: false}
         language: {type: string, required: false}
-        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
-        include_domains: {type: "array[string]", required: false, maxItems: 500}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
-        boost_domains: {type: "array[string]", required: false, maxItems: 500}
+        safesearch: {type: string, required: false, enum: ["off", moderate, strict]}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
+        boost_domains: {type: array, items: {type: string}, required: false, maxItems: 500}
     test_request: {body: {query: "What is the purpose of example.com?"}}
     cost:
       type: per_call

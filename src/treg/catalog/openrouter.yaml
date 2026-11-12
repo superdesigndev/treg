@@ -203,6 +203,7 @@ endpoints:
         prompt: {type: string, required: true, example: "Bring the scene to life with a slow camera push."}
         frame_images:
           type: array
+          items: {type: object}
           required: true
           note: "OpenRouter image objects with type image_url, an image_url.url, and frame_type first_frame."
         duration: {type: integer, required: false, default: 2, max: 30}
@@ -263,6 +264,7 @@ endpoints:
         generate_audio: {type: boolean, required: false, default: true}
         frame_images:
           type: array
+          items: {type: object}
           required: false
           note: "OpenRouter image objects with type image_url, an image_url.url, and frame_type first_frame or last_frame."
       bodyType: json

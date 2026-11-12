@@ -39,7 +39,7 @@ endpoints:
         count: {type: integer, required: false, min: 1, max: 20, default: 20}
         country: {type: string, required: false, default: US}
         search_lang: {type: string, required: false, default: en}
-        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
+        safesearch: {type: string, required: false, enum: ["off", moderate, strict]}
         freshness: {type: string, required: false, note: "pd, pw, pm, py, or YYYY-MM-DDtoYYYY-MM-DD"}
         spellcheck: {type: boolean, required: false}
       note: "Results are in web.results; the web object may be absent on a no-match query. Other rich blocks remain in the raw response."
@@ -132,7 +132,7 @@ endpoints:
         count: {type: integer, required: false, min: 1, max: 200}
         country: {type: string, required: false, default: US}
         search_lang: {type: string, required: false, default: en}
-        safesearch: {type: string, required: false, enum: [off, strict]}
+        safesearch: {type: string, required: false, enum: ["off", strict]}
         spellcheck: {type: boolean, required: false}
     test_request: {queryParams: {q: "red panda", count: 1}}
     verified: '2026-10-30'
@@ -216,7 +216,7 @@ endpoints:
     summary: Retrieve rich details for place IDs returned by Brave search.
     input:
       queryParams:
-        ids: {type: "array[string]", required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
+        ids: {type: array, items: {type: string}, required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
       note: "An unknown ID returned results: [{}], so a row count alone does not prove a place was found. A fresh ID from Place Search returned full details live."
     test_request: {queryParams: {ids: ["locBRAVETREGUNKNOWN937461205"]}}
     verified: '2026-10-30'
@@ -241,7 +241,7 @@ endpoints:
     summary: Retrieve generated descriptions for place IDs returned by Brave search.
     input:
       queryParams:
-        ids: {type: "array[string]", required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
+        ids: {type: array, items: {type: string}, required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
       note: "An unknown ID returned results: []. A fresh ID from Place Search returned a description live."
     test_request: {queryParams: {ids: ["locBRAVETREGUNKNOWN937461205"]}}
     verified: '2026-10-30'

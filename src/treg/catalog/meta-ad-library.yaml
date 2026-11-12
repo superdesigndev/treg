@@ -71,15 +71,15 @@ endpoints:
       queryParams:
         search_terms: {type: string, required: false, note: "max 100 characters; matched against the ad's text. Required in practice unless you filter by search_page_ids instead", example: "project management software"}
         search_type: {type: string, required: false, note: "KEYWORD_UNORDERED (default, all words in any order) | KEYWORD_EXACT_PHRASE", example: "KEYWORD_UNORDERED"}
-        ad_reached_countries: {type: array, required: true, note: "REQUIRED on every ads_archive call. JSON array of ISO country codes, URL-encoded — [\"US\"] — or ALL", example: ["US"]}
+        ad_reached_countries: {type: array, items: {type: string}, required: true, note: "REQUIRED on every ads_archive call. JSON array of ISO country codes, URL-encoded — [\"US\"] — or ALL", example: ["US"]}
         fields: {type: string, required: true, note: "comma-separated; nothing but id comes back by default", example: "id,page_id,page_name,ad_creative_bodies,ad_creative_link_titles,ad_creative_link_captions,ad_snapshot_url,ad_delivery_start_time,ad_delivery_stop_time,publisher_platforms,languages,estimated_audience_size"}
         ad_active_status: {type: string, required: false, note: "ACTIVE (default) | INACTIVE | ALL — ALL is what you want for creative research, since a competitor's best-performing ad may have finished", example: "ALL"}
         ad_type: {type: string, required: false, note: "ALL (default) | POLITICAL_AND_ISSUE_ADS | HOUSING_ADS | EMPLOYMENT_ADS | FINANCIAL_PRODUCTS_AND_SERVICES_ADS", example: "ALL"}
         ad_delivery_date_min: {type: string, required: false, note: "YYYY-MM-DD; ads that were delivering on or after this date", example: "2026-06-01"}
         ad_delivery_date_max: {type: string, required: false, note: "YYYY-MM-DD"}
         media_type: {type: string, required: false, note: "ALL | IMAGE | MEME | VIDEO | NONE", example: "VIDEO"}
-        publisher_platforms: {type: array, required: false, note: "FACEBOOK | INSTAGRAM | AUDIENCE_NETWORK | MESSENGER | WHATSAPP | OCULUS | THREADS", example: ["INSTAGRAM"]}
-        languages: {type: array, required: false, note: "ISO 639-1 codes (plus CMN, YUE)", example: ["en"]}
+        publisher_platforms: {type: array, items: {type: string}, required: false, note: "FACEBOOK | INSTAGRAM | AUDIENCE_NETWORK | MESSENGER | WHATSAPP | OCULUS | THREADS", example: ["INSTAGRAM"]}
+        languages: {type: array, items: {type: string}, required: false, note: "ISO 639-1 codes (plus CMN, YUE)", example: ["en"]}
         estimated_audience_size_min: {type: integer, required: false, note: "one of the fixed buckets 100 | 1000 | 5000 | 10000 | 50000 | 100000 | 500000 | 1000000"}
         limit: {type: integer, required: false, note: "page size; 25 by default, a few hundred is the practical ceiling before Meta starts timing out", example: 25}
         after: {type: string, required: false, note: "paging.cursors.after from the previous response"}
@@ -99,8 +99,8 @@ endpoints:
     input:
       queryArrayEncoding: json
       queryParams:
-        search_page_ids: {type: array, required: true, note: "JSON array of up to 10 numeric Facebook Page ids. You need the id, not the vanity handle — get it from a keyword search's page_id, or from the Page's About section", example: ["20531316728"]}
-        ad_reached_countries: {type: array, required: true, example: ["US"]}
+        search_page_ids: {type: array, items: {type: string}, required: true, note: "JSON array of up to 10 numeric Facebook Page ids. You need the id, not the vanity handle — get it from a keyword search's page_id, or from the Page's About section", example: ["20531316728"]}
+        ad_reached_countries: {type: array, items: {type: string}, required: true, example: ["US"]}
         fields: {type: string, required: true, example: "id,page_id,page_name,ad_creative_bodies,ad_creative_link_titles,ad_snapshot_url,ad_delivery_start_time,ad_delivery_stop_time,publisher_platforms,media_type"}
         ad_active_status: {type: string, required: false, note: "ACTIVE (default) | INACTIVE | ALL", example: "ACTIVE"}
         ad_delivery_date_min: {type: string, required: false, note: "YYYY-MM-DD"}
@@ -123,11 +123,11 @@ endpoints:
       queryArrayEncoding: json
       queryParams:
         ad_type: {type: string, required: true, note: "POLITICAL_AND_ISSUE_ADS — this is what unlocks the spend/impressions/demographic fields", example: "POLITICAL_AND_ISSUE_ADS"}
-        ad_reached_countries: {type: array, required: true, example: ["US"]}
+        ad_reached_countries: {type: array, items: {type: string}, required: true, example: ["US"]}
         fields: {type: string, required: true, note: "the disclosure fields only exist on this ad_type", example: "id,page_name,bylines,currency,spend,impressions,demographic_distribution,delivery_by_region,ad_creative_bodies,ad_delivery_start_time,ad_delivery_stop_time"}
         search_terms: {type: string, required: false, example: "climate"}
-        bylines: {type: array, required: false, note: "JSON array of exact paid-for-by disclaimers; POLITICAL_AND_ISSUE_ADS only"}
-        delivery_by_region: {type: array, required: false, note: "state / province names; POLITICAL_AND_ISSUE_ADS only", example: ["California"]}
+        bylines: {type: array, items: {type: string}, required: false, note: "JSON array of exact paid-for-by disclaimers; POLITICAL_AND_ISSUE_ADS only"}
+        delivery_by_region: {type: array, items: {type: string}, required: false, note: "state / province names; POLITICAL_AND_ISSUE_ADS only", example: ["California"]}
         ad_delivery_date_min: {type: string, required: false, note: "YYYY-MM-DD"}
         limit: {type: integer, required: false, example: 25}
       note: "spend and impressions are RANGES — {\"lower_bound\":\"100\",\"upper_bound\":\"499\"} — never point values, so totals across ads can only be reported as a range. demographic_distribution and delivery_by_region come back as percentage breakdowns that sum to ~1. Political ads stay in the library for seven years, unlike commercial ones"
@@ -146,10 +146,10 @@ endpoints:
     input:
       queryArrayEncoding: json
       queryParams:
-        ad_reached_countries: {type: array, required: true, note: "EU/EEA member states only — the DSA fields are populated for EU delivery and are absent everywhere else", example: ["DE", "FR"]}
+        ad_reached_countries: {type: array, items: {type: string}, required: true, note: "EU/EEA member states only — the DSA fields are populated for EU delivery and are absent everywhere else", example: ["DE", "FR"]}
         fields: {type: string, required: true, note: "the DSA disclosure set", example: "id,page_name,eu_total_reach,age_country_gender_reach_breakdown,beneficiary_payers,target_ages,target_gender,target_locations,ad_creative_bodies,ad_delivery_start_time"}
         search_terms: {type: string, required: false, example: "electric car"}
-        search_page_ids: {type: array, required: false, note: "up to 10 Page ids, to scope to one advertiser"}
+        search_page_ids: {type: array, items: {type: string}, required: false, note: "up to 10 Page ids, to scope to one advertiser"}
         ad_active_status: {type: string, required: false, example: "ALL"}
         limit: {type: integer, required: false, example: 25}
       note: "Meta publishes these under the EU Digital Services Act: eu_total_reach is an actual number of accounts reached (not a range), age_country_gender_reach_breakdown splits it by country/age/gender, beneficiary_payers names who paid and who benefits, and target_ages / target_gender / target_locations expose the advertiser's declared targeting — the only place any Meta ad targeting is public. All of it is missing for non-EU delivery, which reads as an empty response field rather than an error"

@@ -583,7 +583,7 @@ endpoints:
   input:
     queryParams:
       limit:
-        type: other
+        type: string
         required: true
         note: Return number
         example: '10'
@@ -1235,6 +1235,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
   test_request:
     body:
@@ -1302,6 +1303,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
   test_request:
     body:
@@ -2536,6 +2538,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2575,6 +2578,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2614,6 +2618,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2688,6 +2693,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2832,6 +2838,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2906,6 +2913,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -2948,6 +2956,7 @@ endpoints:
           note: 搜索关键词，对榜单按关键词过滤，空为全部
         tags:
           type: array
+          items: {type: object}
           note: '子级垂类标签，空则为全部，多个标签需传入{"value": "{顶级垂类标签id}", "children": [{"value": "{子级垂类标签id}"}, {"value": "{子级垂类标签id}"}]}'
   test_request:
     body:
@@ -3124,7 +3133,7 @@ endpoints:
         note: Offset
         example: 0
       category_id:
-        type: other
+        type: string
         required: false
         note: '精选专题分类ID/Selected topic category ID - 不传则为热门课程，传入则为精选专题 可选值/Available values: 6976547830546582816=知识品类, 6976547923849006336=生活品类, 6976547940311633165=娱乐品类, 6976547972108635404=美食品类, 6980288134957272352=正能量, 6980288181744766219=游戏品类, 6980288219548011776=通用'
   test_request:
@@ -3219,7 +3228,7 @@ endpoints:
         note: 'Hot search type: 1=Overall ranking, 2=Local ranking, 3=Rising ranking'
         example: 1
       city_code:
-        type: other
+        type: string
         required: false
         note: City code - required when hot_search_type=2
   test_request:
@@ -3391,31 +3400,31 @@ endpoints:
         note: 二级行业/Secondary industry (-1=全部)
         example: 191301
       platform_channel:
-        type: other
+        type: string
         required: false
         note: 平台渠道/Platform channel (1=抖音视频, 2=抖音直播, 3=抖音图文)
         example: '1'
       pay_type:
-        type: other
+        type: string
         required: false
         note: 付费类型/Pay type (1=视频等级, 2=自定义, 3=按转化付费, 4=按有效播放量, 5=按销售量, 9=按核销量, 14=按付费分佣)
         example: '4'
       greater_than_cost_progress:
-        type: other
+        type: string
         required: false
         note: 成本进度/Cost progress (20=高于20%, 50=高于50%, 80=高于80%)
         example: '20'
       publish_time_start:
-        type: other
+        type: string
         required: false
         note: 发布开始时间/Publish start time (时间戳)
         example: '1757097636'
       quick_selector_scene:
-        type: other
+        type: string
         required: false
         note: 快速选择场景/Quick selector (1=高收益, 4=保底收入, 5=合作过)
       keyword:
-        type: other
+        type: string
         required: false
         note: 关键词/Keyword (任务名称或ID)
   test_request:
@@ -3579,9 +3588,11 @@ endpoints:
           required: true
         genres:
           type: array
+          items: {type: string}
           note: '体裁类型列表/Genres list: 1=1min以内视频, 2=1-3min视频, 3=3-5min视频, 4=5min+视频, 5=图文, 8=长图文'
         primary_verticals:
           type: array
+          items: {type: string}
           note: 垂类标签列表/Primary verticals list (从involved_vertical接口获取)
           required: true
         metric_type:
@@ -3617,9 +3628,11 @@ endpoints:
           required: true
         genres:
           type: array
+          items: {type: string}
           note: '体裁类型列表/Genres list: 1=1min以内视频, 2=1-3min视频, 3=3-5min视频, 4=5min+视频, 5=图文, 8=长图文'
         primary_verticals:
           type: array
+          items: {type: string}
           note: 垂类标签列表/Primary verticals list (从involved_vertical接口获取)
           required: true
   untestable: needs the caller's own cookie
@@ -3770,6 +3783,7 @@ endpoints:
           required: true
         type_filters:
           type: array
+          items: {type: string}
           note: '体裁类型过滤/Type filters: 1=1min以内视频, 2=1-3min视频, 3=3-5min视频, 4=5min+视频, 5=图文, 8=长图文'
         need_long_article:
           type: boolean
@@ -4037,10 +4051,10 @@ endpoints:
           note: Delivery account sec_uid
           required: true
         count:
-          type: string
+          type: [integer, string]
           note: Number of items
         target_id:
-          type: string
+          type: [integer, string]
           note: Only filters promotable items by goal; keep 31 for a plain video list
         aim_ids:
           type: string
@@ -4144,10 +4158,10 @@ endpoints:
           type: string
           note: Category name or keyword (from the talent category endpoint); empty for all
         page:
-          type: string
+          type: [integer, string]
           note: Page index from 0
         limit:
-          type: string
+          type: [integer, string]
           note: Page size
   test_request:
     body:
@@ -4185,7 +4199,7 @@ endpoints:
           type: string
           note: Pagination cursor (string), "0" for first page, then pass the cursor from the previous response
         count:
-          type: string
+          type: [integer, string]
           note: Page size
   test_request:
     body:
@@ -4239,13 +4253,13 @@ endpoints:
       note: DOU+ 视频排行榜请求模型 DOU+ Video Ranking Request Model
       properties:
         time_range:
-          type: string
+          type: [integer, string]
           note: 'Time range: 1 / 2 / 3'
         tag_id:
-          type: string
+          type: [integer, string]
           note: 垂类ID/Category id. 601剧情,602明星,606音乐,607二次元,608游戏,609时事,612舞蹈,614三农,615科技,616财经,617亲子,619生活,621健康,623情感,624文化,625职场,626教育,627摄影,628美食,629旅行,631时尚,633体育,634娱乐,635汽车
         dim_type:
-          type: string
+          type: [integer, string]
           note: '榜单维度/Ranking dimension: 1=低粉爆款, 2=高完播率, 3=高点赞率, 4=高涨粉率, 5=热度指数'
         adv_id:
           type: string
@@ -4282,10 +4296,10 @@ endpoints:
           note: Douyin ID or nickname
           required: true
         cursor:
-          type: string
+          type: [integer, string]
           note: Pagination cursor, 0 for first page
         count:
-          type: string
+          type: [integer, string]
           note: Page size
   test_request:
     body:
@@ -4317,10 +4331,10 @@ endpoints:
           note: Search keyword (Douyin ID / nickname)
           required: true
         count:
-          type: string
+          type: [integer, string]
           note: Number of results per page
         cursor:
-          type: string
+          type: [integer, string]
           note: Pagination cursor, 0 for first page, then pass the cursor from the previous response
   test_request:
     body:
@@ -4355,13 +4369,13 @@ endpoints:
           note: Search keyword
           required: true
         cursor:
-          type: string
+          type: [integer, string]
           note: Pagination cursor, 0 for first page
         count:
-          type: string
+          type: [integer, string]
           note: Page size
         scope:
-          type: string
+          type: [integer, string]
           note: Search scope
   test_request:
     body:
@@ -4397,10 +4411,10 @@ endpoints:
           note: Video title or keyword
           required: true
         cursor:
-          type: string
+          type: [integer, string]
           note: Pagination cursor, 0 for first page
         count:
-          type: string
+          type: [integer, string]
           note: Page size
   test_request:
     body:
@@ -6757,6 +6771,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
   test_request:
     body:
@@ -7714,6 +7729,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Video link list
   test_request:
@@ -7733,6 +7749,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: User homepage link list
   test_request:
@@ -7752,6 +7769,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Room link list
   test_request:
@@ -8501,7 +8519,7 @@ endpoints:
         note: Platform channel
         example: 1
       link_type:
-        type: other
+        type: string
         required: false
         note: Link type, optional
   test_request:
@@ -8697,15 +8715,15 @@ endpoints:
         note: Platform source
         example: 1
       start_date:
-        type: other
+        type: string
         required: false
         note: Start date, format YYYYMMDD, optional
       end_date:
-        type: other
+        type: string
         required: false
         note: End date, format YYYYMMDD, optional
       author_type:
-        type: other
+        type: string
         required: false
         note: Author type, optional
   test_request:
@@ -8765,15 +8783,15 @@ endpoints:
         note: Page number
         example: 1
       is_star_item:
-        type: other
+        type: string
         required: false
         note: 1=star items only, 0=non-star only, omit=all
       start_time:
-        type: other
+        type: string
         required: false
         note: Publish start time, unix seconds
       end_time:
-        type: other
+        type: string
         required: false
         note: Publish end time, unix seconds
   test_request:
@@ -8963,6 +8981,7 @@ endpoints:
       properties:
         author_ids:
           type: array
+          items: {type: string}
           note: List of creator author IDs
           required: true
         similar_type:
@@ -9002,12 +9021,12 @@ endpoints:
   input:
     queryParams:
       core_user_id:
-        type: other
+        type: string
         required: false
         note: User core ID (pick one with sec_uid)
         example: '1113181577281568'
       sec_uid:
-        type: other
+        type: string
         required: false
         note: User sec_uid (pick one with core_user_id)
   test_request:
@@ -9092,6 +9111,7 @@ endpoints:
       properties:
         author_ids:
           type: array
+          items: {type: string}
           note: Creator ID list, up to 50 per call
           required: true
         platform_source:
@@ -9142,115 +9162,115 @@ endpoints:
         note: Marketing target
         example: 3
       first_industry_id:
-        type: other
+        type: string
         required: false
         note: Industry ID
       author_list_id:
-        type: other
+        type: string
         required: false
         note: Featured creator list ID
       tag:
-        type: other
+        type: string
         required: false
         note: Creator category IDs, comma-separated
         example: '1'
       persona_tags:
-        type: other
+        type: string
         required: false
         note: Persona IDs. Comma=match any, semicolon=group AND
         example: 1129,110401
       gender:
-        type: other
+        type: string
         required: false
         note: Creator gender, 1=male, 2=female
         example: '2'
       fans_min:
-        type: other
+        type: string
         required: false
         note: Minimum followers
         example: '10000'
       fans_max:
-        type: other
+        type: string
         required: false
         note: Maximum followers
         example: '1000000'
       expected_play_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected plays
         example: '100000'
       expected_play_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected plays
         example: '1000000'
       cpm_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPM
         example: '10'
       cpm_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPM
         example: '100'
       cpe_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPE
         example: '0.1'
       cpe_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPE
         example: '5'
       interact_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum interaction rate, 0-1 decimal
         example: '0.02'
       interact_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum interaction rate, 0-1 decimal
         example: '0.5'
       play_over_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum play-completion rate, 0-1 decimal
         example: '0.05'
       play_over_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum play-completion rate, 0-1 decimal
         example: '0.9'
       burst_text_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum viral-post rate, 0-1 decimal
         example: '0.1'
       burst_text_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum viral-post rate, 0-1 decimal
         example: '0.8'
       price_type:
-        type: other
+        type: string
         required: false
         note: Price tier by video length
         example: '2'
       price_min:
-        type: other
+        type: string
         required: false
         note: Minimum creator price
         example: '1000'
       price_max:
-        type: other
+        type: string
         required: false
         note: Maximum creator price
         example: '100000'
       extra_filter:
-        type: other
+        type: string
         required: false
         note: Extra profile filters (JSON array) for audience/fans profile, region, etc.
         example: '[{"field_name":"watcher_gender_female_rate_v2__ge","field_value":"0.5"}]'
@@ -9330,111 +9350,111 @@ endpoints:
         note: Industry ID, 0=unlimited
         example: 0
       author_list_id:
-        type: other
+        type: string
         required: false
         note: Featured creator list ID
       tag:
-        type: other
+        type: string
         required: false
         note: Creator category IDs, comma-separated
         example: '1'
       persona_tags:
-        type: other
+        type: string
         required: false
         note: Persona IDs. Comma=match any, semicolon=group AND
         example: 1129,110401
       gender:
-        type: other
+        type: string
         required: false
         note: Creator gender, 1=male, 2=female
         example: '2'
       fans_min:
-        type: other
+        type: string
         required: false
         note: Minimum followers
         example: '10000'
       fans_max:
-        type: other
+        type: string
         required: false
         note: Maximum followers
         example: '1000000'
       expected_play_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected plays
         example: '100000'
       expected_play_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected plays
         example: '1000000'
       cpm_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPM
         example: '10'
       cpm_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPM
         example: '100'
       cpe_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPE
         example: '0.1'
       cpe_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPE
         example: '5'
       interact_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum interaction rate, 0-1 decimal
         example: '0.02'
       interact_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum interaction rate, 0-1 decimal
         example: '0.5'
       play_over_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum play-completion rate, 0-1 decimal
         example: '0.05'
       play_over_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum play-completion rate, 0-1 decimal
         example: '0.9'
       burst_text_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum viral-post rate, 0-1 decimal
         example: '0.1'
       burst_text_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum viral-post rate, 0-1 decimal
         example: '0.8'
       price_type:
-        type: other
+        type: string
         required: false
         note: Price tier by video length
         example: '2'
       price_min:
-        type: other
+        type: string
         required: false
         note: Minimum creator price
         example: '1000'
       price_max:
-        type: other
+        type: string
         required: false
         note: Maximum creator price
         example: '100000'
       extra_filter:
-        type: other
+        type: string
         required: false
         note: Extra profile filters (JSON array) for audience/fans profile, region, etc.
         example: '[{"field_name":"watcher_gender_female_rate_v2__ge","field_value":"0.5"}]'
@@ -9510,115 +9530,115 @@ endpoints:
         note: Marketing target
         example: 1
       first_industry_id:
-        type: other
+        type: string
         required: false
         note: Industry ID
       author_list_id:
-        type: other
+        type: string
         required: false
         note: Featured creator list ID
       tag:
-        type: other
+        type: string
         required: false
         note: Creator category IDs, comma-separated
         example: '1'
       persona_tags:
-        type: other
+        type: string
         required: false
         note: Persona IDs. Comma=match any, semicolon=group AND
         example: 1129,110401
       gender:
-        type: other
+        type: string
         required: false
         note: Creator gender, 1=male, 2=female
         example: '2'
       fans_min:
-        type: other
+        type: string
         required: false
         note: Minimum followers
         example: '10000'
       fans_max:
-        type: other
+        type: string
         required: false
         note: Maximum followers
         example: '1000000'
       expected_play_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected plays
         example: '100000'
       expected_play_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected plays
         example: '1000000'
       cpm_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPM
         example: '10'
       cpm_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPM
         example: '100'
       cpe_min:
-        type: other
+        type: string
         required: false
         note: Minimum expected CPE
         example: '0.1'
       cpe_max:
-        type: other
+        type: string
         required: false
         note: Maximum expected CPE
         example: '5'
       interact_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum interaction rate, 0-1 decimal
         example: '0.02'
       interact_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum interaction rate, 0-1 decimal
         example: '0.5'
       play_over_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum play-completion rate, 0-1 decimal
         example: '0.05'
       play_over_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum play-completion rate, 0-1 decimal
         example: '0.9'
       burst_text_rate_min:
-        type: other
+        type: string
         required: false
         note: Minimum viral-post rate, 0-1 decimal
         example: '0.1'
       burst_text_rate_max:
-        type: other
+        type: string
         required: false
         note: Maximum viral-post rate, 0-1 decimal
         example: '0.8'
       price_type:
-        type: other
+        type: string
         required: false
         note: Price tier by video length
         example: '2'
       price_min:
-        type: other
+        type: string
         required: false
         note: Minimum creator price
         example: '1000'
       price_max:
-        type: other
+        type: string
         required: false
         note: Maximum creator price
         example: '100000'
       extra_filter:
-        type: other
+        type: string
         required: false
         note: Extra profile filters (JSON array) for audience/fans profile, region, etc.
         example: '[{"field_name":"watcher_gender_female_rate_v2__ge","field_value":"0.5"}]'
@@ -11764,12 +11784,12 @@ endpoints:
   input:
     queryParams:
       media_id:
-        type: other
+        type: string
         required: false
         note: 帖子媒体ID/Post media ID（与 url 二选一）
         example: '3850699893338385742'
       url:
-        type: other
+        type: string
         required: false
         note: 帖子URL/Post URL（与 media_id 二选一；支持 /p/、/reel/、/reels/、/tv/ 形式）
         example: https://www.instagram.com/p/DUajw4YkorV/
@@ -13655,6 +13675,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Share links list
   test_request:
@@ -13694,6 +13715,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Share links list
   test_request:
@@ -13834,40 +13856,40 @@ endpoints:
         note: Company ID
         example: '783611'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       sort_by:
-        type: other
+        type: string
         required: false
         note: 'Sort by: recent or relevant'
       date_posted:
-        type: other
+        type: string
         required: false
         note: 发布时间过滤：anytime, past_month, past_week, past_24_hours
       experience_level:
-        type: other
+        type: string
         required: false
         note: 经验级别：internship, entry_level, associate, mid_senior, director, executive
       remote:
-        type: other
+        type: string
         required: false
         note: 工作地点类型：onsite, remote, hybrid
       job_type:
-        type: other
+        type: string
         required: false
         note: 工作类型：full_time, part_time, contract, temporary, volunteer, internship, other
       easy_apply:
-        type: other
+        type: string
         required: false
         note: Filter easy apply jobs
       under_10_applicants:
-        type: other
+        type: string
         required: false
         note: Filter jobs with under 10 applicants
       fair_chance_employer:
-        type: other
+        type: string
         required: false
         note: Filter fair chance employer jobs
   test_request:
@@ -13894,7 +13916,7 @@ endpoints:
         note: Company ID
         example: '1066442'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -13924,12 +13946,12 @@ endpoints:
         note: Company ID
         example: '10649600'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       sort_by:
-        type: other
+        type: string
         required: false
         note: 'Sort by: top or recent'
         example: top
@@ -13955,12 +13977,12 @@ endpoints:
   input:
     queryParams:
       company:
-        type: other
+        type: string
         required: false
         note: Company name
         example: rapidapi
       company_id:
-        type: other
+        type: string
         required: false
         note: Company ID (+1 request)
   test_request:
@@ -14004,7 +14026,7 @@ endpoints:
         required: true
         note: Group ID
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14027,7 +14049,7 @@ endpoints:
         note: Job ID
         example: '4172815660'
       include_skills:
-        type: other
+        type: string
         required: false
         note: Include job skills (+1 request)
   test_request:
@@ -14055,16 +14077,16 @@ endpoints:
         note: Post ID
         example: '7244804629786419202'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       sort_order:
-        type: other
+        type: string
         required: false
         note: 'Sort order: relevance or recent, default relevance'
       post_type:
-        type: other
+        type: string
         required: false
         note: 'Post type: activity or ugc, default activity'
   test_request:
@@ -14116,12 +14138,12 @@ endpoints:
         note: Post ID
         example: '7244804629786419202'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       type:
-        type: other
+        type: string
         required: false
         note: Reaction type, default all
         example: all
@@ -14150,12 +14172,12 @@ endpoints:
         note: Post ID
         example: '7244804629786419202'
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14205,7 +14227,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAARpiwIBp_SzoeHPlUfOvmtibe08Ea1iCh4
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14233,12 +14255,12 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14284,7 +14306,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAARpiwIBp_SzoeHPlUfOvmtibe08Ea1iCh4
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14312,7 +14334,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAAjpjWIBMh1iBR4OgSPK5GXetlQ6dYUT-qo
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14362,7 +14384,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAC41xVEBx77koDz3k1eJ5E9t8UZ7g0IVGj4
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14390,12 +14412,12 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14422,7 +14444,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAEDH77YBEVIYXAaEwTicp5CcB_hR7DfFL9o
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14450,7 +14472,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAAjpjWIBMh1iBR4OgSPK5GXetlQ6dYUT-qo
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14479,12 +14501,12 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14513,43 +14535,43 @@ endpoints:
         note: LinkedIn username
         example: jack
       include_follower_and_connection:
-        type: other
+        type: string
         required: false
         note: Include follower and connection count (+1 request)
       include_experiences:
-        type: other
+        type: string
         required: false
         note: Include work experiences (+1 request)
       include_skills:
-        type: other
+        type: string
         required: false
         note: Include skills (+1 request)
       include_certifications:
-        type: other
+        type: string
         required: false
         note: Include certifications (+1 request)
       include_publications:
-        type: other
+        type: string
         required: false
         note: Include publications (+1 request)
       include_educations:
-        type: other
+        type: string
         required: false
         note: Include educational background (+1 request)
       include_volunteers:
-        type: other
+        type: string
         required: false
         note: Include volunteer experiences (+1 request)
       include_honors:
-        type: other
+        type: string
         required: false
         note: Include honors and awards (+1 request)
       include_interests:
-        type: other
+        type: string
         required: false
         note: Include interests (+1 request)
       include_bio:
-        type: other
+        type: string
         required: false
         note: Include bio/about (+1 request)
   test_request:
@@ -14576,7 +14598,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAB8rG_UB7cstjC__gk5318uYsZOIVkyysi4
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14604,12 +14626,12 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14637,17 +14659,17 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAAC3iNKcB3qbWJrP7K5Z3i89AF5c1snr8bhc
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       type:
-        type: other
+        type: string
         required: false
         note: 'Type: received or given'
         example: received
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14675,7 +14697,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAACkphDcBDruPBdXiAnqyc834jkTkd_4kRnU
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14703,12 +14725,12 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14735,7 +14757,7 @@ endpoints:
         note: User URN, can be obtained from get_user_profile endpoint
         example: ACoAABCtiL8B26nfi3Nbpo_AM8ngg4LeClT1Wh8
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -14758,25 +14780,25 @@ endpoints:
   input:
     queryParams:
       keyword:
-        type: other
+        type: string
         required: false
         note: Search keyword (either keyword or advertiser_name required)
         example: data
       advertiser_name:
-        type: other
+        type: string
         required: false
         note: Advertiser name
       country:
-        type: other
+        type: string
         required: false
         note: Country code filter
         example: US
       date:
-        type: other
+        type: string
         required: false
         note: Date filter
       pagination_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -14805,54 +14827,54 @@ endpoints:
         note: Search keyword
         example: backend
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       sort_by:
-        type: other
+        type: string
         required: false
         note: 'Sort by: recent or relevant'
       date_posted:
-        type: other
+        type: string
         required: false
         note: 发布时间过滤：anytime, past_month, past_week, past_24_hours
       geocode:
-        type: other
+        type: string
         required: false
         note: Geocode for location
         example: '103644278'
       company:
-        type: other
+        type: string
         required: false
         note: Company ID filter (e.g., 1441 for Google)
         example: '1441'
       experience_level:
-        type: other
+        type: string
         required: false
         note: 经验级别：internship, entry_level, associate, mid_senior, director, executive
       remote:
-        type: other
+        type: string
         required: false
         note: 工作地点类型：onsite, remote, hybrid
       job_type:
-        type: other
+        type: string
         required: false
         note: 工作类型：full_time, part_time, contract, temporary, volunteer, internship, other
       easy_apply:
-        type: other
+        type: string
         required: false
         note: Filter easy apply jobs
       has_verifications:
-        type: other
+        type: string
         required: false
         note: Filter jobs with company verifications
       under_10_applicants:
-        type: other
+        type: string
         required: false
         note: Filter jobs with under 10 applicants
       fair_chance_employer:
-        type: other
+        type: string
         required: false
         note: Filter fair chance employer jobs
   test_request:
@@ -14899,57 +14921,57 @@ endpoints:
   input:
     queryParams:
       name:
-        type: other
+        type: string
         required: false
         note: Search keyword for people
         example: john
       first_name:
-        type: other
+        type: string
         required: false
         note: First name
         example: john
       last_name:
-        type: other
+        type: string
         required: false
         note: Last name
         example: oliver
       title:
-        type: other
+        type: string
         required: false
         note: Title
         example: manager
       company:
-        type: other
+        type: string
         required: false
         note: Company
       school:
-        type: other
+        type: string
         required: false
         note: School
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       geocode_location:
-        type: other
+        type: string
         required: false
         note: Geocode for location (e.g., 103644278 for United States)
         example: '103644278'
       current_company:
-        type: other
+        type: string
         required: false
         note: Current company ID
       profile_language:
-        type: other
+        type: string
         required: false
         note: Profile language
       industry:
-        type: other
+        type: string
         required: false
         note: Industry ID
       service_category:
-        type: other
+        type: string
         required: false
         note: Service category ID
   test_request:
@@ -14981,28 +15003,28 @@ endpoints:
         note: Search keyword
         example: data
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
       date_posted:
-        type: other
+        type: string
         required: false
         note: Filter post by the date they were posted
       sort_by:
-        type: other
+        type: string
         required: false
         note: Sort by date_posted or relevance
       from_member:
-        type: other
+        type: string
         required: false
         note: Filter by member, separate by comma
       from_company:
-        type: other
+        type: string
         required: false
         note: Filter by company, separate by comma
       content_type:
-        type: other
+        type: string
         required: false
         note: Filter post by content type
   test_request:
@@ -15030,7 +15052,7 @@ endpoints:
         note: Search keyword
         example: stanford
       page:
-        type: other
+        type: string
         required: false
         note: Page number
         example: '1'
@@ -15080,7 +15102,7 @@ endpoints:
         required: true
         note: Author articles URL
       limit:
-        type: other
+        type: string
         required: false
         note: Max results
   untestable: no documented value for required url
@@ -15101,11 +15123,11 @@ endpoints:
         note: Company URL or slug
         example: https://www.linkedin.com/company/microsoft/
       start_date:
-        type: other
+        type: string
         required: false
         note: Start date
       end_date:
-        type: other
+        type: string
         required: false
         note: End date
   test_request:
@@ -15235,11 +15257,11 @@ endpoints:
         note: Profile URL or slug
         example: https://www.linkedin.com/in/williamhgates/
       start_date:
-        type: other
+        type: string
         required: false
         note: Start date
       end_date:
-        type: other
+        type: string
         required: false
         note: End date
   test_request:
@@ -15284,32 +15306,32 @@ endpoints:
         note: Location (required)
         example: New York
       keyword:
-        type: other
+        type: string
         required: false
         note: Keyword
         example: data analyst
       country:
-        type: other
+        type: string
         required: false
         note: 2-letter country code, e.g. US
       job_type:
-        type: other
+        type: string
         required: false
         note: Full-time / Part-time / Contract / Temporary / Internship / Volunteer
       experience_level:
-        type: other
+        type: string
         required: false
         note: Internship / Entry level / Associate / Mid-Senior level / Director / Executive
       time_range:
-        type: other
+        type: string
         required: false
         note: Any time / Past month / Past week / Past 24 hours
       remote:
-        type: other
+        type: string
         required: false
         note: On-site / Remote / Hybrid
       company:
-        type: other
+        type: string
         required: false
         note: Company name
       selective_search:
@@ -16000,6 +16022,7 @@ endpoints:
         example: BEST
       filter_posts:
         type: array
+        items: {type: string}
         required: false
         note: Filter out specified posts, by fullname (t3_ prefix)
         example: &id001
@@ -16038,6 +16061,7 @@ endpoints:
     queryParams:
       subtopic_ids:
         type: array
+        items: {type: string}
         required: false
         note: Subtopic IDs list
         example:
@@ -16081,6 +16105,7 @@ endpoints:
         example: DAY
       filter_posts:
         type: array
+        items: {type: string}
         required: false
         note: Filter out specified posts, by fullname (t3_ prefix)
       after:
@@ -16313,6 +16338,7 @@ endpoints:
         example: HOT
       filter_posts:
         type: array
+        items: {type: string}
         required: false
         note: Filter out specified posts, by fullname (t3_ prefix)
       after:
@@ -17432,6 +17458,7 @@ endpoints:
       properties:
         room_ids:
           type: array
+          items: {type: string}
           note: List of TikTok live room IDs
   test_request:
     body:
@@ -18105,6 +18132,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Video id list
   test_request:
@@ -18125,6 +18153,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Video id list
   test_request:
@@ -19414,6 +19443,7 @@ endpoints:
           note: Query Start Date, e.g. '04-01-2025'
         item_ids:
           type: array
+          items: {type: string}
           note: Video ID List
           required: true
   untestable: no documented value for required <request body>
@@ -19884,6 +19914,7 @@ endpoints:
       properties:
         gift_ids:
           type: array
+          items: {type: string}
           note: call for best value ($0.025), auto-process first 50 if more than 50
           required: true
   test_request:
@@ -20843,6 +20874,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: Video link
   test_request:
@@ -20862,6 +20894,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: User homepage link
   test_request:
@@ -20881,6 +20914,7 @@ endpoints:
     bodyType: json
     body:
       type: array
+      items: {type: string}
       required: true
       note: User homepage link
   test_request:
@@ -22618,7 +22652,7 @@ endpoints:
   input:
     queryParams:
       page:
-        type: other
+        type: string
         required: false
         note: 页码，首页不传，第二页传2
       count:
@@ -22732,7 +22766,7 @@ endpoints:
         note: 微博ID
         example: '5258708168476831'
       max_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
       sort_type:
@@ -22813,7 +22847,7 @@ endpoints:
         note: 微博ID
         example: '5016922058656962'
       max_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -22838,7 +22872,7 @@ endpoints:
         note: 用户ID
         example: '7648703289'
       since_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -22863,7 +22897,7 @@ endpoints:
         note: 用户ID
         example: '1725941200'
       since_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -22889,7 +22923,7 @@ endpoints:
         note: 用户ID
         example: '1725941200'
       since_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -22953,7 +22987,7 @@ endpoints:
         note: 用户ID
         example: '6580994757'
       since_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -23015,7 +23049,7 @@ endpoints:
         note: 筛选类型
         example: all
       month:
-        type: other
+        type: string
         required: false
         note: 时间筛选(YYYYMMDD格式)
         example: '20251010'
@@ -23044,7 +23078,7 @@ endpoints:
         note: 用户ID
         example: '7648703289'
       since_id:
-        type: other
+        type: string
         required: false
         note: 翻页游标
   test_request:
@@ -23085,7 +23119,7 @@ endpoints:
   input:
     queryParams:
       page:
-        type: other
+        type: string
         required: false
         note: 页码，首页不传，第二页传2
   test_request:
@@ -23425,17 +23459,17 @@ endpoints:
         note: Search keyword
         example: yu7
       search_type:
-        type: other
+        type: string
         required: false
         note: '搜索类型/Search type: all(全部), hot(热门), original(原创), verified(认证用户), media(媒体), viewpoint(观点)'
         example: hot
       include_type:
-        type: other
+        type: string
         required: false
         note: '包含类型/Include type: all(全部), pic(含图片), video(含视频), music(含音乐), link(含短链)'
         example: pic
       timescope:
-        type: other
+        type: string
         required: false
         note: Time scope (custom:start:end)
         example: custom:2025-09-01-0:2025-09-08-23
@@ -23921,12 +23955,12 @@ endpoints:
   input:
     queryParams:
       uid:
-        type: other
+        type: string
         required: false
         note: User id
         example: '1722594714'
       custom:
-        type: other
+        type: string
         required: false
         note: Custom Weibo username
         example: shuqi
@@ -24067,7 +24101,7 @@ endpoints:
   input:
     queryParams:
       query:
-        type: other
+        type: string
         required: false
         note: 搜索关键词/Query（提供则视为“全部”搜索；留空则仅应用高级筛选参数）
         example: yu7
@@ -24077,42 +24111,42 @@ endpoints:
         note: Page
         example: 1
       region:
-        type: other
+        type: string
         required: false
         note: Region code from /city_list
         example: custom:11:1
       auth:
-        type: other
+        type: string
         required: false
         note: Auth type
         example: org_vip
       gender:
-        type: other
+        type: string
         required: false
         note: women / Gender
         example: man
       age:
-        type: other
+        type: string
         required: false
         note: 22y/29y/39y/40y / Age bucket
         example: 22y
       nickname:
-        type: other
+        type: string
         required: false
         note: Nickname filter
         example: 张三
       tag:
-        type: other
+        type: string
         required: false
         note: Tag filter
         example: 摄影
       school:
-        type: other
+        type: string
         required: false
         note: School filter
         example: 清华大学
       work:
-        type: other
+        type: string
         required: false
         note: Company filter
         example: 字节跳动
@@ -24267,12 +24301,12 @@ endpoints:
         note: Page number
         example: 1
       starttime:
-        type: other
+        type: string
         required: false
         note: Start timestamp
         example: '1772294400'
       endtime:
-        type: other
+        type: string
         required: false
         note: End timestamp
         example: '1772294400'
@@ -26216,7 +26250,7 @@ endpoints:
         note: Fix overlapping subtitles
         example: true
       target_lang:
-        type: other
+        type: string
         required: false
         note: Target language code
         example: zh-CN
@@ -26500,27 +26534,27 @@ endpoints:
         note: Time zone
         example: America/Los_Angeles
       upload_time:
-        type: other
+        type: string
         required: false
         note: 上传时间过滤 | Upload time filter
       duration:
-        type: other
+        type: string
         required: false
         note: 视频时长过滤 | Duration filter
       content_type:
-        type: other
+        type: string
         required: false
         note: 内容类型过滤 | Content type filter
       feature:
-        type: other
+        type: string
         required: false
         note: 特征过滤 | Feature filter
       sort_by:
-        type: other
+        type: string
         required: false
         note: 排序方式 | Sort by
       continuation_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
   test_request:
@@ -26735,15 +26769,15 @@ endpoints:
         note: Time zone
         example: America/Los_Angeles
       upload_time:
-        type: other
+        type: string
         required: false
         note: 上传时间过滤 | Upload time filter for Shorts
       sort_by:
-        type: other
+        type: string
         required: false
         note: 排序方式 | Sort by for Shorts
       continuation_token:
-        type: other
+        type: string
         required: false
         note: Pagination token
       filter_mixed_content:
@@ -26772,20 +26806,20 @@ endpoints:
   input:
     queryParams:
       keyword:
-        type: other
+        type: string
         required: false
         note: Search keyword (required for first request)
         example: coding tips
       continuation_token:
-        type: other
+        type: string
         required: false
         note: Continuation token for next page
       upload_date:
-        type: other
+        type: string
         required: false
         note: Upload date filter
       sort_by:
-        type: other
+        type: string
         required: false
         note: Sort by
   test_request:
@@ -27066,7 +27100,7 @@ endpoints:
   input:
     queryParams:
       keyword:
-        type: other
+        type: string
         required: false
         note: Search keyword
         example: Rick Astley

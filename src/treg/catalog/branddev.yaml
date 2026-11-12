@@ -292,7 +292,7 @@ endpoints:
     input:
       body:
         domain: {type: string, required: true, note: "bare domain, no scheme", example: "stripe.com"}
-        data_to_extract: {type: "array[object]", required: true, note: "each item needs ALL FOUR of datapoint_name, datapoint_description, datapoint_example and datapoint_type; datapoint_type is one of text | number | date | boolean | list | url", example: [{datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}]}
+        data_to_extract: {type: array, items: {type: object}, required: true, note: "each item needs ALL FOUR of datapoint_name, datapoint_description, datapoint_example and datapoint_type; datapoint_type is one of text | number | date | boolean | list | url", example: [{datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}]}
         specific_pages: {type: object, required: false, note: "restrict the crawl to named page types instead of letting it pick"}
         timeoutMS: {type: integer, required: false}
       note: "one flat price whatever the number of datapoints, so batch every field you need into one call. The response echoes `urls_analyzed`, which is what makes an answer auditable"
@@ -345,8 +345,8 @@ endpoints:
       body:
         query: {type: string, required: true, example: "site:docs.context.dev Context.dev API"}
         numResults: {type: integer, required: true, enum: [10], example: 10, note: "The curated tool requests ten results at most, bounding the search at one credit."}
-        includeDomains: {type: "array[string]", required: false, maxItems: 20}
-        excludeDomains: {type: "array[string]", required: false, maxItems: 20}
+        includeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
+        excludeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
       note: "Inline Markdown, query fanout and larger searches are excluded because they change latency or price. Use an own raw tool for the full API."
     test_request: {body: {query: "site:docs.context.dev Context.dev API", numResults: 10}}
     cost:
@@ -381,7 +381,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         formats: {type: object, required: true, enum: [{markdown: true}, {html: true}, {images: true}, {screenshot: true}], example: {markdown: true}, note: "Choose one basic output; charged JSON, highlights, product and PDF OCR options are excluded."}
         maxAgeMs: {type: integer, required: false, min: 0, max: 31536000000, note: "Maximum cache age in milliseconds; 0 fetches fresh."}
       note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A target 404 may still consume the base credit."
@@ -418,7 +418,7 @@ endpoints:
     input:
       queryParams:
         domain: {type: string, required: true, example: "docs.context.dev"}
-        maxLinks: {type: integer, required: true, enum: ["10", "25", "50", "100"], example: 10, note: "Choose 10, 25, 50 or 100 URLs to bound the response."}
+        maxLinks: {type: integer, required: true, enum: [10, 25, 50, 100], example: 10, note: "Choose 10, 25, 50 or 100 URLs to bound the response."}
       note: "Search phrases cost an extra credit and are excluded from this curated tool. A team's raw tool can use the full URL inventory API."
     test_request: {queryParams: {domain: "docs.context.dev", maxLinks: "10"}}
     cost:
@@ -453,7 +453,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         maxPages: {type: integer, required: true, min: 1, max: 10, example: 1, note: "The shared key holds at most ten one-credit pages."}
         maxDepth: {type: integer, required: false, min: 0, max: 10, example: 0}
       note: "Crawl stops at maxPages. The reserved maximum is released down to the provider's actual successful-page charge."

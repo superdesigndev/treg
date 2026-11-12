@@ -63,9 +63,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        field_ids: {type: "array[string]", required: true, note: "fields to return on each hit", example: ["identifier", "short_description", "funding_total", "categories"]}
-        query: {type: "array[object]", required: true, note: "predicates, each {type: 'predicate', field_id, operator_id, values: [...]}. THEY ARE AND-ONLY — v4 search has no OR. operator_id is one of eq, not_eq, blank, contains, not_contains, starts, includes, not_includes, includes_all, not_includes_all, gte, lte, between, domain_eq, domain_includes; date fields use `equal` rather than `eq`. There is NO strict gt/lt and NO exists — use gte/lte and blank instead", example: [{"type": "predicate", "field_id": "website_url", "operator_id": "domain_eq", "values": ["stripe.com"]}]}
-        order: {type: "array[object]", required: false, note: "[{field_id, sort: 'asc'|'desc'}]"}
+        field_ids: {type: array, items: {type: string}, required: true, note: "fields to return on each hit", example: ["identifier", "short_description", "funding_total", "categories"]}
+        query: {type: array, items: {type: object}, required: true, note: "predicates, each {type: 'predicate', field_id, operator_id, values: [...]}. THEY ARE AND-ONLY — v4 search has no OR. operator_id is one of eq, not_eq, blank, contains, not_contains, starts, includes, not_includes, includes_all, not_includes_all, gte, lte, between, domain_eq, domain_includes; date fields use `equal` rather than `eq`. There is NO strict gt/lt and NO exists — use gte/lte and blank instead", example: [{"type": "predicate", "field_id": "website_url", "operator_id": "domain_eq", "values": ["stripe.com"]}]}
+        order: {type: array, items: {type: object}, required: false, note: "[{field_id, sort: 'asc'|'desc'}]"}
         limit: {type: integer, required: false, note: "hits per page, max 1000", example: 1}
         after_id: {type: string, required: false, note: "uuid of the last hit on the previous page — keyset paging forward, not an offset"}
         before_id: {type: string, required: false, note: "keyset paging backward"}
@@ -123,9 +123,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        field_ids: {type: "array[string]", required: true, note: "fields to return on each hit", example: ["identifier", "primary_job_title", "primary_organization"]}
-        query: {type: "array[object]", required: true, note: "same AND-only predicate shape and operator set as the organization search", example: [{"type": "predicate", "field_id": "primary_job_title", "operator_id": "contains", "values": ["founder"]}]}
-        order: {type: "array[object]", required: false}
+        field_ids: {type: array, items: {type: string}, required: true, note: "fields to return on each hit", example: ["identifier", "primary_job_title", "primary_organization"]}
+        query: {type: array, items: {type: object}, required: true, note: "same AND-only predicate shape and operator set as the organization search", example: [{"type": "predicate", "field_id": "primary_job_title", "operator_id": "contains", "values": ["founder"]}]}
+        order: {type: array, items: {type: object}, required: false}
         limit: {type: integer, required: false, note: "max 1000, default 100", example: 1}
         after_id: {type: string, required: false}
     cost:

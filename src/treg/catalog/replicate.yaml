@@ -188,7 +188,7 @@ endpoints:
             prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
             resolution: {type: string, required: false, default: 2K, enum: [1K, 2K, 4K], example: 1K}
             aspect_ratio: {type: string, required: false, default: match_input_image, enum: [match_input_image, "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], example: "1:1", note: "match_input_image needs image_input; text-only requests should name a ratio."}
-            image_input: {type: array, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            image_input: {type: array, items: {type: string}, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
             output_format: {type: string, required: false, default: jpg, enum: [jpg, png], example: jpg}
             safety_filter_level: {type: string, required: false, default: block_only_high, enum: [block_low_and_above, block_medium_and_above, block_only_high]}
       bodyType: json
@@ -231,7 +231,7 @@ endpoints:
             prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
             quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low, note: "Price is set by quality; the model's auto tier is not listed because its charge is the dearest listed tier."}
             aspect_ratio: {type: string, required: false, default: "1:1", enum: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], example: "1:1", note: "Explicit pixel sizes (up to 3840x2160) also exist upstream and are not listed: the per-quality price is quoted for the ratio presets."}
-            input_images: {type: array, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            input_images: {type: array, items: {type: string}, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
             number_of_images: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
             output_format: {type: string, required: false, default: webp, enum: [png, jpeg, webp], example: webp}
             background: {type: string, required: false, default: auto, enum: [auto, opaque, transparent]}
@@ -275,7 +275,7 @@ endpoints:
             prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
             quality: {type: string, required: false, default: low, enum: [low, medium, high, xhigh, max], example: low, note: "Price is set by quality; the model's auto tier is not listed because its charge is the dearest listed tier."}
             aspect_ratio: {type: string, required: false, default: "1:1", enum: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], example: "1:1", note: "Explicit pixel sizes (up to 3840x2160) also exist upstream and are not listed: the per-quality price is quoted for the ratio presets."}
-            input_images: {type: array, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            input_images: {type: array, items: {type: string}, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
             number_of_images: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
             output_format: {type: string, required: false, default: webp, enum: [png, jpeg, webp], example: webp}
             background: {type: string, required: false, default: auto, enum: [auto, opaque, transparent]}
@@ -321,7 +321,7 @@ endpoints:
             prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
             quality: {type: string, required: false, default: low, enum: [low, medium, high, xhigh, max], example: low, note: "Price is set by quality; the model's auto tier is not listed because its charge is the dearest listed tier."}
             aspect_ratio: {type: string, required: false, default: "1:1", enum: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], example: "1:1", note: "Explicit pixel sizes (up to 3840x2160) also exist upstream and are not listed: the per-quality price is quoted for the ratio presets."}
-            input_images: {type: array, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            input_images: {type: array, items: {type: string}, required: false, note: "Public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
             number_of_images: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
             output_format: {type: string, required: false, default: webp, enum: [png, jpeg, webp], example: webp}
             background: {type: string, required: false, default: auto, enum: [auto, opaque, transparent]}

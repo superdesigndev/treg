@@ -1514,6 +1514,7 @@ endpoints:
     body:
       categoryFilterWords:
         type: array
+        items: {type: string}
         required: false
         note: Optional list of Google Maps place-category names to keep; results are limited to places whose category matches one of these. Use lowercase category names as shown on Google Maps (e.g. ["dentist", "orthodontist"]). Omit to include all categories.
       language:
@@ -3160,60 +3161,74 @@ endpoints:
     body:
       companyHeadcount:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by current company size (employee count). Codes: A=Self-Employed, B=1-10, C=11-50, D=51-200, E=201-500, F=501-1,000, G=1,001-5,000, H=5,001-10,000, I=10,001+.'
       companyHeadquarterLocations:
         type: array
+        items: {type: string}
         required: false
         note: Filter by the location of the person's current company headquarters, by place name (e.g. ['United States']).
       currentCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who currently work at any of these companies, by name (e.g. ['Google','Meta']). Multiple names widen the match (OR).
         example: &id001
         - Google
       excludeCompanyHeadquarterLocations:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people whose current company is headquartered in any of these locations.
       excludeCurrentCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who currently work at any of these companies, by name.
       excludeCurrentJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people whose current job title matches any of these.
       excludeFunctionIds:
         type: array
+        items: {type: string}
         required: false
         note: Exclude these job functions (same codes as functionIds).
       excludeLocations:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people in any of these locations, by place name.
       excludePastCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who previously worked at any of these companies, by name.
       excludePastJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who held any of these past job titles.
       excludeSchools:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who attended any of these schools, by name.
       excludeSeniorityLevelIds:
         type: array
+        items: {type: string}
         required: false
         note: Exclude these seniority levels (same codes as seniorityLevelIds).
       firstNames:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people whose first name matches any of these.
       functionIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by job function. Codes: 1=Accounting, 2=Administrative, 3=Arts and Design, 4=Business Development, 5=Community and Social Services, 6=Consulting, 7=Education, 8=Engineering, 9=Entrepreneurship, 10=Finance, 11=Healthcare Services, 12=Human Resources, 13=Information Technology, 14=Legal, 15=Mar'
       jobTitle:
@@ -3222,6 +3237,7 @@ endpoints:
         note: Optional current job title filter (e.g. 'Software Engineer').
       lastNames:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people whose last name matches any of these.
       limit:
@@ -3237,14 +3253,17 @@ endpoints:
         note: Optional location filter (e.g. 'San Francisco').
       pastCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who previously worked at any of these companies, by name.
       pastJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Filter by a past job title the person held (e.g. ['Product Manager']).
       profileLanguages:
         type: array
+        items: {type: string}
         required: false
         note: Filter by the profile's primary language.
       query:
@@ -3262,18 +3281,22 @@ endpoints:
         note: When true, only return people who recently posted on LinkedIn (an activity signal).
       schools:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who attended any of these schools, by name.
       seniorityLevelIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by seniority level. Codes: 100=In Training, 110=Entry Level, 120=Senior, 130=Strategic, 200=Entry Level Manager, 210=Experienced Manager, 220=Director, 300=Vice President, 310=CXO, 320=Owner/Partner.'
       yearsAtCurrentCompanyIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by tenure at the current company. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
       yearsOfExperienceIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
@@ -3309,60 +3332,74 @@ endpoints:
     body:
       companyHeadcount:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by current company size (employee count). Codes: A=Self-Employed, B=1-10, C=11-50, D=51-200, E=201-500, F=501-1,000, G=1,001-5,000, H=5,001-10,000, I=10,001+.'
         example: &id002
         - B
       companyHeadquarterLocations:
         type: array
+        items: {type: string}
         required: false
         note: Filter by the location of the person's current company headquarters, by place name (e.g. ['United States']).
       currentCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who currently work at any of these companies, by name (e.g. ['Google','Meta']). Multiple names widen the match (OR).
       excludeCompanyHeadquarterLocations:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people whose current company is headquartered in any of these locations.
       excludeCurrentCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who currently work at any of these companies, by name.
       excludeCurrentJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people whose current job title matches any of these.
       excludeFunctionIds:
         type: array
+        items: {type: string}
         required: false
         note: Exclude these job functions (same codes as functionIds).
       excludeLocations:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people in any of these locations, by place name.
       excludePastCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who previously worked at any of these companies, by name.
       excludePastJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who held any of these past job titles.
       excludeSchools:
         type: array
+        items: {type: string}
         required: false
         note: Exclude people who attended any of these schools, by name.
       excludeSeniorityLevelIds:
         type: array
+        items: {type: string}
         required: false
         note: Exclude these seniority levels (same codes as seniorityLevelIds).
       firstNames:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people whose first name matches any of these.
       functionIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by job function. Codes: 1=Accounting, 2=Administrative, 3=Arts and Design, 4=Business Development, 5=Community and Social Services, 6=Consulting, 7=Education, 8=Engineering, 9=Entrepreneurship, 10=Finance, 11=Healthcare Services, 12=Human Resources, 13=Information Technology, 14=Legal, 15=Mar'
       jobTitle:
@@ -3371,6 +3408,7 @@ endpoints:
         note: Optional current job title filter (e.g. 'Software Engineer').
       lastNames:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people whose last name matches any of these.
       limit:
@@ -3386,14 +3424,17 @@ endpoints:
         note: Optional location filter (e.g. 'San Francisco').
       pastCompanies:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who previously worked at any of these companies, by name.
       pastJobTitles:
         type: array
+        items: {type: string}
         required: false
         note: Filter by a past job title the person held (e.g. ['Product Manager']).
       profileLanguages:
         type: array
+        items: {type: string}
         required: false
         note: Filter by the profile's primary language.
       query:
@@ -3411,18 +3452,22 @@ endpoints:
         note: When true, only return people who recently posted on LinkedIn (an activity signal).
       schools:
         type: array
+        items: {type: string}
         required: false
         note: Filter to people who attended any of these schools, by name.
       seniorityLevelIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by seniority level. Codes: 100=In Training, 110=Entry Level, 120=Senior, 130=Strategic, 200=Entry Level Manager, 210=Experienced Manager, 220=Director, 300=Vice President, 310=CXO, 320=Owner/Partner.'
       yearsAtCurrentCompanyIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by tenure at the current company. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
       yearsOfExperienceIds:
         type: array
+        items: {type: string}
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
@@ -5451,10 +5496,12 @@ endpoints:
         note: When true (upstream default), strip ad and cookie-consent elements before capture. Set false to keep them.
       excludeTags:
         type: array
+        items: {type: string}
         required: false
         note: CSS selectors to drop before capture (for example ["nav", "footer", ".ads"]). Applied after includeTags.
       formats:
         type: array
+        items: {type: string}
         required: false
         note: 'Which representations of the page to return. Any combination of: markdown (page content as Markdown), html (the page HTML exactly as the browser received it, including head and script tags). Each requested format is returned under the matching output field. Defaults to both. rawHtml is a deprecated '
         default:
@@ -5465,6 +5512,7 @@ endpoints:
         - html
       includeTags:
         type: array
+        items: {type: string}
         required: false
         note: CSS selectors to keep. When set, only content matching these selectors is captured (for example ["article", "main"] or ["#content"]).
       mobile:

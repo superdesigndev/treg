@@ -3745,7 +3745,8 @@ endpoints:
         example: main
         note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
       set_cookies:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
           to 4,096 characters.
@@ -3757,12 +3758,14 @@ endpoints:
         note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
           own.
       inject_page_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
           frame.
       inject_frame_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
       page_timeout:
@@ -3796,7 +3799,7 @@ endpoints:
         note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
           is a successful capture.
       viewport:
-        type: dict
+        type: object
         required: false
         note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
       robots_txt:
@@ -3916,7 +3919,7 @@ endpoints:
         max: 10000000
         note: Integer 1-10,000,000. Reject the page when its token count exceeds the budget.
       markdown:
-        type: dict
+        type: object
         required: false
         note: Turndown options Jina exposes as X-Md-* headers.
       markdown_chunking:
@@ -4145,7 +4148,8 @@ endpoints:
         example: main
         note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
       set_cookies:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
           to 4,096 characters.
@@ -4157,12 +4161,14 @@ endpoints:
         note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
           own.
       inject_page_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
           frame.
       inject_frame_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
       page_timeout:
@@ -4196,7 +4202,7 @@ endpoints:
         note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
           is a successful capture.
       viewport:
-        type: dict
+        type: object
         required: false
         note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
       robots_txt:

@@ -33,6 +33,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}} (a 10 MB request carrying a 7.5 MB image worked live). Up to 14 references; each bills 258 input tokens whatever its size."
@@ -40,7 +41,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone. [TEXT, IMAGE] permits a text part but does not guarantee one: a live [TEXT, IMAGE] call asking for a one-sentence description returned only the image."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone. [TEXT, IMAGE] permits a text part but does not guarantee one: a live [TEXT, IMAGE] call asking for a one-sentence description returned only the image."}
             imageConfig:
               type: object
               required: false
@@ -96,6 +97,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
@@ -103,7 +105,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
             imageConfig:
               type: object
               required: false
@@ -163,6 +165,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
@@ -170,7 +173,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
             imageConfig:
               type: object
               required: false
@@ -222,6 +225,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
           note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
@@ -229,7 +233,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            responseModalities: {type: array, items: {type: string}, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
             speechConfig:
               type: object
               required: true
@@ -279,6 +283,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
           note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
@@ -286,7 +291,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            responseModalities: {type: array, items: {type: string}, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
             speechConfig:
               type: object
               required: true
@@ -338,6 +343,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
           note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."
@@ -379,6 +385,7 @@ endpoints:
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
           note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."

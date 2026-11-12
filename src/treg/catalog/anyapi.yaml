@@ -678,6 +678,7 @@ endpoints:
     body:
       categoryFilterWords:
         type: array
+        items: {type: string}
         required: false
         note: Optional list of Google Maps place-category names to keep; results are limited to places
           whose category matches one of these. Use lowercase category names as shown on Google Maps (e.g.
@@ -763,10 +764,12 @@ endpoints:
     body:
       authorCompanyNames:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts by people associated with these company names.
       authorIndustryIds:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts by authors associated with these LinkedIn industry IDs.
       authorKeywords:
@@ -776,6 +779,7 @@ endpoints:
           keywords.
       authorUrls:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts authored by these LinkedIn profile or company URLs.
       contentType:
@@ -816,6 +820,7 @@ endpoints:
         example: 10
       mentioningMemberUrls:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts mentioning these LinkedIn member profile URLs.
       query:
@@ -2169,6 +2174,7 @@ endpoints:
     body:
       categoryFilterWords:
         type: array
+        items: {type: string}
         required: false
         note: Optional list of Google Maps place-category names to keep; the match is limited to a place
           whose category is one of these. Use lowercase category names as shown on Google Maps (e.g. ["coffee

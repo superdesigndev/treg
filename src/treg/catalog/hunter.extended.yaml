@@ -336,6 +336,7 @@ endpoints:
     body:
       handles:
         type: array
+        items: {type: string}
         required: true
         note: array of opaque handles from a prior multi-domain-search response, max 100 per request
     bodyType: json
@@ -782,10 +783,12 @@ endpoints:
     body:
       emails:
         type: array
+        items: {type: string}
         required: false
         note: one of emails | leads
       leads:
         type: array
+        items: {type: string}
         required: false
     bodyType: json
     note: enrolling a recipient can trigger a REAL outreach email — never call this blind; deliberately no test_request
@@ -812,6 +815,7 @@ endpoints:
     body:
       emails:
         type: array
+        items: {type: string}
         required: false
     bodyType: json
   untestable: requires a real campaign id and enrolled recipients; mutating

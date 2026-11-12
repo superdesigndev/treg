@@ -27,8 +27,8 @@ endpoints:
       headers:
         model: {type: string, required: true, enum: [s2.1-pro], example: s2.1-pro}
       body:
-        text: {type: string, required: true, min: 1, example: "Welcome to treg."}
-        reference_id: {type: string_or_array, required: false, note: "Omit for Fish's default voice. On treg's key each id must be owned by the current team or verified by Fish as public."}
+        text: {type: string, required: true, minLength: 1, example: "Welcome to treg."}
+        reference_id: {type: [array, string], required: false, note: "Omit for Fish's default voice. On treg's key each id must be owned by the current team or verified by Fish as public."}
         temperature: {type: number, required: false, min: 0, max: 1, default: 0.7}
         top_p: {type: number, required: false, min: 0, max: 1, default: 0.7}
         prosody:
@@ -94,12 +94,12 @@ endpoints:
     input:
       body:
         type: {type: string, required: true, enum: [tts], example: tts}
-        title: {type: string, required: true, min: 1, max: 100, example: "Product narrator"}
+        title: {type: string, required: true, minLength: 1, maxLength: 100, example: "Product narrator"}
         train_mode: {type: string, required: true, enum: [fast], example: fast}
         visibility: {type: string, required: true, enum: [private], example: private}
-        voices: {type: "array[file]", required: true, min: 1, max: 20, note: "Reference-audio file parts used to clone the private voice."}
-        texts: {type: "array[string]", required: false, max: 20, note: "Optional transcripts matching the uploaded voice files."}
-        description: {type: string, required: false, max: 500}
+        voices: {type: array, items: {type: string, format: binary}, required: true, minItems: 1, maxItems: 20, note: "Reference-audio file parts used to clone the private voice."}
+        texts: {type: array, items: {type: string}, required: false, maxItems: 20, note: "Optional transcripts matching the uploaded voice files."}
+        description: {type: string, required: false, maxLength: 500}
       bodyType: multipart
     platform_request: {body.type: tts, body.train_mode: fast, body.visibility: private}
     managed_resource:
@@ -182,8 +182,8 @@ endpoints:
       pathParams:
         id: {type: string, required: true, example: "7f92a4..."}
       body:
-        title: {type: string, required: false, min: 1, max: 100}
-        description: {type: string, required: false, max: 500}
+        title: {type: string, required: false, minLength: 1, maxLength: 100}
+        description: {type: string, required: false, maxLength: 500}
         visibility: {type: string, required: false, enum: [private]}
       bodyType: json
     platform_request: {body.visibility: private}

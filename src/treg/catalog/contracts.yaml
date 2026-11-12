@@ -14,10 +14,10 @@ contracts:
   people.email.find:
     summary: "Find someone's work email — treg picks the provider (own keys first, then cheapest per hit) and tells you which one served"
     identity:
-      - {full_name: str, domain: str}
-      - {first_name: str, last_name: str, domain: str}
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
+      - {full_name: string, domain: string}
+      - {first_name: string, last_name: string, domain: string}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
     # `full_name` ⇄ `first_name`+`last_name` and `linkedin_url` ⇄ `linkedin_handle` are derived from
     # each other, so a caller may send whatever it holds; every provider gets only the fields it wants.
     derive:
@@ -30,11 +30,11 @@ contracts:
     # `analytics` says where an output field lands in a call event: `key` (HMAC'd identifier),
     # `value` (non-sensitive, as is) or `skip` (the default). docs/context/architecture/call-events.md
     output:
-      email: {type: str, required: true, analytics: key}
-      confidence: {type: float, note: "0..1 — provider scales mapped; the original rides in raw", analytics: value}
-      first_name: {type: str, analytics: skip}
-      last_name: {type: str, analytics: skip}
-      verified: {type: bool, note: "the provider says it checked the mailbox", analytics: value}
+      email: {type: string, required: true, analytics: key}
+      confidence: {type: number, note: "0..1 — provider scales mapped; the original rides in raw", analytics: value}
+      first_name: {type: string, analytics: skip}
+      last_name: {type: string, analytics: skip}
+      verified: {type: boolean, note: "the provider says it checked the mailbox", analytics: value}
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
@@ -62,16 +62,16 @@ contracts:
   people.email.find.personal:
     summary: "Find someone's personal email from their LinkedIn URL or work email — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
-      - {email: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
+      - {email: string}
     derive:
       linkedin_url: "linkedin_url(linkedin_handle)"
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      email: {type: str, required: true, note: "a personal mailbox (gmail, outlook, …), not the work address", analytics: key}
-      verified: {type: bool, note: "the provider says it checked the mailbox", analytics: value}
+      email: {type: string, required: true, note: "a personal mailbox (gmail, outlook, …), not the work address", analytics: key}
+      verified: {type: boolean, note: "the provider says it checked the mailbox", analytics: value}
     miss: "email == null"
     idempotent: true
     one_subject: true           # every variant names one person: cost per hit ranks first
@@ -87,64 +87,64 @@ contracts:
   instagram.user.profile:
     summary: "Get an Instagram user's public profile — treg picks the provider (own keys first, then cheapest) and names the one that served"
     identity:
-      - {username: str}
-      - {user_id: str}
+      - {username: string}
+      - {user_id: string}
     filters: {}
     output:
-      username: {type: str, required: true}
-      user_id: {type: str}
-      full_name: {type: str}
-      followers: {type: int}
-      following: {type: int}
-      posts_count: {type: int}
-      is_verified: {type: bool}
-      is_private: {type: bool}
-      biography: {type: str}
+      username: {type: string, required: true}
+      user_id: {type: string}
+      full_name: {type: string}
+      followers: {type: integer}
+      following: {type: integer}
+      posts_count: {type: integer}
+      is_verified: {type: boolean}
+      is_private: {type: boolean}
+      biography: {type: string}
     miss: "username == null"
     idempotent: true
 
   instagram.hashtag.posts:
     summary: "List recent posts under an Instagram hashtag — provider-native post objects in `posts`"
     identity:
-      - {hashtag: str}
+      - {hashtag: string}
     filters: {}
     output:
-      posts: {type: list, required: true, note: "the provider's own post objects — shapes differ per provider; raw is the same body"}
-      count: {type: int}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true, note: "the provider's own post objects — shapes differ per provider; raw is the same body"}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   x.user.posts:
     summary: "List an X (Twitter) user's recent posts — provider-native post objects in `posts`"
     identity:
-      - {username: str}
-      - {user_id: str}
+      - {username: string}
+      - {user_id: string}
     filters: {}
     output:
-      posts: {type: list, required: true, note: "the provider's own tweet objects; raw is the same body"}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true, note: "the provider's own tweet objects; raw is the same body"}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   tiktok.user.profile:
     summary: "Get a TikTok user's public profile — treg picks the provider (own keys first, then cheapest) and names the one that served"
     identity:
-      - {username: str}
-      - {user_id: str}
-      - {sec_uid: str}
+      - {username: string}
+      - {user_id: string}
+      - {sec_uid: string}
     filters: {}
     output:
-      username: {type: str, required: true}
-      user_id: {type: str}
-      sec_uid: {type: str}
-      nickname: {type: str}
-      followers: {type: int}
-      following: {type: int}
-      likes: {type: int}
-      videos_count: {type: int}
-      is_verified: {type: bool}
-      biography: {type: str}
+      username: {type: string, required: true}
+      user_id: {type: string}
+      sec_uid: {type: string}
+      nickname: {type: string}
+      followers: {type: integer}
+      following: {type: integer}
+      likes: {type: integer}
+      videos_count: {type: integer}
+      is_verified: {type: boolean}
+      biography: {type: string}
     miss: "username == null"
     idempotent: true
 
@@ -152,11 +152,11 @@ contracts:
   people.phone.find:
     summary: "Find someone's phone number — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
-      - {email: str}
-      - {full_name: str, domain: str}
-      - {first_name: str, last_name: str, domain: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
+      - {email: string}
+      - {full_name: string, domain: string}
+      - {first_name: string, last_name: string, domain: string}
     derive:
       full_name: "join(first_name, last_name)"
       first_name: "split_first(full_name)"
@@ -166,9 +166,9 @@ contracts:
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      phone: {type: str, required: true, note: "as the provider formats it; E.164 when it offers one, and +1 added to a 10-digit number the provider marks US or CA", analytics: key}
-      line_type: {type: str, analytics: value}
-      country_code: {type: str, analytics: value}
+      phone: {type: string, required: true, note: "as the provider formats it; E.164 when it offers one, and +1 added to a 10-digit number the provider marks US or CA", analytics: key}
+      line_type: {type: string, analytics: value}
+      country_code: {type: string, analytics: value}
     miss: "phone == null"
     idempotent: true
     one_subject: true           # every variant names one person: cost per hit ranks first
@@ -182,14 +182,14 @@ contracts:
     summary: "Check whether a phone number is live on its network — a live network lookup, not a format check"
     routed: false               # one provider; the phone find's check calls it directly
     identity:
-      - {phone: str}
+      - {phone: string}
     filters: {}
     output:
-      live_status: {type: str, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)", analytics: value}
-      phone: {type: str}
-      line_type: {type: str, analytics: value}
-      current_network: {type: str}
-      ported: {type: bool, analytics: value}
+      live_status: {type: string, required: true, note: "the provider's own word (LIVE, DEAD, ABSENT_SUBSCRIBER, …)", analytics: value}
+      phone: {type: string}
+      line_type: {type: string, analytics: value}
+      current_network: {type: string}
+      ported: {type: boolean, analytics: value}
     miss: "live_status == null"
     idempotent: true
     # Never `verified`: a live line is not proof it is this person's number.
@@ -200,27 +200,27 @@ contracts:
     summary: "Find social profiles from a contact phone number — Enrichlayer reverse phone; miss judging only, never routed"
     routed: false
     identity:
-      - {phone: str}
+      - {phone: string}
     filters: {}
     output:
-      linkedin_url: {type: url, note: "LinkedIn profile when the provider found one"}
-      twitter_url: {type: url}
-      facebook_url: {type: url}
+      linkedin_url: {type: string, format: url, note: "LinkedIn profile when the provider found one"}
+      twitter_url: {type: string, format: url}
+      facebook_url: {type: string, format: url}
     miss: "coalesce(linkedin_url, twitter_url, facebook_url) == null"
     idempotent: true
 
   people.phone.verify:
     summary: "Validate a phone number's format and numbering-plan validity; not a live-line check"
     identity:
-      - {phone: str}
+      - {phone: string}
     filters:
-      country_code: {type: str, note: "ISO-2 country context for parsing a national-format number, e.g. US; unnecessary for an international number"}
+      country_code: {type: string, note: "ISO-2 country context for parsing a national-format number, e.g. US; unnecessary for an international number"}
     output:
-      valid: {type: bool, required: true, note: "numbering-plan validity, not proof the line is active", analytics: value}
-      phone: {type: str}
-      country_code: {type: str, analytics: value}
-      line_type: {type: str, analytics: value}
-      carrier: {type: str}
+      valid: {type: boolean, required: true, note: "numbering-plan validity, not proof the line is active", analytics: value}
+      phone: {type: string}
+      country_code: {type: string, analytics: value}
+      line_type: {type: string, analytics: value}
+      carrier: {type: string}
     miss: "valid == null"
     idempotent: true
 
@@ -231,26 +231,26 @@ contracts:
     summary: "Check that a phone number belongs to a named person"
     routed: false
     identity:
-      - {phone: str, full_name: str}
+      - {phone: string, full_name: string}
     filters: {}
     output:
-      name_match: {type: bool, required: true, note: "the number is registered to this name", analytics: value}
-      contact_grade: {type: str, note: "A (best) to F", analytics: value}
-      phone_valid: {type: bool, analytics: value}
-      line_type: {type: str, analytics: value}
-      activity_score: {type: int, analytics: value}
+      name_match: {type: boolean, required: true, note: "the number is registered to this name", analytics: value}
+      contact_grade: {type: string, note: "A (best) to F", analytics: value}
+      phone_valid: {type: boolean, analytics: value}
+      line_type: {type: string, analytics: value}
+      activity_score: {type: integer, analytics: value}
     miss: "name_match == null"
     idempotent: true
 
   people.email.verify:
     summary: "Verify an email address — treg picks the provider (own keys first, then cheapest) and names the one that served"
     identity:
-      - {email: str}
+      - {email: string}
     filters: {}
     output:
-      valid: {type: bool, required: true, note: "the provider says the mailbox accepts mail", analytics: value}
-      status: {type: str, note: "the provider's own verdict word (valid | invalid | accept_all | unknown | …)", analytics: value}
-      score: {type: int, analytics: value}
+      valid: {type: boolean, required: true, note: "the provider says the mailbox accepts mail", analytics: value}
+      status: {type: string, note: "the provider's own verdict word (valid | invalid | accept_all | unknown | …)", analytics: value}
+      score: {type: integer, analytics: value}
     miss: "status == null"
     idempotent: true
     # Stored per call. Each adapter maps its provider's words (`verdicts`); `unknown` is a word,
@@ -261,11 +261,11 @@ contracts:
   people.enrich:
     summary: "Enrich a person from an email, a LinkedIn URL or a name + company domain — treg picks the provider and names the one that served"
     identity:
-      - {email: str}
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
-      - {full_name: str, domain: str}
-      - {first_name: str, last_name: str, domain: str}
+      - {email: string}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
+      - {full_name: string, domain: string}
+      - {first_name: string, last_name: string, domain: string}
     derive:
       full_name: "join(first_name, last_name)"
       first_name: "split_first(full_name)"
@@ -275,14 +275,14 @@ contracts:
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      full_name: {type: str, required: true}
-      first_name: {type: str}
-      last_name: {type: str}
-      title: {type: str}
-      company: {type: str}
-      company_domain: {type: str, analytics: key}
-      linkedin_url: {type: str}
-      location: {type: str, analytics: value}
+      full_name: {type: string, required: true}
+      first_name: {type: string}
+      last_name: {type: string}
+      title: {type: string}
+      company: {type: string}
+      company_domain: {type: string, analytics: key}
+      linkedin_url: {type: string}
+      location: {type: string, analytics: value}
     miss: "full_name == null"
     idempotent: true
 
@@ -290,61 +290,61 @@ contracts:
   instagram.user.posts:
     summary: "List an Instagram user's recent posts — provider-native post objects in `posts`"
     identity:
-      - {username: str}
-      - {user_id: str}
+      - {username: string}
+      - {user_id: string}
     filters: {}
     output:
-      posts: {type: list, required: true, note: "the provider's own post objects; raw is the same body"}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true, note: "the provider's own post objects; raw is the same body"}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   instagram.post.detail:
     summary: "Get an Instagram post's content & stats from its shortcode, URL or id"
     identity:
-      - {shortcode: str}
-      - {url: url}
-      - {post_id: str}
+      - {shortcode: string}
+      - {url: {type: string, format: url}}
+      - {post_id: string}
     filters: {}
     output:
-      id: {type: str, required: true}
-      shortcode: {type: str}
-      caption: {type: str}
-      likes: {type: int}
-      comments: {type: int}
-      owner_username: {type: str}
+      id: {type: string, required: true}
+      shortcode: {type: string}
+      caption: {type: string}
+      likes: {type: integer}
+      comments: {type: integer}
+      owner_username: {type: string}
     miss: "id == null"
     idempotent: true
 
   x.user.profile:
     summary: "Get an X (Twitter) user's public profile — treg picks the provider and names the one that served"
     identity:
-      - {username: str}
-      - {user_id: str}
+      - {username: string}
+      - {user_id: string}
     filters: {}
     output:
-      username: {type: str, required: true}
-      user_id: {type: str}
-      name: {type: str}
-      followers: {type: int}
-      following: {type: int}
-      posts_count: {type: int}
-      is_verified: {type: bool}
-      description: {type: str}
+      username: {type: string, required: true}
+      user_id: {type: string}
+      name: {type: string}
+      followers: {type: integer}
+      following: {type: integer}
+      posts_count: {type: integer}
+      is_verified: {type: boolean}
+      description: {type: string}
     miss: "username == null"
     idempotent: true
 
   google.keywords.ideas:
     summary: "Related keyword ideas for a seed keyword — provider-native rows in `keywords`; `limit` is the price dial"
     identity:
-      - {keyword: str}
+      - {keyword: string}
     filters:
-      country: {type: str, default: us, note: "ISO country code (us, gb, de, …); mapped to each provider's own database code"}
-      language: {type: str, default: en}
-      limit: {type: int, default: 20, note: "rows to return where the provider bills per row"}
+      country: {type: string, default: us, note: "ISO country code (us, gb, de, …); mapped to each provider's own database code"}
+      language: {type: string, default: en}
+      limit: {type: integer, default: 20, note: "rows to return where the provider bills per row"}
     output:
-      keywords: {type: list, required: true, note: "the provider's own keyword rows (keyword, volume, cpc, …) — shapes differ per provider"}
-      count: {type: int}
+      keywords: {type: array, items: {type: object}, required: true, note: "the provider's own keyword rows (keyword, volume, cpc, …) — shapes differ per provider"}
+      count: {type: integer}
     miss: "keywords == []"
     idempotent: true
 
@@ -352,17 +352,17 @@ contracts:
   google.serp.organic:
     summary: "Google organic results for a keyword — provider-native result rows in `results`; `limit` is the depth"
     identity:
-      - {q: str}
-      - {q: str, ai_overview: bool}   # ai_overview true: only providers that return Google's AI Overview whenever Google shows one
+      - {q: string}
+      - {q: string, ai_overview: boolean}   # ai_overview true: only providers that return Google's AI Overview whenever Google shows one
     filters:
-      country: {type: str, default: us, note: "ISO country code; mapped to each provider's location code / gl / region"}
-      language: {type: str, default: en}
-      limit: {type: int, default: 10, note: "results to return where the provider bills by depth"}
+      country: {type: string, default: us, note: "ISO country code; mapped to each provider's location code / gl / region"}
+      language: {type: string, default: en}
+      limit: {type: integer, default: 10, note: "results to return where the provider bills by depth"}
     # A provider that never returns the AI Overview answers a different question for a caller who needs it.
     scoping: [ai_overview]
     output:
-      results: {type: list, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
+      count: {type: integer}
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
@@ -372,21 +372,21 @@ contracts:
   people.search:
     summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
     identity:
-      - {q: text}
-      - {company_domain: str}
-      - {title: str, company_domain: str}
-      - {title: str}
-      - {full_name: str}
+      - {q: string}
+      - {company_domain: string}
+      - {title: string, company_domain: string}
+      - {title: string}
+      - {full_name: string}
     identity_notes:
       q: "describe the people in words, as a profile would: role, seniority, industry, place, audience ('B2B sales coaches on Instagram with a mostly US audience'). A semantic search over profiles answers it, so creators and influencers too, not only employees. For a niche's best-known creators, also find list articles with treg.web.search"
       company_domain: "the employer's website domain ('stripe.com'): everyone treg's providers list there; with q, the people q describes there (q 'executives')"
       title: "a job title ('Head of Tax'); with company_domain, that role at that company"
       full_name: "one person's name, to find their profile"
     filters:
-      country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
-      location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
-      limit: {type: int, default: 10, min: 1, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
-      keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
+      country: {type: string, default: null, note: "ISO country code, where the provider supports it", analytics: value}
+      location: {type: string, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
+      limit: {type: integer, default: 10, min: 1, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
+      keywords: {type: array, items: {type: string}, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     # A child that cannot send one of these answers a different question. A `q` counts only when the
     # child's matched variant carries it or `title` (carried_by): crawl4ai answers
@@ -397,30 +397,30 @@ contracts:
     stand_in: {q: "people_text(full_name, title, company_domain, location, country_name(country))"}
     stand_in_carries: {q: [full_name, title, company_domain, location, country]}
     output:
-      people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
-      count: {type: int}
-      next_cursor: {type: str}
+      people: {type: array, items: {type: object}, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
+      count: {type: integer}
+      next_cursor: {type: string}
     # Every provider's row in one shape, so an agent reads the same keys whoever answered and
     # pays tokens for the person, not for a provider's internal ids and flags.
     row:
       of: people
       needs: [name, profile_url, email]
       fields:
-        name: {type: str}
-        title: {type: str, note: "current job title, or the provider's headline when it has no title; when `title_until` is set, the person's last dated title, not a current one"}
-        company: {type: str, note: "current employer's name; when `title_until` is set, the employer of that last title"}
-        title_since: {type: str, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
-        title_until: {type: str, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
-        past_titles: {type: list, note: "titles of roles the person has left, latest first, at most five, where the provider lists a work history: a profile can match a search on one of these"}
-        title_match: {type: str, note: "set by treg when you sent `title` and the row carries a work history: `current` when `title` is that role held now, `past` when the person held it only in the past. Unmarked = no work history, or the role is not in it. Rows are ordered current, then the rest, then past holders and people with no role now"}
-        company_domain: {type: str}
-        location: {type: str}
-        profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
-        email: {type: str, note: "found by the provider, not confirmed deliverable"}
-        email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
+        name: {type: string}
+        title: {type: string, note: "current job title, or the provider's headline when it has no title; when `title_until` is set, the person's last dated title, not a current one"}
+        company: {type: string, note: "current employer's name; when `title_until` is set, the employer of that last title"}
+        title_since: {type: string, note: "when the person took `title` (YYYY-MM-DD or coarser), where the provider dates roles"}
+        title_until: {type: string, note: "when `title` ended, where the provider dates it: set only when every dated role has ended, so `title` and `company` are the last ones held"}
+        past_titles: {type: array, items: {type: string}, note: "titles of roles the person has left, latest first, at most five, where the provider lists a work history: a profile can match a search on one of these"}
+        title_match: {type: string, note: "set by treg when you sent `title` and the row carries a work history: `current` when `title` is that role held now, `past` when the person held it only in the past. Unmarked = no work history, or the role is not in it. Rows are ordered current, then the rest, then past holders and people with no role now"}
+        company_domain: {type: string}
+        location: {type: string}
+        profile_url: {type: string, format: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        email: {type: string, note: "found by the provider, not confirmed deliverable"}
+        email_status: {type: string, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         # Longer than other row text: it is the evidence an agent checks a brief against, and a
         # candidate it cannot check is a candidate it drops.
-        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
+        summary: {type: string, maxLength: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
       # A semantic search matches the whole work history: a former holder of the asked role ranks
       # with the current ones unless the rows are ordered by the role held now.
       rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
@@ -455,27 +455,27 @@ contracts:
   companies.enrich:
     summary: "Enrich a company from its domain, name, LinkedIn URL or a work email — treg picks the provider and names the one that served"
     identity:
-      - {domain: str}
-      - {website: url}
-      - {name: str}
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
-      - {email: str}
+      - {domain: string}
+      - {website: {type: string, format: url}}
+      - {name: string}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
+      - {email: string}
     derive:
       domain: "coalesce(email_domain(email), host(website))"
       linkedin_url: "linkedin_url(linkedin_handle)"
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      name: {type: str, required: true}
-      domain: {type: str, analytics: key}
-      website: {type: str}
-      description: {type: str}
-      industry: {type: str, analytics: value}
-      employees: {type: str, note: "headcount or a range, as the provider states it", analytics: value}
-      founded: {type: int, analytics: value}
-      location: {type: str, analytics: value}
-      linkedin_url: {type: str}
+      name: {type: string, required: true}
+      domain: {type: string, analytics: key}
+      website: {type: string}
+      description: {type: string}
+      industry: {type: string, analytics: value}
+      employees: {type: string, note: "headcount or a range, as the provider states it", analytics: value}
+      founded: {type: integer, analytics: value}
+      location: {type: string, analytics: value}
+      linkedin_url: {type: string}
     miss: "name == null"
     idempotent: true
     prefer: [crawl4ai]
@@ -483,42 +483,42 @@ contracts:
   companies.similar:
     summary: "Find companies similar to a seed domain"
     identity:
-      - {domain: str}
+      - {domain: string}
     filters: {}
     output:
-      companies: {type: list, required: true}
-      count: {type: int}
+      companies: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "companies == []"
     idempotent: true
 
   companies.search:
     summary: "Find companies by a free-text description, a name, an industry, a technology they use, or a domain — provider-native rows in `companies`"
     identity:
-      - {q: str}
-      - {name: str}
-      - {industry: str}
-      - {technology: str}
-      - {domain: str}
+      - {q: string}
+      - {name: string}
+      - {industry: string}
+      - {technology: string}
+      - {domain: string}
     filters:
-      country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
-      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      country: {type: string, default: null, note: "ISO country code, where the provider supports it", analytics: value}
+      limit: {type: integer, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
     output:
-      companies: {type: list, required: true, note: "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"}
-      count: {type: int}
-      next_cursor: {type: str}
+      companies: {type: array, items: {type: object}, required: true, note: "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "companies == []"
     idempotent: true
 
   google.serp.maps:
     summary: "Google Maps places for a keyword — provider-native place rows in `places`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us, note: "ISO country code; mapped to each provider's location code / gl"}
-      language: {type: str, default: en}
+      country: {type: string, default: us, note: "ISO country code; mapped to each provider's location code / gl"}
+      language: {type: string, default: en}
     output:
-      places: {type: list, required: true, note: "the provider's own place rows (title, address, rating, coordinates…) — shapes differ per provider"}
-      count: {type: int}
+      places: {type: array, items: {type: object}, required: true, note: "the provider's own place rows (title, address, rating, coordinates…) — shapes differ per provider"}
+      count: {type: integer}
     miss: "places == []"
     idempotent: true
     prefer: [crawl4ai]
@@ -526,35 +526,35 @@ contracts:
   tiktok.user.videos:
     summary: "List a TikTok user's recent videos by secUid — provider-native video objects in `videos`"
     identity:
-      - {sec_uid: str}
+      - {sec_uid: string}
     filters:
-      limit: {type: int, default: 10, note: "videos per page where the provider takes a count"}
+      limit: {type: integer, default: 10, note: "videos per page where the provider takes a count"}
     output:
-      videos: {type: list, required: true, note: "the provider's own aweme objects; raw is the same body"}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      videos: {type: array, items: {type: object}, required: true, note: "the provider's own aweme objects; raw is the same body"}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "videos == []"
     idempotent: true
 
   linkedin.user.profile:
     summary: "Get a LinkedIn member's public profile from a profile URL or handle — treg picks the provider and names the one that served"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
     derive:
       linkedin_url: "linkedin_url(linkedin_handle)"
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      full_name: {type: str, required: true}
-      first_name: {type: str}
-      last_name: {type: str}
-      headline: {type: str}
-      location: {type: str, analytics: value}
-      followers: {type: int}
-      connections: {type: int}
-      about: {type: str}
-      linkedin_url: {type: str}
+      full_name: {type: string, required: true}
+      first_name: {type: string}
+      last_name: {type: string}
+      headline: {type: string}
+      location: {type: string, analytics: value}
+      followers: {type: integer}
+      connections: {type: integer}
+      about: {type: string}
+      linkedin_url: {type: string}
     miss: "full_name == null"
     complete: [full_name, headline, location]   # X-Treg-Route-Complete only
     idempotent: true
@@ -562,89 +562,89 @@ contracts:
   linkedin.user.posts:
     summary: "List a LinkedIn member's recent posts from a profile URL or handle — treg picks the provider and names the one that served"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
     derive:
       linkedin_url: "linkedin_url(linkedin_handle)"
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters:
-      limit: {type: int, default: 10, note: "posts per page where the provider takes a count"}
+      limit: {type: integer, default: 10, note: "posts per page where the provider takes a count"}
     output:
-      posts: {type: list, required: true, note: "provider-native LinkedIn post rows"}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      posts: {type: array, items: {type: object}, required: true, note: "provider-native LinkedIn post rows"}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "posts == []"
     idempotent: true
 
   google.keywords.volume:
     summary: "Monthly Google search volume (and CPC where the provider has it) for a list of keywords — one provider-native row per keyword in `rows`"
     identity:
-      - {keywords: list}
+      - {keywords: {type: array, items: {type: string}}}
     filters:
-      country: {type: str, default: us, note: "ISO country code; mapped to each provider's location code / source"}
-      language: {type: str, default: en}
+      country: {type: string, default: us, note: "ISO country code; mapped to each provider's location code / source"}
+      language: {type: string, default: en}
     output:
-      rows: {type: list, required: true, note: "one row per keyword (keyword, volume/search_volume, cpc, competition…) — field names differ per provider"}
+      rows: {type: array, items: {type: object}, required: true, note: "one row per keyword (keyword, volume/search_volume, cpc, competition…) — field names differ per provider"}
     miss: "rows == []"
     idempotent: true
 
   google.keywords.trends:
     summary: "Google Trends interest over time for one or more keywords — provider-native series in `series`"
     identity:
-      - {keywords: list}
+      - {keywords: {type: array, items: {type: string}}}
     filters:
-      country: {type: str, default: us, note: "ISO country code; mapped to geo / location code"}
+      country: {type: string, default: us, note: "ISO country code; mapped to geo / location code"}
     output:
-      series: {type: list, required: true, note: "the provider's own time series rows"}
+      series: {type: array, items: {type: object}, required: true, note: "the provider's own time series rows"}
     miss: "series == []"
     idempotent: true
 
   google.serp.news:
     summary: "Google News results for a keyword — provider-native result rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us}
-      language: {type: str, default: en}
-      limit: {type: int, note: "article count where supported"}
+      country: {type: string, default: us}
+      language: {type: string, default: en}
+      limit: {type: integer, note: "article count where supported"}
     output:
-      results: {type: list, required: true, note: "the provider's own news rows (title, link, source, date…)"}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true, note: "the provider's own news rows (title, link, source, date…)"}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   instagram.search.reels:
     summary: "Search Instagram reels by keyword — provider-native reel objects in `reels`"
     identity:
-      - {q: str}
+      - {q: string}
     filters: {}
     output:
-      reels: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      reels: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "reels == []"
     idempotent: true
 
   tiktok.video.comments:
     summary: "Comments on a TikTok video by aweme/video id or URL — provider-native comment objects in `comments`"
     identity:
-      - {video_id: str}
-      - {url: url}
+      - {video_id: string}
+      - {url: {type: string, format: url}}
     filters:
-      limit: {type: int, default: 10, note: "comments per page where the provider takes a count"}
+      limit: {type: integer, default: 10, note: "comments per page where the provider takes a count"}
     output:
-      comments: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      comments: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "comments == []"
     idempotent: true
 
   tiktok.video.detail:
     summary: "One TikTok video's full record by aweme/video id or URL — the provider's own video object in `video`"
     identity:
-      - {video_id: str}
-      - {url: url}
+      - {video_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
       video: {type: object, required: true, note: "aweme_detail / itemStruct — shapes differ per provider; raw is the same body"}
@@ -654,61 +654,61 @@ contracts:
   youtube.channel.profile:
     summary: "A YouTube channel's public profile by channel id — treg picks the provider and names the one that served"
     identity:
-      - {channel_id: str}
+      - {channel_id: string}
     filters: {}
     output:
-      name: {type: str, required: true}
-      channel_id: {type: str}
-      handle: {type: str}
-      description: {type: str}
-      subscribers: {type: str, note: "count or the provider's display string"}
-      videos_count: {type: str}
-      country: {type: str}
+      name: {type: string, required: true}
+      channel_id: {type: string}
+      handle: {type: string}
+      description: {type: string}
+      subscribers: {type: string, note: "count or the provider's display string"}
+      videos_count: {type: string}
+      country: {type: string}
     miss: "name == null"
     idempotent: true
 
   youtube.search.videos:
     summary: "Search YouTube videos by keyword — provider-native video rows in `videos`"
     identity:
-      - {q: str}
+      - {q: string}
     filters: {}
     output:
-      videos: {type: list, required: true}
-      next_cursor: {type: str}
+      videos: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "videos == []"
     idempotent: true
 
   web.search.publications:
     summary: "Search research publications by topic — provider-native paper rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      results: {type: list, required: true}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   google.serp.scholar:
     summary: "Search Google Scholar publications — provider-native paper rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      results: {type: list, required: true}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   threads.search.posts:
     summary: "Search Threads posts by keyword — provider-native post edges in `posts`"
     identity:
-      - {q: str}
+      - {q: string}
     filters: {}
     output:
-      posts: {type: list, required: true}
+      posts: {type: array, items: {type: object}, required: true}
     miss: "posts == []"
     idempotent: true
 
@@ -716,14 +716,14 @@ contracts:
   instagram.search.users:
     summary: "Search Instagram accounts by keyword — profile rows in `users`, from account bios and from creator directory pages (with the passage that names each account); `raw` holds the provider's full answer"
     identity:
-      - {q: str}
+      - {q: string}
     identity_notes:
       q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. Rows from directory pages carry no follower count: check a handle with treg.instagram.user.profile"
     filters: {}
     output:
-      users: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      users: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     # The provider's own field names, minus what no reader of a search result uses: a provider's
     # picture URLs and link metadata cost more tokens than everything else in its row. `raw` keeps
     # the full row. Same names as before, so a caller reading `follower_count` reads it still.
@@ -731,23 +731,23 @@ contracts:
       of: users
       needs: [username, url]
       fields:
-        id: {type: str}
-        username: {type: str}
-        full_name: {type: str}
-        url: {type: url, note: "the account's Instagram page"}
-        follower_count: {type: int}
-        following_count: {type: int}
-        media_count: {type: int}
-        biography: {type: str, note: "the account's own bio, cut to 300 characters"}
-        category_name: {type: str}
-        external_url: {type: url}
-        is_verified: {type: bool}
-        is_private: {type: bool}
-        is_business_account: {type: bool}
-        is_professional_account: {type: bool}
-        matched_from: {type: str, note: "how the provider found the account (`profile`, a web search)"}
-        google_title: {type: str}
-        google_description: {type: str}
+        id: {type: string}
+        username: {type: string}
+        full_name: {type: string}
+        url: {type: string, format: url, note: "the account's Instagram page"}
+        follower_count: {type: integer}
+        following_count: {type: integer}
+        media_count: {type: integer}
+        biography: {type: string, note: "the account's own bio, cut to 300 characters"}
+        category_name: {type: string}
+        external_url: {type: string, format: url}
+        is_verified: {type: boolean}
+        is_private: {type: boolean}
+        is_business_account: {type: boolean}
+        is_professional_account: {type: boolean}
+        matched_from: {type: string, note: "how the provider found the account (`profile`, a web search)"}
+        google_title: {type: string}
+        google_description: {type: string}
     miss: "users == []"
     idempotent: true
     # Account bios (ScrapeCreators) and directory pages (Exa) each see a different slice of a
@@ -758,53 +758,53 @@ contracts:
   google.serp.local:
     summary: "Google local pack / local finder results for a keyword — provider-native business rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us}
-      language: {type: str, default: en}
+      country: {type: string, default: us}
+      language: {type: string, default: en}
     output:
-      results: {type: list, required: true}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   companies.jobs.search:
     summary: "Open job listings at a company, by name or domain — provider-native job rows in `jobs`"
     identity:
-      - {name: str}
-      - {domain: str}
+      - {name: string}
+      - {domain: string}
     filters:
-      limit: {type: int, default: 10, note: "rows to return — most providers bill per row"}
+      limit: {type: integer, default: 10, note: "rows to return — most providers bill per row"}
     output:
-      jobs: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      jobs: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "jobs == []"
     idempotent: true
 
   companies.news:
     summary: "Recent news about a company by domain — provider-native article/event rows in `articles`"
     identity:
-      - {domain: str}
+      - {domain: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      articles: {type: list, required: true}
-      count: {type: int}
+      articles: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "articles == []"
     idempotent: true
 
   tiktok.search.users:
     summary: "Search TikTok accounts by keyword — provider-native user rows in `users`"
     identity:
-      - {q: str}
+      - {q: string}
     identity_notes:
       q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. For a niche's best-known creators: find list articles with treg.web.search ('top B2B sales influencers on TikTok'), read one with treg.web.extract, then check each handle with treg.tiktok.user.profile"
     filters: {}
     output:
-      users: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      users: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "users == []"
     idempotent: true
     # Shown on every hit (a search has no `verified`): an agent reads it while choosing its next call.
@@ -813,67 +813,67 @@ contracts:
   tiktok.search.videos:
     summary: "Search TikTok videos by keyword, first page only — provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10, note: "videos per page where the provider takes a count"}
+      limit: {type: integer, default: 10, note: "videos per page where the provider takes a count"}
     output:
-      videos: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      videos: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "videos == []"
     idempotent: true
 
   instagram.post.comments:
     summary: "Comments on an Instagram post by shortcode or URL — provider-native comment rows in `comments`"
     identity:
-      - {shortcode: str}
-      - {url: url}
+      - {shortcode: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      comments: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "comments == []"
     idempotent: true
 
   web.backlinks.summary:
     summary: "Backlink profile summary for a domain — counts in `backlinks` / `referring_domains`, the provider's full row in `summary`"
     identity:
-      - {target: str}
+      - {target: string}
     filters: {}
     output:
       summary: {type: object, required: true, note: "the provider's own summary row; field names differ per provider"}
-      backlinks: {type: int}
-      referring_domains: {type: int}
+      backlinks: {type: integer}
+      referring_domains: {type: integer}
     miss: "summary == null"
     idempotent: true
 
   reddit.subreddit.posts:
     summary: "Recent posts in a subreddit — provider-native post rows in `posts`"
     identity:
-      - {subreddit: str}
+      - {subreddit: string}
     filters: {}
     output:
-      posts: {type: list, required: true}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   youtube.video.detail:
     summary: "One YouTube video's details by id or URL — treg picks the provider and names the one that served"
     identity:
-      - {video_id: str}
-      - {url: url}
+      - {video_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      video_id: {type: str, required: true}
-      title: {type: str}
-      channel: {type: str}
-      channel_id: {type: str}
-      description: {type: str}
-      views: {type: int}
-      duration_seconds: {type: int}
-      published: {type: str}
+      video_id: {type: string, required: true}
+      title: {type: string}
+      channel: {type: string}
+      channel_id: {type: string}
+      description: {type: string}
+      views: {type: integer}
+      duration_seconds: {type: integer}
+      published: {type: string}
     miss: "video_id == null"
     idempotent: true
 
@@ -881,21 +881,21 @@ contracts:
   facebook.post.comments:
     summary: "Comments on a public Facebook post by post id or URL — provider-native comment rows in `comments`"
     identity:
-      - {post_id: str}
-      - {url: url}
+      - {post_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      next_cursor: {type: str}
+      comments: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "comments == []"
     idempotent: true
 
   amazon.product.detail:
     summary: "One Amazon product by ASIN — the provider's own product object in `product`"
     identity:
-      - {asin: str}
+      - {asin: string}
     filters:
-      country: {type: str, default: us, note: "marketplace country; mapped to amazon_domain / country"}
+      country: {type: string, default: us, note: "marketplace country; mapped to amazon_domain / country"}
     output:
       product: {type: object, required: true}
     miss: "product == null"
@@ -904,44 +904,44 @@ contracts:
   linkedin.company.profile:
     summary: "A LinkedIn company page from its URL or handle — treg picks the provider and names the one that served"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_handle: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_handle: string}
     derive:
       linkedin_url: "fmt('https://www.linkedin.com/company/{}', linkedin_handle)"
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      name: {type: str, required: true}
-      description: {type: str}
-      website: {type: str, analytics: key}
-      followers: {type: int}
-      employees: {type: str, analytics: value}
-      location: {type: str, analytics: value}
-      linkedin_url: {type: str}
+      name: {type: string, required: true}
+      description: {type: string}
+      website: {type: string, analytics: key}
+      followers: {type: integer}
+      employees: {type: string, analytics: value}
+      location: {type: string, analytics: value}
+      linkedin_url: {type: string}
     miss: "name == null"
     idempotent: true
 
   x.post.comments:
     summary: "Replies to an X (Twitter) post by tweet id — provider-native rows in `comments`"
     identity:
-      - {tweet_id: str}
+      - {tweet_id: string}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      next_cursor: {type: str}
+      comments: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "comments == []"
     idempotent: true
 
   bing.serp.organic:
     summary: "Bing organic results for a keyword — provider-native result rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us}
-      language: {type: str, default: en}
+      country: {type: string, default: us}
+      language: {type: string, default: en}
     output:
-      results: {type: list, required: true}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
@@ -949,45 +949,45 @@ contracts:
   instagram.user.reels:
     summary: "An Instagram account's reels by username or numeric user id — provider-native reel rows in `reels`"
     identity:
-      - {username: str}
-      - {user_id: str}
+      - {username: string}
+      - {user_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      reels: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      reels: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "reels == []"
     idempotent: true
 
   youtube.channel.videos:
     summary: "A YouTube channel's recent videos by channel id — provider-native video rows in `videos`"
     identity:
-      - {channel_id: str}
+      - {channel_id: string}
     filters: {}
     output:
-      videos: {type: list, required: true}
-      next_cursor: {type: str}
+      videos: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "videos == []"
     idempotent: true
 
   web.backlinks.list:
     summary: "Backlinks pointing at a domain or page — provider-native backlink rows in `backlinks`; `limit` is the price dial"
     identity:
-      - {target: str}
+      - {target: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      backlinks: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      backlinks: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "backlinks == []"
     idempotent: true
 
   web.url.metrics:
     summary: "Authority / link metrics for one URL or domain — the provider's own metrics row in `metrics`"
     identity:
-      - {target: str}
+      - {target: string}
     filters: {}
     output:
       metrics: {type: object, required: true}
@@ -997,77 +997,77 @@ contracts:
   x.search.posts:
     summary: "Search X (Twitter) posts by keyword — provider-native rows in `posts`"
     identity:
-      - {q: str}
+      - {q: string}
     filters: {}
     output:
-      posts: {type: list, required: true}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   youtube.video.comments:
     summary: "Comments on a YouTube video by id or URL — provider-native comment rows in `comments`"
     identity:
-      - {video_id: str}
-      - {url: url}
+      - {video_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      next_cursor: {type: str}
+      comments: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "comments == []"
     idempotent: true
 
   linkedin.company.posts:
     summary: "A LinkedIn company page's recent posts, by page URL or numeric LinkedIn id — provider-native rows in `posts`"
     identity:
-      - {linkedin_url: url}
-      - {linkedin_id: str}
+      - {linkedin_url: {type: string, format: url}}
+      - {linkedin_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      posts: {type: list, required: true}
-      count: {type: int}
+      posts: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "posts == []"
     idempotent: true
 
   amazon.search.products:
     summary: "Search Amazon products by keyword — provider-native product rows in `products`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us, note: "marketplace country"}
+      country: {type: string, default: us, note: "marketplace country"}
     output:
-      products: {type: list, required: true}
-      count: {type: int}
+      products: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "products == []"
     idempotent: true
 
   facebook.user.posts:
     summary: "A public Facebook profile's or page's posts, by profile id or URL — provider-native rows in `posts`"
     identity:
-      - {profile_id: str}
-      - {url: url}
+      - {profile_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      posts: {type: list, required: true}
-      next_cursor: {type: str}
+      posts: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "posts == []"
     idempotent: true
 
   meta-ads.library.advertiser:
     summary: "The ads one Facebook page is running in the Meta Ad Library, by page id, company name, domain or Facebook URL — provider-native ad rows in `ads`"
     identity:
-      - {page_id: str}
-      - {company_name: str}
-      - {company_domain: str}
-      - {facebook_url: url}
+      - {page_id: string}
+      - {company_name: string}
+      - {company_domain: string}
+      - {facebook_url: {type: string, format: url}}
     filters: {}
     output:
-      ads: {type: list, required: true, note: "the provider's own ad rows (id, dates, text, media…) — shapes differ per provider; raw is the same body"}
-      page_id: {type: str}
-      page_name: {type: str}
-      count: {type: int}
-      next_cursor: {type: str}
+      ads: {type: array, items: {type: object}, required: true, note: "the provider's own ad rows (id, dates, text, media…) — shapes differ per provider; raw is the same body"}
+      page_id: {type: string}
+      page_name: {type: string}
+      count: {type: integer}
+      next_cursor: {type: string}
     # No ads is a miss, so the next provider is tried: a provider whose fetch was blocked answers
     # an empty list that looks like a page with no ads. Every child is free on an empty answer
     # except a per_call one, which bills it.
@@ -1078,12 +1078,12 @@ contracts:
   google.ads.transparency:
     summary: "The ads Google Ads Transparency Center shows for one company domain — provider-native ad rows in `ads`"
     identity:
-      - {company_domain: str}
+      - {company_domain: string}
     filters: {}
     output:
-      ads: {type: list, required: true, note: "the provider's own ad rows (creative id, format, advertiser…) — shapes differ per provider; raw is the same body"}
-      count: {type: int}
-      next_cursor: {type: str}
+      ads: {type: array, items: {type: object}, required: true, note: "the provider's own ad rows (creative id, format, advertiser…) — shapes differ per provider; raw is the same body"}
+      count: {type: integer}
+      next_cursor: {type: string}
     # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
     miss: "ads == []"
     idempotent: true
@@ -1091,15 +1091,15 @@ contracts:
   linkedin.search.ads:
     summary: "LinkedIn Ad Library ads for one company domain, LinkedIn page id, or keyword — provider-native ad rows in `ads`"
     identity:
-      - {company_domain: str}
-      - {linkedin_page_id: str}
-      - {keyword: str}
+      - {company_domain: string}
+      - {linkedin_page_id: string}
+      - {keyword: string}
     filters: {}
     output:
-      ads: {type: list, required: true, note: "the provider's own ad rows (creative type, advertiser, commentary…) — shapes differ per provider; raw is the same body"}
-      page_id: {type: str}
-      count: {type: int}
-      next_cursor: {type: str}
+      ads: {type: array, items: {type: object}, required: true, note: "the provider's own ad rows (creative type, advertiser, commentary…) — shapes differ per provider; raw is the same body"}
+      page_id: {type: string}
+      count: {type: integer}
+      next_cursor: {type: string}
     # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
     # routed: false — admission/settle only until more children verify; do not mint treg.linkedin.search.ads yet.
     miss: "ads == []"
@@ -1109,14 +1109,14 @@ contracts:
   google.maps.reviews:
     summary: "The reviews Google Maps shows for one place, by place id — provider-native review rows in `reviews`"
     identity:
-      - {place_id: str}
+      - {place_id: string}
     filters:
-      limit: {type: int, default: 5, note: "reviews to return; a provider that returns fewer is skipped for a bigger request"}
-      sort: {type: str, default: null, note: "newest, or the provider's relevant order when empty"}
+      limit: {type: integer, default: 5, note: "reviews to return; a provider that returns fewer is skipped for a bigger request"}
+      sort: {type: string, default: null, note: "newest, or the provider's relevant order when empty"}
     output:
-      reviews: {type: list, required: true, note: "the provider's own review rows (stars, text, date, reviewer…) — shapes differ per provider; raw is the same body"}
-      count: {type: int}
-      next_cursor: {type: str}
+      reviews: {type: array, items: {type: object}, required: true, note: "the provider's own review rows (stars, text, date, reviewer…) — shapes differ per provider; raw is the same body"}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "reviews == []"
     idempotent: true
     prefer: [crawl4ai]
@@ -1124,39 +1124,39 @@ contracts:
   facebook.user.profile:
     summary: "A public Facebook profile or page by URL or profile id — treg picks the provider and names the one that served"
     identity:
-      - {url: url}
-      - {profile_id: str}
+      - {url: {type: string, format: url}}
+      - {profile_id: string}
     filters: {}
     output:
-      name: {type: str, required: true}
-      id: {type: str}
-      url: {type: str}
+      name: {type: string, required: true}
+      id: {type: string}
+      url: {type: string}
     miss: "name == null"
     idempotent: true
 
   douyin.search.videos:
     summary: "Search Douyin videos by keyword — provider-native rows in `videos`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      videos: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      videos: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "videos == []"
     idempotent: true
 
   douyin.search.users:
     summary: "Search Douyin accounts by keyword — provider-native rows in `users`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      users: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      users: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "users == []"
     idempotent: true
 
@@ -1164,17 +1164,17 @@ contracts:
   xiaohongshu.search.users:
     summary: "Search Xiaohongshu accounts by keyword — provider-native rows in `users`"
     identity:
-      - {q: str}
+      - {q: string}
     filters: {}
     output:
-      users: {type: list, required: true}
+      users: {type: array, items: {type: object}, required: true}
     miss: "users == []"
     idempotent: true
 
   xiaohongshu.user.profile:
     summary: "A Xiaohongshu account by user id — the provider's own profile object in `user`"
     identity:
-      - {user_id: str}
+      - {user_id: string}
     filters: {}
     output:
       user: {type: object, required: true}
@@ -1184,28 +1184,28 @@ contracts:
   tiktok.comment.replies:
     summary: "Replies to one TikTok comment (video id + comment id) — provider-native rows in `replies`"
     identity:
-      - {video_id: str, comment_id: str}
+      - {video_id: string, comment_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      replies: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      replies: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "replies == []"
     idempotent: true
 
   stocks.quote.live:
     summary: "Latest quote for a stock ticker — `price` plus the provider's own row in `quote`"
     identity:
-      - {symbol: str}
+      - {symbol: string}
     filters: {}
     output:
-      price: {type: float, required: true}
-      open: {type: float}
-      high: {type: float}
-      low: {type: float}
-      previous_close: {type: float}
+      price: {type: number, required: true}
+      open: {type: number}
+      high: {type: number}
+      low: {type: number}
+      previous_close: {type: number}
       quote: {type: object}
     miss: "price == null"
     idempotent: true
@@ -1213,7 +1213,7 @@ contracts:
   reddit.post.detail:
     summary: "One Reddit post by its t3_ id — the provider's own post object in `post`"
     identity:
-      - {post_id: str}
+      - {post_id: string}
     filters: {}
     output:
       post: {type: object, required: true}
@@ -1223,21 +1223,21 @@ contracts:
   linkedin.post.detail:
     summary: "One LinkedIn post or article by URL — the provider's own object in `post`, with title/text/likes/comments where known"
     identity:
-      - {url: url}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
       post: {type: object, required: true}
-      title: {type: str}
-      text: {type: str}
-      likes: {type: int}
-      comments: {type: int}
+      title: {type: string}
+      text: {type: string}
+      likes: {type: integer}
+      comments: {type: integer}
     miss: "post == null"
     idempotent: true
 
   weibo.post.detail:
     summary: "One Weibo post by id — the provider's own object in `post`"
     identity:
-      - {post_id: str}
+      - {post_id: string}
     filters: {}
     output:
       post: {type: object, required: true}
@@ -1248,8 +1248,8 @@ contracts:
   douyin.video.detail:
     summary: "One Douyin video by aweme id or share URL — the provider's own `aweme_detail` in `video`"
     identity:
-      - {video_id: str}
-      - {url: url}
+      - {video_id: string}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
       video: {type: object, required: true}
@@ -1259,149 +1259,149 @@ contracts:
   douyin.video.comments:
     summary: "Comments on a Douyin video by aweme id — provider-native rows in `comments`"
     identity:
-      - {video_id: str}
+      - {video_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      comments: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      comments: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "comments == []"
     idempotent: true
 
   douyin.user.videos:
     summary: "A Douyin account's videos by sec_uid — provider-native rows in `videos`"
     identity:
-      - {sec_uid: str}
+      - {sec_uid: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      videos: {type: list, required: true}
-      next_cursor: {type: str}
-      has_more: {type: bool}
+      videos: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
+      has_more: {type: boolean}
     miss: "videos == []"
     idempotent: true
 
   xiaohongshu.note.comments:
     summary: "Comments on a Xiaohongshu note by note id — provider-native rows in `comments`"
     identity:
-      - {note_id: str}
+      - {note_id: string}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      count: {type: int}
-      has_more: {type: bool}
+      comments: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      has_more: {type: boolean}
     miss: "comments == []"
     idempotent: true
 
   xiaohongshu.user.notes:
     summary: "A Xiaohongshu account's posted notes by user id — provider-native rows in `notes`"
     identity:
-      - {user_id: str}
+      - {user_id: string}
     filters: {}
     output:
-      notes: {type: list, required: true}
-      has_more: {type: bool}
+      notes: {type: array, items: {type: object}, required: true}
+      has_more: {type: boolean}
     miss: "notes == []"
     idempotent: true
 
   linkedin.post.reactions:
     summary: "Who reacted to a LinkedIn post, by post URN or numeric post id — provider-native rows in `reactions`"
     identity:
-      - {post_urn: str}
-      - {post_id: str}
+      - {post_urn: string}
+      - {post_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      reactions: {type: list, required: true}
-      count: {type: int}
+      reactions: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "reactions == []"
     idempotent: true
 
   linkedin.post.comments:
     summary: "Comments on a LinkedIn post, by post URN or numeric post id — provider-native rows in `comments`"
     identity:
-      - {post_urn: str}
-      - {post_id: str}
+      - {post_urn: string}
+      - {post_id: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      comments: {type: list, required: true}
-      count: {type: int}
+      comments: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "comments == []"
     idempotent: true
 
   web.anchors.list:
     summary: "Anchor texts of backlinks pointing at a domain — provider-native rows in `anchors`; `limit` is the price dial"
     identity:
-      - {target: str}
+      - {target: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      anchors: {type: list, required: true}
-      count: {type: int}
-      next_cursor: {type: str}
+      anchors: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
+      next_cursor: {type: string}
     miss: "anchors == []"
     idempotent: true
 
   stocks.eod.history:
     summary: "Daily OHLCV history for a stock ticker — provider-native bar rows in `bars`"
     identity:
-      - {symbol: str}
+      - {symbol: string}
     filters:
-      from: {type: str, default: null, note: "YYYY-MM-DD start date, where the provider takes one"}
-      limit: {type: int, default: 5, note: "bars to return, where the provider takes a count"}
+      from: {type: string, default: null, note: "YYYY-MM-DD start date, where the provider takes one"}
+      limit: {type: integer, default: 5, note: "bars to return, where the provider takes a count"}
     output:
-      bars: {type: list, required: true}
+      bars: {type: array, items: {type: object}, required: true}
     miss: "bars == []"
     idempotent: true
 
   yahoo.serp.organic:
     summary: "Yahoo organic results for a keyword — provider-native result rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      country: {type: str, default: us}
-      language: {type: str, default: en}
+      country: {type: string, default: us}
+      language: {type: string, default: en}
     output:
-      results: {type: list, required: true}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   people.identity.resolve:
     summary: "Resolve a work email to the person's LinkedIn profile — treg picks the provider and names the one that served"
     identity:
-      - {email: str}
+      - {email: string}
     filters: {}
     output:
-      linkedin_url: {type: str, required: true}
-      full_name: {type: str}
+      linkedin_url: {type: string, required: true}
+      full_name: {type: string}
     miss: "linkedin_url == null"
     idempotent: true
 
   bilibili.video.comments:
     summary: "Comments on a Bilibili video by aid (and bvid) — provider-native rows in `comments`"
     identity:
-      - {aid: str}
-      - {aid: str, bvid: str}
+      - {aid: string}
+      - {aid: string, bvid: string}
     filters: {}
     output:
-      comments: {type: list, required: true}
-      next_cursor: {type: str}
+      comments: {type: array, items: {type: object}, required: true}
+      next_cursor: {type: string}
     miss: "comments == []"
     idempotent: true
 
   bilibili.search.videos:
     summary: "Search Bilibili videos by keyword — provider-native rows in `videos`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10}
+      limit: {type: integer, default: 10}
     output:
-      videos: {type: list, required: true}
-      count: {type: int}
+      videos: {type: array, items: {type: object}, required: true}
+      count: {type: integer}
     miss: "videos == []"
     idempotent: true
 
@@ -1409,26 +1409,26 @@ contracts:
   ai-search.perplexity.answer:
     summary: "Ask Perplexity a question — the answer text and its cited sources; `source_kind` says whether it came from the Perplexity website or its model API"
     identity:
-      - {prompt: str}
+      - {prompt: string}
     filters:
-      country: {type: str, default: "US", note: "ISO 3166-1 alpha-2: where the question is asked from"}
+      country: {type: string, default: "US", note: "ISO 3166-1 alpha-2: where the question is asked from"}
     output:
-      answer: {type: str, required: true}
-      sources: {type: list, note: "the provider's own cited-source objects; raw is the same body"}
-      source_kind: {type: str, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite largely different sources for the same question"}
+      answer: {type: string, required: true}
+      sources: {type: array, items: {type: object}, note: "the provider's own cited-source objects; raw is the same body"}
+      source_kind: {type: string, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite largely different sources for the same question"}
     miss: "answer == null"
     idempotent: true
 
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10, note: "maximum results, where the provider accepts one"}
-      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents"}
+      limit: {type: integer, default: 10, note: "maximum results, where the provider accepts one"}
+      contents: {type: boolean, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents"}
     output:
-      results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true, note: "the provider's own ranked result objects; raw is the same body"}
+      count: {type: integer}
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
@@ -1441,23 +1441,23 @@ contracts:
   web.search.news:
     summary: "Search recent news — provider-native article rows in `results`"
     identity:
-      - {q: str}
+      - {q: string}
     filters:
-      limit: {type: int, default: 10, note: "maximum compared results; sent upstream where supported"}
+      limit: {type: integer, default: 10, note: "maximum compared results; sent upstream where supported"}
     output:
-      results: {type: list, required: true, note: "the provider's own ranked news articles"}
-      count: {type: int}
+      results: {type: array, items: {type: object}, required: true, note: "the provider's own ranked news articles"}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   web.extract:
     summary: "Extract clean content from one web page — provider-native rows in `pages`"
     identity:
-      - {url: url}
+      - {url: {type: string, format: url}}
     filters: {}
     output:
-      pages: {type: list, required: true, note: "the provider's own extracted page objects; raw is the same body"}
-      count: {type: int}
+      pages: {type: array, items: {type: object}, required: true, note: "the provider's own extracted page objects; raw is the same body"}
+      count: {type: integer}
     miss: "pages == []"
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
@@ -1467,12 +1467,12 @@ contracts:
     summary: "Extract typed JSON from one web page, described by a JSON schema and/or a plain-English instruction — the extracted data in `data`"
     identity:
       # Most complete first: the first variant the caller fills is the one every field rides on.
-      - {url: url, schema: object, instruction: str}
-      - {url: url, schema: object}
-      - {url: url, instruction: str}
+      - {url: {type: string, format: url}, schema: object, instruction: string}
+      - {url: {type: string, format: url}, schema: object}
+      - {url: {type: string, format: url}, instruction: string}
     filters: {}
     output:
-      data: {type: any, required: true, note: "the extracted records, in the shape the schema asked for; raw is the provider's whole body"}
+      data: {type: object, required: true, note: "the extracted records, in the shape the schema asked for; raw is the provider's whole body"}
     miss: "data == null"
     idempotent: true
     prefer: [crawl4ai]
@@ -1480,25 +1480,25 @@ contracts:
   web.map:
     summary: "Discover the URLs on a website — provider-native map rows in `results`"
     identity:
-      - {url: url}
-      - {url: url, q: str}
+      - {url: {type: string, format: url}}
+      - {url: {type: string, format: url}, q: string}
     filters:
-      limit: {type: int, default: 10, min: 1, note: "maximum discovered URLs"}
+      limit: {type: integer, default: 10, min: 1, note: "maximum discovered URLs"}
     output:
-      results: {type: list, required: true, note: "URL strings or provider-native URL objects; raw is the same body"}
-      count: {type: int}
+      results: {type: array, items: {type: [object, string]}, required: true, note: "URL strings or provider-native URL objects; raw is the same body"}
+      count: {type: integer}
     miss: "results == []"
     idempotent: true
 
   web.crawl:
     summary: "Crawl a website and return clean page content — provider-native rows in `pages`"
     identity:
-      - {url: url}
+      - {url: {type: string, format: url}}
     filters:
-      limit: {type: int, default: 10, note: "maximum crawled pages"}
+      limit: {type: integer, default: 10, note: "maximum crawled pages"}
     output:
-      pages: {type: list, required: true, note: "the provider's own crawled page objects; raw is the same body"}
-      count: {type: int}
+      pages: {type: array, items: {type: object}, required: true, note: "the provider's own crawled page objects; raw is the same body"}
+      count: {type: integer}
     miss: "pages == []"
     idempotent: true
 
@@ -1507,10 +1507,10 @@ contracts:
   creators.profile:
     summary: "A creator's profile by social handle — influencers.club raw/profile/full tiers; cache result admission only, never routed"
     identity:
-      - {handle: str, platform: str}
+      - {handle: string, platform: string}
     filters: {}
     output:
-      profile: {type: dict, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
+      profile: {type: object, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
     miss: "profile == null"
     idempotent: true
     routed: false
@@ -1518,10 +1518,10 @@ contracts:
   creators.analytics:
     summary: "A creator's performance analytics by social handle — influencers.club analytics tier; cache result admission only, never routed"
     identity:
-      - {handle: str, platform: str}
+      - {handle: string, platform: string}
     filters: {}
     output:
-      analytics: {type: dict, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
+      analytics: {type: object, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
     miss: "analytics == null"
     idempotent: true
     routed: false
@@ -1529,14 +1529,14 @@ contracts:
   creators.enrich.by_email:
     summary: "The creator behind an email address — influencers.club reverse lookup; cache result admission only, never routed"
     identity:
-      - {email: str}
+      - {email: string}
     filters: {}
     output:
-      platform: {type: str, required: true, note: "the creator's strongest platform — a creator the provider knows"}
-      username: {type: str}
-      url: {type: str}
-      full_name: {type: str}
-      followers: {type: int}
+      platform: {type: string, required: true, note: "the creator's strongest platform — a creator the provider knows"}
+      username: {type: string}
+      url: {type: string}
+      full_name: {type: string}
+      followers: {type: integer}
     miss: "platform == null"
     idempotent: true
     routed: false

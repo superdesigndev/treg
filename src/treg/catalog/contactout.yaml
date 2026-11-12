@@ -27,44 +27,64 @@ endpoints:
     body:
       job_title: &id002
         type: array
+        items: {type: string}
       past_job_title: &id003
         type: array
+        items: {type: string}
       job_function: &id004
         type: array
+        items: {type: string}
       seniority: &id005
         type: array
+        items: {type: string}
       skills: &id006
         type: array
+        items: {type: string}
       languages: &id007
         type: array
+        items: {type: string}
       education: &id008
         type: array
+        items: {type: string}
       educations: &id009
         type: array
+        items: {type: string}
       location: &id010
         type: array
+        items: {type: string}
       current_work_location: &id011
         type: array
+        items: {type: string}
       past_work_location: &id012
         type: array
+        items: {type: string}
       company: &id013
         type: array
+        items: {type: string}
       past_company: &id014
         type: array
+        items: {type: string}
       domain: &id015
         type: array
+        items: {type: string}
       industry: &id016
         type: array
+        items: {type: string}
       company_size: &id017
         type: array
+        items: {type: string}
       years_of_experience: &id018
         type: array
+        items: {type: string}
       years_in_current_role: &id019
         type: array
+        items: {type: string}
       exclude_job_titles: &id020
         type: array
+        items: {type: string}
       exclude_companies: &id021
         type: array
+        items: {type: string}
       name: &id022
         type: string
       keyword: &id023
@@ -271,6 +291,7 @@ endpoints:
         default: 25
       data_types:
         type: array
+        items: {type: string}
         note: Availability filter, NOT a reveal selector.
       reveal_info:
         type: boolean
@@ -279,6 +300,7 @@ endpoints:
         - false
       output_fields:
         type: array
+        items: {type: string}
         note: Custom profile fields; do not omit contact_info when revealing contacts.
     note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
       match_experience cannot combine with current_titles_only or company_filter.
@@ -422,6 +444,7 @@ endpoints:
         note: Platform calls require an explicit page_size; 1 reserves at most $0.67.
       data_types:
         type: array
+        items: {type: string}
         note: Availability filter, NOT a reveal selector.
       reveal_info:
         type: boolean
@@ -430,6 +453,7 @@ endpoints:
         - true
       output_fields:
         type: array
+        items: {type: string}
         note: Custom profile fields; do not omit contact_info when revealing contacts.
     note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
       match_experience cannot combine with current_titles_only or company_filter.
@@ -527,16 +551,22 @@ endpoints:
     body:
       name:
         type: array
+        items: {type: string}
       domain:
         type: array
+        items: {type: string}
       size:
         type: array
+        items: {type: string}
       location:
         type: array
+        items: {type: string}
       industry:
         type: array
+        items: {type: string}
       technologies:
         type: array
+        items: {type: string}
       page:
         type: integer
       min_revenue:
@@ -591,6 +621,7 @@ endpoints:
     body:
       domains:
         type: array
+        items: {type: string}
         required: true
         note: Up to 30 domain names.
     note: $0.02 per company found. Unmatched domains cost nothing.
@@ -885,12 +916,16 @@ endpoints:
         type: string
       company: &id043
         type: array
+        items: {type: string}
       company_domain: &id044
         type: array
+        items: {type: string}
       education: &id045
         type: array
+        items: {type: string}
       include:
         type: array
+        items: {type: string}
         note: 'Contact fields to reveal: work_email, personal_email, phone. Omit for
           profile only.'
     note: Provide linkedin_url, email or phone, OR name plus company/location/education.
@@ -943,6 +978,7 @@ endpoints:
       education: *id045
       include:
         type: array
+        items: {type: string}
         required: true
         enum:
         - - work_email
@@ -998,6 +1034,7 @@ endpoints:
       education: *id045
       include:
         type: array
+        items: {type: string}
         required: true
         enum:
         - - personal_email

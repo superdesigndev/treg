@@ -24,7 +24,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
         request: {type: string, required: false, enum: [http, smart, browser], example: http}
         max_size: {type: integer, required: false, min: 1, max: 1000000}
@@ -59,7 +59,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         limit: {type: integer, required: true, min: 1, max: 100, example: 5}
         depth: {type: integer, required: false, min: 1, max: 10}
         return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
@@ -120,7 +120,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         limit: {type: integer, required: true, min: 1, max: 1000, example: 10}
         request: {type: string, required: false, enum: [http, smart, browser], example: http}
     test_request: {body: {url: "https://example.com", limit: 1, request: http}}
@@ -144,7 +144,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
     test_request: {body: {url: "https://example.com", return_format: markdown}}
     cost: *variable_cost
@@ -167,7 +167,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         full_page: {type: boolean, required: false, default: false}
         binary: {type: boolean, required: true, enum: [false]}
         block_images: {type: boolean, required: false, default: false}

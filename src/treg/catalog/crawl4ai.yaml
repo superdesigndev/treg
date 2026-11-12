@@ -95,8 +95,8 @@ endpoints:
       bodyType: json
       body:
         endpoint: {type: string, required: true, enum: [scrape, search, extract, answer, jobs], example: scrape}
-        url: {type: string, required: false, format: uri, example: "https://example.com"}
-        urls: {type: "array[string]", required: false, maxItems: 50}
+        url: {type: string, required: false, format: url, example: "https://example.com"}
+        urls: {type: array, items: {type: string}, required: false, maxItems: 50}
     test_request: {body: {endpoint: scrape, url: "https://example.com"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Estimates spend no credits."}
     verified: '2026-10-05'
@@ -120,7 +120,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         format: {type: string, required: false, enum: [both, md, html], default: both, example: md}
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none, note: "Costs more: isp 0.30 credits, residential 0.60 (plain page 0.15). Use only for a site that blocked a plain request, and try isp before residential."}
         country: {type: string, required: false, note: "Two-letter exit country for isp or residential, e.g. us, gb. A country without isp addresses is served through residential at 0.60."}
@@ -219,7 +219,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: false, format: uri, example: "https://news.ycombinator.com"}
+        url: {type: string, required: false, format: url, example: "https://news.ycombinator.com"}
         content: {type: string, required: false, note: "your own text, Markdown or HTML instead of a URL"}
         instruction: {type: string, required: false, example: "the top 3 stories on the front page"}
         schema: {type: object, required: false, note: "JSON schema each returned record must match"}
@@ -372,7 +372,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 25, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 25, example: ["https://example.com"]}
         format: {type: string, required: false, enum: [both, md, html], default: both, example: md}
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none}
         country: {type: string, required: false}
@@ -409,7 +409,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 500, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 500, example: ["https://example.com"]}
         format: {type: string, required: false, enum: [both, md, html], default: both}
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none}
         country: {type: string, required: false}
@@ -602,7 +602,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com/pricing"}
+        url: {type: string, required: true, format: url, example: "https://example.com/pricing"}
         watch: {type: string, required: false, example: "a plan gets more expensive, or a plan is removed", note: "Your condition in plain words: what change, in which direction. Several conditions in one sentence are fine; empty = any real change."}
         agent: {type: string, required: true, note: "Your team's label on treg's key. A call without it, or with another label, is refused and the error names yours."}
         every: {type: string, required: false, default: auto, note: "auto (checked as often as the page really changes, at least daily, 1 credit a check) or a fixed 4m, 15m, 1h, 6h, 1d, 1w. A fixed interval under 1 hour costs 2 credits a check."}
@@ -612,7 +612,7 @@ endpoints:
           required: false
           note: "Optional alerts on each confirmed change. On treg's key an email alert goes only to your own treg email."
           properties:
-            webhook: {type: string, format: uri, note: "Your public HTTPS address; one POST per confirmed change."}
+            webhook: {type: string, format: url, note: "Your public HTTPS address; one POST per confirmed change."}
             secret: {type: string, note: "Signs the webhook (x-c4-signature)."}
             email: {type: string, note: "Your own treg email only; any other address is refused."}
             trigger: {type: object, note: "{url, token}: starts an agent, for example a Claude Code routine."}
@@ -763,7 +763,7 @@ endpoints:
           required: false
           note: "Replaced whole. On treg's key an email alert goes only to your own treg email."
           properties:
-            webhook: {type: string, format: uri, note: "Your public HTTPS address; one POST per confirmed change."}
+            webhook: {type: string, format: url, note: "Your public HTTPS address; one POST per confirmed change."}
             secret: {type: string, note: "Signs the webhook (x-c4-signature)."}
             email: {type: string, note: "Your own treg email only; any other address is refused."}
             trigger: {type: object, note: "{url, token}: starts an agent, for example a Claude Code routine."}

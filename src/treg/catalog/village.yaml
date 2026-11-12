@@ -37,7 +37,7 @@ endpoints:
         limit: {type: integer, required: false, default: 25, min: 1, max: 100, example: 25, note: "Maximum number of results per page. The price scales with the results returned."}
         mode: {type: string, required: false, enum: [auto, lookup, simple, complex], note: "auto classifies the query into lookup, simple or complex. lookup is for direct matches, simple for firmographic queries, complex for multi-step or subjective queries."}
         scope: {type: string, required: false, enum: [network, global, specific_list], note: "Defaults: lookup=global, simple=network, complex=network. network searches your connections first, global searches everyone, specific_list needs specific_list_data."}
-        cursor: {type: "string|object", required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
+        cursor: {type: [object, string], required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
         network_filters: {type: object, required: false, note: "Network filtering options: connection_degrees, introducer_linkedin_ids, user_to_introducer_types, user_to_introducer_min_score, introducer_to_target_types, introducer_to_target_min_score, exclude_teams, exclude_community."}
         include_counts: {type: string, required: false, enum: [global, network, all], note: "Inline count scopes computed on the first page only. Ignored when cursor is sent, and adds latency."}
         specific_list_data: {type: object, required: false, note: "Required when scope is specific_list: people_linkedin_identifiers, 1 to 50,000 entries, each a bare LinkedIn identifier or {id, score}. limit is then ignored and every match comes back in one response."}
@@ -77,7 +77,7 @@ endpoints:
         limit: {type: integer, required: false, default: 25, min: 1, max: 100, example: 25, note: "Maximum number of results per page. The price scales with the results returned."}
         mode: {type: string, required: false, default: auto, enum: [auto, lookup, simple, complex], example: auto, note: "Search mode for prompt-only searches: auto lets the system decide, lookup is a direct match, simple is LLM-powered, complex adds thinking and high-reasoning SQL generation. Structured filters always compile deterministically."}
         scope: {type: string, required: false, enum: [network, global], note: "network searches companies connected to your network first, global searches all companies."}
-        cursor: {type: "string|object", required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
+        cursor: {type: [object, string], required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
         network_filters: {type: object, required: false, note: "Network path and relationship filters: connection_degrees, introducer_linkedin_ids, user_to_introducer_types, user_to_introducer_min_score, introducer_to_target_types, introducer_to_target_min_score, exclude_teams, exclude_community."}
         include_counts: {type: string, required: false, enum: [global, network, all], note: "Inline count scopes computed on the first page only. Ignored when cursor is sent, and adds latency."}
         list_filter: {type: object, required: false, example: {company_list_id: 123}, note: "Search within your saved lists: company_list_id, people_list_id, or both. A list alone is a valid search. Lists must belong to your active workspace."}
@@ -417,7 +417,7 @@ endpoints:
         url: {type: string, required: false, note: "Generic URL (auto-detected)."}
         cursor: {type: string, required: false, note: "Opaque cursor for pagination (from previous response)."}
         limit: {type: integer, required: false, min: 1, max: 50, example: 25, note: "Number of results per page (default 25, max 50)."}
-        connection_degrees: {type: "array[integer]", required: false, example: [1, 2], note: "Filter by connection degree: 1 direct, 2 second-degree, 3 third-degree."}
+        connection_degrees: {type: array, items: {type: integer}, required: false, example: [1, 2], note: "Filter by connection degree: 1 direct, 2 second-degree, 3 third-degree."}
       note: "One of domain, linkedin_url or url is required. Returns up to 50 people at the company you can reach, who on your team or which mutual connection can introduce you to each, and connection strength scores, strongest first."
     test_request: {body: {domain: "stripe.com", limit: 1}}
     cost:
@@ -477,7 +477,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        people: {type: "array[string]", required: true, minItems: 1, example: ["https://linkedin.com/in/johndoe", "https://linkedin.com/in/janedoe"], note: "LinkedIn person profile URLs to rank."}
+        people: {type: array, items: {type: string}, required: true, minItems: 1, example: ["https://linkedin.com/in/johndoe", "https://linkedin.com/in/janedoe"], note: "LinkedIn person profile URLs to rank."}
       note: "Ranks only the people you send, strongest connection first. Each result carries score (0-100), score_label (for example Strong or Weak) and the original URL. It finds no one new."
     test_request: {body: {people: ["https://www.linkedin.com/in/patrickcollison"]}}
     cost:
@@ -506,7 +506,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        companies: {type: "array[string]", required: true, minItems: 1, maxItems: 100, example: ["stripe.com", "https://linkedin.com/company/openai"], note: "Company LinkedIn URLs or domains to rank, up to 100 per call."}
+        companies: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 100, example: ["stripe.com", "https://linkedin.com/company/openai"], note: "Company LinkedIn URLs or domains to rank, up to 100 per call."}
       note: "Ranks only the companies you send, strongest connection first, so you can screen target accounts for warm paths 100 at a time. Each result carries score, score_label and the company's LinkedIn URL and domain. It finds no one new."
     test_request: {body: {companies: ["stripe.com"]}}
     cost:

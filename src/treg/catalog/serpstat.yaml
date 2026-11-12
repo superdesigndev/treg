@@ -72,7 +72,7 @@ endpoints:
         method: {type: string, required: true, note: "the JSON-RPC operation — this literal string selects the report", example: "SerpstatDomainProcedure.getDomainsInfo"}
         params: {type: object, required: true, note: "see the fields below; they go INSIDE params, not at the top level"}
         id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
-        "params.domains": {type: "array[string]", required: true, note: "1 to 10 bare domains", example: ["serpstat.com"]}
+        "params.domains": {type: array, items: {type: string}, required: true, note: "1 to 10 bare domains", example: ["serpstat.com"]}
         "params.se": {type: string, required: true, note: "search database, e.g. g_us, g_uk, g_de, bing_us", example: "g_us"}
         "params.filters": {type: object, required: false, note: "optional narrowing: traff / traff_from / traff_to (estimated traffic) and visible / visible_from / visible_to (visibility score)"}
       note: "the ONE method here that takes a batch of domains — up to 10 per call — but note the price is PER DOMAIN, so batching saves round trips, not credits. Body shape: {\"id\": \"1\", \"method\": \"SerpstatDomainProcedure.getDomainsInfo\", \"params\": {\"domains\": [\"serpstat.com\"], \"se\": \"g_us\"}}. Rows arrive in result.data[]."
@@ -109,8 +109,8 @@ endpoints:
         "params.withSubdomains": {type: boolean, required: false, note: "include subdomains in the result"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
         "params.url": {type: string, required: false, note: "restrict to keywords ranking for one page of the domain"}
-        "params.keywords": {type: "array[string]", required: false, note: "only return these keywords"}
-        "params.minusKeywords": {type: "array[string]", required: false, note: "exclude keywords containing these"}
+        "params.keywords": {type: array, items: {type: string}, required: false, note: "only return these keywords"}
+        "params.minusKeywords": {type: array, items: {type: string}, required: false, note: "exclude keywords containing these"}
         "params.page": {type: integer, required: false, note: "1-based page number; default 1"}
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: object, required: false, note: "map of field to direction, e.g. {\"position\": \"asc\"}; fields: position, region_queries_count, cost, traff, difficulty, keyword_length, concurrency"}
@@ -179,7 +179,7 @@ endpoints:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordsInfo"}
         params: {type: object, required: true}
         id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
-        "params.keywords": {type: "array[string]", required: true, note: "1 to 1,000 keywords", example: ["seo"]}
+        "params.keywords": {type: array, items: {type: string}, required: true, note: "1 to 1,000 keywords", example: ["seo"]}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
         "params.sort": {type: object, required: false, note: "map of field to direction; fields: region_queries_count, region_queries_count_wide, cost, concurrency, found_results, difficulty"}
@@ -334,7 +334,7 @@ endpoints:
         "params.sort": {type: string, required: false, note: "field to sort by; default `check` (last-checked date)"}
         "params.order": {type: string, required: false, note: "asc | desc"}
         "params.linkPerDomain": {type: integer, required: false, note: "set to 1 to return only the single best link from each referring domain"}
-        "params.complexFilter": {type: array, required: false, note: "nested array of {name, operator, value} conditions — outer array is OR, inner array is AND"}
+        "params.complexFilter": {type: array, items: {type: string}, required: false, note: "nested array of {name, operator, value} conditions — outer array is OR, inner array is AND"}
       note: |
         Despite the name, `getNewBacklinks` is Serpstat's ACTIVE-backlinks list, not a new-links
         delta — it is the general backlink listing. `SerpstatBacklinksProcedure.getLostBacklinks`
@@ -373,7 +373,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false, note: "field to sort by; default `check`"}
         "params.order": {type: string, required: false, note: "asc | desc"}
-        "params.complexFilter": {type: array, required: false, note: "nested {name, operator, value} conditions — outer OR, inner AND"}
+        "params.complexFilter": {type: array, items: {type: string}, required: false, note: "nested {name, operator, value} conditions — outer OR, inner AND"}
       note: "note the narrower searchType enum here: this method accepts only domain-level targets."
     cost:
       type: per_result
@@ -412,7 +412,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false, note: "default refDomains"}
         "params.order": {type: string, required: false, note: "asc | desc; default desc"}
-        "params.complexFilter": {type: array, required: false}
+        "params.complexFilter": {type: array, items: {type: string}, required: false}
       note: "`searchType` has no default on this method — omitting it is an error, where the other backlink methods would have assumed `domain`."
     cost:
       type: per_result
@@ -448,7 +448,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false}
         "params.order": {type: string, required: false, note: "asc | desc"}
-        "params.complexFilter": {type: array, required: false}
+        "params.complexFilter": {type: array, items: {type: string}, required: false}
       note: "the link-equity map of a site — which pages actually earned the backlinks."
     cost:
       type: per_result

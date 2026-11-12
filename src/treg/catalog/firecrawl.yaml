@@ -27,11 +27,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
-        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 3, enum: [markdown, html, links], example: [markdown]}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
+        formats: {type: array, items: {type: string, enum: [markdown, html, links]}, required: false, minItems: 1, maxItems: 3, example: [markdown]}
         onlyMainContent: {type: boolean, required: false, default: true}
         maxAge: {type: integer, required: false, min: 0, max: 172800000, example: 0}
-        parsers: {type: "array[string]", required: true, minItems: 0, maxItems: 0, example: []}
+        parsers: {type: array, items: {type: string}, required: true, minItems: 0, maxItems: 0, example: []}
       note: "Pass parsers: [] to keep PDF URLs at the flat one-credit rate; PDF content is then returned as base64. JSON, question, highlights, threat scans and other charged options are excluded. A target 403/404 document is billable; an upstream request with no document is free."
     test_request: {body: {url: "https://example.com", formats: [markdown], maxAge: 0, parsers: []}}
     cost: &one_page
@@ -66,8 +66,8 @@ endpoints:
       body:
         query: {type: string, required: true, example: "Firecrawl API documentation"}
         limit: {type: integer, required: true, min: 1, max: 10, example: 3}
-        includeDomains: {type: "array[string]", required: false, maxItems: 20}
-        excludeDomains: {type: "array[string]", required: false, maxItems: 20}
+        includeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
+        excludeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
       note: "The ten-result cap fixes the base cost at two credits. scrapeOptions and other add-ons are outside this catalog tool; use a raw BYOK tool for them."
     test_request: {body: {query: "Firecrawl API documentation", limit: 3}}
     cost:
@@ -102,7 +102,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         search: {type: string, required: false, example: "documentation"}
         limit: {type: integer, required: false, min: 1, max: 1000, example: 10}
         includeSubdomains: {type: boolean, required: false, default: false}
@@ -131,11 +131,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         limit: {type: integer, required: true, min: 1, max: 10, example: 3}
         maxDiscoveryDepth: {type: integer, required: false, min: 0, max: 10, example: 1}
-        includePaths: {type: "array[string]", required: false, maxItems: 20}
-        excludePaths: {type: "array[string]", required: false, maxItems: 20}
+        includePaths: {type: array, items: {type: string}, required: false, maxItems: 20}
+        excludePaths: {type: array, items: {type: string}, required: false, maxItems: 20}
         scrapeOptions: {type: object, required: true, enum: [{parsers: []}], example: {parsers: []}}
       note: "Crawls require limit <= 10 and scrapeOptions: {parsers: []}, so PDF URLs use the flat rate and return base64. Other charged scrape options, external links and ignored robots rules are excluded."
     test_request: {body: {url: "https://example.com", limit: 1, maxDiscoveryDepth: 0, scrapeOptions: {parsers: []}}}
@@ -218,11 +218,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
-        formats: {type: "array[string]", required: true, minItems: 1, maxItems: 3, enum: [markdown, html, links], example: [markdown]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        formats: {type: array, items: {type: string, enum: [markdown, html, links]}, required: true, minItems: 1, maxItems: 3, example: [markdown]}
         onlyMainContent: {type: boolean, required: false, default: true}
         maxAge: {type: integer, required: false, min: 0, max: 172800000, example: 0}
-        parsers: {type: "array[string]", required: true, minItems: 0, maxItems: 0, example: []}
+        parsers: {type: array, items: {type: string}, required: true, minItems: 0, maxItems: 0, example: []}
       note: "The URL list caps the hold at ten pages. Pass parsers: [] so PDFs use the flat one-credit rate and return base64. JSON and other charged options are excluded."
     test_request: {body: {urls: ["https://example.com"], formats: [markdown], maxAge: 0, parsers: []}}
     cost:
