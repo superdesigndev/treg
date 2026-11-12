@@ -1776,39 +1776,39 @@ async def test_treg_accounts_used_up_allowance_is_skipped_not_the_routes_error(
     get_settings.cache_clear()
 
 
-async def test_a_routed_call_that_fails_charges_nothing_and_a_retry_tries_again(
+async def test_a_miss_with_a_provider_down_on_the_way_is_an_incomplete_miss(
     clients: AsyncClient, enrichment_on, monkeypatch,
 ):
-    """Owner decision 2026-09-21: a routed call that fails charges the caller nothing. Here tomba
-    answers (a billed miss) and leadmagic is down: the call ends 502 `route_failed` and tomba's hold
-    is RELEASED rather than settled. A failure that cost nothing is not stored for replay (only a
-    charged answer is), so a retry with the same key tries again: and is free again."""
+    """tomba answers (a billed miss) and leadmagic is down. One provider's outage does not turn the
+    other's honest answer into a 502 `route_failed`: the call is a 200 miss marked incomplete,
+    charged for tomba's miss as any miss is. (A routed call that does fail, where no provider
+    answered, still charges nothing: owner decision 2026-09-21,
+    test_adapter_throws_on_all_children_returns_structured_502_with_tried.)"""
     routed = "treg.people.email.verify"
     tomba_miss = (200, {"data": {"email": {"status": None, "score": None}}})
     down = (503, {"message": "provider down"})
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"tomba": [tomba_miss, tomba_miss], "leadmagic": [down, down]}, seen))
+        {"tomba": [tomba_miss], "leadmagic": [down]}, seen))
     headers = {
-        "Idempotency-Key": "route-failure-is-free",
+        "Idempotency-Key": "incomplete-miss",
         "X-Treg-Route-Prefer": "tomba,leadmagic",
         "X-Treg-Route-Exclude": "hunter",
     }
     before = await _balance(clients)
 
     r1 = await clients.post(f"/call/{routed}", json={"email": "bad@example.com"}, headers=headers)
-    r2 = await clients.post(f"/call/{routed}", json={"email": "bad@example.com"}, headers=headers)
 
-    assert r1.status_code == 502 and r1.json()["detail"]["error"] == "route_failed"
-    detail = r1.json()["detail"]
-    assert detail["charged_micro"] == 0 and detail["released_micro"] == 8_900
-    assert all(a["charged_micro"] == 0 for a in detail["tried"])
-    assert r1.headers["X-Treg-Cost-Micro"] == "0"
-    assert before - await _balance(clients) == 0
-    assert r2.status_code == 502 and r2.headers.get("X-Treg-Idempotent-Replay") is None
-    assert r2.json()["detail"]["charged_micro"] == 0
-    assert before - await _balance(clients) == 0
-    assert [provider for provider, *_ in seen] == ["tomba", "leadmagic", "tomba", "leadmagic"]
+    assert r1.status_code == 200, r1.text
+    doc = r1.json()["_treg"]
+    assert doc["outcome"] == "miss" and doc["incomplete"] is True
+    assert r1.headers["X-Treg-Route-Incomplete"] == "true"
+    assert [(t["provider"], t["outcome"], t["status"]) for t in doc["tried"]] == [
+        ("tomba", "miss", 200), ("leadmagic", "error", 503)]
+    assert doc["charged_micro"] == 8_900 == before - await _balance(clients)
+    assert [provider for provider, *_ in seen] == ["tomba", "leadmagic"]
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
 
 
 async def test_a_400_after_another_provider_answered_is_that_providers_own_rejection(
@@ -3054,7 +3054,8 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
     clients: AsyncClient, enrichment_on, monkeypatch,
 ):
     """When ALL adapters throw on 200 responses, the parent must return a structured 502
-    with proper error details and `tried` list - not a bare 500 or empty 502."""
+    with proper error details and `tried` list - not a bare 500 or empty 502. (findymail's name
+    search is not patched to throw; it would answer a miss, and the call would then be a miss.)"""
     original_cat = catalog_store.load()
     patched_cat = _patched_catalog_all_email_find_throw(original_cat)
 
@@ -3067,11 +3068,14 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
         '*': [(200, {'data': {'email': 'x@test.test'}})] * 15,
     }, seen))
 
-    r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'})
+    before = await _balance(clients)
+    r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'},
+                           headers={'X-Treg-Route-Exclude': 'findymail'})
     # Should be 502 route_failed, not 500 or empty body
     assert r.status_code == 502, r.text
     doc = r.json()
     assert doc['detail']['error'] == 'route_failed'
+    assert await _balance(clients) == before
     # The tried list should have some error outcomes (adapters that threw)
     tried = doc['detail']['tried']
     assert len(tried) > 0
@@ -3084,12 +3088,42 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
             assert 'adapter' in t['detail'] or 'failed' in t['detail'], f"Unexpected error detail: {t}"
 
 
+async def test_a_miss_with_a_failed_answer_on_the_way_is_an_incomplete_miss_that_charges_only_misses(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """One provider's failure no longer turns the others' honest "nobody" into a 502: the call is a
+    200 miss marked incomplete. A billed answer the adapter could not read is refunded; the caller
+    pays only for the misses."""
+    patched_cat = _patched_catalog_all_email_find_throw(catalog_store.load())
+    monkeypatch.setattr(catalog_store, 'load', lambda: patched_cat)
+    seen = []
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
+        'findymail': [(200, {'contact': None})] * 3,
+        '*': [(200, {'data': {'email': 'x@test.test'}})] * 15,
+    }, seen))
+    before = await _balance(clients)
+    r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'})
+    assert r.status_code == 200, r.text
+    doc = r.json()
+    assert doc['_treg']['outcome'] == 'miss' and doc['_treg']['incomplete'] is True
+    assert r.headers['X-Treg-Route-Incomplete'] == 'true'
+    outcomes = {t['outcome'] for t in doc['_treg']['tried']}
+    assert {'miss', 'error'} <= outcomes
+    assert all(t['charged_micro'] == 0 for t in doc['_treg']['tried'] if t['outcome'] == 'error')
+    billed_misses = sum(t['charged_micro'] for t in doc['_treg']['tried'] if t['outcome'] == 'miss')
+    assert doc['_treg']['charged_micro'] == billed_misses
+    assert before - await _balance(clients) == billed_misses
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
 @pytest.mark.parametrize(("error_code", "tomba_answers", "status", "outcome"), [
     # a semantic miss, not a caller fault: the waterfall continues and the parent does not 502
     ("NO_MATCH", [(200, {'data': {'email': 'found@example.test', 'score': 99, 'verification': {'status': 'valid'}}})],
      200, "miss"),
-    # the same 400 with another body is a rejected request: an error, never a clean miss
-    ("INVALID_DATAPOINTS", [(200, {'data': None})], 502, "error"),
+    # the same 400 with another body is a rejected request: an error, never a clean miss (the
+    # others' misses make the call an incomplete miss)
+    ("INVALID_DATAPOINTS", [(200, {'data': None})], 200, "error"),
 ])
 async def test_prospeo_no_match_400_is_treated_as_miss_not_error(
     clients: AsyncClient, enrichment_with_miss_declarers_on, monkeypatch,
@@ -3109,8 +3143,10 @@ async def test_prospeo_no_match_400_is_treated_as_miss_not_error(
                            headers={'X-Treg-Route-Prefer': 'prospeo'})  # ask it first; otherwise tomba's hit ends the waterfall before it runs
     assert r.status_code == status, r.text
     doc = r.json()
-    if status == 200:
+    if error_code == "NO_MATCH":
         assert doc['_treg']['outcome'] == 'hit'  # waterfall continued past Prospeo's NO_MATCH
+    else:
+        assert doc['_treg']['outcome'] == 'miss' and doc['_treg']['incomplete'] is True
     tried = doc['_treg']['tried'] if status == 200 else doc['detail']['tried']
     prospeo_attempts = [t for t in tried if t['provider'] == 'prospeo']
     assert prospeo_attempts, tried
@@ -3307,7 +3343,8 @@ async def test_a_declared_not_found_ends_the_job_and_an_empty_page_is_a_miss(cli
         {"crawl4ai": [(404, {"ok": False, "reason": "something-else"})], "*": [(200, {"data": {"markdown": ""}})]}, seen))
     r = await clients.post("/call/treg.web.extract", json={"url": "https://example.com/gone"})
     assert [s[0] for s in seen] == ["crawl4ai", "*"]
-    assert r.status_code == 502 and r.json()["detail"]["tried"][-1]["outcome"] == "miss", "an empty page is a miss, not a hit"
+    assert r.status_code == 200 and r.json()["_treg"]["tried"][-1]["outcome"] == "miss", "an empty page is a miss, not a hit"
+    assert r.json()["_treg"]["incomplete"] is True, "crawl4ai's 404 failed on the way"
     get_settings.cache_clear()
 
 
