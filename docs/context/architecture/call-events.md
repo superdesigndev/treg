@@ -6,8 +6,11 @@ sources:
   - src/treg/application/call_events.py
   - src/treg/domain/catalog/routing/segments.py
   - src/treg/catalog/contracts.yaml
+  - src/treg/application/call/call_errors.py
+  - scripts/call_events_actionable_errors.sql
   - tests/test_call_events.py
   - tests/test_request_segments.py
+  - tests/test_call_errors.py
 ---
 
 # Call events
@@ -207,3 +210,51 @@ value: names, company names, descriptions, `about` text, follower counts, lists.
 Normalization before hashing: emails lower-cased; domains without scheme, path or `www.`;
 LinkedIn URLs and handles reduced to the lower-cased handle; other text case-folded with spaces
 collapsed. So a find's `answer_keys['email']` equals a later verify's `input_keys['email']`.
+
+## Failed calls
+
+Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
+logger, `call_error` followed by JSON, where its outcome is final: the call's audit (every resolved
+catalog call, a routed child, check or poll included, and own tools), an unresolved catalog call,
+a routed parent, a hub refusal, and the router's fallback for a refusal nothing audited
+(`call_errors.emit`). It is a log line, not a column: no table changes.
+
+| Field | Value |
+| --- | --- |
+| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`p1`/`s1` on a child (null on a root) |
+| `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
+| `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
+| `status`, `refused_by` | the status the caller got, and treg's refusal mechanism as the event's `refused_by` |
+| `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
+| `error_class` | one word below |
+| `caller_side` | `true` for `caller_balance_or_cap`, `caller_provider_account` and `treg_policy` |
+| `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`) |
+| `signal` | the provider's documented error read from its answer (`balance`, `quota`, `burst`), per `domain/capacity/signatures.py` |
+| `parameter`, `rule` | for a refused parameter: its declared name (`undeclared` for a name the endpoint does not declare), and the rule when the refusal names one |
+
+`error_class` comes from one table in `call_errors.py`, read in order: the failure kind, else
+`refused_by`, else the provider's documented error, else the status. `caller_input`,
+`caller_balance_or_cap`, `caller_provider_account`, `not_found`, `rate_limit`, `upstream_error`,
+`timeout`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other`. An
+account error (an upstream 401/402/403, or a documented out-of-credit answer under any status) is
+`caller_provider_account` on the `credential` and `tool` tiers and `our_provider_account` on every
+other. No request or answer value, header, credential or message text is logged; the answer is read
+only for its documented error code.
+
+A default error view leaves `caller_side` out; the full count is the same query without that
+filter. In Loki, with the deployment's own stream selector:
+
+```logql
+sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
+  | pattern "call_error <payload>" | line_format "{{.payload}}" | json | __error__=""
+  | caller_side="false" [1h]))
+```
+
+The full count drops `| caller_side="false"`.
+
+`scripts/call_events_actionable_errors.sql` is the same view over the events: failed calls by
+class, refuser, tier and endpoint, with per-class totals, leaving caller-side classes out unless
+`include_caller_side` is set to true. An event has only `status_code`, `refused_by` and
+`credential_tier`, so the query's class is the coarser reading: a refusal kind or a provider's
+documented error code that changes the class shows only in the log line. A direct attempt that
+overflow later served still logs its line and keeps its event, as both record the attempt.

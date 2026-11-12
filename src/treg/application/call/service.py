@@ -42,7 +42,7 @@ from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import admission, keyslots
+from . import admission, call_errors, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -904,6 +904,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     client=_client_name(request), refused_by=_refusal_kind(exc.status_code),
                     telemetry={"call_ref": call_ref, "endpoint_id": hub_row.tool_id,
                                "provider": "hub", "credential_tier": "hub", **_tag_telemetry(meta)})
+                call_errors.emit(exc.status_code, org_id=caller.org_id, call_ref=call_ref, road="hub",
+                                 provider="hub", tier="hub",
+                                 refused_by=_refusal_kind(exc.status_code), kind=exc.kind,
+                                 detail=exc.detail, answered=False)
             raise
         request.state.call_audited = True
         request.state.call_cost_micro = charged
@@ -962,7 +966,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 telemetry={"call_ref": call_ref, "endpoint_id": ep["id"], "provider": "treg",
                            "credential_tier": "routed", **_tag_telemetry(meta)})
             _routed_event(request, ep, exc.status_code, refused_by=_refusal_kind(exc.status_code),
-                          charged=0)
+                          charged=0, failure=exc)
             raise
         request.state.call_audited = True
         routed_pending = response.status == 202 and routed._header(response, "X-Treg-Route-Outcome") == "pending"
@@ -1028,6 +1032,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 "call", org_id=caller.org_id, endpoint_id=ep["id"], call_ref=call_ref,
                 client=_client_name(request), provider=ep.get("provider"),
                 status_code=mkexc.status_code, refused_by=refused)
+            call_errors.emit(mkexc.status_code, org_id=caller.org_id, call_ref=call_ref,
+                             road="catalog", endpoint_id=ep["id"], provider=ep.get("provider"),
+                             refused_by=refused, kind=mkexc.kind, detail=mkexc.detail,
+                             answered=False)
             analytics.capture(caller.email, "tool_called",
                 _tool_called_props(request, tool_name=ep["id"], status_code=mkexc.status_code,
                                    call_ref=call_ref, own_tool=False, refused_by=refused,
@@ -1122,7 +1130,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                error_request: str | None = None, error_response: str | None = None,
                capacity_signal: str | None = None, answered: bool = True,
                defer_analytics: bool = False, async_submission: bool = False,
-               answer_body: bytes | None = None) -> dict | None:
+               answer_body: bytes | None = None, failure: CallFailure | None = None,
+               provider_error: tuple[bytes, tuple] | None = None) -> dict | None:
         """Records the audit row now. The PostHog mirror goes out now too, unless
         `defer_analytics`: then the props come back for the caller to `_capture` once it knows
         whether overflow turned this attempt into an answer."""
@@ -1168,6 +1177,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
             api_key_prefix=caller.api_key_prefix, async_submission=async_submission,
         )
+        call_errors.emit(
+            status_code, org_id=audit_org_id, call_ref=call_ref,
+            road="catalog" if mk is not None else "own_tool",
+            endpoint_id=mk.endpoint_id if mk is not None else None,
+            provider=mk.provider if mk is not None else None,
+            tier=mk.tier if mk is not None else "tool", refused_by=refused_by,
+            kind=failure.kind if failure is not None else None,
+            detail=failure.detail if failure is not None else None, answered=answered,
+            body=provider_error[0] if provider_error else None,
+            headers=provider_error[1] if provider_error else None)
         if mk is not None:
             # The call event (application/call_events.py): fire-and-forget like the row above,
             # its bodies read later in the sink's flusher, never here.
@@ -1260,7 +1279,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     "credential_missing", status_code=409, detail="a bound secret is missing")
             secrets[sid] = secret
     except CallFailure as exc:
-        _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code))  # the attempt is a record too
+        _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code), failure=exc)  # the attempt is a record too
         raise
     # A connection of a paused provider (TREG_PAUSED_PROVIDERS) is kept but not used: its own tool
     # and a URL passthrough to its hosts resolve to the tool bound to it. Refused here, before the
@@ -1295,7 +1314,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except CallFailure as exc:
             # treg wrote this refusal and it holds no credential, so it is recorded as it stands.
             _audit(exc.status_code, charged_micro=0, refused_by=_refusal_kind(exc.status_code),
-                   answered=False, error_response=f"treg: {exc.detail}"[:_ERROR_RESPONSE_MAX])
+                   answered=False, error_response=f"treg: {exc.detail}"[:_ERROR_RESPONSE_MAX],
+                   failure=exc)
             raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
@@ -1307,7 +1327,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             await _await_before_reserve(
                 _verify_public_managed_resources(mk, secrets, upstream_client), request, call_ref)
         except CallFailure as exc:
-            _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code), answered=False)
+            _audit(exc.status_code, refused_by=_refusal_kind(exc.status_code), answered=False,
+                   failure=exc)
             raise
 
     if mk is not None and mk.metered:
@@ -1403,7 +1424,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # `exc.detail` says which. This runs inside `mk.metered` and before relay, so no provider
             # content reaches it. A tag-cap detail carries the tag's `val`, the caller's own identifier,
             # bounded by the same redaction and retention as the request bodies.
-            _audit(exc.status_code, charged_micro=0,
+            _audit(exc.status_code, charged_micro=0, failure=exc,
                    refused_by="balance" if exc.status_code == 402 else "cap",
                    error_response=(
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
@@ -1762,7 +1783,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
                refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS
                else "capacity" if exc.kind == "share_busy" else None,
-               duration_ms=_now_ms() - started, answered=False,
+               duration_ms=_now_ms() - started, answered=False, failure=exc,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
                    _caller_request_snippet(
@@ -1924,7 +1945,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                          verdict=verdict(mk.endpoint_id, response.status, body) if not deferred else None,
                          capacity_signal=capacity_signal, error_request=err_request, error_response=err_response,
                          defer_analytics=may_overflow, async_submission=deferred,
-                         answer_body=None if deferred or spooled_bytes is not None else body)
+                         answer_body=None if deferred or spooled_bytes is not None else body,
+                         provider_error=(body, response.raw_headers) if response.status >= 400 else None)
         served_via = ""
         if may_overflow:
             if mk.max_cost_micro is not None:
@@ -2037,7 +2059,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     _audit(response.status, duration_ms=duration_ms,
            charged_micro=0 if free_poll else None,
            response_bytes=len(body) if free_poll else None,
-           error_request=err_request, error_response=err_response)
+           error_request=err_request, error_response=err_response,
+           provider_error=(body, response.raw_headers) if response.status >= 400 else None)
     if idem_key:
         # An own-key call is not charged by treg, but a provider that forbids retaining responses
         # may still bill its owner. Keep a body-free receipt so the same key cannot repeat it.
@@ -2079,7 +2102,7 @@ def _reached_provider(context: CallContext):
 
 def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
                   refused_by: str | None = None, charged: int | None,
-                  response: UpstreamResponse | None = None) -> None:
+                  response: UpstreamResponse | None = None, failure: CallFailure | None = None) -> None:
     """The routed parent's one call event. The router left what it decided on the context
     (`route_summary`); a refusal before planning leaves none, and the event says only that."""
     summary = request.context.route_summary or {}
@@ -2101,6 +2124,11 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         served_by=summary.get("served_by"), tried_count=summary.get("tried_count"),
         check_verdict=summary.get("check_verdict"), route_rule=summary.get("route_rule"),
         retained_extra=int(summary.get("size") or 0) + answer_size)
+    call_errors.emit(status, org_id=request.caller.org_id, call_ref=request.context.call_ref,
+                     road="routed", endpoint_id=ep["id"], provider="treg", tier="routed",
+                     refused_by=refused_by, kind=failure.kind if failure is not None else None,
+                     detail=failure.detail if failure is not None else None,
+                     answered=failure is None)
 
 
 def _finished_on_submission(mk, body: bytes) -> bool:
