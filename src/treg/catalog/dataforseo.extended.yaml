@@ -13670,7 +13670,7 @@ endpoints:
     body:
       technology_paths:
         type: array
-        items: {type: string}
+        items: {type: object}
         required: false
         note: 'target technology paths required field if you don’t specify groups, technologies, keywords or categories at least one field (technology_paths, groups, technologies, keywords or categories) must be set; each technology path should be specified as a separate object containing “path” and “name”, where '
       groups:
@@ -13787,7 +13787,7 @@ endpoints:
     body:
       technology_paths:
         type: array
-        items: {type: string}
+        items: {type: object}
         required: false
         note: target technology paths required field if you don’t specify groups, technologies and categories each technology path should be specified as a separate object containing “path” and “name”, where “path” is specified as “$group_id.$category_id” and “name” – as the name of the target technology; each ob
       groups:

@@ -67,7 +67,7 @@ endpoints:
       body:
         channel: {type: string, required: true, note: "channel ID (C…) is safest; a channel name also works", example: "C0123456789"}
         text: {type: string, required: false, note: "required unless blocks or attachments are supplied; also used as the notification/fallback text when they are", example: "Deploy finished."}
-        blocks: {type: array, items: {type: string}, required: false, note: "Block Kit layout; supplying it makes `text` the fallback rather than the body"}
+        blocks: {type: array, items: {type: object}, required: false, note: "Block Kit layout; supplying it makes `text` the fallback rather than the body"}
         thread_ts: {type: string, required: false, note: "`ts` of the parent message — makes this a threaded reply", example: "1700000000.000100"}
         reply_broadcast: {type: boolean, required: false, note: "with thread_ts, also surfaces the reply in the channel"}
         unfurl_links: {type: boolean, required: false}

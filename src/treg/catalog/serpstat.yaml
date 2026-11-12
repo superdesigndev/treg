@@ -334,7 +334,7 @@ endpoints:
         "params.sort": {type: string, required: false, note: "field to sort by; default `check` (last-checked date)"}
         "params.order": {type: string, required: false, note: "asc | desc"}
         "params.linkPerDomain": {type: integer, required: false, note: "set to 1 to return only the single best link from each referring domain"}
-        "params.complexFilter": {type: array, items: {type: string}, required: false, note: "nested array of {name, operator, value} conditions — outer array is OR, inner array is AND"}
+        "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false, note: "nested array of {name, operator, value} conditions — outer array is OR, inner array is AND"}
       note: |
         Despite the name, `getNewBacklinks` is Serpstat's ACTIVE-backlinks list, not a new-links
         delta — it is the general backlink listing. `SerpstatBacklinksProcedure.getLostBacklinks`
@@ -373,7 +373,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false, note: "field to sort by; default `check`"}
         "params.order": {type: string, required: false, note: "asc | desc"}
-        "params.complexFilter": {type: array, items: {type: string}, required: false, note: "nested {name, operator, value} conditions — outer OR, inner AND"}
+        "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false, note: "nested {name, operator, value} conditions — outer OR, inner AND"}
       note: "note the narrower searchType enum here: this method accepts only domain-level targets."
     cost:
       type: per_result
@@ -412,7 +412,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false, note: "default refDomains"}
         "params.order": {type: string, required: false, note: "asc | desc; default desc"}
-        "params.complexFilter": {type: array, items: {type: string}, required: false}
+        "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false}
       note: "`searchType` has no default on this method — omitting it is an error, where the other backlink methods would have assumed `domain`."
     cost:
       type: per_result
@@ -448,7 +448,7 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — rows per page, default 100, max 1,000", example: 10}
         "params.sort": {type: string, required: false}
         "params.order": {type: string, required: false, note: "asc | desc"}
-        "params.complexFilter": {type: array, items: {type: string}, required: false}
+        "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false}
       note: "the link-equity map of a site — which pages actually earned the backlinks."
     cost:
       type: per_result

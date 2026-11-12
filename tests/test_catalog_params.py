@@ -44,6 +44,7 @@ def test_every_type_word_reads_its_own_values():
     assert params.refusal({"type": "number"}, "0.5") == "must be a number"
     assert params.refusal({"type": "number"}, "0.5", text=True) is None
     assert params.refusal({"type": "number"}, float("nan")) == "must be a number"
+    assert params.refusal({"type": "number", "max": 2}, json.loads("1" + "0" * 400)) == "must be at most 2"
     assert params.refusal({"type": "boolean"}, True) is None
     assert params.refusal({"type": "boolean"}, "true") == "must be true or false"
     assert params.refusal({"type": "boolean"}, "TRUE", text=True) is None

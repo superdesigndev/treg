@@ -91,7 +91,7 @@ def _read(kind: str, value: object, text: bool) -> tuple[bool, object]:
         return isinstance(value, int) and not isinstance(value, bool), value
     if kind == "number":
         return (isinstance(value, (int, float)) and not isinstance(value, bool)
-                and math.isfinite(value)), value
+                and (isinstance(value, int) or math.isfinite(value))), value
     if kind == "boolean":
         return isinstance(value, bool), value
     if kind == "array":

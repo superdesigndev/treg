@@ -137,10 +137,13 @@ def items_of(values: list[object]) -> dict | None:
 def note_items(spec: dict) -> dict | None:
     """The item type a JSON sample in the note shows (`"targets":[{"match_value": ...}]`)."""
     note = f"{spec.get('note') or ''} {spec.get('description') or ''}"
-    for pattern, found in ((r"\[\s*\{", "object"), (r"\b[Oo]bjects\b", "object"), (r"\[\s*\[", "array"),
-                           (r'\[\s*"', "string"), (r"\[\s*-?\d", "number")):
+    for pattern, found in ((r"\bnested\b[^{}]*\{\s*\w+\s*,", {"type": "array", "items": {"type": "object"}}),
+                           (r"\[\s*\{", {"type": "object"}), (r"\b[Oo]bjects\b", {"type": "object"}),
+                           (r"\[\s*\[", {"type": "array", "items": {"type": "string"}}),
+                           (r'\[\s*"', {"type": "string"}), (r"\[\s*-?\d", {"type": "number"}),
+                           (r"\{\s*\w+\s*,[^{}]*\}", {"type": "object"}), (r"\bseparate object\b", {"type": "object"})):
         if re.search(pattern, note):
-            return {"type": found, **({"items": {"type": "string"}} if found == "array" else {})}
+            return found
     return None
 
 
