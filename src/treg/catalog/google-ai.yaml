@@ -28,7 +28,7 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, example: gemini-3-pro-image, note: "gemini-3-pro-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3-pro-image, note: "treg's key runs gemini-3-pro-image, the stable model, or its -preview alias, the same model at the same price; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask. The example drops the multi-megabyte thoughtSignature and roughly halves the answer; keep usageMetadata in any mask you send."}
       body:
@@ -93,7 +93,7 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, example: gemini-3.1-flash-image, note: "gemini-3.1-flash-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-image, note: "treg's key runs gemini-3.1-flash-image, the stable model, or its -preview alias, the same model at the same price; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
@@ -162,7 +162,7 @@ endpoints:
     summary: "Generate or edit one 1K image with Gemini 3.1 Flash Lite Image on Google's own API, the cheapest Gemini image model; the image returns inline as base64."
     input:
       pathParams:
-        model: {type: string, required: true, example: gemini-3.1-flash-lite-image, note: "gemini-3.1-flash-lite-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-lite-image, note: "treg's key runs only gemini-3.1-flash-lite-image; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
@@ -225,7 +225,7 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, example: gemini-3.8-flash-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-tts, note: "treg's key runs only gemini-3.8-flash-tts; your own key can name another model."}
       body:
         contents:
           type: array
@@ -284,7 +284,7 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, example: gemini-3.8-flash-lite-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-lite-tts, note: "treg's key runs only gemini-3.8-flash-lite-tts; your own key can name another model."}
       body:
         contents:
           type: array
@@ -345,7 +345,7 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, example: lyria-3.5}
+        model: {type: string, required: true, example: lyria-3.5, note: "treg's key runs only lyria-3.5; your own key can name another model."}
       body:
         contents:
           type: array
@@ -388,7 +388,7 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, example: lyria-3-clip-preview}
+        model: {type: string, required: true, example: lyria-3-clip-preview, note: "treg's key runs only lyria-3-clip-preview; your own key can name another model."}
       body:
         contents:
           type: array
