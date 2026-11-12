@@ -435,7 +435,7 @@ class Settings(BaseSettings):
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_enrichlayer: str = ""  # Bearer; pay-as-you-go credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
-    platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned successes
+    platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned results
     platform_key_search1api: str = ""  # Bearer; prepaid credits, free GET /usage balance check
     platform_key_octen: str = ""      # x-api-key; PAYG search and extraction usage settles per response
     platform_key_linkup: str = ""     # Bearer; prepaid USD balance, request-priced Search/Fetch/Research
