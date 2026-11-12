@@ -6,6 +6,7 @@ sources:
   - src/treg/application/call/route_rules.py
   - src/treg/application/call/route.py
   - src/treg/application/call_events.py
+  - src/treg/domain/catalog/routing/segments.py
   - src/treg/application/call/service.py
   - src/treg/application/call/types.py
   - src/treg/infra/upstream/relay.py
@@ -39,7 +40,9 @@ sorts before any order: a team's own key is asked first whatever a rule says.
 The segment is what the call event records for the call, computed by the same function
 (`call_events.segment`): `input_type` (the identity variant, `domain+full_name`), and the
 `input_meta` keys `tld` and `domain_class`, plus any contract filter declared
-`analytics: value`. A rule is evaluated on exactly the values analysis groups calls by, so a
+`analytics: value`, plus the categories of the contract's segment set (`people.search`:
+`title_class`, `title_function`, `title_seniority`, `title_lang`, `has_country`, `country_iso2`,
+`limit_bucket` and the rest, [call-events.md](call-events.md) "Request segments"). A rule is evaluated on exactly the values analysis groups calls by, so a
 measured segment and a routed segment cannot disagree. `tld` is the last label of the company
 domain, so a French company on `.com` is not matched, as with `prefer_by_domain_suffix`.
 
@@ -71,7 +74,8 @@ envelope:
 - On read, every rule must be able to take effect: it names a routed contract; segment keys and
   values that contract's calls can record (`call_events.segment_checks`, built on the same
   `segment` the event uses: `input_type` a variant some call is recorded as, so one an earlier
-  variant always shadows is refused; `domain_class` one of its four words; `tld` a lower-cased last
+  variant always shadows is refused; `domain_class` one of its four words; a segment-set key a word
+  of its vocabulary (`title_class: ceo` is refused); `tld` a lower-cased last
   label, an internationalized one in its own script; no `tld` for a capability with no domain or
   email in its identity); and providers among its routed endpoint's children whose adapter accepts
   the widest call recorded as the matched variant, after the contract's derivations (a

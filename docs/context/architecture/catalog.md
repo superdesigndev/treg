@@ -1036,6 +1036,11 @@ returned and never documented as stable. An output field may say where it lands 
   `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
   stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
   because scoping drops any that answer it by company alone (below).
+- `segments: <set>` names a segment set in `domain/catalog/routing/segments.py` (`SEGMENTERS`):
+  categories of the request, each from a fixed vocabulary, that call events record in
+  `input_meta` and route rules may match on ([call-events.md](call-events.md),
+  [route-rules.md](route-rules.md)). An unknown name fails the catalog load. `people.search` names
+  `people_search`.
 - `fill_rows: N` makes every request fill toward N rows, merging providers, when the caller set no
   `fill_limit_when` target and sent neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`
   (either header wins; `X-Treg-Route-Waterfall: 0` turns filling off). A short answer goes on to
