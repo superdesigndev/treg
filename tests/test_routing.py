@@ -734,6 +734,51 @@ def test_every_routed_adapter_sends_its_rows_platform_request_pins():
     assert missing == {}, missing
 
 
+_SAMPLE_IDENTITY = {
+    "email": "alex@stripe.com", "domain": "stripe.com", "company_domain": "stripe.com",
+    "url": "https://stripe.com", "website": "https://stripe.com",
+    "linkedin_url": "https://www.linkedin.com/in/alex-smith", "facebook_url": "https://www.facebook.com/stripe",
+    "phone": "+14155550100", "first_name": "Alex", "last_name": "Smith", "full_name": "Alex Smith",
+}
+
+
+def _sample_identity_value(name: str, spec: dict | None):
+    kind = (spec or {}).get("type")
+    if name in _SAMPLE_IDENTITY:
+        return _SAMPLE_IDENTITY[name]
+    if kind == "array":
+        return ["payments"]
+    if kind == "boolean":
+        return True
+    if kind == "object":
+        return {"type": "object"}
+    return "1234567890" if name.endswith("id") else "payments"
+
+
+def test_every_routed_adapter_request_meets_its_childs_declarations():
+    """A child holds every tier to its declarations, so a plan drops a child whose adapter-built
+    request breaks them (`needs <parameter>: <rule>`). Every shipped routed adapter builds, for each
+    identity it accepts and the contract's default filters, a request its child takes."""
+    cat = catalog_store.load()
+    refused = {}
+    for endpoint_id, adapter in cat.adapters.items():
+        if not adapter.route or not adapter.verified:
+            continue
+        ep = cat.by_id[endpoint_id]
+        for capability in (ep["capability"], *adapter.additional_capabilities):
+            contract = cat.contracts.get(capability)
+            for variant in adapter.accepts if contract else ():
+                identity, supplied = canonical_identity(contract, {
+                    name: _sample_identity_value(name, contract.identity_specs.get(name)) for name in variant})
+                if supplied is None:
+                    continue
+                query, body = adapter.to_upstream(identity, variant)
+                if why := (call_resolve._query_refusal(ep, call_resolve.QueryValues(tuple(query.items())))
+                           or call_resolve._body_refusal(ep, call_route._child_body(ep, body))):
+                    refused[(endpoint_id, capability, variant)] = why
+    assert refused == {}, refused
+
+
 def test_firecrawl_web_adapters_are_verified_routed_children():
     cat = catalog_store.load()
     for parent, child in (
@@ -894,6 +939,36 @@ async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(
     assert {entry.call_id for entry in entries if entry.kind == "settle"} == {
         call_id + ":r0", call_id + ":r1",
     }
+    get_settings.cache_clear()
+
+
+async def test_a_child_whose_request_breaks_its_declaration_is_dropped_not_called(clients, monkeypatch):
+    """Tavily declares max_results up to 20 and holds every tier to it, so a routed limit of 25 drops
+    it from the plan, naming its parameter and never the value, and the next provider serves. Sent,
+    its 400 would have ended the routed call as the caller's fault."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "exa": [(200, {
+            "results": [{"title": "Example", "url": "https://example.com"}],
+            "costDollars": {"total": 0.007},
+        })],
+    }, seen))
+
+    response = await clients.post(
+        "/call/treg.web.search",
+        json={"q": "example query", "limit": 25},
+        headers={"X-Treg-Route-Prefer": "tavily,exa"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["_treg"]["served_by"] == "exa.web.search"
+    assert [row[0] for row in seen] == ["exa"]
+    assert {"endpoint_id": "tavily.web.search",
+            "why": "needs body.max_results: must be at most 20"} in data["_treg"]["dropped"]
     get_settings.cache_clear()
 
 

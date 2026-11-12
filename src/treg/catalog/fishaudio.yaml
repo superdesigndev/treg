@@ -97,7 +97,7 @@ endpoints:
         title: {type: string, required: true, minLength: 1, maxLength: 100, example: "Product narrator"}
         train_mode: {type: string, required: true, enum: [fast], example: fast}
         visibility: {type: string, required: true, enum: [private], example: private}
-        voices: {type: array, items: {type: string, format: binary}, required: true, minItems: 1, maxItems: 20, note: "Reference-audio file parts used to clone the private voice."}
+        voices: {type: array, items: {type: string, note: "Each item is a file part."}, required: true, minItems: 1, maxItems: 20, note: "Reference-audio file parts used to clone the private voice."}
         texts: {type: array, items: {type: string}, required: false, maxItems: 20, note: "Optional transcripts matching the uploaded voice files."}
         description: {type: string, required: false, maxLength: 500}
       bodyType: multipart

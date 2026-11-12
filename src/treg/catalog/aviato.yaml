@@ -537,7 +537,7 @@ endpoints:
     platform_request: {queryParams.type: personal}
     input:
       queryParams:
-        type: {type: string, required: true, enum: [personal], note: "personal on treg's key"}
+        type: {type: string, required: true, note: "personal on treg's key"}
         linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
         id: {type: string, required: false, note: "Aviato person id"}
         email: {type: string, required: false}

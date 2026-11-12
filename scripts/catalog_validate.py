@@ -441,7 +441,8 @@ def check_body_allowlist(ep: dict, where: str, errors: list[str]) -> None:
 
 def check_platform_request(rule: object, input_schema: object, where: str,
                            errors: list[str]) -> None:
-    """Platform-only fixed request values; BYOK input remains an upstream contract."""
+    """Platform-only fixed request values, each one its field declares on every tier, written as
+    the declared type; BYOK input remains an upstream contract."""
     if not isinstance(rule, dict) or not rule:
         fail(errors, where, "platform_request must be a non-empty mapping")
         return
@@ -456,10 +457,8 @@ def check_platform_request(rule: object, input_schema: object, where: str,
                 or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
             fail(errors, where, "platform_request must name a declared body, header or query field")
             continue
-        allowed = spec.get("enum")
-        if (not isinstance(allowed, list) or len(allowed) != 1
-                or type(value) is not type(allowed[0]) or value != allowed[0]):
-            fail(errors, where, "platform_request value must match the field's singleton enum")
+        if not any(params.holds(kind, value) for kind in params.types_of(spec)) or params.refusal(spec, value):
+            fail(errors, where, "platform_request value must be one its field declares, written as its type")
 
 
 def check_team_label(rule: object, input_schema: object, where: str, errors: list[str]) -> None:

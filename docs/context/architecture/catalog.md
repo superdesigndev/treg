@@ -456,11 +456,13 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
-- **`pathParams` with an `enum`** is enforced on treg's key (the value names what the shared
-  credential is spent on, such as a model); own-key calls relay any path.
+- **`pathParams` with an `enum`** names what a call is spent on, such as a model. Like every
+  declared enum it holds on every tier ([proxy model](proxy-model.md#catalog-request-checks)), and on
+  treg's key the value must also be present.
 - **`platform_request`** pins exact body, header or query values needed only on the shared
-  credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
+  credential. Each pin is a value its field declares, written as the declared type: a value only
+  treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
+  `queryParams.*` pin must appear exactly once and is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
   means the parameter must be absent (it need not be declared), so a run mode the row does not
   price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
   provider-specific request guards in `resolve` only after selecting the platform offer and before
@@ -1094,8 +1096,11 @@ whole number from 1 to that child's max: otherwise the routed call is refused (4
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
 before any candidate is held. A filter with its own range is checked against it first; where the
 child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
-is not reached. `verified` is filled only from an explicit mailbox deliverability
-verdict, never a lookup-success flag.
+is not reached. A child whose request, as its adapter builds it for this identity, breaks the
+child's own declarations (the check it runs before a hold) is then dropped from the plan as
+`needs <child parameter>: <rule>`, never the value, rather than answer a 400 the router reads as
+the caller's fault; with none left the routed call answers 422 `route_no_candidate`. `verified` is
+filled only from an explicit mailbox deliverability verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that

@@ -58,7 +58,7 @@ filter, output and row fields alike, uses one vocabulary (`catalog/params.py`):
 - **`type`** is one of JSON Schema's `string`, `integer`, `number`, `boolean`, `array` and `object`,
   or a list of two or more of them for a parameter that takes either (`[boolean, object]`).
 - **`items`** says what each member of an `array` is, as a spec of its own.
-- **`format`** annotates a string: `url`, `email` or `binary`. It is never a type; a routed identity
+- **`format`** annotates a string: `url` or `email`. It is never a type; a routed identity
   field of `format: url` is read as a URL (`invalid_identity`), and a row field of it is never cut.
 - **Range keys match the type**: `min`/`max` bound a number or an integer, `minLength`/`maxLength` a
   string, `minItems`/`maxItems` an array.
@@ -73,8 +73,10 @@ comparison; the validator refuses both. A contract identity variant names each k
 or a spec (`{linkedin_url: {type: string, format: url}}`).
 
 **The check.** `params.refusal(spec, value)` is the one reading of a sent value: its type, enum and
-range, and each item of an array. A null or empty value is not sent and meets an optional spec. A
-query, path or form value is a string read by the declared type (ASCII digits for an integer, a
+range, and each item of an array. It does not read an object's `properties`: a row's body is checked
+field by field at the top level (a field declared by a dotted name, `pagination.limit`, reads the
+nested value), so a field nested inside a declared object is declared but not checked. A null or
+empty value is not sent and meets an optional spec. A query, path or form value is a string read by the declared type (ASCII digits for an integer, a
 decimal for a number, `true`/`false`, JSON for an object or array; a repeated parameter is an array);
 a JSON body value keeps its JSON type, except that an integer may be ASCII digits, as the count rule
 reads it. A query array that is not JSON (a comma list) is relayed unread. The refusal names the

@@ -28,7 +28,7 @@ endpoints:
         topic: {type: string, required: true, enum: [news]}
         max_results: {type: integer, required: false, min: 1, max: 20}
         search_depth: {type: string, required: false, enum: [basic]}
-        include_usage: {type: boolean, required: false, enum: [true]}
+        include_usage: {type: boolean, required: false}
     platform_request: {body.include_usage: true}
     test_request: {body: {query: "AI policy", topic: news, max_results: 10, search_depth: basic, include_usage: true}}
     verified: '2026-10-05'
@@ -74,7 +74,7 @@ endpoints:
         filter_by_language: {type: boolean, required: false, default: false}
         auto_parameters: {type: boolean, required: false, default: false}
         exact_match: {type: boolean, required: false, default: false}
-        include_usage: {type: boolean, required: false, enum: [true], example: true, note: "Optional with your own key; platform Search requires true so treg can settle from this request's reported usage."}
+        include_usage: {type: boolean, required: false, example: true, note: "Optional with your own key; platform Search requires true so treg can settle from this request's reported usage."}
         safe_search: {type: boolean, required: false, default: false}
       note: "Results are ranked web pages with title, URL, content, score and optional raw content, publication date, favicon and images. HTTP 432 is the plan cap; 433 is the PAYGO cap."
     platform_request: {body.include_usage: true}

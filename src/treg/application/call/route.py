@@ -92,7 +92,8 @@ from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _host_of, _marketplace_secret, _parameter_refused
+from .resolve import (QueryValues, _anonymous_offer, _body_refusal, _host_of, _marketplace_secret,
+                      _parameter_refused, _query_refusal)
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -587,6 +588,18 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     return out
 
 
+def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str] | None:
+    """(child parameter, rule) the adapter's request for this identity breaks, by the check the
+    child runs on every tier before a hold, else None. Sent, the child's 400 would read as the
+    caller's fault and end the routed call, so the plan drops the child instead. A request the
+    adapter cannot build is left to the run, which records it."""
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+    except Exception:  # noqa: BLE001
+        return None
+    return _query_refusal(e, QueryValues(tuple(query.items()))) or _body_refusal(e, _child_body(e, body))
+
+
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions) -> Plan:
     """Candidates for this org: adapters that accept the identity, own keys first, exhausted
     providers dropped, ranked by expected cost per hit. Reads only; nothing reserved."""
@@ -615,6 +628,13 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             capped.append((e, ad, v))
     raw = capped
     _require_counts(ep, raw, contract.filters, identity_given)
+    fitting = []
+    for e, ad, v in raw:
+        if refused := _declaration_refusal(e, ad, identity, v):
+            dropped.append({"endpoint_id": e["id"], "why": f"needs {refused[0]}: {refused[1]}"})
+        else:
+            fitting.append((e, ad, v))
+    raw = fitting
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -752,11 +772,16 @@ def _endpoints(cands) -> list[str]:
     return [c.endpoint["id"] for c in cands]
 
 
+def _child_body(ep: dict, body) -> bytes:
+    """The JSON body a child call sends: none on a method that takes none."""
+    return json.dumps(body).encode() if ep["method"] in ("POST", "PUT", "PATCH") and body is not None else b""
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
-    has_body = ep["method"] in ("POST", "PUT", "PATCH") and body is not None
-    payload = json.dumps(body).encode() if has_body else b""
+    payload = _child_body(ep, body)
+    has_body = bool(payload)
     headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
     if remaining_micro is not None:
         # Replace the parent's total ceiling with the unspent amount. The child validates its

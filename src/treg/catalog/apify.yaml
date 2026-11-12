@@ -63,7 +63,7 @@ endpoints:
         onlyAdsNewerThan: {type: string, required: false, note: "YYYY-MM-DD or a relative phrase like \"2 months\"", example: "2026-06-01"}
         onlyAdsOlderThan: {type: string, required: false}
         onlyTotal: {type: boolean, required: false, note: "true returns just the ad COUNT instead of the ads — one cheap result row when all you need is how much a competitor is running", example: false}
-        enrichWithEcommerceData: {type: boolean, required: false, enum: [false], note: "true follows landing pages for product names and prices and bills an extra ecommerce-enrichment event per ad; treg's key requires false, your own key may enable it", example: false}
+        enrichWithEcommerceData: {type: boolean, required: false, note: "true follows landing pages for product names and prices and bills an extra ecommerce-enrichment event per ad; treg's key requires false, your own key may enable it", example: false}
       bodyType: json
       note: "the response is the dataset items array directly — no run envelope, no polling. Result count is what you pay for, so onlyTotal:true is the cheap probe before a full pull. Unofficial: this reads the Ad Library web UI, so field availability tracks whatever Meta currently renders"
     platform_request: {body.enrichWithEcommerceData: false}
@@ -273,8 +273,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 40}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, at most 1, and holds it for the call; this actor refuses a cap below 0.05. Set it ABOVE max_results x 0.005 (0.06 for 10 products): a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.06}
-        memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048; your own key may set any size", example: 2048}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 2048; your own key may set any size", example: 2048}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         search_terms: {type: array, items: {type: string}, required: true, note: "keywords to search, one per entry; each is paged until the run reaches max_results. An empty list stops the run with an input error before anything is charged", example: ["iphone 15 case"]}
         region: {type: string, required: false, note: "one of sg|my|vn|th|ph|id — decides which country site, the listing language and the currency of every price. Default sg. One run covers one country, so comparing markets means one run per region", example: "sg"}
@@ -304,8 +304,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         searchStringsArray: {type: array, items: {type: string}, required: true, note: "keywords to search, one per entry (dentist, plumber, coffee shop); each is searched inside locationQuery and every business becomes one row", example: ["coffee shop"]}
         locationQuery: {type: string, required: false, note: "where to search, as typed into Google Maps: 'Austin, TX', 'London, UK', or a whole country. Omit to let each term carry its own location", example: "Austin, TX"}
@@ -344,8 +344,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048, which fixes the actor-start charge; your own key may set any size", example: 2048}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 2048, which fixes the actor-start charge; your own key may set any size", example: 2048}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         search_terms: {type: array, items: {type: string}, required: true, note: "keywords to search, one per entry; each returns every matching product up to max_results", example: ["phone case"]}
         region: {type: string, required: false, note: "storefront to scrape — one of US|GB|VN|TH|PH|MY|SG|JP|MX|ID; decides the catalogue, listing language and price currency. Default US. Coverage is strongest on US and SEA storefronts", example: "US"}
@@ -377,8 +377,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `search` for this entry — it selects the mode", example: "search"}
         keywords: {type: array, items: {type: string}, required: true, note: "search terms, one per entry — e.g. 咖啡 or #新能源# for a topic; a post matching two terms is returned once", example: ["咖啡"]}
@@ -411,8 +411,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `hot_search` for this entry — it selects the mode", example: "hot_search"}
         max_items: {type: integer, required: false, note: "caps the whole board (it holds about 50 entries); default 50", example: 50}
@@ -441,8 +441,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `timeline` for this entry — it selects the mode", example: "timeline"}
         users: {type: array, items: {type: string}, required: true, note: "one per entry: numeric uid (2803301701), screen name (人民日报), custom domain (rmrb) or a weibo.com / m.weibo.cn profile URL; the same user given twice is scraped once", example: ["2803301701"]}
@@ -472,8 +472,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `profile` for this entry — it selects the mode", example: "profile"}
         users: {type: array, items: {type: string}, required: true, note: "one per entry: numeric uid, screen name, custom domain or profile URL — one profile row each", example: ["2803301701"]}
@@ -502,8 +502,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `post` for this entry — it selects the mode", example: "post"}
         post_ids: {type: array, items: {type: string}, required: true, note: "one per entry: numeric mid (16 digits), the mblogid short code from a weibo.com post URL, or the URL itself; the same post given in two forms is scraped and billed once", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
@@ -532,8 +532,8 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
-        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
         mode: {type: string, required: true, note: "must be `comments` for this entry — it selects the mode", example: "comments"}
         post_ids: {type: array, items: {type: string}, required: true, note: "one per entry: numeric mid, mblogid short code, or post URL", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}

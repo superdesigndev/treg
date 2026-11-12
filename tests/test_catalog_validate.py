@@ -695,22 +695,25 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
 
 @pytest.mark.parametrize('rule,valid', [
     ({'body.realtime': True}, True),
+    ({'body.realtime': False}, True),       # the field takes any boolean; the pin is treg's key's own
     ({'body.realtime': 1}, False),
-    ({'body.realtime': False}, False),
     ({'body.missing': True}, False),
     ({'queryParams.realtime': True}, False),
     ({'queryParams.memory': 1024}, True),
     ({'queryParams.memory': '1024'}, False),
+    ({'queryParams.memory': 64}, False),     # below the declared range
+    ({'body.mode': 'sync'}, True),
+    ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
     ({'body.realtime': None}, False),       # absence applies to query parameters only
     ({'headers.x-key': None}, False),
     ({}, False),
 ])
-def test_platform_request_requires_declared_fixed_body_value(rule, valid):
+def test_platform_request_pins_a_value_its_field_declares(rule, valid):
     errors = []
     validator.check_platform_request(rule, {'body': {
-        'realtime': {'type': 'boolean', 'enum': [True]},
-    }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
+        'realtime': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['sync']},
+    }, 'queryParams': {'memory': {'type': 'integer', 'min': 128}}}, 'test', errors)
     assert (not errors) is valid
 
 

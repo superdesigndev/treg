@@ -11,7 +11,7 @@ import re
 from collections.abc import Mapping
 
 TYPES = ("string", "integer", "number", "boolean", "array", "object")
-FORMATS = ("url", "email", "binary")
+FORMATS = ("url", "email")
 # The range keys each type reads; any other range key on a spec is a validator error.
 RANGES = {"integer": ("min", "max"), "number": ("min", "max"), "string": ("minLength", "maxLength"),
           "array": ("minItems", "maxItems")}
@@ -189,8 +189,9 @@ _BOUNDS = {"min": ("integer", "number"), "max": ("integer", "number"), "minLengt
            "maxLength": ("string",), "minItems": ("array",), "maxItems": ("array",)}
 
 
-def _holds(kind: str, entry: object) -> bool:
-    """An enum entry is a value of the type as written, with no reading of a string."""
+def holds(kind: str, entry: object) -> bool:
+    """A value the catalog writes (an enum entry, a pinned value) is a value of the type as
+    written, with no reading of a string."""
     return _read(kind, entry, False)[0] and not (kind != "string" and isinstance(entry, str))
 
 
@@ -234,7 +235,7 @@ def declaration_errors(spec: object, at: str) -> list[str]:
     if entries is not None:
         if not isinstance(entries, list) or not entries:
             errors.append(f"{at}: enum lists one or more values")
-        elif bad := [e for e in entries if kinds and not any(_holds(k, e) for k in kinds)]:
+        elif bad := [e for e in entries if kinds and not any(holds(k, e) for k in kinds)]:
             errors.append(f"{at}: enum entries {', '.join(wire(e) for e in bad[:3])} are not "
                           + " or ".join(_NAMES.get(k, k) for k in kinds)
                           + ("; an enum of each item goes in items" if "array" in kinds else ""))

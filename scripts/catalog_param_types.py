@@ -117,8 +117,6 @@ def inner(raw: str) -> dict:
     """`array[array[string]]` -> its items spec, `{type: array, items: {type: string}}`."""
     of = raw[len("array["):-1]
     spec: dict = {"type": word(of)}
-    if of == "file":
-        spec["format"] = "binary"
     if spec["type"] == "array":
         spec["items"] = inner(of) if of.startswith("array[") else {"type": "string"}
     return spec

@@ -1310,10 +1310,10 @@ def _parameter_refused(ep: dict, parameter: str, reason: str) -> ResolutionFaile
     )
 
 
-def _enforce_declared_query(ep: dict, query: QueryValues) -> None:
-    """Every declared query and path parameter the request sends meets its declaration
-    (`catalog.params.refusal`, reading each string by its declared type), on every tier, before
-    anything is held. An undeclared parameter is relayed as sent."""
+def _query_refusal(ep: dict, query: QueryValues) -> tuple[str, str] | None:
+    """(parameter, reason) of the first declared query or path parameter the request sends that
+    breaks its declaration (`catalog.params.refusal`, reading each string by its declared type),
+    else None. An undeclared parameter is relayed as sent."""
     inputs = ep.get("input") or {}
     declared = {**{name: ("queryParams", spec) for name, spec in (inputs.get("queryParams") or {}).items()},
                 **{name: ("pathParams", spec) for name, spec in (inputs.get("pathParams") or {}).items()}}
@@ -1324,7 +1324,15 @@ def _enforce_declared_query(ep: dict, query: QueryValues) -> None:
         location, spec = declared.get(name, (None, None))
         if isinstance(spec, dict) and (
                 reason := params.refusal(spec, values[0] if len(values) == 1 else values, text=True)):
-            raise _parameter_refused(ep, f"{location}.{name}", reason)
+            return f"{location}.{name}", reason
+    return None
+
+
+def _enforce_declared_query(ep: dict, query: QueryValues) -> None:
+    """Every declared query and path parameter the request sends meets its declaration, on every
+    tier, before anything is held."""
+    if refused := _query_refusal(ep, query):
+        raise _parameter_refused(ep, *refused)
 
 
 def _body_fields(declared: object) -> tuple[dict, dict | None]:
@@ -1360,11 +1368,52 @@ def _field_value(document: dict, name: str) -> tuple[bool, object]:
     return True, current
 
 
+def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
+    """(parameter, reason) of the first declared body field the request sends that breaks its
+    declaration (`catalog.params`), else None. A JSON array body (a list of task objects) is read
+    task by task, a form body as strings by the declared types; a body that does not parse is
+    relayed for the provider to judge. On a ``strict_body`` or ``body_allowlist`` row an absent
+    required field is read as sent."""
+    inputs = ep.get("input") or {}
+    fields, whole = _body_fields(inputs.get("body"))
+    text = inputs.get("bodyType") == "form"
+    strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
+    if not body or (not fields and whole is None) or inputs.get("bodyType") == "multipart":
+        return None
+    if text:
+        try:
+            pairs = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError:
+            return None
+        form: dict[str, list[str]] = {}
+        for name, value in pairs:
+            form.setdefault(name, []).append(value)
+        parsed: object = {name: v[0] if len(v) == 1 else v for name, v in form.items()}
+    else:
+        try:
+            parsed = json.loads(body, object_pairs_hook=_unique_pairs)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        if whole is not None:
+            reason = params.refusal(whole, parsed)
+            return ("body", reason) if reason else None
+    tasks = isinstance(parsed, list)
+    for index, document in enumerate(parsed if tasks else [parsed]):
+        if not isinstance(document, dict):
+            continue
+        prefix = f"body.{index}." if tasks else "body."
+        for name, spec in fields.items():
+            present, value = _field_value(document, name)
+            if not isinstance(spec, dict) or not (present or strict and spec.get("required")):
+                continue
+            if reason := params.refusal(spec, value, text=text):
+                return prefix + name, reason
+    return None
+
+
 def _enforce_catalog_body(ep: dict, body: bytes) -> None:
-    """Every declared body field the request sends meets its declaration (`catalog.params`), on
-    every tier, before anything is held; the body is never rewritten. A JSON array body (a list of
-    task objects) is read task by task, a form body as strings by the declared types; a body that
-    does not parse is relayed for the provider to judge.
+    """Every declared body field the request sends meets its declaration (`_body_refusal`), on
+    every tier, before anything is held; the body is never rewritten.
 
     ``strict_body`` and ``body_allowlist`` are the opt-in exceptions for a catalog tool whose
     advertised contract is intentionally smaller than the upstream surface: the body must be one
@@ -1372,37 +1421,11 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
     reads `item_required_all`/`item_required_any` on an array of objects. A team's raw tool remains
     a faithful relay.
     """
-    inputs = ep.get("input") or {}
-    fields, whole = _body_fields(inputs.get("body"))
-    text = inputs.get("bodyType") == "form"
-    tasks = False
-    strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
-    if strict:
-        documents: list = [_strict_json_object(body, ep["id"])]
-    elif not body or (not fields and whole is None) or inputs.get("bodyType") == "multipart":
-        return
-    elif text:
-        try:
-            pairs = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
-        except UnicodeDecodeError:
-            return
-        form: dict[str, list[str]] = {}
-        for name, value in pairs:
-            form.setdefault(name, []).append(value)
-        documents = [{name: v[0] if len(v) == 1 else v for name, v in form.items()}]
-    else:
-        try:
-            parsed = json.loads(body, object_pairs_hook=_unique_pairs)
-        except (ValueError, UnicodeDecodeError, RecursionError):
-            return
-        if whole is not None:
-            if reason := params.refusal(whole, parsed):
-                raise _parameter_refused(ep, "body", reason)
-            return
-        tasks = isinstance(parsed, list)
-        documents = parsed if tasks else [parsed]
+    fields, _ = _body_fields((ep.get("input") or {}).get("body"))
+    document: dict = {}
+    if ep.get("strict_body") or ep.get("body_allowlist"):
+        document = _strict_json_object(body, ep["id"])
     if ep.get("body_allowlist"):
-        document = documents[0]
         unknown = sorted(set(document) - set(fields))
         missing = sorted(
             name for name, spec in fields.items()
@@ -1419,19 +1442,10 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                     **({"missing": missing} if missing else {}),
                 },
             )
-    for index, document in enumerate(documents):
-        if not isinstance(document, dict):
-            continue
-        prefix = f"body.{index}." if tasks else "body."
-        for name, spec in fields.items():
-            present, value = _field_value(document, name)
-            if not isinstance(spec, dict) or not (present or strict and spec.get("required")):
-                continue
-            if reason := params.refusal(spec, value, text=text):
-                raise _parameter_refused(ep, prefix + name, reason)
+    if refused := _body_refusal(ep, body):
+        raise _parameter_refused(ep, *refused)
     if not ep.get("body_allowlist"):
         return
-    document = documents[0]
     for name, spec in fields.items():
         value = document.get(name)
         required_all = (spec.get("item_required_all") or []) if isinstance(spec, dict) else []
