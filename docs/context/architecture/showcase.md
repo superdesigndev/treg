@@ -29,7 +29,8 @@ badges their makers agreed to. Writer ownership is in AGENTS.md. Every showcase 
 ## Applying and review
 
 A team owner or admin applies (on /showcase or the Team page); the proposal sits in
-`ShowcaseApp.pending` and nothing is public before staff approve it. An edit to a live app is a new
+`ShowcaseApp.pending` and nothing is public before staff approve it. Only an owner or admin reads
+the team's entries, drafts and reject reasons included; a member gets 403. An edit to a live app is a new
 proposal while the live version stays. Not reviewed, applied at once because they can only reduce or
 re-scope what is shown: the show flags (`SHOW_FLAGS`), the usage source, and taking a live app off
 (status `hidden`; only staff show it again). Staff act through `/admin/showcase/*`

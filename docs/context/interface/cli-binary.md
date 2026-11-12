@@ -97,7 +97,9 @@ related:
 Python CLI (`src/treg/cli.py`, [cli](cli.md)) stays the reference and is frozen: the binary prints
 what it prints for the same registry answers, exits with the same statuses and reads and writes the
 same files. It is not the default install yet: `/install.sh` installs the Python CLI and
-`/install.sh?channel=beta` installs the binary.
+`/install.sh?channel=beta` installs the binary. `TREG_CLI_BINARY_INSTALL_PERCENT` sends that share
+of new installs (no working `treg` on the machine) to the binary instead, bucketed by `cksum` of the
+`analytics-id` so a retry lands the same way; a `treg update` is never moved.
 
 ## Compatibility with the Python CLI
 
@@ -212,7 +214,8 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
-  `--skills` when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
+  `--skills` for a new install in the binary's share, falling back to the Python CLI when it does not
+  finish, and when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
   shell has no signature tool; the binary verifies signatures on update), installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints

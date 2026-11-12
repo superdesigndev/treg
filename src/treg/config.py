@@ -209,6 +209,13 @@ class Settings(BaseSettings):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
 
+    @field_validator("rate_limit_exempt_ips")
+    @classmethod
+    def _exempt_ips_parse(cls, v: str) -> str:
+        from .client_ip import exempt_networks
+        exempt_networks(v)  # raises ValueError on an entry that is not an address or CIDR block
+        return v
+
     @field_validator("read_database_url")
     @classmethod
     def _read_database_driver(cls, v: str) -> str:
@@ -286,6 +293,10 @@ class Settings(BaseSettings):
     spool_max_bytes: int = Field(default=64 * 1024 * 1024, ge=1)
     spool_budget_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
     spool_parse_concurrency: int = Field(default=2, ge=1, le=16)
+    # On, a metered 2xx answer reaches the caller without the member its row's settlement reads the
+    # provider's own charge from (domain/catalog/reported_charge.py), after settlement and outcome;
+    # a call sending X-Treg-Keep-Reported-Charge keeps it. The archive keeps the answer whole.
+    strip_reported_charge: bool = False
     # Fair share of a provider's concurrency on treg's own keys (domain/capacity/fair_share.py):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
@@ -407,6 +418,7 @@ class Settings(BaseSettings):
     platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
     platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
     platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
+    platform_key_filtrat_finder: str = ""  # Bearer key (ak_…); Filtrat's finder, its own partner account
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key
@@ -822,6 +834,8 @@ class Settings(BaseSettings):
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
+    # The share of new installs `/install.sh` sends to the binary CLI (docs/context/interface/cli-binary.md).
+    cli_binary_install_percent: int = Field(default=0, ge=0, le=100)
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both
@@ -847,6 +861,9 @@ class Settings(BaseSettings):
     # use the socket peer). The first X-Forwarded-For entry is client-written and never trusted.
     client_ip_header: str = ""
     trusted_proxy_hops: int = Field(default=1, ge=0, le=5)
+    # Comma-separated addresses or CIDR blocks that skip every per-IP rate window (an authorized
+    # security test, a monitoring probe); per-email, per-user and deployment-wide windows still apply.
+    rate_limit_exempt_ips: str = ""
     # Comma-separated `treg.extensions` entry-point names that must be installed (policy.py), so a
     # deployment that relies on a private policy extension refuses to start without it. Empty =
     # load whatever is installed, which for a plain install is nothing.

@@ -755,6 +755,23 @@ async def list_members(
     return out
 
 
+@app.get("/orgs/{org_id}/admins")
+async def list_admins(
+    org_id: int, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+) -> list[dict]:
+    """The people who can add funds, for a member whose team ran out: owner and admin emails only.
+    The full roster stays admin-only."""
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="this org's token is required")
+    rows = (await db.execute(
+        select(User.email, Membership.role).join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == org_id, Membership.role.in_(("owner", "admin")))
+    )).all()
+    people = [(email, role) for email, role in rows if not _is_agent_email(email)]
+    return [{"email": email, "role": role}
+            for email, role in sorted(people, key=lambda p: (p[1] != "owner", p[0]))]
+
+
 app = APIRouter()
 member_management_router = app
 
@@ -1194,6 +1211,40 @@ async def agent_connection(
     ).exists()))).scalar_one()
     response.headers["Cache-Control"] = "no-store"
     return {"connected": connected}
+
+
+@app.get("/orgs/{org_id}/first-call")
+async def team_first_call(
+    org_id: int, response: Response,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Getting started's progress: has an agent reached this team, and which tool did its first
+    successful call reach. Each answer is at most one indexed row; no usage scan."""
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="not your org")
+    response.headers["Cache-Control"] = "no-store"
+    first_call = None
+    if caller.org.first_call_at is not None:
+        row = (await db.execute(
+            select(CallRecord.endpoint_id, CallRecord.tool_name, CallRecord.created_at)
+            .where(CallRecord.org_id == org_id, CallRecord.kind == "call",
+                   CallRecord.status_code >= 200, CallRecord.status_code < 400)
+            .order_by(CallRecord.created_at, CallRecord.id).limit(1)
+        )).first()
+        # The audit row can be shed under load; first_call_at is not, so it still answers.
+        first_call = ({"tool": row.endpoint_id or row.tool_name, "at": row.created_at.isoformat()}
+                      if row else {"tool": None, "at": caller.org.first_call_at.isoformat()})
+        return {"connected": True, "first_call": first_call}
+    # A check-in or any audited call, or this member's Default key presented by a CLI or agent
+    # (a browser session never touches it).
+    seen = (await db.execute(select(select(CallRecord.id).where(
+        CallRecord.org_id == org_id).exists()))).scalar_one()
+    if not seen:
+        seen = (await db.execute(select(select(ApiKey.id).where(
+            ApiKey.org_id == org_id, ApiKey.membership_id == caller.membership.id,
+            ApiKey.kind == managed_keys.DEFAULT_KIND, ApiKey.last_used_at.is_not(None),
+        ).exists()))).scalar_one()
+    return {"connected": seen, "first_call": None}
 
 
 @app.post("/agents/checkin")

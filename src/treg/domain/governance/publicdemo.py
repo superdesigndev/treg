@@ -27,7 +27,7 @@ async def enforce_public_demo_ip_cap(client_ip: str, db: AsyncSession) -> None:
     translating the result."""
     await ratestore.sweep(db, PUBLIC_DEMO_HIT_NS)
     allowed = await ratestore.rate_check(
-        db, PUBLIC_DEMO_HIT_NS, [(client_ip, PUBLIC_DEMO_RATE_MAX)], PUBLIC_DEMO_RATE_WINDOW_S)
+        db, PUBLIC_DEMO_HIT_NS, ratestore.ip_limit(client_ip, PUBLIC_DEMO_RATE_MAX), PUBLIC_DEMO_RATE_WINDOW_S)
     if not allowed:
         raise PublicDemoLimitError(
             f"demo limit reached ({PUBLIC_DEMO_RATE_MAX} calls/min per IP) — try again in a minute")

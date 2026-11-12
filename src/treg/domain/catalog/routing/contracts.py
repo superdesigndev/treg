@@ -216,6 +216,10 @@ class Adapter:
     miss: str
     const: dict[str, Any] = field(default_factory=dict)   # fixed provider params (`body.type: work`)
     in_expr: dict[str, str] = field(default_factory=dict) # provider param ← expression over the request (filters)
+    # identity field ← expression over the provider request ({queryParams, body, pathParams}): how
+    # a request names a field `in` cannot read back, because the provider takes it reshaped
+    # (`e164_digits(phone)` sends the digits without `+`). Read by call events only; it wins over `in`.
+    in_read: dict[str, str] = field(default_factory=dict)
     body_array: bool = False                   # the provider wants `[body]` (DataForSEO's task list)
     test_identity: dict[str, Any] = field(default_factory=dict)  # what the endpoint's test_request stands for, when `in` cannot read it back
     cost_units: str = ""                      # optional upper-bound chargeable units for a routed request
@@ -326,9 +330,7 @@ class Adapter:
         if endpoint is None:
             from ..store import load
             endpoint = load().by_id.get(self.endpoint_id) or {}
-        raw = json.dumps(provider_body).encode() if provider_body is not None else b""
-        return outcome.miss_holds(endpoint, provider_body,
-                                  answer=plugins.Answer(status=200, headers={}, raw=raw, body=provider_body))
+        return outcome.miss_holds(endpoint, provider_body, answer=answer_of(provider_body))
 
     @property
     def records_verdict(self) -> bool:
@@ -377,7 +379,7 @@ CONTRACT_KEYS = frozenset({
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
     "prefer_when", "fill_limit_when", "identity_notes"})
 ADAPTER_KEYS = frozenset({
-    "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
+    "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
@@ -659,11 +661,13 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
         _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
-        _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("out") or {}).values(),
+        _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("in_read") or {}).values(),
+                     *(a.get("out") or {}).values(),
                      *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
-            in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
+            in_expr=dict(a.get("in_expr") or {}), in_read=dict(a.get("in_read") or {}),
+            body_array=bool(a.get("body_array")),
             test_identity=dict(a.get("test_identity") or {}),
             cost_units=str(a.get("cost_units") or ""),
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
@@ -846,11 +850,26 @@ def adapter_accepts(adapter: Adapter, identity: dict[str, Any]) -> tuple[str, ..
     return found
 
 
+def answer_of(provider_body: Any) -> plugins.Answer:
+    """A parsed 2xx provider body as the answer an outcome plugin reads."""
+    raw = json.dumps(provider_body).encode() if provider_body is not None else b""
+    return plugins.Answer(status=200, headers={}, raw=raw, body=provider_body)
+
+
+def _found_nothing(endpoint: dict, example: Any) -> bool:
+    """Beside a status-only miss rule, a v2 row's `error` rule says what a 2xx that found nothing
+    looks like, so an example it judges an error is the miss today's adapter expression read."""
+    rule = endpoint.get("miss")
+    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule
+            and outcome.judge(endpoint, 200, example, answer=answer_of(example)).state == "error")
+
+
 def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -> tuple[bool, str]:
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
     view of it, and `out` must fill every required core field from the example response (or the
     example must be a recognised miss). Anything else = not a candidate."""
-    if not adapter.accepts or not adapter.out_map or not (adapter.miss or outcome.declares_miss(endpoint)):
+    if not adapter.accepts or not adapter.out_map or not (
+            adapter.miss or (is_v2(endpoint) and isinstance(endpoint.get("miss"), dict))):
         return False, "adapter incomplete"
     tr = endpoint.get("test_request") or {}
     # Reconstruct the identity from the test request through the adapter's own `in` map.
@@ -891,7 +910,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
             return False, f"in: body.{k} → {b.get(k)!r}, test_request has {v!r}"
     if example is None:
         return False, "no example_response to verify `out` against"
-    if adapter.is_miss(example, endpoint):
+    if adapter.is_miss(example, endpoint) or _found_nothing(endpoint, example):
         return True, "example is a miss; out unverified on a hit"
     core = adapter.from_upstream(example)
     missing = [k for k in contract.required_output if core.get(k) in (None, "")]

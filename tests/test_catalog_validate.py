@@ -697,6 +697,9 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'queryParams.realtime': True}, False),
     ({'queryParams.memory': 1024}, True),
     ({'queryParams.memory': '1024'}, False),
+    ({'queryParams.type': None}, True),     # null: must be absent, declared or not
+    ({'body.realtime': None}, False),       # absence applies to query parameters only
+    ({'headers.x-key': None}, False),
     ({}, False),
 ])
 def test_platform_request_requires_declared_fixed_body_value(rule, valid):

@@ -104,7 +104,10 @@ def test_segment_checks_are_what_the_event_can_record():
     assert find["input_type"]("domain+full_name") and not find["input_type"]("full_name+domain")
     assert find["tld"]("fr") and find["tld"]("中国") and not find["tld"]("FR") and not find["tld"](".fr")
     assert ev.segment(contracts["people.email.find"], {"full_name": "A B", "domain": "example.中国"})[1]["tld"] == "中国"
-    assert set(ev.segment_checks(contracts["people.phone.verify"])) == {"input_type"}
+    # A phone identity records the number's country calling code, never the number.
+    phone = ev.segment_checks(contracts["people.phone.verify"])
+    assert set(phone) == {"input_type", "calling_code"}
+    assert phone["calling_code"]("44") and not phone["calling_code"]("+44") and not phone["calling_code"]("4412")
 
 
 def test_the_most_specific_rule_wins_then_the_first_listed():

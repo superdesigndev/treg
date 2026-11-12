@@ -41,6 +41,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "anymailfinder": ("credits", "manual", "api"),
     "enrow": ("credits", "manual", "api"),
     "filtrat": ("credits", "manual", "api"),
+    "filtrat_finder": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
@@ -122,9 +123,10 @@ _QUOTAS: dict[str, dict] = {
 _RATE_LIMITS: dict[str, dict] = {
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
-    # treg's partner key is limited to 600 verifications and 200 finder searches a minute (429 with
-    # Retry-After: 60 above that); pace the whole provider at the verification allowance.
+    # treg's partner key is limited to 600 verifications a minute (429 with Retry-After: 60 above that).
     "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
+    # treg's finder key (its own Filtrat account) is limited to 110 searches a minute.
+    "filtrat-finder": {"limit": 110, "window_s": 60, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -133,8 +135,9 @@ _RATE_LIMITS: dict[str, dict] = {
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.
     "perplexity": {"limit": 1, "window_s": 1, "source": "docs"},
-    # The account reports 5 requests/s, but /post/engagement consumes two rate-limit units. The
-    # provider-wide limiter cannot weight one endpoint, so two calls/s is the safe shared-key pace.
+    # /post/engagement consumes two rate-limit units. The provider-wide limiter cannot weight one
+    # endpoint and each process keeps its own allowance, so the shared key stays at a conservative
+    # two calls/s, below the account's allowance.
     "fetchinio": {"limit": 2, "window_s": 1, "source": "policy"},
     # No published provider-wide limit. The shared-key smoother uses the documented
     # balance-check allowance as a conservative policy ceiling for all routes.
@@ -241,10 +244,6 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     # Email Verifier publishes no limit; its 429s carry x-ratelimit-limit 20 per minute, far below
     # the documented 1,000/min for other APIs. A provider-wide 20/min would slow every other route.
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
-    # Both finder rows share the vendor's 200-a-minute finder allowance on treg's partner key; the
-    # routed email find calls the resolve_catchall row, so it holds most of it.
-    "filtrat.people.email.find": {"limit": 50, "window_s": 60, "source": "docs"},
-    "filtrat.people.email.find.resolve_catchall": {"limit": 150, "window_s": 60, "source": "docs"},
 }
 
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
@@ -258,16 +257,14 @@ _CONCURRENCY: dict[str, int] = {
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
     # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
-    # then 503 SERVER_BUSY). Its finder searches have their own allowance (_ENDPOINT_CONCURRENCY).
+    # then 503 SERVER_BUSY), and 20 finder searches on treg's finder key.
     "filtrat": 10,
+    "filtrat-finder": 20,
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
 # do not draw from them.
 _ENDPOINT_CONCURRENCY: dict[str, dict] = {
-    # Filtrat allows 15 finder searches in progress on treg's partner key, across both finder rows.
-    "filtrat.finder": {"limit": 15, "endpoints": (
-        "filtrat.people.email.find", "filtrat.people.email.find.resolve_catchall")},
 }
 
 

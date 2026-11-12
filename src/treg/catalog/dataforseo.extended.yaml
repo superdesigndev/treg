@@ -14670,7 +14670,7 @@ endpoints:
     source_url: https://api.dataforseo.com/v3/appendix/user_data
     checked: '2026-08-07'
     confidence: verified
-  reserve: {entities: {from: body.*, max: 1}}
+  reserve: {entities: {from: body.*, max: 20}}
   expect: null
   name: "Full-page screenshot of any URL"
   summary: Using this endpoint, you can capture a full high-quality screenshot of any webpage.
@@ -14723,7 +14723,7 @@ endpoints:
         type: string
         required: false
         note: 'proxy pool optional field you can choose a location of the proxy pool that will be used to obtain the requested data; the parameter can be used if page content is inaccessible in one of the locations, resulting in occasional site_unreachable errors possible values: us, de'
-    note: the POST body is a JSON array holding exactly one task object with these fields
+    note: the POST body is a JSON array of up to 20 task objects with these fields, one per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-pages
   added: '2026-07-28'

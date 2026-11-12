@@ -30,7 +30,7 @@ async def test_without_the_header_the_first_hit_ends_the_call(clients: AsyncClie
 
 async def test_a_second_provider_with_the_same_address_confirms_the_first(clients: AsyncClient, verifiers_on, monkeypatch):
     seen = []
-    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "hunter": [_hunter("Patrick@Stripe.com ")]}, seen))
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "hunter": [_hunter("Patrick@Stripe.COM")]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
     assert r.status_code == 200, r.text

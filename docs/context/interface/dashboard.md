@@ -122,6 +122,13 @@ never aborted or retried automatically; an uncertain write says it may have comp
 Logout and teardown clear everything; a lost POST response or closed tab cannot recover a
 hash-stored key, and the UI says to save it before closing.
 
+## Out of credit
+
+`#billing` is where every 402 and email sends a person to add funds, but the Billing tab is admin-only.
+A member who lands there (`memberFunds`, set in `loadOrgAdmin`) is told to ask an admin and shown the
+team's owners and admins from `GET /orgs/{org_id}/admins`, which any member of that team may read;
+the full roster (`/members`) stays admin-only.
+
 ## Spend
 
 `GET /orgs/{id}/api-keys/spend` (Team -> API Keys) and `GET /orgs/{id}/usage/spend` (Activity ->

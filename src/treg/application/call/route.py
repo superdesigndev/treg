@@ -88,6 +88,7 @@ from ...domain.catalog.routing.plan import (
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
+from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -164,10 +165,15 @@ _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned",
                                        "org_endpoint_quota_exceeded"})
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
-_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_video",
+                              "tag_spend_cap_reached", "platform_daily_cap_reached",
+                              "daily_cap_reached"})
+# treg's own transient refusals for the whole team (or tag), answered before any hold: every
+# candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
+_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
 
 
+MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or budget read is busy
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
@@ -427,6 +433,52 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _above(value: object, cap: int) -> bool:
+    """A filter value above a provider's cap: a number, or a string of ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        return len(digits) > len(str(cap)) or int(digits or "0") > cap
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
+def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
+    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
+    number from 1 to that row's max when the caller sends it, or the routed call is refused before
+    any candidate is held. Neither the child nor the value is named."""
+    for e, ad, _v in candidates:
+        rule = (e.get("reserve") or {}).get("rows") or {}
+        if not is_v2(e) or not rule.get("param"):
+            continue
+        param = rule["param"]
+        target = "queryParams." + param.removeprefix("query.") if param.startswith("query.") else param
+        names = {k for k, t in ad.in_map.items() if t == target} | {
+            n for t, expr in (ad.in_expr or {}).items() if t == target for n in re.findall(r"[A-Za-z_]\w*", expr)}
+        for name in sorted(names & set(filters or {})):
+            value = (given or {}).get(name)
+            if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+
+
+def _empty_output(contract) -> dict:
+    """The contract's output shape for a miss / pending / no-core answer.
+
+    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    and callers (and the miss rule `results == []`) treat null as a broken response rather than an
+    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
+    """
+    out = {}
+    for k, spec in contract.output.items():
+        t = (spec or {}).get("type")
+        if t == "list":
+            out[k] = []
+        elif t == "int" and k == "count":
+            out[k] = 0
+        else:
+            out[k] = None
+    return out
+
+
 def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
@@ -533,12 +585,13 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     capped = []
     for e, ad, v in raw:
         over = [f"{k} <= {m}" for k, m in (getattr(ad, "filter_max", None) or {}).items()
-                if isinstance(identity.get(k), (int, float)) and not isinstance(identity.get(k), bool) and identity[k] > m]
+                if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
         else:
             capped.append((e, ad, v))
     raw = capped
+    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -880,6 +933,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
+    team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -967,10 +1021,24 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      exc.status_code, 0, "treg's money is not available to this team here"))
                 admission_refusals.append(exc)
                 continue
-            if exc.kind in _GLOBAL_REFUSALS or (
-                exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
-            ):
-                raise  # the same refusal everywhere; nothing to fall back to
+            if exc.kind in _GLOBAL_REFUSALS or exc.kind in _TEAM_BUSY:
+                if unconfirmed or undecided or best is not None:
+                    # An answer is already paid for: keep it, and say the next ask was refused.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                         exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                    break
+                if exc.kind in _GLOBAL_REFUSALS:
+                    raise  # the same refusal everywhere; nothing to fall back to
+                # Transient and the team's own: the next candidate may find it clear, but nothing
+                # here is a provider's failure, so it spends no error allowance.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                team_busy.append(exc)
+                if len(team_busy) >= MAX_TEAM_BUSY_TRIES:
+                    break
+                continue
+            if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
+                raise
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1026,7 +1094,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     "status": descriptor.get("status") or {},
                 }
                 body_out = {
-                    "output": {k: None for k in plan.contract.output},
+                    "output": _empty_output(plan.contract),
                     "raw": json.loads(kickoff_raw),
                     "_treg": {
                         "served_by": cand.endpoint["id"], "provider": cand.endpoint["provider"],
@@ -1240,6 +1308,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
+        if team_busy and all(t.outcome == "skipped" for t in tried):
+            # Only treg's own busy refusals stopped the call: answer that, with its Retry-After,
+            # rather than a route_failed that blames the providers.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, team_busy[-1].status_code, 0, audit_client)
+            raise team_busy[-1]
         if admission_refusals and all(t.outcome == "skipped" for t in tried):
             # Nothing ran: the refusal names a remedy, unlike a cost ceiling the caller may never have set.
             _summarize(parent, tried_count=len(tried))
@@ -1255,7 +1329,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
                    and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
         if outcome == "miss":
-            body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
+            body_out = {"output": _empty_output(plan.contract), "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                                   **({"verification": _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
@@ -1369,7 +1443,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 
     output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
 
-    body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
+    body_out = {"output": output or _empty_output(plan.contract), "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
                           **({"next_cursor": long_cursor} if long_cursor else {}),

@@ -132,6 +132,9 @@ reseller, OpenRouter, Replicate) share the per-model key and sit on one comparis
   keyed by capability.
 - Under the `AI generation` category, platform means the generated-media modality. Text-to-video and
   image-to-video stay separate because their inputs and prices differ.
+- `purchased_credit_only: true` on a platform makes every metered call on it payable from purchased
+  credit only; free credit does not cover it (money.md, "Purchased-only holds"). `video-gen`
+  declares it. The rule follows the endpoint's `platform`, not its id, so new rows inherit it.
 
 ### `<service>.yaml`
 
@@ -279,11 +282,14 @@ to the full core rules, and AIGC generation coverage forbids inferred mappings e
 - `scope_gap: <one line>` says treg's OAuth app lacks a scope for this route. These stay listed on
   purpose: the set of gaps answers "which scopes should the app request". Expect 403 until widened.
 
-Query arrays: `input.queryArrayEncoding` sets one wire format for every array parameter of an
-endpoint. `catalog_store.query_values()` is shared by MCP request assembly and `call_template()`, so
-the schema and the paste-ready command cannot disagree. Nested JSON bodies use dotted keys
-(`params.domain`); `call_template()` unflattens them, while query names that literally contain a
-dot (`user.fields`) stay as written.
+Query arrays: `input.queryArrayEncoding` sets one wire format for every list a caller passes as a
+query value on an endpoint, whatever the parameter's declared type. Under the default `repeated`, a
+list for a parameter declared with another type goes out as repeated keys, which a v2 row refuses
+([money](money.md#rows-in-the-v2-spelling)); `comma` sends the one comma-separated value a provider
+documents instead. `catalog_store.query_values()` is shared by MCP request assembly and
+`call_template()`, so the schema and the paste-ready command cannot disagree. Nested JSON bodies
+use dotted keys (`params.domain`); `call_template()` unflattens them, while query names that
+literally contain a dot (`user.fields`) stay as written.
 
 ## Cost - the file keeps the billing unit, the server computes USD
 
@@ -452,7 +458,9 @@ cost:
   credential is spent on, such as a model); own-key calls relay any path.
 - **`platform_request`** pins exact body, header or query values needed only on the shared
   credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. Resolution applies these and the
+  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
+  means the parameter must be absent (it need not be declared), so a run mode the row does not
+  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
   provider-specific request guards in `resolve` only after selecting the platform offer and before
   reserve; a team's own credential keeps the upstream contract.
 
@@ -1055,7 +1063,8 @@ returned and never documented as stable. An output field may say where it lands 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
+call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
@@ -1063,8 +1072,12 @@ the contract's; `verdict` is an expression for a provider that reports the word 
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
 to a mapped word. `cost_units` gives an upper bound in catalog-priced units, used by both the quote
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
-request rather than letting it answer less than asked. `verified` is filled only from an explicit
-mailbox deliverability verdict, never a lookup-success flag.
+request (a number, or a string of ASCII digits) rather than letting it answer less than asked. A
+routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
+whole number from 1 to that child's max: otherwise the routed call is refused (400
+`catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
+before any candidate is held. `verified` is filled only from an explicit mailbox deliverability
+verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that
@@ -1124,7 +1137,15 @@ an invalid extra never disables the primary.
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal. A `call_admission` refusal of treg's money skips that candidate without
+    refusals (`_GLOBAL_REFUSALS`) are terminal. treg's own team-level transient refusals
+    (`_TEAM_BUSY`: a busy money queue, an unreadable daily-cap or tag budget) are `skipped`, spend
+    no error allowance, and are tried on at most `MAX_TEAM_BUSY_TRIES` candidates; when only they
+    stopped the call the caller gets treg's refusal with its `Retry-After`, never `route_failed`.
+    Provider-level ones (`share_busy`, `provider_rate_limited`, `trial_allowance_unavailable`)
+    still fall back as errors. When Confirm, Decisive
+    or Min-Results already holds a paid answer, a terminal refusal ends the walk instead: that answer
+    is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
+    A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;

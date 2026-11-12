@@ -1339,6 +1339,79 @@ async def test_routed_insufficient_balance_still_stops_before_fallback(
     assert seen == []
 
 
+def _money_queue_busy_after(monkeypatch, admitted: int) -> None:
+    """The team's money queue admits `admitted` reserves, then times out every later one."""
+    from contextlib import asynccontextmanager
+
+    from treg.infra import money_admission
+
+    real, reserves = money_admission.admit, []
+
+    def admit(orgs, *, operation, **kwargs):
+        if operation != "reserve":
+            return real(orgs, operation=operation, **kwargs)
+        reserves.append(1)
+        if len(reserves) <= admitted:
+            return real(orgs, operation=operation, **kwargs)
+
+        @asynccontextmanager
+        async def refuse():
+            raise money_admission.ReserveAdmissionTimeout("wait_timeout")
+            yield  # pragma: no cover - makes this an async context manager
+        return refuse()
+    monkeypatch.setattr(money_admission, "admit", admit)
+
+
+async def test_routed_busy_money_queue_is_treg_refusal_not_a_provider_failure(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 0)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "should-not-run@example.com"}})],
+    }, seen))
+    before = await _balance(clients)
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,findymail"},
+    )
+
+    assert response.status_code == 429, response.text
+    assert response.json()["detail"]["error"] == "money_admission_timeout"
+    assert int(response.headers["Retry-After"]) >= 1
+    assert seen == [], "no provider is asked against the same busy queue"
+    assert await _balance(clients) == before
+
+
+async def test_routed_refusal_after_a_paid_hit_keeps_the_answer(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    _money_queue_busy_after(monkeypatch, 1)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 99,
+                                  "verification": {"status": "valid"}}})],
+    }, seen))
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={"X-Treg-Route-Prefer": "tomba,hunter", "X-Treg-Route-Confirm": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["output"]["email"] == "patrick@stripe.com"
+    assert doc["_treg"]["served_by"] == "tomba.people.email.find"
+    assert doc["_treg"]["confirmation"] == {"field": "email", "confirmed": False, "confirmed_by": None}
+    assert [(t["outcome"], t["provider"]) for t in doc["_treg"]["tried"]] == [("hit", "tomba"), ("skipped", "hunter")]
+    assert doc["_treg"]["tried"][1]["detail"] == "refused by treg: money_admission_timeout"
+    assert int(response.headers["X-Treg-Cost-Micro"]) == doc["_treg"]["charged_micro"] > 0
+    assert [provider for provider, *_ in seen] == ["tomba"]
+
+
 async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cost(clients: AsyncClient, enrichment_on, monkeypatch):
     miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
     seen = []
@@ -2553,7 +2626,7 @@ def test_every_declared_miss_status_names_its_meaning():
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
     declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
-    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    assert "aviato.people.phone.find" in declared and "aviato.companies.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
         assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
@@ -3045,6 +3118,68 @@ async def test_google_organic_asks_crawl4ai_first_and_falls_back_when_it_is_empt
     get_settings.cache_clear()
 
 
+
+def test_empty_output_uses_list_and_count_defaults_not_null():
+    """A routed miss must keep list-typed contract fields as [] (and count as 0), never null.
+
+    Other ints (followers, likes, …) stay null — a miss must not look like a measured zero.
+    """
+    from treg.application.call.route import _empty_output
+    from types import SimpleNamespace
+    contract = SimpleNamespace(output={
+        "results": {"type": "list", "required": True},
+        "count": {"type": "int"},
+        "email": {"type": "str"},
+        "followers": {"type": "int"},
+    })
+    assert _empty_output(contract) == {
+        "results": [], "count": 0, "email": None, "followers": None,
+    }
+
+
+async def test_routed_web_search_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    """Catalog contract: results is a required list. An all-miss waterfall used to return
+    output.results=null / count=null; callers then mistook HTTP 200 for a broken/usable hit shape.
+    Empty answers stay outcome=miss with results=[] and count=0."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TINYFISH", "PLATFORM-TINYFISH")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,tinyfish")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "n": 0})],
+        "tinyfish": [(200, {"results": [], "total_results": 0})],
+    }, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "site:example.invalid nonexistent-xyzzy-12345", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai,tinyfish", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["_treg"]["served_by"] is None
+    assert body["output"] == {"results": [], "count": 0}
+    assert isinstance(body["output"]["results"], list) and body["output"]["results"] == []
+    assert all(t["outcome"] in ("miss", "skipped") for t in body["_treg"]["tried"])
+    assert [s[0] for s in seen] == ["crawl4ai", "tinyfish"]
+    get_settings.cache_clear()
+
+
+async def test_routed_google_serp_organic_miss_emits_empty_results_list_not_null(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"results": [], "empty_reason": "rescue_no_results"})],
+    }, seen))
+    r = await clients.post("/call/treg.google.serp.organic", json={"q": "site:example.invalid xyzzy-no-hits", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai", "X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["_treg"]["outcome"] == "miss"
+    assert body["output"] == {"results": [], "count": 0}
+    get_settings.cache_clear()
+
+
 # ---- web.extract.structured: a new routed job, crawl4ai first ----------------------------------------
 _SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}
 
@@ -3186,6 +3321,47 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
         (f"{call_id}:r1", "reserve"), (f"{call_id}:r1", "settle")]
 
 
+@pytest.mark.parametrize("limit", [0, 50.0])
+async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_is_called(
+    clients: AsyncClient, monkeypatch, platform_on, limit,
+):
+    """A routed filter a v2 child prices its hold by (Hunter's `reserve.rows` limit, a whole number
+    from 1 to 100) refuses the routed call itself when the route is planned, naming the routed
+    call's own parameter, before any candidate is held or called. A whole number above the child's
+    cap only drops that child."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
+    get_settings.cache_clear()
+    hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
+                                                                  "last_name": "B", "position": "CTO"}]}})
+
+    async def post(asked):
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"icypeas": [(200, {"leads": [], "total": 0})], "hunter": [hunter]}, seen))
+        r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": asked},
+                               headers={"X-Treg-Route-Prefer": "icypeas,hunter"})
+        return r, [provider for provider, *_ in seen]
+
+    r, called = await post(limit)
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "catalog_parameter_invalid"
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
+    assert called == []
+    r, called = await post(10)
+    assert r.status_code == 200, r.text
+    assert called == ["icypeas", "hunter"]
+    assert r.json()["_treg"]["served_by"] == "hunter.companies.emails"
+    for above in (150, "150"):
+        r, called = await post(above)
+        assert r.status_code == 200, r.text
+        assert called == ["icypeas"]
+        assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
+
+
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
     """`max: {limit: N}` on an adapter: a request asking for more than N skips that provider with a
     named drop instead of answering less than was asked; at or under N it stays a candidate."""
@@ -3212,6 +3388,11 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert all(c.endpoint["id"] != "akta.companies.news" for c in over.candidates)
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
+    assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+    for limit in ("5", "0" * 5000 + "4", "9" * 5000):
+        over = await call_route.build_plan(ep, {"domain": "canva.com", "limit": limit}, _Caller(), options)
+        assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped, limit[:8]
+    under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": "03"}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 

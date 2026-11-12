@@ -1,0 +1,18 @@
+{
+  "status": "not_found",
+  "confidence": 0,
+  "domain": "example.com",
+  "domain_intelligence": {
+    "mx_provider": "",
+    "catch_all": false,
+    "deliverability_index": "very_low",
+    "patterns": [
+      {
+        "pattern": "first.last"
+      }
+    ]
+  },
+  "diagnosis": "No matching email found for this domain",
+  "credits_used": 0.0,
+  "credits_list": 0.0
+}
