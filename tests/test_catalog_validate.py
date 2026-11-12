@@ -19,16 +19,17 @@ def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
         "input": {"body": {
             "name": {"type": "string", "required": True},
             "formats": {
-                "type": "array[string]", "required": False,
-                "minItems": 1, "maxItems": 2, "enum": ["html", "markdown"],
+                "type": "array", "items": {"type": "string", "enum": ["html", "markdown"]},
+                "required": False, "minItems": 1, "maxItems": 2,
             },
         }},
     }
 
-    for body in ({"name": "example"}, {"name": "example", "formats": ["markdown"]}):
+    for body in ({"name": "example"}, {"name": "example", "formats": ["markdown"]},
+                 {"name": "example", "formats": None}):
         resolve._enforce_catalog_body(endpoint, json.dumps(body).encode())
 
-    for formats in ([], ["markdown", "text"], "markdown", None):
+    for formats in ([], ["markdown", "text"], "markdown", ["html", "markdown", "html"]):
         with pytest.raises(ResolutionFailed) as exc:
             resolve._enforce_catalog_body(
                 endpoint, json.dumps({"name": "example", "formats": formats}).encode(),
@@ -43,7 +44,7 @@ def test_catalog_body_required_arrays_remain_required():
         "method": "POST",
         "strict_body": True,
         "input": {"body": {
-            "items": {"type": "array[object]", "required": True, "min": 1, "max": 2},
+            "items": {"type": "array", "items": {"type": "object"}, "required": True, "minItems": 1, "maxItems": 2},
         }},
     }
 
@@ -869,7 +870,7 @@ def test_price_table_may_disclose_its_validated_maximum_only():
 @pytest.mark.parametrize('patch,valid', [
     ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
     ({'path': '/{id}'}, False),
-    ({'input': {'queryParams': {'mode': {'enum': [True]}}}}, False),
+    ({'input': {'queryParams': {'mode': 'string'}}}, False),
 ])
 def test_strict_query_contract_validation(patch, valid):
     ep = {'strict_query': True, 'method': 'GET', 'path': '/lookup',
@@ -889,7 +890,7 @@ def test_strict_query_accepts_a_declared_path_parameter():
 
 def test_body_allowlist_object_item_presence_rules():
     ep = {'body_allowlist': True, 'method': 'POST',
-          'input': {'body': {'data': {'type': 'array[object]',
+          'input': {'body': {'data': {'type': 'array', 'items': {'type': 'object'},
                                       'item_required_any': ['email', 'linkedin']}}}}
     errors = []
     validator.check_body_allowlist(ep, 'example', errors)
@@ -903,11 +904,12 @@ def test_body_allowlist_object_item_presence_rules():
     ({}, True),
     ({'strict_body': 'yes'}, False),
     ({'method': 'GET'}, False),
-    ({'input': {'body': {'items': {'type': 'array[object]', 'min': 2, 'max': 1}}}}, False),
+    ({'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 2, 'maxItems': 1}}}},
+     False),
 ])
 def test_strict_body_contract_validation(patch, valid):
     ep = {'strict_body': True, 'method': 'POST', 'path': '/lookup',
-          'input': {'body': {'items': {'type': 'array[object]', 'min': 1, 'max': 1}}}}
+          'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 1, 'maxItems': 1}}}}
     errors = []
     validator.check_strict_body(ep | patch, 'example', errors)
     assert bool(errors) is not valid

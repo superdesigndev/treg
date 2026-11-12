@@ -13,13 +13,16 @@ sources:
   - src/treg/domain/catalog/schema/violations.py
   - src/treg/domain/catalog/schema/violations.yaml
   - src/treg/domain/catalog/schema/export.py
+  - src/treg/domain/catalog/params.py
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - src/treg/domain/plugins/anyapi.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
+  - scripts/catalog_param_types.py
   - tests/test_catalog_schema.py
+  - tests/test_catalog_params.py
   - tests/test_catalog_v2_codemod.py
   - tests/plugins/test_anyapi.py
 related:
@@ -46,6 +49,48 @@ endpoint file through them, so the two can no longer disagree about a key, a typ
   with their messages.
 - **One YAML reading.** Dates stay the strings they were written as, for the loader and the
   validator alike.
+
+## Parameter types
+
+Every declared parameter, a row's query, path, header and body specs and a contract's identity,
+filter, output and row fields alike, uses one vocabulary (`catalog/params.py`):
+
+- **`type`** is one of JSON Schema's `string`, `integer`, `number`, `boolean`, `array` and `object`,
+  or a list of two or more of them for a parameter that takes either (`[boolean, object]`).
+- **`items`** says what each member of an `array` is, as a spec of its own.
+- **`format`** annotates a string: `url`, `email` or `binary`. It is never a type; a routed identity
+  field of `format: url` is read as a URL (`invalid_identity`), and a row field of it is never cut.
+- **Range keys match the type**: `min`/`max` bound a number or an integer, `minLength`/`maxLength` a
+  string, `minItems`/`maxItems` an array.
+- **`enum`** names whole values: on an array it lists whole arrays; an enum of each item goes in
+  `items`.
+
+The validator holds every declaration to it (`params.declaration_errors`): a type word or list,
+`items` on an array, range keys of the type, a format on a string, enum entries its type can hold.
+The models still parse `minimum`/`maximum` and the contracts parser the earlier contract words
+(`str`, `int`, `url`, ...) so a base catalog written before the vocabulary loads in CI's dump
+comparison; the validator refuses both. A contract identity variant names each key with a type word
+or a spec (`{linkedin_url: {type: string, format: url}}`).
+
+**The check.** `params.refusal(spec, value)` is the one reading of a sent value: its type, enum and
+range, and each item of an array. A null or empty value is not sent and meets an optional spec. A
+query, path or form value is a string read by the declared type (ASCII digits for an integer, a
+decimal for a number, `true`/`false`, JSON for an object or array; a repeated parameter is an array);
+a JSON body value keeps its JSON type, except that an integer may be ASCII digits, as the count rule
+reads it. A query array that is not JSON (a comma list) is relayed unread. The refusal names the
+declared rule, never the value. Where the request path calls it:
+[proxy model](proxy-model.md#catalog-request-checks) and [catalog](catalog.md) routing.
+
+**The rewrite into it**: `scripts/catalog_param_types.py` (dry run by default, `--apply`), kept for
+re-runs and called by the extended-file ingest so generated rows come out in the vocabulary. It maps
+each word, writes a union as a type list, takes the type an `anyOf` declares, gives an untyped spec
+object when its example, default, test request or note shows a structure and string otherwise, gives
+a bare array its `items` from what the catalog shows of its values (the row's example, default, enum
+and test request, the same parameter on the provider's other rows, a JSON sample in its note) and
+string otherwise, widens a type its own test request would break, renames range keys and
+`format: uri`, moves an array's item enum into `items`, and writes enum entries YAML reads as another
+type in the declared one (`off` in a string enum). It prints every inferred type for a person to
+correct.
 
 ## Two spellings, one resolved row
 
@@ -192,7 +237,8 @@ locally to see the warnings for the rows you touched.
 ## The shrink-only violation list
 
 `schema/violations.yaml` lists the violations the catalog still carries: keys only one provider
-uses, rows whose parameter specs use JSON Schema words nothing reads, data the models or the
+uses, rows whose parameter specs use JSON Schema words nothing reads (`description`, `examples`,
+`anyOf`, `additionalProperties`), data the models or the
 validator refuse (each with its reason), and v2 legacy holds. The validator fails on a use the
 list does not name and on an entry nothing uses any more; `scripts/catalog_shrink_only.py` fails a
 pull request that adds an entry the base branch lacks. Fix the data; never grow the list.
