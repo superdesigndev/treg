@@ -1347,33 +1347,44 @@ def _body_fields(declared: object) -> tuple[dict, dict | None]:
     return {}, declared
 
 
-def _unique_pairs(pairs: list[tuple[str, object]]) -> dict:
-    """A JSON object, or a ValueError when it repeats a field: which repeat a provider reads is its
-    own choice, so a repeating body is not checked here (treg's key refuses it later)."""
-    document = dict(pairs)
-    if len(document) != len(pairs):
-        raise ValueError("a repeated JSON field")
+class _Repeated(list):
+    """Every value of a field a JSON object repeats: which one a provider reads is its own choice,
+    so each is checked."""
+
+
+def _all_pairs(pairs: list[tuple[str, object]]) -> dict:
+    document: dict = {}
+    for name, value in pairs:
+        if name not in document:
+            document[name] = value
+        elif isinstance(document[name], _Repeated):
+            document[name].append(value)
+        else:
+            document[name] = _Repeated([document[name], value])
     return document
 
 
-def _field_value(document: dict, name: str) -> tuple[bool, object]:
-    """(sent, value) of a declared body field: a key of that name, else the dotted path."""
+def _each(value: object) -> list:
+    return list(value) if isinstance(value, _Repeated) else [value]
+
+
+def _field_values(document: dict, name: str) -> list:
+    """Every value sent for a declared body field: a key of that name, else the dotted path."""
     if name in document:
-        return True, document[name]
-    current: object = document
+        return _each(document[name])
+    current: list = [document]
     for part in name.split("."):
-        if not isinstance(current, dict) or part not in current:
-            return False, None
-        current = current[part]
-    return True, current
+        current = [v for c in current if isinstance(c, dict) and part in c for v in _each(c[part])]
+    return current
 
 
 def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
     """(parameter, reason) of the first declared body field the request sends that breaks its
     declaration (`catalog.params`), else None. A JSON array body (a list of task objects) is read
-    task by task, a form body as strings by the declared types; a body that does not parse is
-    relayed for the provider to judge. On a ``strict_body`` or ``body_allowlist`` row an absent
-    required field is read as sent."""
+    task by task, a form body as strings by the declared types, and every value of a repeated JSON
+    field is checked; a body that does not parse is relayed for the provider to judge. On a
+    ``strict_body`` or ``body_allowlist`` row an absent required field is read as sent. A multipart
+    body is not read."""
     inputs = ep.get("input") or {}
     fields, whole = _body_fields(inputs.get("body"))
     text = inputs.get("bodyType") == "form"
@@ -1391,7 +1402,7 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
         parsed: object = {name: v[0] if len(v) == 1 else v for name, v in form.items()}
     else:
         try:
-            parsed = json.loads(body, object_pairs_hook=_unique_pairs)
+            parsed = json.loads(body, object_pairs_hook=_all_pairs)
         except (ValueError, UnicodeDecodeError, RecursionError):
             return None
         if whole is not None:
@@ -1403,11 +1414,12 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
             continue
         prefix = f"body.{index}." if tasks else "body."
         for name, spec in fields.items():
-            present, value = _field_value(document, name)
-            if not isinstance(spec, dict) or not (present or strict and spec.get("required")):
+            values = _field_values(document, name)
+            if not isinstance(spec, dict) or not (values or strict and spec.get("required")):
                 continue
-            if reason := params.refusal(spec, value, text=text):
-                return prefix + name, reason
+            for value in values or [None]:
+                if reason := params.refusal(spec, value, text=text):
+                    return prefix + name, reason
     return None
 
 

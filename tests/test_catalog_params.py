@@ -4,9 +4,12 @@ and a routed call's identity and filters), each refusing before anything is held
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from httpx import AsyncClient
 
+from treg.application.call import resolve as call_resolve
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain.catalog import params
@@ -193,6 +196,15 @@ async def test_a_body_parameter_outside_its_declaration_is_refused_on_every_tier
         r = await clients.post("/call/tavily.web.extract", json={**EXTRACT, **patch})
         assert r.status_code == 200, (patch, r.text)
         assert seen.pop()[3] == {**EXTRACT, **patch}, "relayed as sent"
+    repeated = b'{"urls": ["https://example.com"], "timeout": 1, "timeout": 61}'
+    before = await _balance(clients)
+    r = await clients.post("/call/tavily.web.extract", content=repeated,
+                           headers={"content-type": "application/json"})
+    await _refused(r, "body.timeout", seen, before, clients)
+    r = await clients.post("/call/tavily.web.extract", content=repeated.replace(b"61", b"2"),
+                           headers={"content-type": "application/json"})
+    assert r.status_code == 200, r.text
+    seen.pop()
 
 
 FETCH = {"url": "https://example.com", "respond_with": "markdown"}
@@ -262,3 +274,10 @@ async def test_a_routed_call_reads_the_shipped_types(clients: AsyncClient, monke
         before = await _balance(clients)
         r = await clients.post("/call/treg.people.search", json={"q": "engineers", **patch})
         await _refused(r, parameter, seen, before, clients)
+
+
+def test_every_routed_call_template_meets_its_own_declarations():
+    cat = catalog_store.load()
+    refused = {row["id"]: call_resolve._body_refusal(row, json.dumps(row["test_request"]["body"]).encode())
+               for row in cat.by_id.values() if row.get("kind") == "routed" and row.get("test_request")}
+    assert refused and not {k: v for k, v in refused.items() if v}, refused
