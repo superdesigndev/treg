@@ -245,10 +245,10 @@ an out-of-credit answer, documented or matched by the `unrecorded` phrase check,
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
 OAuth app it is `our_provider_account`, like every error on treg's own key. A routed parent the
 provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. A failed hub run is
-read by the error its detail names: a crash in treg (`hub_run_crashed`) is `treg_error`, treg's run
-limits (`hub_step_cap`, `hub_wall_clock`) `treg_capacity`, both `by` `treg`; a failed step or the
-maker's script stays `upstream_error`. No request or answer
-value, header, credential or message text is logged; the answer is read only for its documented
+`upstream_error`, `by` `upstream`: a failed step, the maker's script, or a limit the maker's
+manifest declares (`hub_step_cap`, `hub_wall_clock`). Two stops are read by the error the detail
+names instead: a crash in treg (`hub_run_crashed`) is `treg_error`, `by` `treg`, and the caller's
+price ceiling (`hub_run_max_cost`) is `caller_balance_or_cap`. No request or answer value, header, credential or message text is logged; the answer is read only for its documented
 error code.
 
 A default error view leaves `caller_side` out; the full count is the same query without that
