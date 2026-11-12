@@ -338,7 +338,8 @@ Treg refusals carry `X-Treg-Error: 1`. Application failures map to
 contracts: [api](../interface/api.md).
 
 `_audit` records each attempt and mirrors it through `_tool_called_props` / `analytics.capture`
-(never params or bodies). `domain.catalog.results.classify` shares hit/miss rules between telemetry
+(never params or bodies); a failed one also writes a classified `call_error` line
+([call events](call-events.md#failed-calls)). `domain.catalog.results.classify` shares hit/miss rules between telemetry
 and cache admission and inspects only already-buffered bodies
 ([archive result admission](archive.md#result-admission)). Overflow keeps both attempt rows under
 one call reference but emits one product event (`defer_analytics`).
