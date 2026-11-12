@@ -32,6 +32,7 @@ sources:
   - cli/internal/commands/helpers.go
   - cli/internal/commands/home.go
   - cli/internal/commands/host.go
+  - cli/internal/commands/invites.go
   - cli/internal/commands/mcp.go
   - cli/internal/commands/mediatype.go
   - cli/internal/commands/org.go
