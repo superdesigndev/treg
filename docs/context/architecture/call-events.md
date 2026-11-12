@@ -248,13 +248,14 @@ provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. A
 `upstream_error`, `by` `upstream`: a failed step, the maker's script, or a limit the maker's
 manifest declares (`hub_step_cap`, `hub_wall_clock`). Two stops are read by the error the detail
 names instead: a crash in treg (`hub_run_crashed`) is `treg_error`, `by` `treg`, and the caller's
-price ceiling (`hub_run_max_cost`) is `caller_balance_or_cap`. No request or answer value, header, credential or message text is logged; the answer is read only for its documented
-error code.
+price ceiling (`hub_run_max_cost`) is `caller_balance_or_cap`. No request or answer value, header,
+credential or message text is logged; the answer is read only for its documented error code.
 
 A default error view leaves `caller_side` out; the full count is the same query without that
 filter. A routed call writes its parent's line and one per failed child, check or poll, so a count
 of failed calls keeps only root lines (`step` empty); a direct attempt that overflow served is a
-root line too, though the caller got the overflow's answer. In Loki, with the deployment's own stream selector:
+root line too, though the caller got the overflow's answer. In Loki, with the deployment's own
+stream selector:
 
 ```logql
 sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "

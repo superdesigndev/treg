@@ -92,8 +92,8 @@ def _is_array(spec: object) -> bool:
 
 def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
     """The parameter a refusal names when every part of it is declared by the endpoint (an index
-    only into a declared array); `undeclared` otherwise, since a name the caller made up is request content and
-    never logged. A path placeholder may be declared with the query parameters."""
+    only into a declared array); `undeclared` otherwise, since a name the caller made up is request
+    content and never logged. A path placeholder may be declared with the query parameters."""
     if not name:
         return None
     inputs = (catalog_store.load().by_id.get(endpoint_id or "") or {}).get("input") or {}
