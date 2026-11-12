@@ -985,6 +985,12 @@ returned and never documented as stable. An output field may say where it lands 
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
 - Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
   a 422 before anything is held.
+- A filter typed `int` may declare `min` and `max` (both whole, `1 <= min <= max`, or the load
+  fails). The routed row shows the range, and the routed call refuses a sent value that is not a
+  whole number in it, read as a count is read (a JSON integer, or ASCII digits; null and `""` are not
+  sent): 400 `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held.
+  This is the routed path's own check (`route.py::_require_ranges`), not `_enforce_catalog_body`.
+  `web.map` and `people.search` declare `limit` 1-1000, the most any of their routed children takes.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
@@ -1078,7 +1084,9 @@ request (a number, or a string of ASCII digits) rather than letting it answer le
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
-before any candidate is held. `verified` is filled only from an explicit mailbox deliverability
+before any candidate is held. A filter with its own range is checked against it first; where the
+child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
+is not reached. `verified` is filled only from an explicit mailbox deliverability
 verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with

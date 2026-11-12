@@ -444,6 +444,12 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                     # must fail loudly, never quietly emit an identifier as a plain value.
                     raise ValueError(f"contract {cap}: {section}.{k} analytics must be key, value or skip "
                                      f"(filters: value or skip), got {mode!r}")
+        for k, spec in (c.get("filters") or {}).items():
+            if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
+                    spec.get("type") != "int" or type(spec.get("min")) is not int or type(spec.get("max")) is not int
+                    or not 1 <= spec["min"] <= spec["max"]):
+                raise ValueError(f"contract {cap}: filters.{k} range needs type int and whole min and max "
+                                 f"with 1 <= min <= max, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
             identity_types=types, derive=dict(c.get("derive") or {}),

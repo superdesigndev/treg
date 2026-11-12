@@ -249,6 +249,22 @@ def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention
             C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
 
 
+def test_a_filter_range_is_a_whole_min_and_max_on_an_int_filter_and_shows_on_the_routed_row():
+    from treg.domain.catalog.routing import contracts as C
+
+    cat = catalog_store.load()
+    for cap in ("web.map", "people.search"):
+        assert {k: cat.by_id[f"treg.{cap}"]["input"]["body"]["limit"][k] for k in ("min", "max")} == {"min": 1, "max": 1000}
+    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
+    ranged = {"type": "int", "default": 10, "min": 1, "max": 50}
+    assert C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": ranged}}}})["y"].filters["limit"] == ranged
+    for bad in ({"type": "int", "max": 50}, {"type": "int", "min": 1}, {"type": "str", "min": 1, "max": 50},
+                {"type": "int", "min": 0, "max": 50}, {"type": "int", "min": 5, "max": 4},
+                {"type": "int", "min": 1, "max": 50.0}, {"type": "int", "min": True, "max": 50}):
+        with pytest.raises(ValueError, match="range"):
+            C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": bad}}}})
+
+
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     """people.search builds `q` from the caller's title and location, but only for a provider that
     accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
@@ -3325,14 +3341,20 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
 async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_is_called(
     clients: AsyncClient, monkeypatch, platform_on, limit,
 ):
-    """A routed filter a v2 child prices its hold by (Hunter's `reserve.rows` limit, a whole number
-    from 1 to 100) refuses the routed call itself when the route is planned, naming the routed
-    call's own parameter, before any candidate is held or called. A whole number above the child's
-    cap only drops that child."""
+    """A routed filter with no range of its own that a v2 child prices its hold by (Hunter's
+    `reserve.rows` limit, a whole number from 1 to 100) refuses the routed call itself when the
+    route is planned, naming the routed call's own parameter, before any candidate is held or
+    called. A whole number above the child's cap only drops that child."""
+    import dataclasses
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
     get_settings.cache_clear()
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    unranged = {k: v for k, v in contract.filters["limit"].items() if k not in ("min", "max")}
+    monkeypatch.setitem(cat.contracts, "people.search",
+                        dataclasses.replace(contract, filters={**contract.filters, "limit": unranged}))
     hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
                                                                   "last_name": "B", "position": "CTO"}]}})
 
@@ -3360,6 +3382,63 @@ async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_
         assert r.status_code == 200, r.text
         assert called == ["icypeas"]
         assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
+
+
+_RANGED_LIMIT = {
+    "web.map": ("anyapi,tavily", {"url": "https://example.com"},
+                {"anyapi": {"output": {"data": {"results": ["https://example.com/a"]}}},
+                 "tavily": {"results": ["https://example.com/a"]}}),
+    "people.search": ("icypeas,hunter", {"company_domain": "stripe.com"},
+                      {"icypeas": {"success": True, "total": 1, "leads": [
+                          {"firstname": "A", "lastname": "B", "fullname": "A B", "jobTitle": "CTO",
+                           "profileUrl": "https://linkedin.com/in/ab"}]},
+                       "hunter": {"data": {"domain": "stripe.com", "emails": [
+                           {"value": "a@stripe.com", "first_name": "A", "last_name": "B", "position": "CTO"}]}}}),
+}
+
+
+async def _post_ranged_limit(clients, monkeypatch, capability, limit):
+    providers, body, answers = _RANGED_LIMIT[capability]
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", providers)
+    for p in providers.split(","):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper()}", f"{p.upper()}-KEY")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({p: [(200, doc)] * 2 for p, doc in answers.items()}, seen))
+    r = await clients.post(f"/call/treg.{capability}", json={**body, "limit": limit})
+    get_settings.cache_clear()
+    return r, seen
+
+
+@pytest.mark.parametrize("capability", ["web.map", "people.search"])
+@pytest.mark.parametrize("limit", [5.5, "abc", True, 0, -1, 1001, " 5"])
+async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_hold(
+    clients: AsyncClient, monkeypatch, platform_on, capability, limit,
+):
+    """web.map and people.search declare `limit` as 1-1000: a value that is not a whole number in
+    that range, read as a count is read, is refused naming the routed call's own body.limit before
+    anything is planned, held or called."""
+    r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == {
+        "error": "catalog_parameter_invalid", "endpoint_id": f"treg.{capability}", "parameter": "body.limit",
+        "message": f"treg.{capability} needs limit: a whole number from 1 to 1000", "charged_micro": 0}
+    assert seen == []
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all() == []
+
+
+@pytest.mark.parametrize("capability", ["web.map", "people.search"])
+@pytest.mark.parametrize("limit", [10, "5", "0005"])
+async def test_a_routed_limit_inside_its_declared_range_is_served(
+    clients: AsyncClient, monkeypatch, platform_on, capability, limit,
+):
+    """A JSON integer or ASCII digits from 1 to 1000 passes the range and is sent as given."""
+    r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
+    assert r.status_code == 200, r.text
+    assert seen
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all()
 
 
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
