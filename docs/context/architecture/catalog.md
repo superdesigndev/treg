@@ -988,14 +988,13 @@ returned and never documented as stable. An output field may say where it lands 
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
 - Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
   a 422 before anything is held.
-- A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
-  (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
-  the range, and the routed call refuses a sent value that is not a whole number in it, read as a
-  count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
-  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held. Without a
-  `max`, every whole number from `min` up passes. This is the routed path's own check
-  (`route.py::_require_ranges`), not `_enforce_catalog_body`. `web.map` and `people.search` declare
-  `limit` with `min: 1` and no upper bound.
+- A filter typed `integer` may declare a range: `min` (required, a whole number of at least 1) and
+  `max` (optional, a whole number of at least `min`); anything else fails the load. The routed row
+  shows the range, and the parameter check refuses a sent value that is not a whole number in it
+  (a JSON integer, or ASCII digits; null and `""` are not sent): 400 `catalog_parameter_invalid`
+  naming `body.<filter>`, before anything is planned or held. Without a `max`, every whole number
+  from `min` up passes. `web.map` and `people.search` declare `limit` with `min: 1` and no upper
+  bound.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.

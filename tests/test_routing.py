@@ -255,20 +255,21 @@ def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention
             C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
 
 
-def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_int_filter_and_shows_on_the_routed_row():
+def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_integer_filter_and_shows_on_the_routed_row():
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
     for cap in ("web.map", "people.search"):
         limit = cat.by_id[f"treg.{cap}"]["input"]["body"]["limit"]
         assert limit["min"] == 1 and "max" not in limit
-    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
-    for ranged in ({"type": "int", "default": 10, "min": 1}, {"type": "int", "default": 10, "min": 1, "max": 50}):
+    doc = {"identity": [{"q": "string"}], "output": {"a": "string"}}
+    for ranged in ({"type": "integer", "default": 10, "min": 1}, {"type": "integer", "default": 10, "min": 1, "max": 50}):
         assert C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": ranged}}}})["y"].filters["limit"] == ranged
-    for bad in ({"type": "int", "max": 50}, {"type": "str", "min": 1}, {"type": "str", "min": 1, "max": 50},
-                {"type": "int", "min": 0}, {"type": "int", "min": 0, "max": 50}, {"type": "int", "min": 5, "max": 4},
-                {"type": "int", "min": 1.0}, {"type": "int", "min": 1, "max": 50.0},
-                {"type": "int", "min": True}, {"type": "int", "min": 1, "max": True}):
+    for bad in ({"type": "integer", "max": 50}, {"type": "string", "min": 1}, {"type": "string", "min": 1, "max": 50},
+                {"type": "integer", "min": 0}, {"type": "integer", "min": 0, "max": 50},
+                {"type": "integer", "min": 5, "max": 4}, {"type": "integer", "min": 1.0},
+                {"type": "integer", "min": 1, "max": 50.0}, {"type": "integer", "min": True},
+                {"type": "integer", "min": 1, "max": True}):
         with pytest.raises(ValueError, match="range"):
             C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": bad}}}})
 
@@ -2657,7 +2658,7 @@ async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
                            json={"q": ["executives"], "company_domain": "example.com", "limit": 3})
     assert r.status_code == 400 and seen == [], r.text
     assert {k: r.json()["detail"][k] for k in ("error", "parameter")} == {
-        "error": "catalog_parameter_invalid", "parameter": "q"}
+        "error": "catalog_parameter_invalid", "parameter": "body.q"}
     assert "executives" not in r.text
     doc = {"identity": [{"q": "string", "title": "string"}], "output": {"a": "string"}, "scoping": ["q"]}
     assert C.parse_contracts({"contracts": {"y": {**doc, "carried_by": {"q": ["title"]}}}})["y"].carried_by == {
@@ -3644,9 +3645,9 @@ async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_
     assert r.status_code == 400, r.text
     detail = r.json()["detail"]
     assert detail["error"] == "catalog_parameter_invalid"
-    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "body.limit")
     assert detail["message"] == ("treg.people.search needs limit: a whole number from 1 to 100" if limit == 0 else
-                                 "treg.people.search: limit must be a whole number. Nothing was charged.")
+                                 "treg.people.search: body.limit must be a whole number. Nothing was charged.")
     assert called == []
     r, called = await post(10)
     assert r.status_code == 200, r.text
@@ -3691,13 +3692,14 @@ async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_h
     clients: AsyncClient, monkeypatch, platform_on, capability, limit,
 ):
     """web.map and people.search declare `limit` with min 1: a value that is not a whole number of
-    at least 1, read as a count is read, is refused naming the routed call's own body.limit before
-    anything is planned, held or called."""
+    at least 1 (a JSON integer or ASCII digits) is refused by the parameter check, naming the routed
+    call's own body.limit, before anything is planned, held or called."""
     r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
     assert r.status_code == 400, r.text
+    rule = "at least 1" if limit in (0, -1) and not isinstance(limit, bool) else "a whole number"
     assert r.json()["detail"] == {
         "error": "catalog_parameter_invalid", "endpoint_id": f"treg.{capability}", "parameter": "body.limit",
-        "message": f"treg.{capability} needs limit: a whole number of at least 1", "charged_micro": 0}
+        "message": f"treg.{capability}: body.limit must be {rule}. Nothing was charged.", "charged_micro": 0}
     assert seen == []
     async with session_maker() as db:
         assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all() == []
@@ -4096,8 +4098,8 @@ async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients,
     get_settings.cache_clear()
     assert r.status_code == 400 and seen == [], r.text
     assert r.json()["detail"] | {"charged_micro": 0} == {
-        "error": "catalog_parameter_invalid", "endpoint_id": "treg.web.search", "parameter": "contents",
-        "message": "treg.web.search: contents must be true or false. Nothing was charged.", "charged_micro": 0}
+        "error": "catalog_parameter_invalid", "endpoint_id": "treg.web.search", "parameter": "body.contents",
+        "message": "treg.web.search: body.contents must be true or false. Nothing was charged.", "charged_micro": 0}
 
 
 async def test_passages_asked_for_and_not_served_are_named_in_ignored_filters(clients, platform_on, monkeypatch):

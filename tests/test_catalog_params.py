@@ -231,9 +231,9 @@ async def test_a_query_parameter_outside_its_declaration_is_refused_on_every_tie
 
 
 ROUTED_CASES = [
-    ({"limit": 5.5}, "limit"), ({"limit": "abc"}, "limit"), ({"limit": True}, "limit"),
-    ({"limit": 0}, "limit"), ({"limit": -1}, "limit"), ({"country": "fr"}, "country"),
-    ({"q": "x" * 81}, "q"), ({"keywords": ["a", "b", "c"]}, "keywords"), ({"keywords": "a"}, "keywords"),
+    ({"limit": 5.5}, "body.limit"), ({"limit": "abc"}, "body.limit"), ({"limit": True}, "body.limit"),
+    ({"limit": 0}, "body.limit"), ({"limit": -1}, "body.limit"), ({"country": "fr"}, "body.country"),
+    ({"q": "x" * 81}, "body.q"), ({"keywords": ["a", "b", "c"]}, "body.keywords"), ({"keywords": "a"}, "body.keywords"),
 ]
 
 
@@ -257,8 +257,8 @@ async def test_a_routed_identity_or_filter_outside_its_declaration_is_refused_be
 
 async def test_a_routed_call_reads_the_shipped_types(clients: AsyncClient, monkeypatch, people_search_on):
     seen = _upstream(monkeypatch, {"results": []})
-    for patch, parameter in (({"limit": 5.5}, "limit"), ({"limit": "ten"}, "limit"), ({"q": ["a"]}, "q"),
-                             ({"company_domain": 7}, "company_domain")):
+    for patch, parameter in (({"limit": 5.5}, "body.limit"), ({"limit": "ten"}, "body.limit"), ({"q": ["a"]}, "body.q"),
+                             ({"company_domain": 7}, "body.company_domain")):
         before = await _balance(clients)
         r = await clients.post("/call/treg.people.search", json={"q": "engineers", **patch})
         await _refused(r, parameter, seen, before, clients)

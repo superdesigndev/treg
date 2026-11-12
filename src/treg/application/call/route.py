@@ -480,7 +480,8 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
         for name in sorted(names & set(filters or {})):
             value = (given or {}).get(name)
             if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
-                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+                raise call_cost._invalid(ep, f"body.{name}",
+                                         f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
 
 
 def _empty_output(contract) -> dict:
