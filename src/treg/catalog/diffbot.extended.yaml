@@ -453,8 +453,8 @@ endpoints:
         urlCrawlPattern: {type: string, required: false, note: "restrict which discovered links get crawled"}
         urlProcessPattern: {type: string, required: false, note: "restrict which crawled pages get sent to the Extract API"}
         crawlDelay: {type: number, required: false, note: "seconds between requests to the same domain"}
-        useProxies: {type: boolean, required: false}
-        obeyRobots: {type: boolean, required: false, note: "set 0 to bypass robots.txt"}
+        useProxies: {type: [boolean, integer], required: false}
+        obeyRobots: {type: [boolean, integer], required: false, note: "set 0 to bypass robots.txt"}
         notifyEmail: {type: string, required: false}
         notifyWebhook: {type: string, required: false}
         repeat: {type: number, required: false, note: "days between automatic re-crawls"}
