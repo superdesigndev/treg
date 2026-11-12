@@ -939,6 +939,10 @@ adapters:
     miss: "results == []"
     row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
+    # Wiza now refuses `size` ("The size parameter is not allowed."), which the shared key pins to 1
+    # so one row is one price: every routed call was a 400. Routed again once a size-less answer
+    # and its charge are observed.
+    route: false
     accepts: [[title]]
     in: {title: body.filters.job_title}
     in_expr: {body.filters.job_title: "choose(title, list(obj('v', title, 's', 'i')), null)"}
@@ -1013,7 +1017,10 @@ adapters:
     in_expr: {queryParams.limit: limit}
     max: {limit: 100}
     out: {people: data.emails, count: meta.results}
-    row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
+    # A domain search lists addresses found at the domain (or one Hunter links to it): the row's own
+    # address names its domain, so it is read there, not echoed from the request.
+    row: {name: "join(first_name, last_name)", title: position, company_domain: "email_domain(value)",
+          profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
     in:  {company_domain: body.company_domain}
