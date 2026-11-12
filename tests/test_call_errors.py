@@ -269,6 +269,24 @@ def test_an_own_tool_out_of_credit_answer_is_read_without_a_provider(lines):
     assert SECRET_ANSWER not in json.dumps(line)
 
 
+@pytest.mark.parametrize(("base_url", "signal", "expected", "caller_side"), [
+    ("https://api.hunter.io/v2", "quota", "caller_provider_account", True),
+    ("https://api.example.com/v2", "unknown", "rate_limit", False),
+])
+async def test_an_own_tool_answer_is_read_with_the_codes_of_its_hosts_provider(
+        clients: AsyncClient, lines, base_url, signal, expected, caller_side):
+    sid = (await clients.post("/secrets", json={"name": "k", "value": "OWN-KEY"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "mine", "base_url": base_url, "secret_id": sid})
+    assert r.status_code < 300, r.text
+    await _answering(429, {"errors": [{"details": "Too many calls per billing period"}],
+                           "echo": SECRET_ANSWER})
+    r = await clients.get("/call/mine/account")
+    assert r.status_code == 429, r.text
+    (line,) = lines()
+    assert (line["road"], line["provider"], line["tier"]) == ("own_tool", None, "tool")
+    assert (line["signal"], line["error_class"], line["caller_side"]) == (signal, expected, caller_side)
+
+
 @pytest.mark.parametrize(("target", "kind", "expected", "caller_side"), [
     (f"{EP}?aweme_id=7", "platform_key_missing", "our_provider_account", False),
     ("anymailfinder.account", "credential_missing", "caller_provider_account", True),

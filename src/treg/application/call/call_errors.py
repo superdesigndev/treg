@@ -12,9 +12,12 @@ still logged.
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import Mapping
+from urllib.parse import urlsplit
 
+from ... import oauth_providers
 from ...domain.capacity import signatures as capacity_signatures
 from ...domain.catalog import store as catalog_store
 from ...infra.structured_logging import get_logger
@@ -132,18 +135,28 @@ def _parameter(endpoint_id: str | None, name: str | None, rule: str | None = Non
     return name
 
 
+@functools.cache
+def _services_by_host() -> dict[str, str]:
+    hosts: dict[str, str] = {}
+    for service, provider in oauth_providers.REGISTRY.items():
+        if provider.base_url:
+            hosts.setdefault(urlsplit(provider.base_url).netloc.lower(), service)
+    return hosts
+
+
 def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
          endpoint_id: str | None = None, provider: str | None = None, tier: str | None = None,
          refused_by: str | None = None, failure: object = None, kind: str | None = None,
          billed_oauth: bool = False, answered: bool = True, body: bytes | None = None,
-         headers=None) -> None:
+         headers=None, host: str | None = None) -> None:
     """Log one line for a call that failed (status 400 or above); never raises.
 
     `failure` is the refusal treg raised: its `kind`, and the `parameter` and `rule` it names, are
     read; `kind` stands in when there is none. `body` and `headers` are the provider's error answer,
-    read only for its documented error code (`domain.capacity.signatures`, the generic ones alone
-    when `provider` is unknown, as on an own tool), decoded by its `Content-Encoding`; no part of
-    them is logged."""
+    read only for its documented error code (`domain.capacity.signatures`), decoded by its
+    `Content-Encoding`; no part of them is logged. An own tool's `host` names the provider whose
+    codes are read when its base URL is on that host, the generic ones alone otherwise; the line's
+    `provider` stays unset."""
     if status < 400:
         return
     try:
@@ -155,7 +168,8 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
             encoding = next((v.decode("latin-1") for k, v in headers or ()
                              if k.lower() == b"content-encoding"), "")
             plain = _decompress_for_scan(body, encoding) or b""
-            found = capacity_signatures.classify(provider or "", status, headers, plain[:4096])
+            reader = provider or _services_by_host().get((host or "").lower(), "")
+            found = capacity_signatures.classify(reader, status, headers, plain[:4096])
             signal = found.kind if found is not None else None
         by, cls = classify(status, tier=tier, refused_by=refused_by, kind=kind, signal=signal,
                            answered=answered, billed_oauth=billed_oauth)

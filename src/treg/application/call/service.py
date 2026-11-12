@@ -1202,7 +1202,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             tier=mk.tier if mk is not None else "tool", refused_by=refused_by, failure=failure,
             billed_oauth=mk is not None and mk.billed_oauth, answered=answered,
             body=provider_error[0] if provider_error else None,
-            headers=provider_error[1] if provider_error else None)
+            headers=provider_error[1] if provider_error else None,
+            host=tool.host if mk is None else None)
         if mk is not None:
             # The call event (application/call_events.py): fire-and-forget like the row above,
             # its bodies read later in the sink's flusher, never here.

@@ -243,8 +243,9 @@ belongs to whoever holds that account. An access error (an upstream 401/403) is
 `caller_provider_account` on the `credential` and `tool` tiers. A credit error (an upstream 402, or
 an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
-OAuth app it is `our_provider_account`, like every error on treg's own key. An own tool's provider
-is not known, so only the generic documented errors and the phrase check are read on its answer. A
+OAuth app it is `our_provider_account`, like every error on treg's own key. An own tool's answer is
+read with the documented errors of the provider whose base URL is on the tool's host (its line's
+`provider` stays null), or with the generic ones and the phrase check when none is. A
 catalog call refused for want of a credential (404) is `caller_provider_account`
 (`credential_missing`) when only the team's own key can serve the endpoint, and
 `our_provider_account` (`platform_key_missing`, the same answer to the caller) when treg's own key
