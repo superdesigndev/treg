@@ -373,3 +373,33 @@ async def test_a_pin_mismatch_is_the_callers_input_not_a_policy_refusal(clients:
     (line,) = lines()
     assert (line["kind"], line["error_class"], line["caller_side"]) == (
         "metadata_pin_mismatch", "caller_input", False)
+
+
+@pytest.mark.parametrize(("raised", "status", "kind", "cls"), [
+    (RuntimeError("boom"), 500, "unexpected_exception", "treg_error"),
+    (__import__("sqlalchemy.exc").exc.TimeoutError("pool"), 503, "db_pool", "treg_capacity"),
+])
+async def test_a_child_that_crashes_before_its_audit_logs_its_line(
+        monkeypatch, lines, raised, status, kind, cls):
+    from types import SimpleNamespace
+    from treg.application.call import service as call_service
+
+    async def crash(request, client):
+        raise raised
+
+    monkeypatch.setattr(call_service, "_execute_call", crash)
+
+    def context(ref):
+        body = SimpleNamespace(read=None, stream=None)
+        call_input = SimpleNamespace(method="GET", raw_rest="", raw_query="", raw_headers=(),
+                                     query_items=(), body=body, caller=SimpleNamespace(org_id=7),
+                                     client_ip="")
+        return SimpleNamespace(input=call_input, call_ref=ref, marketplace=None, idempotency=None,
+                               audited=False, cost_micro=None)
+
+    for ref in ("root", "root:v"):
+        with pytest.raises(type(raised)):
+            await call_service.execute_call(context(ref), None)
+    (line,) = lines()
+    assert (line["step"], line["status"], line["kind"], line["error_class"], line["by"]) == (
+        "v", status, kind, cls, "treg")

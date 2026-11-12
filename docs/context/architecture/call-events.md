@@ -216,9 +216,9 @@ collapsed. So a find's `answer_keys['email']` equals a later verify's `input_key
 Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
 logger, `call_error` followed by JSON, where its outcome is final: the call's audit (every resolved
 catalog call, a routed child, check or poll included, and own tools), an unresolved catalog call,
-a routed parent, a hub run that failed or was refused, and for a refusal nothing audited, the
-router's fallback on a root and `execute_call` on a child (`call_errors.emit`). It is a log line,
-not a column: no table changes.
+a routed parent, a hub run that failed or was refused, and for a refusal or crash nothing
+audited, the router's fallback on a root and `execute_call` on a child (`call_errors.emit`). It is
+a log line, not a column: no table changes.
 
 | Field | Value |
 | --- | --- |

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 import httpx
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
 from ...application import hub as hub_app
@@ -174,17 +175,13 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     try:
         return await _execute_call(request, upstream_client)
     except CallFailure as exc:
-        # A root's unaudited refusal is logged by the HTTP router's fallback; a child (a routed
-        # candidate, check or poll, a hub step) never reaches it.
-        if not request.state.call_audited and call_event_app.ref_parts(context.call_ref)[1]:
-            mk = context.marketplace
-            call_errors.emit(
-                exc.status_code, org_id=context.input.caller.org_id, call_ref=context.call_ref,
-                road="catalog" if mk is not None else "unresolved",
-                endpoint_id=mk.endpoint_id if mk is not None else None,
-                provider=mk.provider if mk is not None else None,
-                tier=mk.tier if mk is not None else None,
-                refused_by=_refusal_kind(exc.status_code), failure=exc, answered=False)
+        _log_unaudited_child(request, exc.status_code, failure=exc)
+        raise
+    except PoolTimeoutError:
+        _log_unaudited_child(request, 503, kind="db_pool")
+        raise
+    except Exception:
+        _log_unaudited_child(request, 500, kind="unexpected_exception")
         raise
     finally:
         if request.lease is not None:
@@ -193,6 +190,25 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
         context.audited = request.state.call_audited
         context.cost_micro = request.state.call_cost_micro
         await request.db.close()
+
+
+def _log_unaudited_child(request: _ApplicationRequest, status: int, *,
+                         failure: CallFailure | None = None, kind: str | None = None) -> None:
+    """A root's unaudited failure is logged by the HTTP router's fallback; a child (a routed
+    candidate, check, upgrade or poll, a hub step) never reaches it, and its parent may still
+    answer."""
+    context = request.context
+    if request.state.call_audited or not call_event_app.ref_parts(context.call_ref)[1]:
+        return
+    mk = context.marketplace
+    call_errors.emit(
+        status, org_id=context.input.caller.org_id, call_ref=context.call_ref,
+        road="catalog" if mk is not None else "unresolved",
+        endpoint_id=mk.endpoint_id if mk is not None else None,
+        provider=mk.provider if mk is not None else None,
+        tier=mk.tier if mk is not None else None,
+        refused_by=_refusal_kind(status) if failure is not None else None,
+        failure=failure, kind=kind, answered=False)
 
 
 def create_call_context(call_input: CallInput) -> CallContext:
