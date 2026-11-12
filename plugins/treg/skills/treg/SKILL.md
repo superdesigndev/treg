@@ -11,6 +11,7 @@ not install the CLI for this.
 In Claude Code, treg's marketplace also offers ready workflow skills as separate plugins, each
 described in `/plugin`:
 
+- `ai-ugc-video`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`
