@@ -70,15 +70,6 @@
   
   
   .cost { max-width: 1080px; margin: 40px auto 0; padding: 0 24px; }
-  .cost-in { border: 1px solid var(--line); border-radius: 20px; background: #fff; display: grid; grid-template-columns: 1fr 1fr 1fr; overflow: hidden; }
-  .cost-in > div { padding: 24px 26px; border-right: 1px solid var(--line); }
-  .cost-in > div:last-child { border-right: 0; }
-  .cost .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-  .cost .v { font-family: var(--display); font-weight: 600; font-size: 34px; letter-spacing: -.03em; line-height: 1; }
-  .cost .v.g { color: #111; }
-  .cost .v s { color: var(--muted); font-weight: 400; }
-  .cost .d { font-size: 13px; color: var(--muted); margin-top: 8px; }
-  @media (max-width: 720px) { .cost-in { grid-template-columns: 1fr; } .cost-in > div { border-right: 0; border-bottom: 1px solid var(--line); } }
   
   .sec { padding: 90px 24px 0; }
   .tut-frame { border-radius: 20px; overflow: hidden; background: #111; aspect-ratio: 16/9; box-shadow: 0 40px 100px -40px rgba(20,18,12,.45), 0 0 0 1px rgba(0,0,0,.06); }
@@ -109,7 +100,7 @@
   .step p { color: #43413E; font-size: 15.5px; margin: 0 0 14px; }
   .step p strong { color: var(--ink); font-weight: 500; }
   .step .vis { display: grid; gap: 14px; }
-  @media (max-width: 860px) { .step { grid-template-columns: 1fr; gap: 28px; padding: 52px 0; } .step .txt { position: static; } }
+  @media (max-width: 860px) { .step { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 52px 0; } .step .txt { position: static; } .sec .steps.wrap { padding-left: 0; padding-right: 0; } }
   
   @media (min-width: 861px) {
     .steps.pinned { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; align-items: start; }
@@ -236,7 +227,9 @@
   .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   
-  .hero-video { color: #fff; background: #101010; min-height: min(100vh, 900px); }
+  .hero-video { color: #fff; background: #101010; min-height: min(100vh, 900px); --fade: 0px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), rgba(0,0,0,.9) calc(100% - var(--fade) * .8), rgba(0,0,0,.68) calc(100% - var(--fade) * .6), rgba(0,0,0,.4) calc(100% - var(--fade) * .4), rgba(0,0,0,.16) calc(100% - var(--fade) * .2), rgba(0,0,0,.04) calc(100% - var(--fade) * .07), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), rgba(0,0,0,.9) calc(100% - var(--fade) * .8), rgba(0,0,0,.68) calc(100% - var(--fade) * .6), rgba(0,0,0,.4) calc(100% - var(--fade) * .4), rgba(0,0,0,.16) calc(100% - var(--fade) * .2), rgba(0,0,0,.04) calc(100% - var(--fade) * .07), transparent); }
   .hero-video .hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
   .hero-video::before { content: ""; position: absolute; inset: 0; z-index: 1; width: auto; height: auto; border-radius: 0; filter: none; opacity: 1; background: radial-gradient(ellipse at center, rgba(10,10,10,.62) 0%, rgba(10,10,10,.45) 55%, rgba(10,10,10,.25) 100%), linear-gradient(to bottom, rgba(10,10,10,.35), transparent 30%, transparent 75%, rgba(10,10,10,.5)); }
   .hero-video::after { display: none; }
@@ -297,7 +290,7 @@
   .sec h2, .section h2, .step h3 { color: var(--ink2); }
   .step { border-top-color: rgba(30,35,64,.1); }
   .hl2 { color: var(--ink2); }
-  .sess, .cost-in > div, .bill, .hooks, .vcard, .chip, .logowall .lw-row img, details.more, .tut-frame, .copybox {
+  .sess, .bill, .hooks, .vcard, .chip, .logowall .lw-row img, details.more, .tut-frame, .copybox {
     backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4); border: 0;
     background: var(--spec), var(--sheen), var(--tint, var(--t-clear));
     box-shadow: var(--rim), 0 40px 70px -30px var(--glow, var(--g-clear));
@@ -333,11 +326,21 @@
   .vcard .vl { color: var(--ink2); }
   .feedwall .pick { outline: 0; box-shadow: 0 0 0 3px rgba(255,255,255,.95), 0 0 0 4px rgba(22,26,58,.25), 0 30px 50px -16px var(--g-clear); }
   .feedwall .pick span { background: rgba(255,255,255,.9); color: var(--ink2); font-size: 9px; padding: 3px 6px; left: 4px; bottom: 4px; }
-  .cost-in { border: 0; background: transparent; gap: 16px; overflow: visible; }
-  .cost-in > div { border: 0; border-radius: 24px; box-shadow: none; }
-  .cost .k, .cost .d { color: rgba(22,26,58,.62); }
-  .cost .v s { color: rgba(22,26,58,.5); }
-  @media (max-width: 860px) { .cost-in { grid-template-columns: 1fr; } }
+  .hc { border-radius: 32px; padding: 22px 34px 26px; color: #fff; background: rgba(14,16,30,.84); backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.2), 0 40px 80px -30px rgba(14,16,30,.55); }
+  .hc-cap { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 4px 0 6px; }
+  .hc-row { display: flex; align-items: center; gap: 18px; min-height: 76px; }
+  .hc-logo { flex: none; width: 46px; height: 46px; border-radius: 12px; overflow: hidden; }
+  .hc-logo img, .hc-logo svg { width: 100%; height: 100%; display: block; }
+  .hc-name { flex: none; width: 190px; font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; }
+  .hc-track { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; }
+  .hc-bar { flex: none; height: 42px; min-width: 42px; width: 42px; border-radius: 21px; background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 55%), var(--tint); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45), 0 14px 36px -10px var(--glow); transition: width 1.2s cubic-bezier(.2,.8,.2,1) .25s; }
+  .cost.in .hc-bar { width: calc((100% - 104px) * var(--p)); }
+  .hc-bar.cut { -webkit-mask-image: linear-gradient(105deg, #000 calc(82% - 9px), transparent calc(82% - 9px), transparent calc(82% - 3px), #000 calc(82% - 3px), #000 calc(82% + 3px), transparent calc(82% + 3px), transparent calc(82% + 9px), #000 calc(82% + 9px)); mask-image: linear-gradient(105deg, #000 calc(82% - 9px), transparent calc(82% - 9px), transparent calc(82% - 3px), #000 calc(82% - 3px), #000 calc(82% + 3px), transparent calc(82% + 3px), transparent calc(82% + 9px), #000 calc(82% + 9px)); }
+  .hc-v { font-family: var(--mono); font-weight: 600; font-size: 34px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+  .hc-badge { height: 40px; line-height: 40px; padding: 0 18px; border-radius: 20px; background: #2FD27E; color: #06281A; font-family: var(--display); font-weight: 700; font-size: 19px; white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { .hc-bar { transition: none; width: calc((100% - 104px) * var(--p)); } }
+  @media (max-width: 720px) { .hc { border-radius: 24px; padding: 14px 18px 18px; } .hc-row { gap: 12px; min-height: 60px; } .hc-logo { width: 34px; height: 34px; border-radius: 9px; } .hc-name { width: 96px; font-size: 18px; } .hc-bar { height: 28px; min-width: 28px; width: 28px; } .cost.in .hc-bar { width: calc((100% - 84px) * var(--p)); } .hc-v { font-size: 22px; } .hc-badge { height: auto; line-height: 1.25; font-size: 12px; padding: 6px 10px; white-space: normal; max-width: 100%; } .hc-row { flex-wrap: wrap; padding: 9px 0; min-height: 0; } .hc-name { width: auto; } .hc-track { flex: none; width: 100%; } }
+  @media (max-width: 380px) { .hc { padding: 12px 14px 16px; } .hc-row { gap: 9px; } .hc-logo { width: 28px; height: 28px; border-radius: 8px; } .hc-name { font-size: 16px; } .hc-track { gap: 6px 8px; } .hc-bar { height: 22px; min-width: 22px; width: 22px; } .cost.in .hc-bar { width: calc((100% - 68px) * var(--p)); } .hc-v { font-size: 19px; } }
   .logowall .lw-row img { border-radius: 10px; padding: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
   .lw-lab { color: rgba(22,26,58,.55); }
   .final { position: relative; }
@@ -365,7 +368,7 @@
   .pc-save span:last-child { color: #17663F; }
   .nw { white-space: nowrap; }
   .pc-cap { margin: 40px 0 14px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: rgba(22,26,58,.55); }
-  .vis .pcgrid { grid-template-columns: 1fr 1fr; gap: 26px 22px; }
+  .vis .pcgrid { grid-template-columns: 1fr 1fr; gap: 26px 22px; margin: 0; }
   .vis .pc-h b { font-size: 17px; }
   .vis .pc-row, .vis .pc-save { grid-template-columns: 102px 1fr auto; gap: 8px; font-size: 13px; }
   .vis .pc-h { white-space: nowrap; font-size: 12px; }
@@ -400,10 +403,11 @@
 </header>
 
 <section class="rv cost">
-  <div class="cost-in">
-    <div><div class="k">Seedance 2.5 on fal</div><div class="v"><s>$0.2205</s></div><div class="d">per second at 480p: a 14s video is $3.09</div></div>
-    <div><div class="k">Seedance 2.5 on treg</div><div class="v g">$0.1028</div><div class="d">per second at 480p: a 14s video is $1.44, charged only when it comes back</div></div>
-    <div><div class="k">The whole 14s video</div><div class="v">$1.68</div><div class="d">at 480p: viral post, cast, set, voices and the Seedance take, all on one token</div></div>
+  <div class="hc" role="list" aria-label="What one AI video costs">
+    <div class="hc-cap">One video</div>
+    <div class="hc-row" role="listitem"><span class="hc-logo"><svg viewBox="0 0 20 20" aria-hidden="true"><rect width="20" height="20" fill="#F57EC3"/><circle cx="10" cy="7.6" r="3.1" fill="#fff"/><path d="M3.6 17.4c0-3.4 2.8-5.2 6.4-5.2s6.4 1.8 6.4 5.2z" fill="#fff"/></svg></span><span class="hc-name">Real human</span><span class="hc-track"><i class="hc-bar cut" title="Bar shortened: $50 is off this scale" style="--p:1;--tint:#F57EC3;--glow:rgba(245,126,195,.6)"></i><b class="hc-v">$50</b></span></div>
+    <div class="hc-row" role="listitem"><span class="hc-logo"><img src="media/aigc/wall/higgsfield.png" alt=""></span><span class="hc-name">Higgsfield</span><span class="hc-track"><i class="hc-bar" style="--p:.38;--tint:#D4EE3A;--glow:rgba(215,240,60,.6)"></i><b class="hc-v">$9.45</b></span></div>
+    <div class="hc-row me" role="listitem"><span class="hc-logo"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#fff"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#101010"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#101010"/></svg></span><span class="hc-name">treg</span><span class="hc-track"><i class="hc-bar" style="--p:.072;--tint:#2FD27E;--glow:rgba(47,210,126,.6)"></i><b class="hc-v">$1.80</b><span class="hc-badge">81% less than Higgsfield</span></span></div>
   </div>
 </section>
 
@@ -684,7 +688,7 @@
   } else { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); }); document.querySelectorAll('.bill-sec').forEach(function (el) { el.classList.add('seen'); }); }
 
   var nav = $('nav');
-  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); heroEl.style.setProperty('--fade', Math.min(scrollY * 1.2, 360) + 'px'); }, { passive: true });
 
   var vids = Array.prototype.slice.call(document.querySelectorAll('#v-result'));
   function pauseOthers(keep) { vids.forEach(function (v) { if (v !== keep) { v.pause(); if (!v.hasAttribute('autoplay')) v.currentTime = 0; } }); }
