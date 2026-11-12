@@ -99,7 +99,9 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 - For a common job (scraping a page, web search, Google results, finding or verifying an email, a
   social profile), call the routed `treg.<capability>` tool rather than a provider you remember:
   treg picks the provider, falls back when one fails or misses, and bills only the answer it
-  returns. Name a provider only when you need fields only it has.
+  returns. Name a provider only when you need fields only it has. If `catalog_get` lists
+  `fields` or `max_items` on a routed tool, send them as query parameters to
+  trim the response, not the charge.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest

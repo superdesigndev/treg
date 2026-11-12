@@ -153,7 +153,126 @@ def test_a_route_false_adapter_is_never_routed():
     assert [ep["id"] for ep, _, _ in routed] == ["a.find", "b.find"]
     row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: None)
     assert row["routed_children"] == ["a.find", "b.find"]
+    assert "queryParams" not in row["input"]
     assert C.parse_adapters({"adapters": {"c.find": {"route": False}}})["c.find"].route is False
+
+
+def test_routed_row_exposes_child_response_budget_query_params():
+    """A generated parent lists fields/max_items when a child declares them, and no other
+    child query names (those stay on the child), including shape-changing summary/jq."""
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+                          derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
+    adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                               verified=True) for eid in ("a.find", "b.find")}
+    budget = {
+        "fields": {"type": "string", "required": False, "note": "keep keys"},
+        "max_items": {"type": "integer", "required": False, "min": 0},
+        "summary": {"type": "boolean", "required": False},
+        "jq": {"type": "string", "required": False},
+        "other": {"type": "string", "required": False},
+    }
+    endpoints = [
+        {"id": "a.find", "provider": "a", "input": {"queryParams": budget}},
+        {"id": "b.find", "provider": "b", "input": {"body": {"q": {"type": "str"}}}},
+    ]
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: None)
+    qp = row["input"]["queryParams"]
+    assert set(qp) == {"fields", "max_items"}
+    assert qp["fields"]["note"] == "keep keys"
+    assert qp["max_items"]["min"] == 1, "child allowed 0; zero would empty result rows"
+    assert "Query `fields`, `max_items`" in row["input"]["note"]
+    assert "summary" not in row["input"]["note"] and "`jq`" not in row["input"]["note"]
+
+
+def test_parent_response_budget_query_is_forwarded_only_when_the_child_declares_it():
+    """fields/max_items on the parent reach a child that declares them; summary/jq never do,
+    even when the child lists them; adapter-built query is not overwritten."""
+    from types import SimpleNamespace
+    from treg.application.call.route import _with_parent_response_budget_query
+
+    parent = SimpleNamespace(input=SimpleNamespace(query_items=(
+        ("max_items", "1"),
+        ("summary", "true"),
+        ("fields", "id"),
+        ("jq", ".posts"),
+        ("other", "x"),
+        ("limit", "5"),
+    )))
+    child = {"input": {"queryParams": {
+        "fields": {}, "max_items": {}, "summary": {}, "jq": {}, "limit": {},
+    }}}
+    out = _with_parent_response_budget_query(parent, child, {"handle": "public", "limit": "20"})
+    assert out["handle"] == "public"
+    assert out["limit"] == "20", "to_upstream query wins on a clash"
+    assert out["max_items"] == "1" and out["fields"] == "id"
+    assert "summary" not in out and "jq" not in out
+    assert "other" not in out
+    bare = _with_parent_response_budget_query(parent, {"input": {"body": {"q": {}}}}, {"handle": "public"})
+    assert bare == {"handle": "public"}
+
+
+def test_routed_parent_rejects_zero_max_items_before_a_child_runs():
+    """A zero max_items empties the result rows adapters read, so child_outcome
+    would classify a billed 2xx as a miss. The parent refuses it before planning."""
+    from treg.application.call.route import _reject_zero_routed_max_items
+
+    ep = {"id": "treg.x.find", "input": {"queryParams": {"max_items": {"min": 1}}}}
+    ok = SimpleNamespace(input=SimpleNamespace(query_items=(("max_items", "1"), ("fields", "id"))))
+    assert _reject_zero_routed_max_items(ok, ep) is None
+    missing = SimpleNamespace(input=SimpleNamespace(query_items=(("fields", "id"),)))
+    assert _reject_zero_routed_max_items(missing, ep) is None
+    unrelated = SimpleNamespace(input=SimpleNamespace(query_items=(("max_items", "0"),)))
+    assert _reject_zero_routed_max_items(unrelated, {"id": "treg.other", "input": {}}) is None
+
+    parent = SimpleNamespace(input=SimpleNamespace(query_items=(("max_items", "0"),)))
+    with pytest.raises(ResolutionFailed) as exc:
+        _reject_zero_routed_max_items(parent, ep)
+    assert exc.value.status_code == 422
+    assert exc.value.detail["parameter"] == "queryParams.max_items"
+    assert exc.value.detail["expected"] == "an integer of at least 1"
+
+    negative = SimpleNamespace(input=SimpleNamespace(query_items=(("max_items", "-3"),)))
+    with pytest.raises(ResolutionFailed) as neg:
+        _reject_zero_routed_max_items(negative, ep)
+    assert neg.value.status_code == 422
+
+
+def test_child_outcome_classifies_a_projected_child_response_as_a_miss():
+    """A max_items-style trim keeps adapter paths, so a 2xx is still a hit. An emptied
+    item list (max_items=0) is a miss even when `_truncated` says rows were withheld.
+    A jq/summary-style projection replaces `output`, so child_outcome cannot fill the
+    required core and classifies the same 2xx as a miss — the reason those controls
+    stay off the routed path."""
+    from treg.domain.catalog.routing import contracts as C
+    from treg.application.call.route import child_outcome
+
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+                          derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
+    adapter = C.Adapter("a.find", (("q",),), {"q": "body.q"},
+                        {"rows": "output.data.items"}, "output.data.items == []", verified=True)
+    endpoint = {"id": "a.find", "provider": "a"}
+
+    def classify(doc):
+        return child_outcome(endpoint, contract, adapter, 200, json.dumps(doc).encode(), tier="platform")
+
+    full = {"output": {"data": {"items": [{"id": 1}, {"id": 2}]}}}
+    trimmed = {"output": {"data": {"items": [{"id": 1}]}}, "_truncated": 1}
+    emptied = {"output": {"data": {"items": []}}, "_truncated": 2}
+    jq_replaced = {"output": [{"id": 1}, {"id": 2}]}
+    summary_outline = {"output": {"keys": ["data"], "item_counts": {"items": 2}}}
+
+    hit = classify(full)
+    assert hit.kind == "hit" and hit.rows == 2
+    short = classify(trimmed)
+    assert short.kind == "hit" and short.rows == 1
+    vacant = classify(emptied)
+    assert vacant.kind == "miss"
+    assert "empty_core" in vacant.why or "adapter_miss" in vacant.why
+    for projected in (classify(jq_replaced), classify(summary_outline)):
+        assert projected.kind == "miss"
+        assert "empty_core" in projected.why or "adapter_miss" in projected.why
 
 
 def test_a_row_map_puts_every_provider_row_in_the_contract_shape():

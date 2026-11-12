@@ -81,6 +81,7 @@ from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  flags_off, invalid_identity, miss_status)
+from ...domain.catalog.routing.synthetic import RESPONSE_BUDGET_QUERY
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
@@ -729,6 +730,56 @@ def _endpoints(cands) -> list[str]:
     return [c.endpoint["id"] for c in cands]
 
 
+def _with_parent_response_budget_query(parent, ep: dict, query: dict[str, str]) -> dict[str, str]:
+    """Forward parent query keys a child declares as shape-preserving response-budget controls.
+
+    Adapter-built query from `to_upstream` wins on a name clash so a caller cannot
+    overwrite what the adapter sent. Names the child does not declare stay off the
+    child request. Only `fields` and `max_items` are forwarded: they keep the envelope
+    the adapter reads. `summary` and `jq` replace `output`, so classifying the child's
+    answer would miss a billed hit. The parent still wraps the child's answer unaltered.
+    """
+    declared = ((ep.get("input") or {}).get("queryParams") or {})
+    if not declared:
+        return query
+    forwarded = dict(query)
+    for key, value in parent.input.query_items:
+        if (key in RESPONSE_BUDGET_QUERY and key in declared
+                and key not in forwarded and value is not None):
+            forwarded[key] = value
+    return forwarded
+
+
+def _reject_zero_routed_max_items(parent, ep: dict) -> None:
+    """Refuse max_items below 1 on a routed parent that inherited the control.
+
+    Zero empties the result rows adapters read, so child_outcome would classify a
+    billed 2xx as a miss and the waterfall would buy more attempts. Routing cannot
+    tell withheld rows from a genuine miss without upstream-specific metadata or a
+    second unprojected call.
+    """
+    declared = ((ep.get("input") or {}).get("queryParams") or {})
+    if "max_items" not in declared:
+        return
+    for key, value in parent.input.query_items:
+        if key != "max_items" or value is None:
+            continue
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed < 1:
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+                "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                "parameter": "queryParams.max_items", "expected": "an integer of at least 1",
+                "message": (
+                    f"{ep['id']} rejects query max_items below 1: a zero cap empties "
+                    "the result rows used to classify the child's answer, so a billed "
+                    "hit would look like a miss. Nothing was charged."
+                ),
+            })
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
@@ -887,6 +938,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    _reject_zero_routed_max_items(parent, ep)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
@@ -976,6 +1028,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             continue
         try:
             query, body = cand.adapter.to_upstream(plan.identity, cand.variant)
+            query = _with_parent_response_budget_query(parent, cand.endpoint, query)
         except Exception as exc:  # noqa: BLE001 — adapter threw; record error and try next candidate
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", None, 0,

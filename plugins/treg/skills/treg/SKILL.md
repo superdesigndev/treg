@@ -134,6 +134,9 @@ How a routed call works:
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.
+- When `catalog_get` lists `fields` or `max_items` on a routed tool, send them
+  as query parameters (MCP `call.query`, CLI `--query`). A serving child that accepts them trims
+  the response, not the charge. Putting them in the body does not reach the child.
 - `catalog_get` on a routed id shows the ranked plan and its prices before you spend.
 
 **A found contact is not a confirmed one.** An email or phone find returns the provider's best
