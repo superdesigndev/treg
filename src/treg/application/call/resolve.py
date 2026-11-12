@@ -1760,12 +1760,16 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
-    # A path parameter with a declared enum names WHAT the shared key is spent on (Google AI's
-    # `model`): the price row and usage rates are that model's. Accepting any other value would
-    # let one catalog row run a different model on treg's key at the wrong rates.
-    for name, spec in sorted((input_schema.get("pathParams") or {}).items()):
-        allowed = spec.get("enum") if isinstance(spec, dict) else None
-        if isinstance(allowed, list) and (query.get(name) if query is not None else None) not in allowed:
+    rules = ep.get("platform_request") or {}
+    # A path pin names WHAT the shared key is spent on (Google AI's `model`): the price row and
+    # usage rates are that model's. Accepting any other value would let one catalog row run a
+    # different model on treg's key at the wrong rates.
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("pathParams."):
+            continue
+        name = str(path).split(".", 1)[1]
+        allowed = expected if isinstance(expected, list) else [expected]
+        if (query.get(name) if query is not None else None) not in [str(value) for value in allowed]:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
@@ -1773,7 +1777,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "message": f"{ep['id']} serves {name} " + ", ".join(map(str, allowed))
                                + " on treg's key; connect your own key for other values",
                 })
-    rules = ep.get("platform_request") or {}
     for path, expected in sorted(rules.items()):
         if not str(path).startswith("headers."):
             continue
@@ -1804,7 +1807,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     },
                 )
             continue
-        if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
+        allowed = expected if isinstance(expected, list) else [expected]
+        if len(supplied) != 1 or all(_query_value(supplied[0], value) != value for value in allowed):
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],

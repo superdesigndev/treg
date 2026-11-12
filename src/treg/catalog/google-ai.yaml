@@ -20,6 +20,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3-pro-image, gemini-3-pro-image-preview]}
     name: "Google: Gemini 3 Pro Image (Nano Banana Pro)"
     summary: "Generate or edit one image with Gemini 3 Pro Image at 1K, 2K or 4K on Google's own API, from a prompt and optional reference image URLs; the image returns inline as base64."
     # The image arrives inline, so a 2K/4K answer is far above the 8 MiB settlement buffer: the
@@ -27,7 +28,7 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3-pro-image, gemini-3-pro-image-preview], example: gemini-3-pro-image, note: "gemini-3-pro-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3-pro-image, note: "gemini-3-pro-image is the stable model; the -preview alias is the same model at the same price."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask. The example drops the multi-megabyte thoughtSignature and roughly halves the answer; keep usageMetadata in any mask you send."}
       body:
@@ -86,12 +87,13 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.1-flash-image, gemini-3.1-flash-image-preview]}
     name: "Google: Gemini 3.1 Flash Image (Nano Banana 2)"
     summary: "Generate or edit one image with Gemini 3.1 Flash Image at 512px, 1K, 2K or 4K on Google's own API, from a prompt and optional reference images; the image returns inline as base64."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.1-flash-image, gemini-3.1-flash-image-preview], example: gemini-3.1-flash-image, note: "gemini-3.1-flash-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-image, note: "gemini-3.1-flash-image is the stable model; the -preview alias is the same model at the same price."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
@@ -155,11 +157,12 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.1-flash-lite-image]}
     name: "Google: Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)"
     summary: "Generate or edit one 1K image with Gemini 3.1 Flash Lite Image on Google's own API, the cheapest Gemini image model; the image returns inline as base64."
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.1-flash-lite-image], example: gemini-3.1-flash-lite-image, note: "gemini-3.1-flash-lite-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-lite-image, note: "gemini-3.1-flash-lite-image is the stable model; the -preview alias is the same model at the same price."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
@@ -216,12 +219,13 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash-tts]}
     name: "Google: Gemini 3.8 Flash TTS"
     summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.8-flash-tts], example: gemini-3.8-flash-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-tts}
       body:
         contents:
           type: array
@@ -274,12 +278,13 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash-lite-tts]}
     name: "Google: Gemini 3.8 Flash-Lite TTS"
     summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash-Lite TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.8-flash-lite-tts], example: gemini-3.8-flash-lite-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-lite-tts}
       body:
         contents:
           type: array
@@ -332,6 +337,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [lyria-3.5]}
     name: "Google: Lyria 3.5"
     summary: "Compose a full song (about three minutes) from a text prompt with Lyria 3.5 on Google's own API; the MP3 returns inline as base64 with its lyrics or section markers."
     spooled_response: true
@@ -339,7 +345,7 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, enum: [lyria-3.5], example: lyria-3.5}
+        model: {type: string, required: true, example: lyria-3.5}
       body:
         contents:
           type: array
@@ -374,6 +380,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [lyria-3-clip-preview]}
     name: "Google: Lyria 3 Clip"
     summary: "Compose a 30-second music clip from a text prompt with Lyria 3 Clip on Google's own API; the MP3 returns inline as base64."
     spooled_response: true
@@ -381,7 +388,7 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, enum: [lyria-3-clip-preview], example: lyria-3-clip-preview}
+        model: {type: string, required: true, example: lyria-3-clip-preview}
       body:
         contents:
           type: array

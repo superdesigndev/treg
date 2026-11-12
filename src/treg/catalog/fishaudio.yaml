@@ -184,7 +184,7 @@ endpoints:
       body:
         title: {type: string, required: false, minLength: 1, maxLength: 100}
         description: {type: string, required: false, maxLength: 500}
-        visibility: {type: string, required: false, enum: [private]}
+        visibility: {type: string, required: false, note: "private on treg's key"}
       bodyType: json
     platform_request: {body.visibility: private}
     managed_resource:

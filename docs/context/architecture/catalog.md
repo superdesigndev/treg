@@ -456,17 +456,18 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
-- **`pathParams` with an `enum`** names what a call is spent on, such as a model. Like every
-  declared enum it holds on every tier ([proxy model](proxy-model.md#catalog-request-checks)), and on
-  treg's key the value must also be present.
-- **`platform_request`** pins exact body, header or query values needed only on the shared
+- **`platform_request`** pins exact body, header, query or path values needed only on the shared
   credential. Each pin is a value its field declares, written as the declared type: a value only
   treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
-  `queryParams.*` pin must appear exactly once and is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
-  means the parameter must be absent (it need not be declared), so a run mode the row does not
-  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
-  provider-specific request guards in `resolve` only after selecting the platform offer and before
-  reserve; a team's own credential keeps the upstream contract.
+  path or query pin may list the values allowed: `pathParams.model: [a, b]` names the models a row
+  prices (a stable model and its alias), so treg's key runs no other model at that row's rates, while
+  the declaration lets a team's own key name any. A `queryParams.*` pin must appear exactly once and
+  is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
+  A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
+  run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  Resolution applies these and the provider-specific request guards in `resolve` only after
+  selecting the platform offer and before reserve; a team's own credential keeps the upstream
+  contract.
 
 ### Provenance - `confidence` is a claim about the PRICE, not about the route
 

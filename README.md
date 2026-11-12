@@ -80,8 +80,8 @@ treg call fishaudio.voices.discover --query self=false --query licensed=false --
 treg resources list --provider fishaudio --kind voice
 ```
 
-With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
-account boundary.
+With your own Fish key, requests are an unmetered upstream relay and Fish owns the account boundary;
+the declared types, allowed values and ranges (a title's length, a speech format) still apply.
 
 Catalog tool inputs are described by `treg catalog get <id>`. Every declared query and path parameter and top-level body field is checked on every key before anything is charged: its type, allowed values, range or length, and each item of an array. A field nested inside a declared object is not checked. A value outside them answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is forwarded or charged; undeclared fields are forwarded as sent. Tools marked `strict_query` also reject undeclared or repeated query parameters and request bodies.
 

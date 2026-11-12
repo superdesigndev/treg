@@ -442,7 +442,8 @@ def check_body_allowlist(ep: dict, where: str, errors: list[str]) -> None:
 def check_platform_request(rule: object, input_schema: object, where: str,
                            errors: list[str]) -> None:
     """Platform-only fixed request values, each one its field declares on every tier, written as
-    the declared type; BYOK input remains an upstream contract."""
+    the declared type; a path or query pin may list the values allowed. BYOK input remains an
+    upstream contract."""
     if not isinstance(rule, dict) or not rule:
         fail(errors, where, "platform_request must be a non-empty mapping")
         return
@@ -454,11 +455,14 @@ def check_platform_request(rule: object, input_schema: object, where: str,
             continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
-                or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
-            fail(errors, where, "platform_request must name a declared body, header or query field")
+                or not path.startswith(("body.", "headers.", "queryParams.", "pathParams.")) or spec is None):
+            fail(errors, where, "platform_request must name a declared body, header, query or path field")
             continue
-        if not any(params.holds(kind, value) for kind in params.types_of(spec)) or params.refusal(spec, value):
-            fail(errors, where, "platform_request value must be one its field declares, written as its type")
+        values = value if isinstance(value, list) and path.startswith(("queryParams.", "pathParams.")) else [value]
+        if not values or any(not any(params.holds(kind, one) for kind in params.types_of(spec))
+                             or params.refusal(spec, one) for one in values):
+            fail(errors, where, "platform_request value must be one its field declares, written as its "
+                                "type, or for a path or query field a non-empty list of them")
 
 
 def check_team_label(rule: object, input_schema: object, where: str, errors: list[str]) -> None:

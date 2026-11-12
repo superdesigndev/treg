@@ -707,13 +707,20 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
     ({'body.realtime': None}, False),       # absence applies to query parameters only
     ({'headers.x-key': None}, False),
+    ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
+    ({'pathParams.model': 'stable'}, True),
+    ({'queryParams.memory': [1024, 2048]}, True),
+    ({'pathParams.model': []}, False),
+    ({'queryParams.memory': [1024, '2048']}, False),
+    ({'body.mode': ['sync']}, False),       # a body pin is one value
     ({}, False),
 ])
 def test_platform_request_pins_a_value_its_field_declares(rule, valid):
     errors = []
     validator.check_platform_request(rule, {'body': {
         'realtime': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['sync']},
-    }, 'queryParams': {'memory': {'type': 'integer', 'min': 128}}}, 'test', errors)
+    }, 'queryParams': {'memory': {'type': 'integer', 'min': 128}},
+        'pathParams': {'model': {'type': 'string', 'required': True}}}, 'test', errors)
     assert (not errors) is valid
 
 
