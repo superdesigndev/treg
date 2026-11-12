@@ -1,0 +1,220 @@
+provider: huntapi
+source:
+  docs: https://docs.huntapi.com
+  openapi: https://app.huntapi.com/openapi
+  curated: '2026-11-09'
+pricing_url: https://www.huntapi.com/pricing
+limits: Rate limits depend on the plan; GET /usage returns the key's credit balance and per-second and per-minute limits.
+proposed_capabilities:
+  web.media.video.download: Download a public video by URL
+  web.media.audio.download: Extract the audio of a public video by URL
+  web.media.job.status: Check a media download job
+defaults:
+  expect:
+    path: response.error
+    op: absent
+  provenance:
+    source: docs
+    source_url: https://www.huntapi.com/pricing
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: huntapi.web.media.video.download
+  capability: web.media.video.download
+  platform: web
+  domain: media
+  scope: any_account
+  method: GET
+  path: /v1/video/download
+  name: Download a video from its URL
+  summary: Download a public video by URL in a chosen quality and format and return a link to the file.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://www.youtube.com/watch?v=jNQXAC9IVRw
+        note: Video URL to download.
+      download_type:
+        type: string
+        required: false
+        default: audio_video
+        enum:
+        - audio_video
+        - audio
+        - video
+        note: audio_video is the full video with sound, audio the sound track only, video the picture without sound.
+      max_duration:
+        type: number
+        required: false
+        example: 30
+        note: Maximum duration of the downloaded content in seconds. If the video/audio is longer than this value, only the
+          content up to this duration will be downloaded.
+      video_quality:
+        type: string
+        required: false
+        default: best
+        example: 360p
+        enum:
+        - best
+        - 1080p
+        - 720p
+        - 480p
+        - 360p
+        note: Videos longer than one hour are capped at 720p.
+      video_format:
+        type: string
+        required: false
+        default: mp4
+        enum:
+        - mp4
+        - webm
+        - mkv
+        note: A preference; when conversion fails the file comes in the closest compatible format.
+  test_request:
+    queryParams:
+      query: https://www.youtube.com/watch?v=jNQXAC9IVRw
+      video_quality: 360p
+      max_duration: 30
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  async:
+    id_from: job_id
+    poll:
+      endpoint: huntapi.media.job.status
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: status
+      progress:
+      - Queued
+      - Running
+      success:
+      - CompletedJob
+      failure:
+      - Error
+      - NotFound
+      - BadRequest
+    result:
+      path: result
+    interval: 5
+    max_age: 1800
+  added: '2026-11-09'
+  docs_url: https://docs.huntapi.com
+  resource_ownership:
+    produces:
+    - kind: job
+      path: job_id
+- id: huntapi.web.media.audio.download
+  capability: web.media.audio.download
+  platform: web
+  domain: media
+  scope: any_account
+  method: GET
+  path: /v1/audio/download
+  name: Extract the audio of a video
+  summary: Extract the audio track of a public video by URL as MP3 or another format and return a link to the file.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: https://www.youtube.com/watch?v=jNQXAC9IVRw
+        note: URL to download audio from.
+      download_type:
+        type: string
+        required: false
+        default: audio
+      max_duration:
+        type: number
+        required: false
+        example: 30
+        note: Maximum duration of the downloaded content in seconds. If the audio is longer than this value, only the content
+          up to this duration will be downloaded.
+      audio_quality:
+        type: string
+        required: false
+        default: best
+        enum:
+        - best
+        - 320kbps
+        - 256kbps
+        - 128kbps
+      audio_format:
+        type: string
+        required: false
+        default: mp3
+        enum:
+        - mp3
+        - m4a
+        - wav
+        note: A preference; when conversion fails the file comes in the closest compatible format.
+  test_request:
+    queryParams:
+      query: https://www.youtube.com/watch?v=jNQXAC9IVRw
+      max_duration: 30
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  async:
+    id_from: job_id
+    poll:
+      endpoint: huntapi.media.job.status
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: status
+      progress:
+      - Queued
+      - Running
+      success:
+      - CompletedJob
+      failure:
+      - Error
+      - NotFound
+      - BadRequest
+    result:
+      path: result
+    interval: 5
+    max_age: 1800
+  added: '2026-11-09'
+  docs_url: https://docs.huntapi.com
+  resource_ownership:
+    produces:
+    - kind: job
+      path: job_id
+- id: huntapi.media.job.status
+  kind: utility
+  capability: web.media.job.status
+  platform: web
+  domain: media
+  scope: any_account
+  method: GET
+  path: /v1/jobs/{id}
+  name: Check a download job
+  summary: Get a download job's status, progress and, once complete, its result with the file link.
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: The job_id a download or metadata call returned.
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Polling is free.
+  added: '2026-11-09'
+  docs_url: https://docs.huntapi.com
+  resource_ownership:
+    requires:
+      kind: job
+      param: id
