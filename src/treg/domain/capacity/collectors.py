@@ -1072,6 +1072,18 @@ async def _piapi(c, key):
             "note": "equivalent_in_usd from account info"}
 
 
+async def _mailveri(c, key):
+    # GET /v1/get-balance/ is free and unthrottled; error != 0 rejects an application-level failure.
+    d = await _get(c, "https://api.mailveri.com/v1/get-balance/",
+                   headers={"Authorization": f"Bearer {key}"})
+    if d.get("error") not in (None, 0):
+        raise ValueError(f"MailVeri error {d.get('error')}: {d.get('message')}")
+    note = str(d.get("message") or "")
+    if d.get("daily_limit"):
+        note += f"; daily remaining {d.get('daily_remaining')}/{d.get('daily_limit')}"
+    return {"value": _balance(d.get("balance"), "MailVeri"), "unit": "credits", "note": note}
+
+
 BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
@@ -1102,6 +1114,7 @@ BALANCE_ROUTES = {
     "enrow": _enrow,
     "filtrat": _filtrat,
     "filtrat_finder": _filtrat,
+    "mailveri": _mailveri,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,

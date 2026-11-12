@@ -656,6 +656,12 @@ adapters:
     miss: "result == null"
     # LimaData reports a catch-all domain as a flag next to `Risky`.
     verdict: "choose(is_catch_all == true, choose(result == 'Risky', 'catch_all', result), result)"
+  mailveri.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "choose(status == null, null, choose(status == 'VALID', true, status == 'ROLE_ACCOUNT'))",
+          status: status, score: quality_score}
+    verdicts: {role_account: valid, disposable: risky, full_inbox: risky, spam_trap: invalid}
 
   # ---- people.enrich ------------------------------------------------------------------------
   dropleads.people.enrich:
