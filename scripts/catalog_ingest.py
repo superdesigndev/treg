@@ -335,7 +335,20 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
         default_flow_style=False,
     )
     out.write_text("\n".join(header) + "\n\n" + body)
+    one_vocabulary(out)
     return out
+
+
+def one_vocabulary(path: Path) -> None:
+    """Rewrite a generated file's parameter declarations into the one type vocabulary, by the
+    rules `scripts/catalog_param_types.py` applies to the catalog."""
+    try:
+        from catalog_param_types import File, Report  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        from scripts.catalog_param_types import File, Report
+    samples: dict = {}
+    File(path, Report(), samples).collect()
+    path.write_text(File(path, Report(), samples).rewrite(), encoding="utf-8")
 
 
 # path segment after /api/v1/ → platform slug. Absent = use the segment as-is.
@@ -1363,6 +1376,7 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
            "async": async_default, "endpoints": generated["endpoints"]}
     header, _, _ = out.read_text().partition("provider:")
     out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
+    one_vocabulary(out)
     return out, {"models": len(endpoints)}
 
 
