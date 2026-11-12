@@ -7800,12 +7800,14 @@ endpoints:
         - rugby
         - cricket
       location_name:
-        type: string
+        type: [array, string]
+        items: {type: string}
         required: false
         note: full name of search engine location optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_code you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can r
         example: United States
       location_code:
-        type: "integer"
+        type: [array, integer]
+        items: {type: integer}
         required: false
         note: search engine location code optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_name you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can receive t
       language_name:
