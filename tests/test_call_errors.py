@@ -360,3 +360,16 @@ async def test_a_routed_child_refused_before_its_audit_logs_its_own_line(
     assert (children[0]["by"], children[0]["road"], children[0]["endpoint_id"]) == (
         "treg", "catalog", "tavily.web.search")
     assert [line["step"] for line in lines()].count(None) == 1
+
+
+async def test_a_pin_mismatch_is_the_callers_input_not_a_policy_refusal(clients: AsyncClient, lines):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    agent = await clients.post(f"/orgs/{org_id}/agents", json={
+        "name": "pinned", "role": "member", "pinned_tags": {"customer": "a"}})
+    assert agent.status_code == 200, agent.text
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={
+        "X-Treg-Token": agent.json()["token"], "X-Treg-Meta": "customer=b"})
+    assert r.status_code == 403, r.text
+    (line,) = lines()
+    assert (line["kind"], line["error_class"], line["caller_side"]) == (
+        "metadata_pin_mismatch", "caller_input", False)

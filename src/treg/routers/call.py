@@ -409,6 +409,7 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
     try:
         context = create_call_context(call_input)
     except CallFailure as exc:
+        request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
     request.state.call_ref = context.call_ref
     request.state.call_context = context
