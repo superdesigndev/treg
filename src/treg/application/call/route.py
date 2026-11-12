@@ -72,6 +72,7 @@ from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
 from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
+from ...domain import money as ledger
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
@@ -177,6 +178,14 @@ MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
+
+
+def _over_ceiling(held: int | None, remaining: int) -> str:
+    """The skip note for a child its own reserve refused: the hold that did not fit (the adapted
+    request's price with margin) and the ceiling left, so a caller can size the ceiling."""
+    if not isinstance(held, int):
+        return "would exceed max cost"
+    return f"would exceed max cost: would hold ${ledger.usd(held):g}, ${ledger.usd(max(0, remaining)):g} left"
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -1012,8 +1021,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         except CallFailure as exc:
             _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
+                held = (exc.detail or {}).get("estimated_cost_micro") if isinstance(exc.detail, dict) else None
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
-                                     "would exceed max cost"))
+                                     _over_ceiling(held, (options.max_cost_micro or 0) - spent)))
                 cost_capped = True
                 continue
             if exc.kind == "org_endpoint_quota_exceeded":
