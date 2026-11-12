@@ -123,3 +123,13 @@ def test_role_words_become_seniority_and_department_and_one_item_lists_unwrap():
     identity = rules.request_identity(store.load().adapters["quickenrich.people.search"], {},
                                       {"company_url": {"include": ["acme.example"]}, "title": {"include": ["CMO"]}})
     assert identity == {"company_domain": "acme.example", "title": "CMO"}
+
+
+def test_a_hunter_answer_its_outcome_plugin_judges_unanswered_is_not_found(caplog):
+    adapters = store.load().adapters
+    finder, domain_search = adapters["hunter.people.email.find"], adapters["hunter.companies.emails"]
+    assert rules.read(finder, {"data": {"email": "pat@x.com", "score": 90}})[0] is True
+    assert rules.read(finder, {"data": {"email": "garbage", "score": 90}}) == (False, {})
+    assert rules.read(domain_search, {"data": {"emails": [{"value": "pat@x.com"}]}, "meta": {"results": 1}})[0] is True
+    assert rules.read(domain_search, {"data": {"emails": [{"value": ""}]}, "meta": {"results": 1}}) == (False, {})
+    assert not [r for r in caplog.records if r.name == "treg.plugins"]

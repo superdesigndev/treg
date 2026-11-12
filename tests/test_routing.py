@@ -249,6 +249,24 @@ def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention
             C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": bad}}})
 
 
+def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_int_filter_and_shows_on_the_routed_row():
+    from treg.domain.catalog.routing import contracts as C
+
+    cat = catalog_store.load()
+    for cap in ("web.map", "people.search"):
+        limit = cat.by_id[f"treg.{cap}"]["input"]["body"]["limit"]
+        assert limit["min"] == 1 and "max" not in limit
+    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
+    for ranged in ({"type": "int", "default": 10, "min": 1}, {"type": "int", "default": 10, "min": 1, "max": 50}):
+        assert C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": ranged}}}})["y"].filters["limit"] == ranged
+    for bad in ({"type": "int", "max": 50}, {"type": "str", "min": 1}, {"type": "str", "min": 1, "max": 50},
+                {"type": "int", "min": 0}, {"type": "int", "min": 0, "max": 50}, {"type": "int", "min": 5, "max": 4},
+                {"type": "int", "min": 1.0}, {"type": "int", "min": 1, "max": 50.0},
+                {"type": "int", "min": True}, {"type": "int", "min": 1, "max": True}):
+        with pytest.raises(ValueError, match="range"):
+            C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": bad}}}})
+
+
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     """people.search builds `q` from the caller's title and location, but only for a provider that
     accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
@@ -2626,7 +2644,7 @@ def test_every_declared_miss_status_names_its_meaning():
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
     declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
-    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    assert "aviato.people.phone.find" in declared and "aviato.companies.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
         assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
@@ -3321,6 +3339,111 @@ async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
         (f"{call_id}:r1", "reserve"), (f"{call_id}:r1", "settle")]
 
 
+@pytest.mark.parametrize("limit", [0, 50.0])
+async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_is_called(
+    clients: AsyncClient, monkeypatch, platform_on, limit,
+):
+    """A routed filter with no range of its own that a v2 child prices its hold by (Hunter's
+    `reserve.rows` limit, a whole number from 1 to 100) refuses the routed call itself when the
+    route is planned, naming the routed call's own parameter, before any candidate is held or
+    called. A whole number above the child's cap only drops that child."""
+    import dataclasses
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,hunter")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "HUNTER-KEY")
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    unranged = {k: v for k, v in contract.filters["limit"].items() if k not in ("min", "max")}
+    monkeypatch.setitem(cat.contracts, "people.search",
+                        dataclasses.replace(contract, filters={**contract.filters, "limit": unranged}))
+    hunter = (200, {"data": {"domain": "stripe.com", "emails": [{"value": "a@stripe.com", "first_name": "A",
+                                                                  "last_name": "B", "position": "CTO"}]}})
+
+    async def post(asked):
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"icypeas": [(200, {"leads": [], "total": 0})], "hunter": [hunter]}, seen))
+        r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": asked},
+                               headers={"X-Treg-Route-Prefer": "icypeas,hunter"})
+        return r, [provider for provider, *_ in seen]
+
+    r, called = await post(limit)
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "catalog_parameter_invalid"
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
+    assert called == []
+    r, called = await post(10)
+    assert r.status_code == 200, r.text
+    assert called == ["icypeas", "hunter"]
+    assert r.json()["_treg"]["served_by"] == "hunter.companies.emails"
+    for above in (150, "150"):
+        r, called = await post(above)
+        assert r.status_code == 200, r.text
+        assert called == ["icypeas"]
+        assert {"endpoint_id": "hunter.companies.emails", "why": "needs limit <= 100"} in r.json()["_treg"]["dropped"]
+
+
+_RANGED_LIMIT = {
+    "web.map": ("anyapi,tavily", {"url": "https://example.com"},
+                {"anyapi": {"output": {"data": {"results": ["https://example.com/a"]}}},
+                 "tavily": {"results": ["https://example.com/a"]}}),
+    "people.search": ("harvestapi,hunter", {"company_domain": "stripe.com"},
+                      {"harvestapi": {"elements": [{"firstName": "A", "lastName": "B",
+                                                    "linkedinUrl": "https://linkedin.com/in/ab"}],
+                                      "pagination": {"totalElements": 1}},
+                       "hunter": {"data": {"domain": "stripe.com", "emails": [
+                           {"value": "a@stripe.com", "first_name": "A", "last_name": "B", "position": "CTO"}]}}}),
+}
+
+
+async def _post_ranged_limit(clients, monkeypatch, capability, limit):
+    providers, body, answers = _RANGED_LIMIT[capability]
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", providers)
+    for p in providers.split(","):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper()}", f"{p.upper()}-KEY")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({p: [(200, doc)] * 2 for p, doc in answers.items()}, seen))
+    r = await clients.post(f"/call/treg.{capability}", json={**body, "limit": limit})
+    get_settings.cache_clear()
+    return r, seen
+
+
+@pytest.mark.parametrize("capability", ["web.map", "people.search"])
+@pytest.mark.parametrize("limit", [5.5, "abc", True, 0, -1, " 5"])
+async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_hold(
+    clients: AsyncClient, monkeypatch, platform_on, capability, limit,
+):
+    """web.map and people.search declare `limit` with min 1: a value that is not a whole number of
+    at least 1, read as a count is read, is refused naming the routed call's own body.limit before
+    anything is planned, held or called."""
+    r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == {
+        "error": "catalog_parameter_invalid", "endpoint_id": f"treg.{capability}", "parameter": "body.limit",
+        "message": f"treg.{capability} needs limit: a whole number of at least 1", "charged_micro": 0}
+    assert seen == []
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all() == []
+
+
+@pytest.mark.parametrize("capability", ["web.map", "people.search"])
+@pytest.mark.parametrize("limit", [10, "5", "0005", 1001, 5000, "1" + "0" * 30])
+async def test_a_routed_limit_inside_its_declared_range_is_served(
+    clients: AsyncClient, monkeypatch, platform_on, capability, limit,
+):
+    """A JSON integer or ASCII digits of at least 1, however large, passes the range and is sent as
+    given; a child whose adapter caps the limit below it is dropped, not the routed call."""
+    r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
+    assert r.status_code == 200, r.text
+    assert seen
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all()
+
+
 async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: AsyncClient, monkeypatch):
     """`max: {limit: N}` on an adapter: a request asking for more than N skips that provider with a
     named drop instead of answering less than was asked; at or under N it stays a candidate."""
@@ -3347,6 +3470,11 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert all(c.endpoint["id"] != "akta.companies.news" for c in over.candidates)
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
+    assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+    for limit in ("5", "0" * 5000 + "4", "9" * 5000):
+        over = await call_route.build_plan(ep, {"domain": "canva.com", "limit": limit}, _Caller(), options)
+        assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped, limit[:8]
+    under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": "03"}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
 
 
@@ -3403,7 +3531,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     free on a miss must settle it at zero; one that bills a miss must settle it at the charge
     ranking prices (`miss_units` rows, else the whole hold). A synthetic miss keeps the hit
     example's reported charge, so a child that settles on the provider's own report cannot show
-    its zero here: those are listed with the evidence that an empty answer reports zero."""
+    its zero here: those are listed with the evidence that an empty answer reports zero. A child
+    whose provider bills each returned row, a row its adapter reads as a miss included, settles
+    its synthetic miss (the one row asked for) at the hold."""
     from treg.application.replay import engine, fixtures
     from treg.domain.catalog.routing.plan import bills_miss, cost_at
 
@@ -3428,6 +3558,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
         "sumble.organizations": "credits_used; unmatched inputs free",
     }
+    billed_per_row = {
+        "tavily.web.extract": "a returned page without raw_content is a routing miss and a billed result",
+    }
     cat = catalog_store.load()
     kids = {c for r in cat.by_id.values() if r.get("kind") == "routed" for c in r["routed_children"]}
     wrong = []
@@ -3441,7 +3574,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
             continue
         charged = (line["settle"] or {}).get("charged_micro")
         cv = cat.cost_view(cost, cat.by_id[eid]["provider"])
-        if not bills_miss(cost):
+        if eid in billed_per_row:
+            expected = line["reserve"]["hold_micro"]
+        elif not bills_miss(cost):
             expected = 0
         elif cost.get("bills_miss") is not True:
             continue  # a call_fee alone: the fee, checked where the run body is a dataset list

@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-11-10T15:43:19.565Z",
+    "input": {
+      "url": "https://www.linkedin.com/jobs/view/software-engineer-at-pave-4310512612/"
+    },
+    "error": "Job unavailable, redirected to search page.",
+    "error_code": "dead_page"
+  }
+]

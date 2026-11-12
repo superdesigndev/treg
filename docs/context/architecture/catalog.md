@@ -132,6 +132,10 @@ reseller, OpenRouter, Replicate) share the per-model key and sit on one comparis
   keyed by capability.
 - Under the `AI generation` category, platform means the generated-media modality. Text-to-video and
   image-to-video stay separate because their inputs and prices differ.
+- `purchased_credit_only: true` on a platform makes every metered call on it payable from purchased
+  credit only; free credit does not cover it (money.md, "Purchased-only holds"). No platform sets
+  it today; `video-gen` carries it as `false`, and setting it to `true` restores the gate. The rule
+  follows the endpoint's `platform`, not its id, so new rows inherit it.
 
 ### `<service>.yaml`
 
@@ -197,9 +201,10 @@ conflict on. It is not `verified` and not `source.curated`.
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
-  priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
-  provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
-  once the fresh row declares `resource_ownership.requires`.
+  priced row's `price` (a freshly generated `price.note` replaces the carried one only for an
+  ingester that opts in, AnyAPI) together with its `provenance` (an absent one stays absent and
+  inherits the provider's default), and a `null` that opts the row out of a default, but not
+  `platform_blocked` once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
@@ -279,11 +284,14 @@ to the full core rules, and AIGC generation coverage forbids inferred mappings e
 - `scope_gap: <one line>` says treg's OAuth app lacks a scope for this route. These stay listed on
   purpose: the set of gaps answers "which scopes should the app request". Expect 403 until widened.
 
-Query arrays: `input.queryArrayEncoding` sets one wire format for every array parameter of an
-endpoint. `catalog_store.query_values()` is shared by MCP request assembly and `call_template()`, so
-the schema and the paste-ready command cannot disagree. Nested JSON bodies use dotted keys
-(`params.domain`); `call_template()` unflattens them, while query names that literally contain a
-dot (`user.fields`) stay as written.
+Query arrays: `input.queryArrayEncoding` sets one wire format for every list a caller passes as a
+query value on an endpoint, whatever the parameter's declared type. Under the default `repeated`, a
+list for a parameter declared with another type goes out as repeated keys, which a v2 row refuses
+([money](money.md#rows-in-the-v2-spelling)); `comma` sends the one comma-separated value a provider
+documents instead. `catalog_store.query_values()` is shared by MCP request assembly and
+`call_template()`, so the schema and the paste-ready command cannot disagree. Nested JSON bodies
+use dotted keys (`params.domain`); `call_template()` unflattens them, while query names that
+literally contain a dot (`user.fields`) stay as written.
 
 ## Cost - the file keeps the billing unit, the server computes USD
 
@@ -423,10 +431,10 @@ cost:
   describe its maximum.
 - A scalar `unit: character` is request-priced: `_body_text_characters` counts the top-level JSON
   `text` string; invalid or empty input reserves one character, never zero.
-- Provider-specific rate tables (`tavily_rates`, `octen_rates`) have exact mode-key contracts:
-  validation rejects incomplete, extra, non-finite or non-positive rates, and the runtime repeats the
-  check before reserve so catalog drift cannot turn a platform call free. Their platform request
-  bounds never rewrite the caller's body and do not apply to a team's own key.
+- A provider-specific rate table (`octen_rates`) has an exact mode-key contract: validation rejects
+  incomplete, extra, non-finite or non-positive rates, and the runtime repeats the check before
+  reserve so catalog drift cannot turn a platform call free. Its platform request bounds never
+  rewrite the caller's body and do not apply to a team's own key.
 - Where a provider bills one usage SKU at different prices per mode, each price is its own row with
   a `mode` enum.
 
@@ -452,7 +460,9 @@ cost:
   credential is spent on, such as a model); own-key calls relay any path.
 - **`platform_request`** pins exact body, header or query values needed only on the shared
   credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. Resolution applies these and the
+  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
+  means the parameter must be absent (it need not be declared), so a run mode the row does not
+  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
   provider-specific request guards in `resolve` only after selecting the platform offer and before
   reserve; a team's own credential keeps the upstream contract.
 
@@ -975,6 +985,14 @@ returned and never documented as stable. An output field may say where it lands 
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
 - Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
   a 422 before anything is held.
+- A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
+  (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
+  the range, and the routed call refuses a sent value that is not a whole number in it, read as a
+  count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
+  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held. Without a
+  `max`, every whole number from `min` up passes. This is the routed path's own check
+  (`route.py::_require_ranges`), not `_enforce_catalog_body`. `web.map` and `people.search` declare
+  `limit` with `min: 1` and no upper bound.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
@@ -1018,6 +1036,11 @@ returned and never documented as stable. An output field may say where it lands 
   `{q, company_domain}`: a free-text search asks for everyone who fits, while a company lookup
   stays one provider's answer. Filling `{q, company_domain}` merges only providers that send both,
   because scoping drops any that answer it by company alone (below).
+- `segments: <set>` names a segment set in `domain/catalog/routing/segments.py` (`SEGMENTERS`):
+  categories of the request, each from a fixed vocabulary, that call events record in
+  `input_meta` and route rules may match on ([call-events.md](call-events.md),
+  [route-rules.md](route-rules.md)). An unknown name fails the catalog load. `people.search` names
+  `people_search`.
 - `fill_rows: N` makes every request fill toward N rows, merging providers, when the caller set no
   `fill_limit_when` target and sent neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`
   (either header wins; `X-Treg-Route-Waterfall: 0` turns filling off). A short answer goes on to
@@ -1064,8 +1087,14 @@ the contract's; `verdict` is an expression for a provider that reports the word 
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
 to a mapped word. `cost_units` gives an upper bound in catalog-priced units, used by both the quote
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
-request rather than letting it answer less than asked. `verified` is filled only from an explicit
-mailbox deliverability verdict, never a lookup-success flag.
+request (a number, or a string of ASCII digits) rather than letting it answer less than asked. A
+routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
+whole number from 1 to that child's max: otherwise the routed call is refused (400
+`catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
+before any candidate is held. A filter with its own range is checked against it first; where the
+child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
+is not reached. `verified` is filled only from an explicit mailbox deliverability
+verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that

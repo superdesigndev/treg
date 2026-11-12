@@ -88,6 +88,7 @@ from ...domain.catalog.routing.plan import (
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
+from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -164,8 +165,9 @@ _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned",
                                        "org_endpoint_quota_exceeded"})
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
-_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_video",
+                              "tag_spend_cap_reached", "platform_daily_cap_reached",
+                              "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
 _TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
@@ -431,6 +433,45 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _above(value: object, cap: int) -> bool:
+    """A filter value above a provider's cap: a number, or a string of ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        return len(digits) > len(str(cap)) or int(digits or "0") > cap
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
+def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
+    """A routed call's own filter that declares a range is, when the caller sends it, a whole number
+    in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
+    refused before anything is planned or held."""
+    for name, spec in (filters or {}).items():
+        if "min" not in (spec or {}):
+            continue
+        value = (given or {}).get(name)
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
+
+
+def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
+    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
+    number from 1 to that row's max when the caller sends it, or the routed call is refused before
+    any candidate is held. Neither the child nor the value is named."""
+    for e, ad, _v in candidates:
+        rule = (e.get("reserve") or {}).get("rows") or {}
+        if not is_v2(e) or not rule.get("param"):
+            continue
+        param = rule["param"]
+        target = "queryParams." + param.removeprefix("query.") if param.startswith("query.") else param
+        names = {k for k, t in ad.in_map.items() if t == target} | {
+            n for t, expr in (ad.in_expr or {}).items() if t == target for n in re.findall(r"[A-Za-z_]\w*", expr)}
+        for name in sorted(names & set(filters or {})):
+            value = (given or {}).get(name)
+            if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+
+
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
@@ -557,12 +598,13 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     capped = []
     for e, ad, v in raw:
         over = [f"{k} <= {m}" for k, m in (getattr(ad, "filter_max", None) or {}).items()
-                if isinstance(identity.get(k), (int, float)) and not isinstance(identity.get(k), bool) and identity[k] > m]
+                if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
         else:
             capped.append((e, ad, v))
     raw = capped
+    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -858,6 +900,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    if contract:
+        _require_ranges(ep, contract.filters, given)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()

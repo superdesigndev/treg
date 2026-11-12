@@ -200,7 +200,9 @@ host). Apply alias configuration before deploying code that consumes it.
 `TREG_CLIENT_IP_HEADER=cf-connecting-ip`; otherwise set `TREG_TRUSTED_PROXY_HOPS` to the number of
 proxies appending to `X-Forwarded-For` (0 when clients connect directly). Each process logs
 `event=client_ip_sources` once and `event=client_ip_header_missing` when the configured header does
-not arrive ([multi-tenancy](../architecture/multi-tenancy.md), "Client address").
+not arrive ([multi-tenancy](../architecture/multi-tenancy.md), "Client address"). For an authorized
+security test or a probe that must not be throttled, list its addresses in
+`TREG_RATE_LIMIT_EXEMPT_IPS` for the engagement and remove them after; the setting is read at startup.
 
 **Call events** ([call-events](../architecture/call-events.md)) need `TREG_CALL_EVENTS_URL` and
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
