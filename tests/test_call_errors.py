@@ -19,8 +19,8 @@ from treg.infra.db import session_maker
 from treg.infra.org_concurrency import AdmissionRejected
 
 EP = "tikhub.tiktok.video.comments"
-SECRET_INPUT = "7461234567890123456"
-SECRET_ANSWER = "person-ann-lee@example.com"
+CALLER_INPUT = "7461234567890123456"
+PROVIDER_ANSWER = "person-ann-lee@example.com"
 
 
 @pytest.fixture
@@ -117,7 +117,7 @@ async def test_a_balance_refusal_logs_the_caller_side_line(clients: AsyncClient,
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:
         await ledger.reserve(db, org_id, "drain", 1_000_000)
-    r = await clients.get(f"/call/{EP}?aweme_id={SECRET_INPUT}")
+    r = await clients.get(f"/call/{EP}?aweme_id={CALLER_INPUT}")
     assert r.status_code == 402, r.text
     (line,) = lines()
     assert line == {
@@ -136,8 +136,8 @@ async def test_an_upstream_402_is_the_account_of_whoever_owns_the_key(
         clients: AsyncClient, platform_on, lines, own_key, expected, caller_side):
     if own_key:
         await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
-    await _answering(402, {"error": "out of credits", "echo": SECRET_ANSWER, "id": SECRET_INPUT})
-    r = await clients.get(f"/call/{EP}?aweme_id={SECRET_INPUT}")
+    await _answering(402, {"error": "out of credits", "echo": PROVIDER_ANSWER, "id": CALLER_INPUT})
+    r = await clients.get(f"/call/{EP}?aweme_id={CALLER_INPUT}")
     assert r.status_code == 402, r.text
     (line,) = lines()
     assert (line["by"], line["error_class"], line["caller_side"]) == ("upstream", expected, caller_side)
@@ -146,13 +146,13 @@ async def test_an_upstream_402_is_the_account_of_whoever_owns_the_key(
 
 async def test_no_request_or_answer_value_is_logged(clients: AsyncClient, platform_on, lines, caplog):
     await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
-    await _answering(400, {"error": f"bad aweme_id {SECRET_INPUT}", "echo": SECRET_ANSWER})
-    r = await clients.get(f"/call/{EP}?aweme_id={SECRET_INPUT}&count=5")
+    await _answering(400, {"error": f"bad aweme_id {CALLER_INPUT}", "echo": PROVIDER_ANSWER})
+    r = await clients.get(f"/call/{EP}?aweme_id={CALLER_INPUT}&count=5")
     assert r.status_code == 400, r.text
     (line,) = lines()
     assert line["error_class"] == "caller_input" and line["by"] == "upstream"
     text = "\n".join(r.getMessage() for r in caplog.records if r.name == call_errors.log.name)
-    for value in (SECRET_INPUT, SECRET_ANSWER, "OWN-KEY", "aweme_id", "bad"):
+    for value in (CALLER_INPUT, PROVIDER_ANSWER, "OWN-KEY", "aweme_id", "bad"):
         assert value not in text
 
 
@@ -186,7 +186,7 @@ def test_a_refused_parameter_is_named_only_when_declared(lines):
     for parameter in ("queryParams.aweme_id", "queryParams.someone@example.com", "aweme_id",
                       "query.count", "someone@example.com", "queryParams.aweme_id.someone@example.com"):
         failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
-                                   rule="type", detail=SECRET_INPUT)
+                                   rule="type", detail=CALLER_INPUT)
         call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
                          provider="tikhub", tier="platform", refused_by="request", failure=failure,
                          answered=False)
@@ -209,7 +209,7 @@ def test_a_refused_parameter_is_named_only_when_declared(lines):
 ])
 def test_every_part_of_a_logged_parameter_is_declared(lines, endpoint_id, parameter, logged):
     failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
-                               rule="required", detail=SECRET_INPUT)
+                               rule="required", detail=CALLER_INPUT)
     call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=endpoint_id,
                      provider="p", tier="platform", refused_by="request", failure=failure,
                      answered=False)
@@ -246,7 +246,7 @@ async def test_a_bad_treg_token_is_its_own_class(clients: AsyncClient, lines):
 
 @pytest.mark.parametrize("encoding", ["", "gzip"])
 def test_an_own_key_out_of_credit_answer_is_read_whatever_its_encoding(lines, encoding):
-    answer = json.dumps({"error": "You don't have enough credits", "echo": SECRET_ANSWER}).encode()
+    answer = json.dumps({"error": "You don't have enough credits", "echo": PROVIDER_ANSWER}).encode()
     headers = [(b"content-type", b"application/json")]
     if encoding:
         answer = gzip.compress(answer)
@@ -256,17 +256,17 @@ def test_an_own_key_out_of_credit_answer_is_read_whatever_its_encoding(lines, en
     (line,) = lines()
     assert (line["signal"], line["error_class"], line["caller_side"]) == (
         "unrecorded", "caller_provider_account", True)
-    assert SECRET_ANSWER not in json.dumps(line)
+    assert PROVIDER_ANSWER not in json.dumps(line)
 
 
 def test_an_own_tool_out_of_credit_answer_is_read_without_a_provider(lines):
-    answer = json.dumps({"error": "You don't have enough credits", "echo": SECRET_ANSWER}).encode()
+    answer = json.dumps({"error": "You don't have enough credits", "echo": PROVIDER_ANSWER}).encode()
     call_errors.emit(400, org_id=1, call_ref="abc", road="own_tool", provider=None, tier="tool",
                      body=answer, headers=[(b"content-type", b"application/json")])
     (line,) = lines()
     assert (line["signal"], line["error_class"], line["caller_side"]) == (
         "unrecorded", "caller_provider_account", True)
-    assert SECRET_ANSWER not in json.dumps(line)
+    assert PROVIDER_ANSWER not in json.dumps(line)
 
 
 @pytest.mark.parametrize(("base_url", "signal", "expected", "caller_side"), [
@@ -279,7 +279,7 @@ async def test_an_own_tool_answer_is_read_with_the_codes_of_its_hosts_provider(
     r = await clients.post("/tools", json={"name": "mine", "base_url": base_url, "secret_id": sid})
     assert r.status_code < 300, r.text
     await _answering(429, {"errors": [{"details": "Too many calls per billing period"}],
-                           "echo": SECRET_ANSWER})
+                           "echo": PROVIDER_ANSWER})
     r = await clients.get("/call/mine/account")
     assert r.status_code == 429, r.text
     (line,) = lines()
@@ -318,7 +318,7 @@ def test_a_routed_child_carries_its_step(lines):
 
 
 async def test_a_routed_refusal_logs_one_parent_line(clients: AsyncClient, lines):
-    r = await clients.post("/call/treg.people.phone.find", json={"nickname": SECRET_INPUT})
+    r = await clients.post("/call/treg.people.phone.find", json={"nickname": CALLER_INPUT})
     assert r.status_code >= 400, r.text
     (line,) = lines()
     assert (line["road"], line["tier"], line["provider"], line["by"]) == ("routed", "routed", "treg", "treg")
@@ -332,7 +332,7 @@ async def test_a_routed_refusal_logs_one_parent_line(clients: AsyncClient, lines
 ])
 def test_a_dotted_key_the_caller_made_up_is_never_read_as_a_path(lines, parameter, rule, logged):
     failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
-                               rule=rule, detail=SECRET_INPUT)
+                               rule=rule, detail=CALLER_INPUT)
     call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id="litescrape.web.fetch.post",
                      provider="litescrape", tier="platform", refused_by="request", failure=failure,
                      answered=False)
