@@ -278,6 +278,59 @@ def test_a_routed_child_records_the_filters_its_request_carries():
     assert parent["country_raw_case"] == "upper" and child["country_raw_case"] == "lower"
 
 
+_PEOPLE_SEARCH_ADAPTERS = sorted(
+    e for e, a in catalog_store.load().adapters.items()
+    if (catalog_store.load().by_id.get(e) or {}).get("capability") == "people.search")
+
+
+@pytest.mark.parametrize("endpoint_id", _PEOPLE_SEARCH_ADAPTERS)
+def test_every_filter_a_child_sends_reads_back_into_its_parents_category(endpoint_id):
+    """Each adapter builds its own request (`to_upstream`), as a routed child does; whatever filter
+    it sends where it can be read back lands in the parent's category, through lists, objects,
+    country transforms and limit clamps alike."""
+    adapter = catalog_store.load().adapters[endpoint_id]
+    contract = _contract()
+    paths = {f for f, _, _ in ev.field_paths(adapter, contract)}
+    variant = next((v for v in adapter.accepts if all(k in _CALLER for k in v)), None)
+    if variant is None:
+        pytest.skip(f"{endpoint_id} takes none of the probe's identity shapes")
+    query, body = adapter.to_upstream(_CALLER, variant)
+    given = ev.vendor_identity(adapter, contract, query.items(), json.dumps(body).encode())
+    parent = ev.segment(contract, _CALLER)[1]
+    child = ev.segment(contract, given)[1]
+    if "limit" in paths:
+        assert child["limit_bucket"] == parent["limit_bucket"]
+    if "country" in paths:
+        assert child["has_country"] == "true" and child["country_iso2"] == parent["country_iso2"]
+    if "location" in paths:
+        assert child["has_location"] == "true"
+
+
+_CALLER = {"company_domain": "acme.example", "title": "VP Sales", "full_name": "Ann Lee",
+           "q": "sales leaders", "country": "US", "location": "Austin", "limit": 40,
+           "keywords": ["saas"]}
+
+
+def test_the_limit_and_country_of_list_and_clamped_requests_read_back():
+    cat = catalog_store.load()
+    reads = {e: {f for f, _, _ in ev.field_paths(cat.adapters[e], _contract())}
+             for e in ("parallel.people.search", "blitzapi.people.search", "quickenrich.people.search",
+                       "dropleads.people.search", "icypeas.people.search")}
+    assert {"limit"} <= reads["parallel.people.search"]
+    assert {"limit", "country"} <= reads["blitzapi.people.search"]
+    assert {"limit", "country", "location"} <= reads["quickenrich.people.search"]
+    assert {"limit", "country", "location"} <= reads["dropleads.people.search"]
+    # `coalesce(location, country_name(country))` could be either filter: neither is read back
+    assert not {"location", "country"} & reads["icypeas.people.search"]
+
+
+def test_a_title_list_is_a_complete_request_and_records_its_categories():
+    _, meta, _ = ev.segment(_contract(), {"title": ["VP Sales", "Head of Sales"], "country": "US", "limit": 40})
+    assert meta["title_class"] == "multi" and meta["title_function"] == "sales"
+    assert meta["country_iso2"] == "US" and meta["limit_bucket"] == ">25"
+    assert meta["segments_version"] == S.PEOPLE_SEARCH.version
+
+
 def test_a_request_read_back_into_no_variant_records_no_request_categories():
     _, meta, _ = ev.segment(_contract(), {"limit": 5})
     assert meta == {}

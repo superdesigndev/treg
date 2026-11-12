@@ -127,12 +127,19 @@ and returns categories, each a word from the set's fixed vocabulary; `segment` a
 `input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
 vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
-keys. A direct or child call's request is read back through its adapter (`vendor_identity`),
-filters included: an `in_expr` that is a filter (`body.limit: limit`) or one function of it
-(`country_code(country)`) reads back as that filter, so a routed child lands in its parent's
-segment. Its `country_raw_case` is the spelling it sent the provider, not the caller's; group
-routed calls by the parent's. A request read back into no complete variant carries no filters, so
-it records no categories rather than "none sent". The same function serves the event and the route rule's match, so a measured segment and
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`).
+Besides the `in` map, every field an `in_expr` sends where it can be found is read back
+(`field_paths`): each expression is run once on placeholder values, and a field is read from the
+place its placeholder lands, provided it lands there alone, no other field's placeholder reaches
+that expression, and none fills the place when the field is not sent. So `list(country)`,
+`obj('include', list(upper(country)))`, `list(obj('domain', company_domain))` and
+`at_most(limit, 50)` read back, and `coalesce(location, country_name(country))` or a `join` of
+several fields do not. A routed child therefore lands in its parent's segment for whatever it
+sent; a filter its provider takes nowhere reads as not sent, and a clamped limit as the value sent.
+Its `country_raw_case` is the spelling it sent the provider; group routed calls by the parent's
+(`parent_ref`) for the caller's question. Categories need the request to read back into a complete
+variant (`canonical_identity`; a list of titles counts); otherwise filters are not attached either,
+so it records none rather than "none sent". The same function serves the event and the route rule's match, so a measured segment and
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 

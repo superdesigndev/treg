@@ -70,7 +70,7 @@ _ROLE_LOCALS = frozenset({
 })
 _VALUE_MAX = 256
 # `limit` or `country_code(country)`: an `in_expr` a filter's value can be read back through.
-_FILTER_CALL = re.compile(r"[a-z_][a-z0-9_]*\(\s*([a-z_][a-z0-9_]*)\s*\)|([a-z_][a-z0-9_]*)")
+_field_paths: dict[int, tuple[Adapter, Contract, tuple]] = {}
 _SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
@@ -161,6 +161,65 @@ def is_eval(org_id: int | None) -> bool:
     return org_id is not None and str(org_id) in {p.strip() for p in raw.split(",") if p.strip()}
 
 
+def _descend(node: Any, steps: tuple) -> Any:
+    for step in steps:
+        if isinstance(step, int):
+            node = node[step] if isinstance(node, list) and step < len(node) else None
+        else:
+            node = node.get(step) if isinstance(node, dict) else None
+    return node
+
+
+def _locate(node: Any, want: Any, at: tuple = ()) -> list[tuple]:
+    if isinstance(node, dict):
+        return [p for k, v in node.items() for p in _locate(v, want, (*at, k))]
+    if isinstance(node, list):
+        return [p for i, v in enumerate(node) for p in _locate(v, want, (*at, i))]
+    return [at] if node == want and type(node) is type(want) else []
+
+
+def field_paths(adapter: Adapter, contract: Contract) -> tuple[tuple[str, str, tuple], ...]:
+    """(field, request target, steps inside the value there) for every field an adapter's
+    `in_expr` sends where it can be read back: found by evaluating each expression on placeholder
+    values. A place counts only when it holds that filter's placeholder alone, no other field's
+    placeholder reaches the expression, and none fills the place when the filter is not sent, so
+    `list(country)`, `obj('include', list(upper(country)))` and `at_most(limit, 50)` read back,
+    and `coalesce(location, country_name(country))` or a `join` of several fields do not."""
+    cached = _field_paths.get(id(adapter))
+    if cached is not None and cached[0] is adapter and cached[1] is contract:
+        return cached[2]
+    fields = [*contract.identity_types, *(contract.filters or {})]
+    # Upper-case and longer than a country code, so case and country transforms pass it through;
+    # an int inside the usual page-size clamps.
+    marks: dict[str, Any] = {}
+    for i, k in enumerate(fields):
+        kind = str(((contract.filters or {}).get(k) or {}).get("type") or contract.identity_types.get(k, "str"))
+        marks[k] = 37 + i if kind == "int" else (["ZQX%dQZX" % i] if kind == "list" else "ZQX%dQZX" % i)
+    out = []
+    for field_name in fields:
+        mark = marks[field_name][0] if isinstance(marks[field_name], list) else marks[field_name]
+        if isinstance(mark, bool):
+            continue
+        others = {(m[0] if isinstance(m, list) else m) for k, m in marks.items() if k != field_name}
+        for target, expr in (adapter.in_expr or {}).items():
+            if not isinstance(expr, str):
+                continue
+            try:
+                full = P.evaluate(expr, marks)
+                without = P.evaluate(expr, {k: v for k, v in marks.items() if k != field_name})
+            except Exception:  # noqa: BLE001 - an expression this probe cannot run is not read back
+                continue
+            found = _locate(full, mark)
+            if len(found) != 1 or any(_locate(full, o) for o in others) \
+                    or any(_locate(_descend(without, found[0]), o) for o in others):
+                continue
+            out.append((field_name, target, found[0]))
+            break
+    result = tuple(out)
+    _field_paths[id(adapter)] = (adapter, contract, result)
+    return result
+
+
 def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[tuple[str, str]],
                     body: bytes | None) -> dict:
     """The contract identity a vendor-shaped request expresses, read back through the adapter's
@@ -186,21 +245,20 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             given[field_name] = v
     # An expression that is just an identity field (`body.url: linkedin_url`, used where the
     # body is an array) reads back like a plain `in` entry; computed ones cannot be inverted.
-    # A filter is read back the same way, and through a one-argument function of it
-    # (`country_code(country)`): the value sent is that filter's category, though not always its
-    # caller's spelling.
-    readable = {**contract.identity_types, **(contract.filters or {})}
     for target, expr in (adapter.in_expr or {}).items():
-        if not isinstance(expr, str):
-            continue
-        m = _FILTER_CALL.fullmatch(expr.strip())
-        name = expr if expr in contract.identity_types else (m.group(1) or m.group(2)) if m else None
-        if name is None or name not in readable or name in given \
-                or (name in contract.identity_types and name != expr):
-            continue
-        v = P.get_path(doc, target)
-        if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
-            given[name] = v
+        if isinstance(expr, str) and expr in contract.identity_types and expr not in given:
+            v = P.get_path(doc, target)
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[expr] = v
+    # Any other field, filters included, is read back from wherever its expression puts it
+    # (`field_paths`: `list(obj('domain', company_domain))`, `at_most(limit, 50)`): the value
+    # sent, which is the field's category, though not always its caller's spelling.
+    for field_name, target, steps in field_paths(adapter, contract):
+        if field_name not in given:
+            v = _descend(P.get_path(doc, target), steps)
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[field_name] = v
+    readable = {**contract.identity_types, **(contract.filters or {})}
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
         if field_name in contract.identity_types:
@@ -226,7 +284,7 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
 def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
     """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
     hashing, so published route rules match calls exactly as their events record them."""
-    identity, _ = canonical_identity(contract, given or {})
+    identity, supplied = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
             if (n := normalize(k, identity.get(k))) is not None}
     variant = next((v for v in contract.identity if all(k in norm for k in v)), None)
@@ -244,7 +302,7 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
-    if variant is not None and (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+    if supplied is not None and (segmenter := SEGMENTERS.get(contract.segments)) is not None:
         # Categories only: the raw title, query, name or place never reaches the event. A value
         # a filter already records (`country`) keeps its own spelling. A request read back into
         # no complete variant carries no filters either, so its categories would claim "none
