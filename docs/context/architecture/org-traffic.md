@@ -29,9 +29,10 @@ sees MCP, whose adapters reach these routes through an in-process HTTP client.
 
 `structured_logging.get_logger` gives the named `treg.org_traffic`, `treg.org_flow_control`,
 `treg.capacity_events` and `treg.call_errors` ([call events](call-events.md#failed-calls))
-loggers a plain stderr handler only when they have none, so MCP's root console formatter neither wraps nor duplicates them. Levels stay inherited and root logging is
-untouched, which means root handlers, filters and formatting do not apply to these streams:
-customize them on the named loggers, and keep each JSON record on one physical line.
+loggers a plain stderr handler only when they have none, so MCP's root console formatter neither
+wraps nor duplicates them. Levels stay inherited and root logging is untouched, which means root
+handlers, filters and formatting do not apply to these streams: customize them on the named
+loggers, and keep each JSON record on one physical line.
 
 ## What a request line may carry
 
