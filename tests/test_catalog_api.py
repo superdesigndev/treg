@@ -1327,3 +1327,34 @@ def test_an_auto_route_row_files_where_its_providers_do():
     for ep in routed:
         kids = {e["domain"] for e in cat.for_capability(ep["capability"]) if e.get("kind") != "routed"}
         assert ep["domain"] in kids, ep["id"]
+
+
+def test_advertised_quote_names_the_unit_of_a_per_result_price():
+    """A per-row or per-profile price bills that slice times the rows returned.
+
+    MCP search/get used to put the slice under `usd_per_call`: SpyFu ranked keywords read $0.005
+    a call, so a 30-row call billed at $0.15 looked 30x over. The quote now names the unit; a
+    started block and a per-call price still quote per call, and `usd` (billing) does not move.
+    """
+    from treg.domain.catalog import store
+    cat = store.load()
+
+    def quote(endpoint_id):
+        endpoint = cat.by_id[endpoint_id]
+        cost = cat.cost_view(endpoint["cost"], endpoint["provider"])
+        return cost, cat.advertised_quote(cost)
+
+    for endpoint_id, usd, unit in [
+        ("spyfu.google.domain.ranked_keywords", 0.005, "row"),
+        ("spyfu.google.domain.paid_keywords", 0.002, "row"),
+        ("spyfu.google.domain.ad_history", 0.003, "row"),
+        ("contactout.people.decision-makers", 0.02, "result"),
+    ]:
+        cost, out = quote(endpoint_id)
+        assert cost["usd"] == usd
+        assert out == {"usd_per_call": None, "display_usd": usd, "display_unit": unit}
+
+    _, started = quote("hunter.companies.emails")
+    assert started["usd_per_call"] is not None and "display_unit" not in started
+    per_call = cat.cost_view({"type": "per_call", "currency": "USD", "value": 0.01}, "any-provider")
+    assert cat.advertised_quote(per_call) == {"usd_per_call": 0.01}
