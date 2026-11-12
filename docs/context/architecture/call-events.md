@@ -224,7 +224,7 @@ nothing audited (`call_errors.emit`). It is a log line, not a column: no table c
 | `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`p1`/`s1` on a child (null on a root) |
 | `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
-| `status`, `refused_by` | the status the caller got, and treg's refusal mechanism as the event's `refused_by` |
+| `status`, `refused_by` | the status of this attempt (the caller's, except on a direct attempt overflow served), and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
 | `error_class` | one word below |
 | `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
@@ -244,13 +244,17 @@ belongs to whoever holds that account. An access error (an upstream 401/403) is
 an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
 OAuth app it is `our_provider_account`, like every error on treg's own key. A routed parent the
-provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. No request or answer
+provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. A failed hub run is
+read by the error its detail names: a crash in treg (`hub_run_crashed`) is `treg_error`, treg's run
+limits (`hub_step_cap`, `hub_wall_clock`) `treg_capacity`, both `by` `treg`; a failed step or the
+maker's script stays `upstream_error`. No request or answer
 value, header, credential or message text is logged; the answer is read only for its documented
 error code.
 
 A default error view leaves `caller_side` out; the full count is the same query without that
 filter. A routed call writes its parent's line and one per failed child, check or poll, so a count
-of calls keeps only root lines (`step` empty). In Loki, with the deployment's own stream selector:
+of failed calls keeps only root lines (`step` empty); a direct attempt that overflow served is a
+root line too, though the caller got the overflow's answer. In Loki, with the deployment's own stream selector:
 
 ```logql
 sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
