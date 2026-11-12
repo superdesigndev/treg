@@ -1694,180 +1694,54 @@ def test_platform_estimate_counts_input_entities_not_a_page():
     assert est({"type": "quota_rows", "unit": "quota_row", "usd": 0.006667}, {}, b'{"target":"x.com","limit":1}') == 6_667
 
 
-def _tavily_cost(endpoint: str) -> dict:
-    cat = A.catalog_store.load()
-    return cat.cost_view(cat.by_id[endpoint]["cost"], "tavily")
+TAVILY_CREDIT_MICRO = 8_000  # fx.yaml: one Tavily credit
 
 
-@pytest.mark.parametrize("body,expected", [
-    ({"query": "x", "search_depth": "basic"}, 8_000),
-    ({"query": "x", "search_depth": "fast"}, 8_000),
-    ({"query": "x", "search_depth": "ultra-fast"}, 8_000),
-    ({"query": "x", "search_depth": "advanced"}, 16_000),
-    ({"query": "x", "auto_parameters": True}, 16_000),
-    ({"query": "x", "auto_parameters": True, "search_depth": "basic"}, 8_000),
+def _tavily_hold(endpoint: str, body: dict) -> int:
+    return call_resolution._marketplace_pricing("tavily", endpoint, None, {}, json.dumps(body).encode())[0]
+
+
+async def _tavily_call(clients, monkeypatch, endpoint, body, answer, *, status=200, seen=None):
+    def upstream(request):
+        if seen is not None:
+            seen.append((request.headers["authorization"], json.loads(request.content)))
+        return httpx.Response(status, stream=httpx.ByteStream(b"")) if answer is None else _dropleads_response(status, answer)
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        response = await clients.post(f"/call/{endpoint}", json=body)
+        return response, before - await _balance(clients)
+
+
+@pytest.mark.parametrize("body,credits", [
+    ({"search_depth": "basic"}, 1),
+    ({"search_depth": "fast"}, 1),
+    ({"search_depth": "ultra-fast"}, 1),
+    ({"search_depth": "advanced"}, 2),
+    ({"auto_parameters": True}, 2),
+    ({"auto_parameters": True, "search_depth": "basic"}, 1),
+    ({}, 1),
 ])
-def test_tavily_search_reserve_honors_depth_and_explicit_basic_override(body, expected):
-    reserve, unit = call_resolution._marketplace_pricing(
-        "tavily", "tavily.web.search", _tavily_cost("tavily.web.search"), {},
-        json.dumps(body).encode(),
-    )
-    assert (reserve, unit) == (expected, 8_000)
-
-
-@pytest.mark.parametrize("rates", [
-    None,
-    {},
-    {"basic": 1, "fast": 1, "ultra_fast": 1},
-    {"basic": 1, "fast": 1, "ultra_fast": 1, "advanced": 2, "typo": 1},
-    {"basic": 0, "fast": 1, "ultra_fast": 1, "advanced": 2},
-    {"basic": -1, "fast": 1, "ultra_fast": 1, "advanced": 2},
-    {"basic": True, "fast": 1, "ultra_fast": 1, "advanced": 2},
-    {"basic": "1", "fast": 1, "ultra_fast": 1, "advanced": 2},
-    {"basic": float("nan"), "fast": 1, "ultra_fast": 1, "advanced": 2},
-    {"basic": float("inf"), "fast": 1, "ultra_fast": 1, "advanced": 2},
-])
-def test_tavily_pricing_fails_closed_on_incomplete_or_invalid_rates(rates):
-    cost = _tavily_cost("tavily.web.search") | {"tavily_rates": rates}
-    with pytest.raises(ResolutionFailed) as caught:
-        call_resolution._marketplace_pricing(
-            "tavily", "tavily.web.search", cost, {},
-            b'{"query":"x","search_depth":"basic"}',
-        )
-    assert caught.value.kind == "catalog_price_invalid"
-    assert caught.value.status_code == 503
-
-
-@pytest.mark.parametrize("count", [1, 4, 5, 6, 20])
-def test_tavily_extract_reserve_and_basic_settlement_are_fractional_per_success(count):
-    urls = [f"https://example.com/{i}" for i in range(count)]
-    body = json.dumps({"urls": urls, "extract_depth": "basic"}).encode()
-    reserve, unit = call_resolution._marketplace_pricing(
-        "tavily", "tavily.web.extract", _tavily_cost("tavily.web.extract"), {}, body,
-    )
-    assert (reserve, unit) == (count * 1_600, 1_600)
-    mk = _mk("tavily", endpoint_id="tavily.web.extract", cost_type="per_success",
-             unit_micro=unit, request_data={"body": {"urls": urls}})
-    results = [{"url": url, "raw_content": "ok"} for url in urls]
-    response = json.dumps({"results": results, "usage": {"credits": 999}}).encode()
-    assert call_settle._observed_cost_micro(mk, response) == count * 1_600
-
-
-def test_tavily_extract_advanced_counts_only_successes_and_ignores_grouped_usage():
-    urls = [f"https://example.com/{i}" for i in range(6)]
-    request = {"urls": urls, "extract_depth": "advanced"}
-    reserve, unit = call_resolution._marketplace_pricing(
-        "tavily", "tavily.web.extract", _tavily_cost("tavily.web.extract"), {},
-        json.dumps(request).encode(),
-    )
-    assert (reserve, unit) == (19_200, 3_200)
-    mk = _mk("tavily", endpoint_id="tavily.web.extract", cost_type="per_success",
-             unit_micro=unit, request_data={"body": request})
-    doc = {"results": [{"url": urls[0]}, {"url": urls[1]}],
-           "failed_results": [{"url": url} for url in urls[2:]],
-           "usage": {"credits": 0}}
-    assert call_settle._observed_cost_micro(mk, json.dumps(doc).encode()) == 6_400
-    doc["usage"]["credits"] = 1
-    assert call_settle._observed_cost_micro(mk, json.dumps(doc).encode()) == 6_400
-
-
-@pytest.mark.parametrize("endpoint,body,expected_unit", [
-    ("tavily.web.map", {"url": "https://example.com", "limit": 10}, 800),
-    ("tavily.web.map", {"url": "https://example.com", "limit": 10,
-                        "instructions": "Find docs"}, 1_600),
-    ("tavily.web.map", {"url": "https://example.com", "limit": 10,
-                        "instructions": ""}, 800),
-    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10,
-                          "extract_depth": "basic"}, 2_400),
-    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10,
-                          "extract_depth": "basic", "instructions": "Find docs"}, 3_200),
-    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10,
-                          "extract_depth": "advanced"}, 4_000),
-    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10,
-                          "extract_depth": "advanced", "instructions": "Find docs"}, 4_800),
-])
-def test_tavily_map_and_crawl_reserves_use_caller_modes(endpoint, body, expected_unit):
-    reserve, unit = call_resolution._marketplace_pricing(
-        "tavily", endpoint, _tavily_cost(endpoint), {}, json.dumps(body).encode(),
-    )
-    assert (reserve, unit) == (10 * expected_unit, expected_unit)
-
-
-@pytest.mark.parametrize("endpoint,unit,results,expected", [
-    ("tavily.web.map", 800, [], 0),
-    ("tavily.web.map", 800, [f"https://example.com/{i}" for i in range(9)], 7_200),
-    ("tavily.web.map", 800, [f"https://example.com/{i}" for i in range(10)], 8_000),
-    ("tavily.web.map", 1_600, [f"https://example.com/{i}" for i in range(11)], 17_600),
-    ("tavily.web.crawl", 2_400, [], 0),
-    ("tavily.web.crawl", 4_800, [{"url": f"https://example.com/{i}"} for i in range(3)], 14_400),
-])
-def test_tavily_map_and_conservative_crawl_settle_returned_results(
-    endpoint, unit, results, expected,
+async def test_tavily_search_holds_by_depth_and_settles_the_credits_it_reports(
+    clients, monkeypatch, tavily_platform_on, body, credits,
 ):
-    mk = _mk("tavily", endpoint_id=endpoint, cost_type="per_success", unit_micro=unit,
-             request_data={"body": {"limit": 20}})
-    body = json.dumps({"results": results, "usage": {"credits": -10}}).encode()
-    assert call_settle._observed_cost_micro(mk, body) == expected
-
-
-@pytest.mark.parametrize("endpoint,bad_results", [
-    ("tavily.web.extract", None),
-    ("tavily.web.extract", [None]),
-    ("tavily.web.map", {}),
-    ("tavily.web.map", [123]),
-    ("tavily.web.crawl", "not-a-list"),
-    ("tavily.web.crawl", [{"raw_content": "missing URL"}]),
-])
-def test_tavily_malformed_result_evidence_falls_back_to_the_reserve(endpoint, bad_results):
-    mk = _mk("tavily", endpoint_id=endpoint, cost_type="per_success", unit_micro=800,
-             request_data={"body": {"limit": 20, "urls": ["https://example.com"]}})
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({"results": bad_results, "usage": {"credits": 0}}).encode()) is None
-
-
-@pytest.mark.parametrize("endpoint,results", [
-    ("tavily.web.extract", [{"url": f"https://example.com/{i}"} for i in range(8)]),
-    ("tavily.web.map", [f"https://example.com/{i}" for i in range(8)]),
-    ("tavily.web.crawl", [{"url": f"https://example.com/{i}"} for i in range(8)]),
-])
-def test_tavily_returned_results_cannot_charge_beyond_the_request(endpoint, results):
-    request = {"urls": ["a", "b", "c"]} if endpoint.endswith("extract") else {"limit": 3}
-    mk = _mk("tavily", endpoint_id=endpoint, cost_type="per_success", unit_micro=800,
-             request_data={"body": request})
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({"results": results, "usage": {"credits": 99}}).encode()) == 2_400
-
-
-@pytest.mark.parametrize("body,credits,expected", [
-    ({"query": "x", "search_depth": "basic", "include_usage": True}, 1, 8_000),
-    ({"query": "x", "search_depth": "advanced", "include_usage": True}, 2, 16_000),
-    ({"query": "x", "search_depth": "fast", "include_usage": True}, 1, 8_000),
-    ({"query": "x", "search_depth": "ultra-fast", "include_usage": True}, 1, 8_000),
-    ({"query": "x", "auto_parameters": True, "include_usage": True}, 2, 16_000),
-    ({"query": "x", "auto_parameters": True, "search_depth": "basic",
-      "include_usage": True}, 1, 8_000),
-])
-async def test_tavily_search_settles_per_request_usage_even_for_an_empty_routing_miss(
-    clients, monkeypatch, tavily_platform_on, body, credits, expected,
-):
-    def serve(request):
-        assert request.method == "POST" and request.url.path == "/search"
-        assert request.headers["authorization"] == "Bearer PLATFORM-TAVILY"
-        assert json.loads(request.content) == body
-        return _dropleads_response(200, {"results": [], "usage": {"credits": credits}})
-
-    before = await _balance(clients)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
-        monkeypatch.setattr(A.app.state, "http", upstream)
-        response = await clients.post("/call/tavily.web.search", json=body)
+    request = {"query": "x", "include_usage": True, **body}
+    assert _tavily_hold("tavily.web.search", request) == credits * TAVILY_CREDIT_MICRO
+    seen = []
+    response, charged = await _tavily_call(clients, monkeypatch, "tavily.web.search", request,
+                                           {"results": [], "usage": {"credits": 3}}, seen=seen)
     assert response.status_code == 200, response.text
-    assert response.headers["x-treg-cost-micro"] == str(expected)
-    assert before - await _balance(clients) == expected
+    assert charged == 3 * TAVILY_CREDIT_MICRO, "the reported credits settle, an empty miss and above the hold included"
+    assert seen == [("Bearer PLATFORM-TAVILY", request)]
+    response, charged = await _tavily_call(clients, monkeypatch, "tavily.web.search", request,
+                                           {"results": [{"url": "https://example.com"}]})
+    assert response.status_code == 200, response.text
+    assert charged == credits * TAVILY_CREDIT_MICRO, "an answer without usage settles at the hold"
 
 
 @pytest.mark.parametrize("usage", [None, {}, {"credits": None}, {"credits": True},
-                                    {"credits": -1}, {"credits": "1"},
-                                    {"credits": "nan"}, {"credits": "inf"}])
+                                    {"credits": -1}, {"credits": "nan"}, {"credits": "inf"}])
 async def test_tavily_search_missing_or_malformed_usage_uses_the_safe_reserve(
     clients, monkeypatch, tavily_platform_on, usage,
 ):
@@ -1883,23 +1757,103 @@ async def test_tavily_search_missing_or_malformed_usage_uses_the_safe_reserve(
     assert before - await _balance(clients) == 8_000
 
 
+@pytest.mark.parametrize("depth,unit", [("basic", 1_600), ("advanced", 3_200), (None, 1_600)])
+@pytest.mark.parametrize("asked,returned", [(1, 1), (6, 2), (20, 20)])
+async def test_tavily_extract_holds_per_url_and_charges_the_results_it_returns(
+    clients, monkeypatch, tavily_platform_on, depth, unit, asked, returned,
+):
+    urls = [f"https://example.com/{i}" for i in range(asked)]
+    request = {"urls": urls, **({"extract_depth": depth} if depth else {})}
+    assert _tavily_hold("tavily.web.extract", request) == asked * unit
+    answer = {"results": [{"url": url, "raw_content": "ok"} for url in urls[:returned]],
+              "failed_results": [{"url": url} for url in urls[returned:]], "usage": {"credits": 999}}
+    response, charged = await _tavily_call(clients, monkeypatch, "tavily.web.extract", request, answer)
+    assert response.status_code == 200, response.text
+    assert charged == returned * unit, "failed URLs and the grouped usage.credits cost nothing"
+
+
+@pytest.mark.parametrize("endpoint,body,unit", [
+    ("tavily.web.map", {}, 800),
+    ("tavily.web.map", {"instructions": "Find docs"}, 1_600),
+    ("tavily.web.map", {"instructions": ""}, 800),
+    ("tavily.web.crawl", {"extract_depth": "basic"}, 2_400),
+    ("tavily.web.crawl", {"extract_depth": "basic", "instructions": "Find docs"}, 3_200),
+    ("tavily.web.crawl", {"extract_depth": "advanced"}, 4_000),
+    ("tavily.web.crawl", {"extract_depth": "advanced", "instructions": "Find docs"}, 4_800),
+    ("tavily.web.crawl", {}, 2_400),
+])
+def test_tavily_map_and_crawl_hold_the_limit_at_the_caller_s_mode(endpoint, body, unit):
+    assert _tavily_hold(endpoint, {"url": "https://example.com", "limit": 10, **body}) == 10 * unit
+
+
+@pytest.mark.parametrize("endpoint,unit,returned,units", [
+    ("tavily.web.map", 800, 0, 0),
+    ("tavily.web.map", 800, 9, 9),
+    ("tavily.web.map", 800, 12, 12),   # a count above the limit is charged up to the 20-page max
+    ("tavily.web.map", 800, 25, 20),
+    ("tavily.web.crawl", 2_400, 0, 0),
+    ("tavily.web.crawl", 2_400, 3, 3),
+])
+async def test_tavily_map_and_crawl_charge_the_results_they_return(
+    clients, monkeypatch, tavily_platform_on, endpoint, unit, returned, units,
+):
+    results = [f"https://example.com/{i}" if endpoint.endswith("map") else {"url": f"https://example.com/{i}"}
+               for i in range(returned)]
+    response, charged = await _tavily_call(
+        clients, monkeypatch, endpoint, {"url": "https://example.com", "limit": 10},
+        {"results": results, "usage": {"credits": 99}})
+    assert response.status_code == 200, response.text
+    assert charged == units * unit, "the grouped usage.credits is never the bill"
+
+
+@pytest.mark.parametrize("endpoint,body,hold,charge", [
+    ("tavily.web.extract", {"urls": ["https://example.com"]}, 1_600, 1_600),
+    ("tavily.web.map", {"url": "https://example.com", "limit": 10}, 8_000, 8_000),
+    ("tavily.web.crawl", {"url": "https://example.com", "limit": 10}, 24_000, 0),
+])
+async def test_a_tavily_204_is_charged_at_the_hold_except_on_crawl(
+    clients, monkeypatch, tavily_platform_on, endpoint, body, hold, charge,
+):
+    assert _tavily_hold(endpoint, body) == hold
+    response, charged = await _tavily_call(clients, monkeypatch, endpoint, body, None, status=204)
+    assert response.status_code == 204, response.text
+    assert charged == charge
+
+
 @pytest.mark.parametrize("endpoint,body", [
     ("search", {"query": "x"}),
     ("map", {"url": "https://example.com"}),
+    ("map", {"url": "https://example.com", "limit": None}),
     ("map", {"url": "https://example.com", "limit": 0}),
     ("map", {"url": "https://example.com", "limit": -1}),
     ("map", {"url": "https://example.com", "limit": 21}),
     ("map", {"url": "https://example.com", "limit": True}),
+    ("map", {"url": "https://example.com", "limit": 5.0}),
     ("crawl", {"url": "https://example.com"}),
 ])
 async def test_tavily_platform_gates_search_usage_and_site_work_limits(
-    clients, tavily_platform_on, endpoint, body,
+    clients, monkeypatch, tavily_platform_on, endpoint, body,
 ):
-    before = await _balance(clients)
-    response = await clients.post(f"/call/tavily.web.{endpoint}", json=body)
-    assert response.status_code == 400
+    seen = []
+    response, charged = await _tavily_call(clients, monkeypatch, f"tavily.web.{endpoint}", body,
+                                           {"results": []}, seen=seen)
+    assert response.status_code == 400, response.text
     assert response.json()["detail"]["error"] == "catalog_parameter_invalid"
-    assert await _balance(clients) == before
+    assert charged == 0 and seen == []
+
+
+async def test_tavily_map_limit_is_one_to_twenty_on_an_own_key_too(clients, monkeypatch):
+    saved = await clients.post("/secrets", json={"name": "tavily", "value": "OWN-TAVILY"})
+    assert saved.status_code == 200, saved.text
+    seen = []
+    refused, _ = await _tavily_call(clients, monkeypatch, "tavily.web.map",
+                                    {"url": "https://example.com", "limit": 50}, {"results": []}, seen=seen)
+    assert refused.status_code == 400 and refused.json()["detail"]["parameter"] == "body.limit"
+    assert seen == []
+    served, charged = await _tavily_call(clients, monkeypatch, "tavily.web.map",
+                                         {"url": "https://example.com"}, {"results": []}, seen=seen)
+    assert served.status_code == 200, served.text
+    assert charged == 0 and seen == [("Bearer OWN-TAVILY", {"url": "https://example.com"})]
 
 
 def test_cloro_state_targeting_rider_is_reserved():

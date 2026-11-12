@@ -11,6 +11,7 @@ sources:
   - src/treg/web/skills/recruit/SKILL.md
   - src/treg/web/skills/jev-memory/SKILL.md
   - src/treg/web/skills/rea-growth/SKILL.md
+  - src/treg/web/skills/ai-ugc-video/SKILL.md
   - examples/claude-code-mods/jev-memory/hooks/jev-memory.mjs
   - src/treg/routers/web.py
   - src/treg/mcp_install.py
@@ -89,7 +90,7 @@ Constraints the hosts impose, which the code cannot explain:
 
 Served at `GET /skills/<name>/SKILL.md` from `src/treg/web/skills/<name>/SKILL.md`. Those in the
 well-known index are offered by `treg skill bootstrap` and installed only when named with
-`--skills` (or `all`) or already present; `jev-memory` and `rea-growth` are opt-in, kept out of the
+`--skills` (or `all`) or already present; `jev-memory`, `rea-growth` and `ai-ugc-video` are opt-in, kept out of the
 index and `/.well-known/`, so the installer never offers them. Bootstrap names the offered ones in
 one line and never tells the agent to stop and ask: it runs before sign-in, so `llms.txt` and
 `skill.md` put that question after the first call that returns real data. Workflow skills name search words

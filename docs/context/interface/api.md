@@ -4,6 +4,8 @@ status: shipped
 sources:
   - src/treg/application/key_spend.py
   - src/treg/routers/media.py
+  - src/treg/page_media.py
+  - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
@@ -279,7 +281,7 @@ the provider.
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
-| 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (video generation) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
+| 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (no platform sets it today) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
 | 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
@@ -419,8 +421,13 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from
   `marketing/landing/*.md`; never hand-edit it. `/resources` is the only page linking them.
-- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images,
-  video and fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable.
+- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images and
+  fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable. Page videos
+  are not in Git: `web/media-videos.json` maps each `/media/` path to a content-addressed copy
+  under `site/` in the public media bucket (`ugc/tutorial.<digest>.mp4`, cached immutable), and
+  the path answers a 302 (`max-age=300`) to that copy's public URL (the pictures' base, or
+  `/media-files/`). `scripts/publish_page_media.py` uploads a new or edited video and records it;
+  a test fails when a page names a video the manifest lacks.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.

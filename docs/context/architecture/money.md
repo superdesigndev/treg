@@ -177,16 +177,17 @@ first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable
 liability, so spending promo first keeps the refundable pool small.
 
-**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only`
-(video generation) is paid from purchased credit alone: `_platform_reserve` passes
-`purchased_only=True` (`_purchased_only` in `application/call/reserve.py`), and
-`reserve_in_transaction` runs `_purchased_gate` before the balance gate. The gate locks the org's
-purchased blocks in primary-key order, subtracts its open `Hold.purchased_only` holds, and raises
-`PurchasedCreditShort` (an `InsufficientBalance`) when the rest cannot cover the charge; the call
-is refused with 402 `free_credit_excludes_video`, before any upstream request and with nothing
-held. The flag is stored on the hold, so every settle path (the call, the async worker, a batch
-close) draws only purchased blocks in `_consume_blocks`; an overrun past them is a recorded
-`block_shortfall_micro`, never taken from free credit. A $0 call passes the gate.
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only: true`
+(none today; `video-gen` carries it as `false`) is paid from purchased credit alone:
+`_platform_reserve` passes `purchased_only=True` (`_purchased_only` in
+`application/call/reserve.py`), and `reserve_in_transaction` runs `_purchased_gate` before the
+balance gate. The gate locks the org's purchased blocks in primary-key order, subtracts its open
+`Hold.purchased_only` holds, and raises `PurchasedCreditShort` (an `InsufficientBalance`) when the
+rest cannot cover the charge; the call is refused with 402 `free_credit_excludes_video`, before any
+upstream request and with nothing held. The flag is stored on the hold, so every settle path (the
+call, the async worker, a batch close) draws only purchased blocks in `_consume_blocks`; an overrun
+past them is a recorded `block_shortfall_micro`, never taken from free credit. A $0 call passes the
+gate.
 
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.
@@ -615,6 +616,11 @@ dashboard and refuses an org without `stripe_customer_id` rather than minting on
   cancellation controls. `billing.start_checkout` rejects a stale Price ID and re-verifies the Price
   before Checkout. One pending reservation per team plus an idempotent Stripe session request stop
   parallel subscriptions.
+- `TREG_ENTERPRISE_SSO_PROMO_ORG_IDS` optionally enables Stripe's promotion-code field for an
+  explicit comma-separated set of stable team IDs. It is empty by default, because any active,
+  unrestricted Stripe code could otherwise discount an SSO subscription. Operators must restrict
+  a pilot code to the SSO product and limit its redemptions in Stripe. A discount changes the
+  invoice, not the subscription's renewal or the WorkOS connection cost.
 - The signed billing webhook records subscription status; WorkOS setup and sign-in are gated on
   `active`, `trialing` or `past_due` (Stripe is still retrying). A Checkout redirect grants nothing.
   Subscription metadata binds the event to a team and plan, the Stripe customer must match, and
@@ -985,7 +991,11 @@ a balance, hold or ledger row; both are allowlisted on their own (`capacity_exha
 `MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve` checks
 the actual estimate with margin before opening its transaction. Direct calls set it only from
 `X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
-route's remainder. A refusal is a 402 `route_max_cost` that moves no money. Overflow inherits the
+route's remainder. A refusal is a 402 `route_max_cost` that moves no money. The route first drops
+a candidate whose bare plan price (`cost_at`, rows rounded up to the cost's `per` block) exceeds
+what is left; that price can be an upper bound, so margin is not added there. A child it admits
+is checked again at its reserve on the adapted request's own price with margin, and that
+refusal's skip in `_treg.tried` names the hold and the remainder. Overflow inherits the
 field and checks its own estimate; a preceding direct charge reduces the remainder.
 
 Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))

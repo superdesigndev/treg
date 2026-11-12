@@ -224,7 +224,8 @@ A page can have its own card. `scripts/og_images.py` renders `src/treg/web/media
 (1200x630 JPEG, about 60 KB) from an HTML template in the site's fonts, with the Playwright Chromium
 that `frontend/` installs; `og_image()` in `routers/web.py` serves that file as `og:image` and
 `twitter:image` when it exists (alt text: the page title), else `/media/og.png`. The script knows
-pages through `GROUPS` (today `compare`: the hub and every comparison) and draws them with a
+pages through `GROUPS` (today `compare`: the hub and every comparison; `launches`: launch pages
+such as `/aigc`) and draws them with a
 template from `LAYOUTS` (`vs` for two products, `page` for one headline). It runs for one page
 (`og_images.py /compare/treg-vs-clay`), a group (`--group compare`) or everything (`--all`);
 `--dry-run` lists what it would write. Re-run it for a page after its headline or subtitle changes.
