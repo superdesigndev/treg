@@ -1,5 +1,5 @@
 {
- "version": 27,
+ "version": 28,
  "providers": [
   {
    "provider": "Google Ads",
@@ -1174,6 +1174,18 @@
     "shape": "api_key_header",
     "header": "X-API-KEY"
    }
+  },
+  {
+   "provider": "Autom",
+   "tokens": [
+    "AUTOM"
+   ],
+   "base_url": "https://api.autom.dev",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "v1/usage"
   },
   {
    "provider": "SerpAPI",

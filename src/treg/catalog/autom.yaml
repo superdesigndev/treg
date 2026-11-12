@@ -1,0 +1,630 @@
+provider: autom
+source:
+  docs: https://docs.autom.dev
+  openapi: https://app.autom.dev/openapi
+  curated: '2026-11-09'
+pricing_url: https://www.autom.dev/pricing
+limits: Rate limits depend on the plan; GET /usage returns the key's credit balance and per-second and per-minute limits.
+proposed_capabilities:
+  google.serp.autocomplete: Get Google query autocomplete suggestions
+  google.serp.jobs: Get Google Jobs listings for a query
+  google.serp.ai-mode: Get the Google AI Mode answer for a query
+  google.locations.find: Find Google location names a search can target
+defaults:
+  expect:
+    path: response.error
+    op: absent
+  provenance:
+    source: docs
+    source_url: https://www.autom.dev/pricing
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: autom.google.serp.organic
+  capability: google.serp.organic
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/search
+  name: Search Google (full SERP)
+  summary: Search Google and return organic results, knowledge graph, related questions and related searches as JSON.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+      tbs:
+        type: string
+        required: false
+      safe:
+        type: string
+        required: false
+      location:
+        type: string
+        required: false
+      uule:
+        type: string
+        required: false
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        example: us
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number / offset used for pagination.
+      num:
+        type: number
+        required: false
+        default: 10
+        example: 10
+        note: Maximum number of results to return per page (deprecated).
+  test_request:
+    queryParams:
+      query: best electric cars
+      gl: us
+      hl: en
+      num: 10
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  miss:
+    when:
+      any:
+      - path: response.organic_results
+        op: absent
+      - path: response.organic_results
+        op: empty
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.organic.light
+  capability: google.serp.organic
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/search/light
+  name: Search Google (organic results only)
+  summary: Search Google and return only the organic results, the cheapest and fastest Google SERP call.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        example: us
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: best electric cars
+      gl: us
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  miss:
+    when:
+      any:
+      - path: response.organic_results
+        op: absent
+      - path: response.organic_results
+        op: empty
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.news
+  capability: google.serp.news
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/news
+  name: Search Google News
+  summary: Search Google News and return articles with title, source, date and link.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: artificial intelligence
+        note: Query to search on Google News (keywords, company, topic).
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number for pagination (1 = first page).
+      num:
+        type: number
+        required: false
+        default: 10
+        note: Maximum number of results per page (e.g. 10).
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        example: us
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: artificial intelligence
+      gl: us
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.maps
+  capability: google.serp.maps
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/maps
+  name: Search Google Maps places
+  summary: Search Google Maps and return places with address, rating, phone and website.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: coffee shop paris
+        note: Search query for Google Maps (e.g. business type, brand, or place name).
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number for pagination (1 = first page).
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+      ll:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: coffee shop paris
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.jobs
+  capability: google.serp.jobs
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/jobs
+  name: Search Google Jobs
+  summary: Search Google Jobs and return job listings with title, company, location and posting details.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: software engineer
+      uds:
+        type: string
+        required: false
+        note: Advanced search filters string for Google Jobs (encoded filter chips).
+      lrad:
+        type: number
+        required: false
+        note: Search radius in kilometers. Does not strictly limit the radius, but influences result proximity.
+      ltype:
+        type: number
+        required: false
+      location:
+        type: string
+        required: false
+        example: New York, NY
+      uule:
+        type: string
+        required: false
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+      next_page_token:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: software engineer
+      location: New York, NY
+      gl: us
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.autocomplete
+  capability: google.serp.autocomplete
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/search/autocomplete
+  name: Get Google autocomplete suggestions
+  summary: Get the Google Search autocomplete suggestions for a partial query.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: coffee
+        note: The search query for which you want to get autocomplete suggestions.
+      cp:
+        type: number
+        required: false
+        default: 0
+        note: Cursor position in the search query where you want to get autocomplete suggestions.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        example: us
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: coffee
+      gl: us
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.serp.ai-mode
+  capability: google.serp.ai-mode
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/google/search/ai
+  name: Ask Google AI Mode
+  summary: Ask Google AI Mode a question and return its answer text blocks, cited references and shopping results.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: what is mozilla firefox
+      location:
+        type: string
+        required: false
+      uule:
+        type: string
+        required: false
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+      gl:
+        type: string
+        required: false
+        example: us
+      hl:
+        type: string
+        required: false
+        example: en
+      cr:
+        type: string
+        required: false
+      lr:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: what is mozilla firefox
+      gl: us
+      hl: en
+  price:
+    value: '3'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.bing.serp.organic
+  capability: bing.serp.organic
+  platform: bing
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/bing/search
+  name: Search Bing
+  summary: Search Bing and return organic results with title, link, snippet and position.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+        note: The search query you want to run on Bing.
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number for pagination (1 = first page).
+      num:
+        type: number
+        required: false
+        default: 10
+        note: Number of results per page (e.g. 10, 20, 50). This value is a suggestion.
+      location:
+        type: string
+        required: false
+        note: Search origin location (e.g. city).
+      lat:
+        type: number
+        required: false
+        note: GPS latitude for the search origin.
+      lon:
+        type: number
+        required: false
+        note: GPS longitude for the search origin.
+      mkt:
+        type: string
+        required: false
+        example: en-US
+      cc:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: best electric cars
+      mkt: en-US
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.duckduckgo.serp.organic
+  capability: duckduckgo.serp.organic
+  platform: duckduckgo
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/duckduckgo/search
+  name: Search DuckDuckGo
+  summary: Search DuckDuckGo and return organic results with title, link and snippet.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+        note: Search query sent to DuckDuckGo Search.
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number. Page 1 is the first page of results.
+      gl:
+        type: string
+        required: false
+      hl:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: best electric cars
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.yahoo.serp.organic
+  capability: yahoo.serp.organic
+  platform: yahoo
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/yahoo/search
+  name: Search Yahoo
+  summary: Search Yahoo and return organic results with title, link and snippet.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+        note: Search query sent to Yahoo Search.
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number. Page 1 is the first page of results.
+      gl:
+        type: string
+        required: false
+      hl:
+        type: string
+        required: false
+  test_request:
+    queryParams:
+      query: best electric cars
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.web.search.brave
+  capability: web.search
+  platform: web
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/brave/search
+  name: Search the web with Brave
+  summary: Search Brave's web index and return organic results with title, link and snippet.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: best electric cars
+        note: The search query you want to run on Brave Search.
+      page:
+        type: number
+        required: false
+        default: 1
+        note: Page number for pagination.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+  test_request:
+    queryParams:
+      query: best electric cars
+      gl: us
+      hl: en
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
+- id: autom.google.locations.find
+  kind: utility
+  capability: google.locations.find
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /v1/finder/google-locations
+  name: Find Google location names
+  summary: Find the Google location names and ids that the location parameter accepts.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: paris
+        note: A city, region or country name to look up; returns matching locations ordered by reach.
+  test_request:
+    queryParams:
+      query: paris
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Free endpoint.
+  added: '2026-11-09'
+  docs_url: https://docs.autom.dev
