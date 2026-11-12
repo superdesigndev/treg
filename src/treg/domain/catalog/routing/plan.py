@@ -65,15 +65,22 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
 
 def _carried(contract: Contract, key: str, identity: dict[str, Any]) -> set[str]:
     """The caller's keys a stand-in `key` built from `identity` holds in its text: those of the
-    contract's `stand_in_carries` whose value changes the text. A value the text leaves out (a list,
-    a country code with no name, a country the location already says) is not carried."""
+    contract's `stand_in_carries` the text says. A key is said when leaving it out changes the text,
+    alone or beside any one other key: a country the location already names ("in Dublin, Ireland")
+    is said, since without the location it is the place. A value the text never uses (a list, a
+    country code with no name) is not."""
     expr = contract.stand_in.get(key)
     names = [n for n in contract.stand_in_carries.get(key, ()) if identity.get(n) not in (None, "")]
     if not expr or not names:
         return set()
     try:
-        text = P.evaluate(expr, identity)
-        return {n for n in names if text not in (None, "") and P.evaluate(expr, {**identity, n: None}) != text}
+        def without(*drop):
+            return P.evaluate(expr, {**identity, **dict.fromkeys(drop)})
+        if P.evaluate(expr, identity) in (None, ""):
+            return set()
+        base = {k: without(k) for k in names}
+        return {n for n in names if base[n] != without() or any(
+            without(n, k) != base[k] for k in names if k != n)}
     except Exception:  # noqa: BLE001 - scoping must never crash on an expression
         return set()
 

@@ -404,6 +404,27 @@ def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
     assert ignored_filters(parallel, contract, placed, {"title", "location", "country"}) == ()
     unnamed, _ = canonical_identity(contract, {"title": "CTO", "country": "zz"})
     assert ignored_filters(parallel, contract, unnamed, {"title", "country"}) == ("country",)
+    named, _ = canonical_identity(contract, {"title": "CTO", "location": "Dublin, Ireland", "country": "ie"})
+    assert parallel.to_upstream(named, ("q",))[1]["objective"] == "CTO in Dublin, Ireland"
+    assert ignored_filters(parallel, contract, named, {"title", "location", "country"}) == (), \
+        "a country the location already says is still said"
+
+
+@pytest.mark.parametrize("identity, kept", [
+    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, True),
+    ({"title": "CTO", "location": "Cambridge", "country": "us"}, True),
+    ({"title": "CTO", "location": "Dublin, Ireland"}, True),
+    ({"title": "CTO", "country": "zz"}, False),
+])
+async def test_strict_filters_keep_a_stand_in_provider_whose_text_says_the_filters(
+        clients, all_people_search_on, identity, kept):
+    cat = catalog_store.load()
+    options = call_route.RouteOptions.from_headers(
+        lambda key: "true" if key == call_route.STRICT_FILTERS_HEADER else None)
+    assert options.strict_filters
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(cat.by_id["treg.people.search"], identity, caller, options)
+    assert ("parallel.people.search" in [c.endpoint["id"] for c in plan.candidates]) is kept
 
 
 def test_a_domain_is_said_only_as_the_whole_host():

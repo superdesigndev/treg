@@ -1230,9 +1230,10 @@ an invalid extra never disables the primary.
   `{company_domain}` or `{company_domain, title}` request while every other provider's request is
   unchanged. The stand-in never enters the plan's identity; `to_upstream` fills it for the matched
   variant. The contract's `stand_in_carries` names the identity keys and filters the stand-in's
-  text may hold; `unscoped` counts one as sent and `ignored_filters` as used only when its value
-  changes this call's text (a list, or a country code with no name, does not, so strict filters
-  still drop the provider). A key the expression reads but `stand_in_carries` leaves out
+  text may hold; `unscoped` counts one as sent and `ignored_filters` as used only when the text
+  says it: leaving it out changes the text, alone or beside one other key (a country the location
+  already names is said; a list, or a country code with no name, is not, so strict filters still
+  drop the provider). A key the expression reads but `stand_in_carries` leaves out
   keeps its scoping guard, and the loader refuses a carried key the expression does not read.
   A stand-in covers none of the caller's keys in `rank`'s specificity, so its provider follows
   every provider that takes the caller's fields and enters earlier only through `prefer`,
