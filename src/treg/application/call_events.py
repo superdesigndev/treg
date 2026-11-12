@@ -329,6 +329,10 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
     # the rest as likely masking flags. A field the contract records and declares `bool`, `int` or
     # `float` is the provider's verdict (`name_match`, `ported`), kept when it has that type.
     contract = catalog_store.load().contracts.get(capability)
+    if contract and contract.segments and contract.row_of and isinstance(raw.get(contract.row_of), list):
+        # The segment set counts every row the adapter mapped, in the contract's row shape; the
+        # Arena's reading keeps the first few and drops the profile and company keys it judges.
+        core[contract.row_of] = raw[contract.row_of]
     for field_name, spec in (contract.output if contract else {}).items():
         spec = spec or {}
         kind = _SCALAR_TYPES.get(str(spec.get("type")))
@@ -339,7 +343,10 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
     return core
 
 
-def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None) -> dict:
+def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None,
+                   asked: dict | None = None) -> dict:
+    """`asked` (the identity and filters after derivation) lets the contract's segment set count
+    how the rows fit the question (`rows_company_match`); counts only, never a row's value."""
     keys: dict[str, str] = {}
     values: dict[str, str] = {}
     flags: dict[str, bool] = {}
@@ -366,6 +373,11 @@ def answer_columns(contract: Contract, output: dict, input_norm: dict | None = N
                     flags[f"{p}domain_match"] = dom == input_domain
         elif mode == "value" and (s := _stringify(v)) is not None:
             values[field_name] = s
+    segmenter = SEGMENTERS.get(contract.segments)
+    if segmenter is not None and segmenter.answer is not None and asked is not None:
+        if counts := segmenter.answer(asked, output):
+            values.update(counts)
+            values["segments_version"] = segmenter.version
     return {"answer_keys": keys or None, "answer_values": values or None,
             "answer_flags": flags or None}
 
@@ -433,12 +445,14 @@ def _derived(endpoint_id, capability, query, request_body, identity, answer_stat
     else:
         given = {}
     norm: dict = {}
+    asked: dict | None = None
     if given:
         cols, norm = input_columns(contract, given)
         out.update(cols)
+        asked, _ = canonical_identity(contract, given)
     if answers_allowed:
         core = output if output is not None else adapter_output(adapter, contract.capability,
                                                                 answer_status, answer_body)
         if core:
-            out.update(answer_columns(contract, core, norm))
+            out.update(answer_columns(contract, core, norm, asked))
     return out

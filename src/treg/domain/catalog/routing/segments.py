@@ -24,6 +24,9 @@ class Segmenter:
     version: str
     vocab: dict[str, frozenset[str] | Callable[[str], bool]]
     compute: Callable[[dict], dict[str, str]]
+    # (the asked identity and filters, the answer's core output) -> counts, as strings. None = the
+    # set records nothing about answers.
+    answer: Callable[[dict, dict], dict[str, str]] | None = None
 
 
 # ---- job titles ---------------------------------------------------------------------------------
@@ -140,8 +143,7 @@ _COUNTRY_ALIASES = frozenset({
     "south korea", "korea", "russia", "vietnam", "czechia", "türkiye", "turkiye", "iran", "syria",
     "taiwan", "bolivia", "venezuela", "tanzania", "laos", "moldova",
 })
-_REGIONS = frozenset({
-    # US states and DC
+_US_STATES = frozenset({
     "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware",
     "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky",
     "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
@@ -149,6 +151,8 @@ _REGIONS = frozenset({
     "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
     "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
     "virginia", "washington", "west virginia", "wisconsin", "wyoming", "district of columbia",
+})
+_REGIONS = _US_STATES | frozenset({
     # Canadian provinces, Australian states, large European and Asian regions
     "ontario", "quebec", "british columbia", "alberta", "manitoba", "saskatchewan", "nova scotia",
     "new south wales", "victoria", "queensland", "western australia", "south australia",
@@ -213,6 +217,18 @@ def iso2(value: Any) -> str | None:
              "great britain": "gb", "britain": "gb", "northern ireland": "gb"}.get(v)
     code = alias or P.iso_country(v)
     return code.upper() if code and len(code) == 2 else None
+
+
+def location_country(value: Any) -> str | None:
+    """The ISO2 country a free-text location names (`Berlin, Germany` -> `DE`, `Austin, Texas` ->
+    `US`), from its comma parts, last first. A two-letter part is never read as a country code:
+    `San Francisco, CA` names a state, not Canada. None when no part names a country."""
+    for part in reversed([p.strip() for p in _text(value).split(",") if p.strip()]):
+        if part in _US_STATES:
+            return "US"
+        if (len(part) > 3 or part in _COUNTRY_ALIASES) and (code := iso2(part)) is not None:
+            return code
+    return None
 
 
 def _is_iso2(value: str) -> bool:
@@ -302,6 +318,79 @@ def people_search(identity: dict) -> dict[str, str]:
     return out
 
 
+def _row_text(row: dict, *keys: str) -> str:
+    for k in keys:
+        v = row.get(k)
+        if isinstance(v, dict):
+            v = v.get("name")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.casefold())
+
+
+def _host(value: str) -> str:
+    v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", value.strip().lower())
+    v = re.split(r"[/?#:]", v, maxsplit=1)[0]
+    return v[4:] if v.startswith("www.") else v
+
+
+def _profile_url(row: dict) -> str | None:
+    url = _row_text(row, "profile_url", "linkedin_url", "linkedinUrl", "url")
+    m = re.fullmatch(r"https?://([^/?#\s]+)(\S*)", url, re.IGNORECASE)
+    return url if m and "." in m.group(1) else None
+
+
+def _person_key(row: dict) -> str | None:
+    if (url := _profile_url(row)) is not None:
+        handle = P.linkedin_handle(url)
+        return "u:" + (handle.lower().strip("/") if handle
+                       else re.sub(r"^https?://(www\.)?", "", url.lower()).rstrip("/"))
+    name = _squash(_row_text(row, "name", "full_name", "fullName"))
+    return f"n:{name}|{_squash(_row_text(row, 'company', 'company_name', 'companyName'))}" if name else None
+
+
+def _company_match(row: dict, domain: str) -> bool:
+    row_domain = _host(_row_text(row, "company_domain", "domain", "company_website", "website"))
+    if row_domain and (row_domain == domain or row_domain.endswith("." + domain)):
+        return True
+    label = _squash(domain.split(".", 1)[0])
+    name = _squash(_row_text(row, "company", "company_name", "companyName", "organization"))
+    return bool(label and name) and (name == label or (len(label) >= 4 and name.startswith(label)))
+
+
+def people_search_answer(asked: dict, output: dict) -> dict[str, str]:
+    """Counts over one people search's rows, judged against what was asked: no row value leaves.
+    A check that does not apply to the question (no company, no classifiable title, no country)
+    is absent rather than zero."""
+    rows = output.get("people")
+    if not isinstance(rows, list):
+        return {}
+    rows = [r for r in rows if isinstance(r, dict)]
+    out = {"rows": len(rows), "rows_with_profile_url": sum(_profile_url(r) is not None for r in rows)}
+    seen: set[str] = set()
+    dup = 0
+    for r in rows:
+        if (k := _person_key(r)) is not None:
+            dup += k in seen
+            seen.add(k)
+    out["rows_dup"] = dup
+    domain = _host(asked.get("company_domain")) if isinstance(asked.get("company_domain"), str) else ""
+    if domain:
+        out["rows_company_match"] = sum(_company_match(r, domain) for r in rows)
+    fn = title_function(asked.get("title"))
+    if fn not in ("other", "none"):
+        out["rows_title_match"] = sum(title_function(_row_text(r, "title", "headline", "job_title")) == fn
+                                      for r in rows)
+    if (code := iso2(asked.get("country"))) is not None:
+        out["rows_country_match"] = sum(location_country(_row_text(r, "location", "country")) == code
+                                        for r in rows)
+    return {k: str(v) for k, v in out.items()}
+
+
 PEOPLE_SEARCH = Segmenter(
     version="1",
     vocab={
@@ -315,6 +404,7 @@ PEOPLE_SEARCH = Segmenter(
         "q_has_place": TRUE_FALSE | {"none"}, "name_given": TRUE_FALSE, "has_keywords": TRUE_FALSE,
     },
     compute=people_search,
+    answer=people_search_answer,
 )
 
 SEGMENTERS: dict[str, Segmenter] = {"people_search": PEOPLE_SEARCH}

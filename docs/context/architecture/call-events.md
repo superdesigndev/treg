@@ -111,6 +111,8 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
   field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  A contract with a segment set that judges answers adds its row counts here (`rows`,
+  `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
   when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
   `domain_match` comparison is disclosed to callers on a routed email-find hit as
@@ -148,6 +150,21 @@ import them instead of keeping its own copy.
 | `q_has_place` | `true`, `false`, `none` | a country, region or major city named in `q` |
 | `name_given` | `true`, `false` | `full_name` present after derivation |
 | `has_keywords` | `true`, `false` | |
+
+A set may also count how an answer's rows fit the question; `people_search` writes these to
+`answer_values` as decimal strings, beside `segments_version`. Nothing from a row leaves, only the
+counts. A direct call is counted over every row its adapter mapped, in the contract's row shape,
+not the Arena's shorter reading; a routed parent over its assembled answer. A check the question
+gives nothing to judge by is absent, not zero.
+
+| Key | Counts | Present when |
+| --- | --- | --- |
+| `rows` | rows in `people` | the answer has a `people` list |
+| `rows_with_profile_url` | rows with an `http(s)` profile URL on a dotted host | always with `rows` |
+| `rows_dup` | rows repeating an earlier row's person (same LinkedIn handle or URL, else same name and company) | always with `rows` |
+| `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain), or whose company name is its first label | `company_domain` was asked |
+| `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
+| `rows_country_match` | rows whose location names the asked country (by name, a US state, never a two-letter part) | the asked country is an ISO code or name |
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -169,3 +170,70 @@ def test_the_most_specific_title_rule_wins_on_the_recorded_segment():
                                                  "country": "us"})).id == "mkt"
     assert R.match(parsed, "people.search", seg({"company_domain": "a.example", "country": "US"})).id == "country"
     assert R.match(parsed, "people.search", seg({"company_domain": "a.example"})) is None
+
+
+# ---- answer side -------------------------------------------------------------------------------
+
+_ROWS = [
+    {"name": "Ann Lee", "title": "VP Sales", "company": "Acme", "company_domain": "acme.example",
+     "location": "Austin, Texas, United States", "profile_url": "https://www.linkedin.com/in/ann-lee"},
+    # the same person again, by profile
+    {"name": "Ann Lee", "title": "VP Sales", "company": "Acme Inc",
+     "profile_url": "https://linkedin.com/in/ann-lee/"},
+    {"name": "Bo Chen", "title": "Head of Sales EMEA", "company": "Acme, Inc.",
+     "location": "Berlin, Germany", "profile_url": "linkedin.com/in/bo-chen"},
+    {"name": "Cy Diaz", "title": "Marketing Manager", "company": "Other Co", "company_domain": "other.example",
+     "location": "San Francisco, CA"},
+    # the same person again, by name and company
+    {"name": "cy  diaz", "title": "Marketing Manager", "company": "Other Co"},
+]
+
+
+def test_answer_counts_judge_rows_against_the_question():
+    asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "us"}
+    assert S.people_search_answer(asked, {"people": _ROWS}) == {
+        "rows": "5", "rows_with_profile_url": "2", "rows_dup": "2", "rows_company_match": "3",
+        "rows_title_match": "3", "rows_country_match": "1"}
+    # a leader asked: a row matches when it is a leader too
+    assert S.people_search_answer({"title": "Founder"}, {"people": [
+        {"title": "Co-founder & CEO"}, {"title": "CTO"}, {"title": "Geschäftsführer"}]})["rows_title_match"] == "2"
+    # checks the question gives nothing to judge by are absent, not zero
+    assert set(S.people_search_answer({"q": "fintech founders"}, {"people": []})) == \
+        {"rows", "rows_with_profile_url", "rows_dup"}
+    assert set(S.people_search_answer({"title": "Astronaut"}, {"people": _ROWS})) == \
+        {"rows", "rows_with_profile_url", "rows_dup"}
+    assert S.people_search_answer(asked, {"error": "x"}) == {}
+
+
+@pytest.mark.parametrize("location, code", [
+    ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
+    ("San Francisco, CA", None), ("London, UK", "GB"), ("Paris", None), ("", None), (None, None),
+])
+def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(location, code):
+    assert S.location_country(location) == code
+
+
+def test_answer_columns_record_counts_with_the_version_and_no_row_value():
+    asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "US"}
+    values = ev.answer_columns(_contract(), {"people": _ROWS}, {"company_domain": "acme.example"},
+                               asked)["answer_values"]
+    assert values["rows"] == "5" and values["rows_company_match"] == "3"
+    assert values["segments_version"] == S.PEOPLE_SEARCH.version
+    dumped = json.dumps(values).lower()
+    for raw in ("ann", "acme", "berlin", "linkedin", "sales"):
+        assert raw not in dumped
+    # without the question there is nothing to count against
+    assert ev.answer_columns(_contract(), {"people": _ROWS})["answer_values"] is None
+    # a contract with no segment set counts nothing
+    assert ev.answer_columns(catalog_store.load().contracts["people.email.find"], {"email": None},
+                             None, asked)["answer_values"] is None
+
+
+def test_a_direct_answer_counts_every_mapped_row_not_only_the_arenas_first_few():
+    rows = [{"name": f"P{i}", "title": "Engineer", "profile_url": f"https://www.linkedin.com/in/p{i}"}
+            for i in range(40)]
+    adapter = SimpleNamespace(verified=True, from_upstream=lambda doc: {"people": doc["rows"]})
+    core = ev.adapter_output(adapter, "people.search", 200, json.dumps({"rows": rows}).encode())
+    assert len(core["people"]) == 40 and core["people"][0]["profile_url"]
+    counts = ev.answer_columns(_contract(), core, None, {"title": "Software Engineer"})["answer_values"]
+    assert counts["rows"] == counts["rows_with_profile_url"] == counts["rows_title_match"] == "40"
