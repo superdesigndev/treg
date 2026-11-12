@@ -85,6 +85,9 @@ def _scopes(spec: object) -> list[Mapping]:
     return [scope for scope in found if isinstance(scope, Mapping)]
 
 
+_INDEX_DIGITS = 4
+
+
 def _is_array(spec: object) -> bool:
     if not isinstance(spec, Mapping):
         return False
@@ -93,12 +96,16 @@ def _is_array(spec: object) -> bool:
     return "items" in spec or any(k in ("array", "list") for k in kinds)
 
 
-def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
-    """The parameter a refusal names when every part of it is declared by the endpoint (an index
-    only into a declared array); `undeclared` otherwise, since a name the caller made up is request
-    content and never logged. A path placeholder may be declared with the query parameters."""
+def _parameter(endpoint_id: str | None, name: str | None, rule: str | None = None) -> str | None:
+    """The parameter a refusal names when every part of it is declared by the endpoint (a short
+    index only into a declared array); `undeclared` otherwise, since a name the caller made up is
+    request content and never logged. A JSON key may itself hold dots, so a refusal of an
+    undeclared field is never read as a path. A path placeholder may be declared with the query
+    parameters."""
     if not name:
         return None
+    if rule == "undeclared":
+        return "undeclared"
     inputs = (catalog_store.load().by_id.get(endpoint_id or "") or {}).get("input") or {}
     head, _, rest = name.partition(".")
     location = _LOCATIONS.get(head, head)
@@ -114,7 +121,7 @@ def _parameter(endpoint_id: str | None, name: str | None) -> str | None:
     spec: object = None
     for part in rest.split(".") if rest else ():
         if part.isdigit():
-            if not _is_array(spec):
+            if len(part) > _INDEX_DIGITS or not _is_array(spec):
                 return "undeclared"
             spec = spec.get("items")
             continue
@@ -156,7 +163,8 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
             "endpoint_id": endpoint_id, "provider": provider, "tier": tier, "status": status,
             "by": by, "refused_by": refused_by, "error_class": cls, "caller_side": cls in CALLER_SIDE,
             "kind": kind, "signal": signal,
-            "parameter": _parameter(endpoint_id, getattr(failure, "parameter", None)),
+            "parameter": _parameter(endpoint_id, getattr(failure, "parameter", None),
+                                    getattr(failure, "rule", None)),
             "rule": getattr(failure, "rule", None),
         }, separators=(",", ":")))
     except Exception:  # noqa: BLE001 - a log line must never surface into a call

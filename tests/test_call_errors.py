@@ -185,7 +185,7 @@ def test_a_refused_parameter_is_named_only_when_declared(lines):
     for parameter in ("queryParams.aweme_id", "queryParams.someone@example.com", "aweme_id",
                       "query.count", "someone@example.com", "queryParams.aweme_id.someone@example.com"):
         failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
-                                   rule="undeclared", detail=SECRET_INPUT)
+                                   rule="type", detail=SECRET_INPUT)
         call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
                          provider="tikhub", tier="platform", refused_by="request", failure=failure,
                          answered=False)
@@ -271,3 +271,40 @@ async def test_a_routed_refusal_logs_one_parent_line(clients: AsyncClient, lines
     (line,) = lines()
     assert (line["road"], line["tier"], line["provider"], line["by"]) == ("routed", "routed", "treg", "treg")
     assert line["endpoint_id"] == "treg.people.phone.find" and line["error_class"] == "caller_input"
+
+
+@pytest.mark.parametrize(("parameter", "rule", "logged"), [
+    ("body.set_cookies.15551234567", "undeclared", "undeclared"),
+    ("body.set_cookies.15551234567", "repeat", "undeclared"),
+    ("body.set_cookies.2", "type", "body.set_cookies.2"),
+])
+def test_a_dotted_key_the_caller_made_up_is_never_read_as_a_path(lines, parameter, rule, logged):
+    failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
+                               rule=rule, detail=SECRET_INPUT)
+    call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id="litescrape.web.fetch.post",
+                     provider="litescrape", tier="platform", refused_by="request", failure=failure,
+                     answered=False)
+    (line,) = lines()
+    assert line["parameter"] == logged
+
+
+async def test_a_routed_child_refused_before_its_audit_logs_its_own_line(
+        clients: AsyncClient, monkeypatch, lines):
+    from treg.application.call import service as call_service
+    from treg.application.call.types import AuthorizationFailed
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily")
+    get_settings.cache_clear()
+
+    async def deny(**kw):
+        raise AuthorizationFailed("policy_denied", status_code=403, detail="denied")
+
+    monkeypatch.setattr(call_service, "authorize_call", deny)
+    r = await clients.post("/call/treg.web.search", json={"q": "example query", "limit": 3},
+                           headers={"X-Treg-Route-Prefer": "tavily"})
+    assert r.status_code >= 400, r.text
+    children = [line for line in lines() if line["step"]]
+    assert children and children[0]["kind"] == "policy_denied"
+    assert (children[0]["by"], children[0]["road"], children[0]["endpoint_id"]) == (
+        "treg", "catalog", "tavily.web.search")
+    assert [line["step"] for line in lines()].count(None) == 1

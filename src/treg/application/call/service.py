@@ -173,6 +173,19 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     request = _ApplicationRequest(context)
     try:
         return await _execute_call(request, upstream_client)
+    except CallFailure as exc:
+        # A root's unaudited refusal is logged by the HTTP router's fallback; a child (a routed
+        # candidate, check or poll, a hub step) never reaches it.
+        if not request.state.call_audited and call_event_app.ref_parts(context.call_ref)[1]:
+            mk = context.marketplace
+            call_errors.emit(
+                exc.status_code, org_id=context.input.caller.org_id, call_ref=context.call_ref,
+                road="catalog" if mk is not None else "unresolved",
+                endpoint_id=mk.endpoint_id if mk is not None else None,
+                provider=mk.provider if mk is not None else None,
+                tier=mk.tier if mk is not None else None,
+                refused_by=_refusal_kind(exc.status_code), failure=exc, answered=False)
+        raise
     finally:
         if request.lease is not None:
             request.lease.cancel()
