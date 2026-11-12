@@ -1103,7 +1103,7 @@ async def test_checkout_uses_monthly_team_subscription_without_touching_balance(
     monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
     monkeypatch.setattr(settings, "enterprise_sso_bundle_only", True)
     monkeypatch.setattr(settings, "enterprise_sso_bundle_price_id", "price_bundle")
-    monkeypatch.setattr(settings, "enterprise_sso_promo_org_slugs", "other-team")
+    monkeypatch.setattr(settings, "enterprise_sso_promo_org_ids", "999999")
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     calls = []
     async def fake_call(operation, *, api_key, **kwargs):
@@ -1139,9 +1139,7 @@ async def test_checkout_offers_promotion_codes_only_to_allowed_team(clients, mon
     monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
     monkeypatch.setattr(settings, "enterprise_sso_bundle_price_id", "price_bundle")
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
-    async with session_maker() as db:
-        slug = (await db.get(Org, org_id)).slug
-    monkeypatch.setattr(settings, "enterprise_sso_promo_org_slugs", f"other-team, {slug}")
+    monkeypatch.setattr(settings, "enterprise_sso_promo_org_ids", f"999999, {org_id}")
     calls = []
 
     async def fake_call(operation, *, api_key, **kwargs):

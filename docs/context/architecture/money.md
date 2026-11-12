@@ -616,8 +616,8 @@ dashboard and refuses an org without `stripe_customer_id` rather than minting on
   cancellation controls. `billing.start_checkout` rejects a stale Price ID and re-verifies the Price
   before Checkout. One pending reservation per team plus an idempotent Stripe session request stop
   parallel subscriptions.
-- `TREG_ENTERPRISE_SSO_PROMO_ORG_SLUGS` optionally enables Stripe's promotion-code field for an
-  explicit comma-separated set of team slugs. It is empty by default, because any active,
+- `TREG_ENTERPRISE_SSO_PROMO_ORG_IDS` optionally enables Stripe's promotion-code field for an
+  explicit comma-separated set of stable team IDs. It is empty by default, because any active,
   unrestricted Stripe code could otherwise discount an SSO subscription. Operators must restrict
   a pilot code to the SSO product and limit its redemptions in Stripe. A discount changes the
   invoice, not the subscription's renewal or the WorkOS connection cost.
