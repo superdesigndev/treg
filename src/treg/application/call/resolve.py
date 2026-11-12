@@ -9,7 +9,7 @@ from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
-from ...domain.catalog import schema, store as catalog_store
+from ...domain.catalog import params, schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.connections.refresh import expiry_state
 from ...domain.governance import access as access_policy
@@ -1286,10 +1286,7 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
     values: dict[str, str] = {}
     invalid = has_body
     for name, value in query.multi_items():
-        spec = fields.get(name)
-        if name in values or not isinstance(spec, dict):
-            invalid = True
-        elif spec.get("enum") is not None and value not in spec["enum"]:
+        if name in values or not isinstance(fields.get(name), dict):
             invalid = True
         values[name] = value
     if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
@@ -1298,27 +1295,114 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400,
             detail={"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                    "message": "Use only the declared query parameters and allowed values, once each; "
+                    "message": "Use only the declared query parameters, once each; "
                                "include required parameters and omit the request body."},
         )
 
 
-def _enforce_catalog_body(ep: dict, body: bytes) -> None:
-    """Enforce an opt-in reviewed JSON-body surface without rewriting the request.
+def _parameter_refused(ep: dict, parameter: str, reason: str) -> ResolutionFailed:
+    """A declared parameter the request breaks: named, with the declared rule, never the value."""
+    return ResolutionFailed(
+        "catalog_parameter_invalid", status_code=400, detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
+            "message": f"{ep['id']}: {parameter} {reason}. Nothing was charged.",
+        },
+    )
 
-    Most catalog schemas describe the upstream API and deliberately leave BYOK requests as a
-    faithful relay. ``strict_body`` is the narrow exception for a catalog tool whose advertised
-    contract is intentionally smaller than the upstream surface. ``body_allowlist`` additionally
-    rejects undeclared fields and validates the declared scalar types, enums and numeric bounds.
-    Array limits are read from the existing input declaration. These constraints apply on every
-    credential tier when the caller chooses the catalog endpoint; a team's raw tool remains a
-    faithful relay.
+
+def _enforce_declared_query(ep: dict, query: QueryValues) -> None:
+    """Every declared query and path parameter the request sends meets its declaration
+    (`catalog.params.refusal`, reading each string by its declared type), on every tier, before
+    anything is held. An undeclared parameter is relayed as sent."""
+    inputs = ep.get("input") or {}
+    declared = {**{name: ("queryParams", spec) for name, spec in (inputs.get("queryParams") or {}).items()},
+                **{name: ("pathParams", spec) for name, spec in (inputs.get("pathParams") or {}).items()}}
+    sent: dict[str, list[str]] = {}
+    for name, value in query.multi_items():
+        sent.setdefault(name, []).append(value)
+    for name, values in sent.items():
+        location, spec = declared.get(name, (None, None))
+        if isinstance(spec, dict) and (
+                reason := params.refusal(spec, values[0] if len(values) == 1 else values, text=True)):
+            raise _parameter_refused(ep, f"{location}.{name}", reason)
+
+
+def _body_fields(declared: object) -> tuple[dict, dict | None]:
+    """(field specs, the whole-body spec): a body declared field by field, as an object with
+    `properties`, or as one spec for the whole document."""
+    if not isinstance(declared, dict) or not declared:
+        return {}, None
+    if isinstance(declared.get("properties"), dict):
+        return declared["properties"], None
+    if all(isinstance(spec, dict) for spec in declared.values()):
+        return declared, None
+    return {}, declared
+
+
+def _unique_pairs(pairs: list[tuple[str, object]]) -> dict:
+    """A JSON object, or a ValueError when it repeats a field: which repeat a provider reads is its
+    own choice, so a repeating body is not checked here (treg's key refuses it later)."""
+    document = dict(pairs)
+    if len(document) != len(pairs):
+        raise ValueError("a repeated JSON field")
+    return document
+
+
+def _field_value(document: dict, name: str) -> tuple[bool, object]:
+    """(sent, value) of a declared body field: a key of that name, else the dotted path."""
+    if name in document:
+        return True, document[name]
+    current: object = document
+    for part in name.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return False, None
+        current = current[part]
+    return True, current
+
+
+def _enforce_catalog_body(ep: dict, body: bytes) -> None:
+    """Every declared body field the request sends meets its declaration (`catalog.params`), on
+    every tier, before anything is held; the body is never rewritten. A JSON array body (a list of
+    task objects) is read task by task, a form body as strings by the declared types; a body that
+    does not parse is relayed for the provider to judge.
+
+    ``strict_body`` and ``body_allowlist`` are the opt-in exceptions for a catalog tool whose
+    advertised contract is intentionally smaller than the upstream surface: the body must be one
+    JSON object, and ``body_allowlist`` also refuses undeclared fields and absent required ones and
+    reads `item_required_all`/`item_required_any` on an array of objects. A team's raw tool remains
+    a faithful relay.
     """
-    if not ep.get("strict_body") and not ep.get("body_allowlist"):
+    inputs = ep.get("input") or {}
+    fields, whole = _body_fields(inputs.get("body"))
+    text = inputs.get("bodyType") == "form"
+    tasks = False
+    strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
+    if strict:
+        documents: list = [_strict_json_object(body, ep["id"])]
+    elif not body or (not fields and whole is None) or inputs.get("bodyType") == "multipart":
         return
-    document = _strict_json_object(body, ep["id"])
-    fields = (ep.get("input") or {}).get("body") or {}
+    elif text:
+        try:
+            pairs = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError:
+            return
+        form: dict[str, list[str]] = {}
+        for name, value in pairs:
+            form.setdefault(name, []).append(value)
+        documents = [{name: v[0] if len(v) == 1 else v for name, v in form.items()}]
+    else:
+        try:
+            parsed = json.loads(body, object_pairs_hook=_unique_pairs)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return
+        if whole is not None:
+            if reason := params.refusal(whole, parsed):
+                raise _parameter_refused(ep, "body", reason)
+            return
+        tasks = isinstance(parsed, list)
+        documents = parsed if tasks else [parsed]
     if ep.get("body_allowlist"):
+        document = documents[0]
         unknown = sorted(set(document) - set(fields))
         missing = sorted(
             name for name, spec in fields.items()
@@ -1335,80 +1419,36 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                     **({"missing": missing} if missing else {}),
                 },
             )
-        scalar_types = {
-            "string": lambda value: isinstance(value, str),
-            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
-            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
-            "boolean": lambda value: isinstance(value, bool),
-            "object": lambda value: isinstance(value, dict),
-        }
-        for name, value in document.items():
-            spec = fields.get(name)
-            if not isinstance(spec, dict):
+    for index, document in enumerate(documents):
+        if not isinstance(document, dict):
+            continue
+        prefix = f"body.{index}." if tasks else "body."
+        for name, spec in fields.items():
+            present, value = _field_value(document, name)
+            if not isinstance(spec, dict) or not (present or strict and spec.get("required")):
                 continue
-            declared = str(spec.get("type") or "")
-            checker = scalar_types.get(declared)
-            invalid = checker is not None and not checker(value)
-            if (not invalid and not declared.startswith("array")
-                    and spec.get("enum") is not None):
-                invalid = value not in spec["enum"]
-            if not invalid and declared in {"integer", "number"}:
-                minimum, maximum = spec.get("min"), spec.get("max")
-                invalid = ((isinstance(minimum, (int, float)) and value < minimum)
-                           or (isinstance(maximum, (int, float)) and value > maximum))
-            if invalid:
+            if reason := params.refusal(spec, value, text=text):
+                raise _parameter_refused(ep, prefix + name, reason)
+    if not ep.get("body_allowlist"):
+        return
+    document = documents[0]
+    for name, spec in fields.items():
+        value = document.get(name)
+        required_all = (spec.get("item_required_all") or []) if isinstance(spec, dict) else []
+        required_any = (spec.get("item_required_any") or []) if isinstance(spec, dict) else []
+        if not isinstance(value, list) or not (required_all or required_any):
+            continue
+        for index, item in enumerate(value):
+            present = ({field for field, field_value in item.items()
+                        if field_value not in (None, "", [])} if isinstance(item, dict) else set())
+            if not set(required_all) <= present or (required_any and not set(required_any) & present):
                 raise ResolutionFailed(
                     "catalog_parameter_invalid", status_code=400, detail={
-                        "error": "catalog_parameter_invalid",
-                        "endpoint_id": ep["id"],
-                        "parameter": f"body.{name}",
-                        "message": f"{ep['id']} received an invalid value for body.{name}",
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"body.{name}.{index}",
+                        "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
                     },
                 )
-    for name, spec in fields.items():
-        if not isinstance(spec, dict) or not str(spec.get("type") or "").startswith("array"):
-            continue
-        if name not in document and not spec.get("required"):
-            continue
-        value = document.get(name)
-        minimum = spec.get("minItems", spec.get("min"))
-        maximum = spec.get("maxItems", spec.get("max"))
-        valid = isinstance(value, list)
-        if valid and spec.get("enum") is not None:
-            valid = all(item in spec["enum"] for item in value)
-        if valid and isinstance(minimum, int):
-            valid = len(value) >= minimum
-        if valid and isinstance(maximum, int):
-            valid = len(value) <= maximum
-        if not valid:
-            expected = (
-                f"between {minimum} and {maximum}" if minimum != maximum
-                else f"exactly {minimum}"
-            )
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
-                    "error": "catalog_parameter_invalid",
-                    "endpoint_id": ep["id"],
-                    "parameter": f"body.{name}",
-                    "message": f"{ep['id']} requires {expected} item in body.{name}",
-                },
-            )
-        if ep.get("body_allowlist") and isinstance(value, list):
-            required_all = spec.get("item_required_all") or []
-            required_any = spec.get("item_required_any") or []
-            for index, item in enumerate(value):
-                if not (required_all or required_any):
-                    break
-                present = ({field for field, field_value in item.items()
-                            if field_value not in (None, "", [])} if isinstance(item, dict) else set())
-                if not set(required_all) <= present or (required_any and not set(required_any) & present):
-                    raise ResolutionFailed(
-                        "catalog_parameter_invalid", status_code=400, detail={
-                            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                            "parameter": f"body.{name}.{index}",
-                            "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
-                        },
-                    )
 
 
 def _request_headers(headers) -> dict[str, str]:
@@ -2283,6 +2323,7 @@ async def _resolve_marketplace_call(
             ) from exc
 
     upstream, consumed = _marketplace_upstream(ep, provider, query, chosen_method)
+    _enforce_declared_query(ep, query)
     body = await read_body() if has_body else b""
     _enforce_catalog_body(ep, body)
     phash = _params_hash(ep["id"], query.multi_items(), body)

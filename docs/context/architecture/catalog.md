@@ -1025,9 +1025,9 @@ returned and never documented as stable. An output field may say where it lands 
   `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
   page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
-  A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
-  left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
-  before the filter existed.
+  A boolean filter must be `true` or `false` (400 `catalog_parameter_invalid` otherwise, the
+  parameter check), and one that is off is left out of the provider-sample hash (`flags_off`), so a
+  request that never sends it samples as before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
@@ -1062,8 +1062,9 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  field of `format: url` is kept whole, since a cut link points at another resource. A `string` field
+  may set its own `maxLength` where an agent needs more to judge the row (`people.search`'s
+  `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
@@ -1164,10 +1165,12 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
-  - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
-    complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
-    a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
-    value.
+  - Before planning, each identity field of `format: url` must parse as an HTTP URL with a dotted host
+    and no userinfo (`invalid_identity`, 422, even when another complete variant was sent); a
+    scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
+    value. Then every identity and filter field sent is held to its spec by the parameter check
+    ([catalog schema](catalog-schema.md#parameter-types)): a 400 `catalog_parameter_invalid` naming the
+    field, before any child is planned or held.
   - A 2xx lacking a REQUIRED core field is a MISS. The waterfall is on by default;
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
@@ -1241,8 +1244,8 @@ an invalid extra never disables the primary.
   into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
   said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
-  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
-  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, a
+  `string` (anything else is refused 400 `catalog_parameter_invalid`): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
   dropped; icypeas answers `{q, title}` through `{title}` and stays.

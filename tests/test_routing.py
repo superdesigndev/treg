@@ -150,7 +150,7 @@ def test_expression_language():
 def test_a_route_false_adapter_is_never_routed():
     from treg.domain.catalog.routing import contracts as C, plan, synthetic
 
-    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_specs={"q": {"type": "string"}},
                           derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
     adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
                                route=eid != "c.find", verified=True) for eid in ("a.find", "b.find", "c.find")}
@@ -168,9 +168,9 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     from treg.domain.catalog.routing import contracts as C
 
     doc = {"contracts": {"x.search": {
-        "identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
+        "identity": [{"q": "string"}], "output": {"people": {"type": "array", "required": True}},
         "miss": "people == []",
-        "row": {"of": "people", "needs": ["name"], "fields": {"name": "str", "location": "str", "summary": "str"}}}}}
+        "row": {"of": "people", "needs": ["name"], "fields": {"name": "string", "location": "string", "summary": "string"}}}}}
     contract = C.parse_contracts(doc)["x.search"]
     ad = C.parse_adapters({"adapters": {"p.search": {
         "accepts": [["q"]], "in": {"q": "body.q"}, "out": {"people": "items"}, "miss": "items == []",
@@ -185,9 +185,9 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     assert rows[1] == {"handle": "@someone"}, "unreadable row kept as the provider's"
     assert rows[2] == "not a row" and len(rows) == 3, "a non-object item is kept too"
     with pytest.raises(ValueError, match="row"):
-        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "nope", "needs": ["name"], "fields": {"name": "str"}}}}})
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "nope", "needs": ["name"], "fields": {"name": "string"}}}}})
     with pytest.raises(ValueError, match="needs"):
-        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "people", "needs": ["age"], "fields": {"name": "str"}}}}})
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "people", "needs": ["age"], "fields": {"name": "string"}}}}})
     stray = C.Adapter(**{**ad.__dict__, "row_map": {**ad.row_map, "age": "age"}})
     endpoint = {"test_request": {"body": {"q": "x"}}}
     assert C.verify(stray, contract, endpoint, {"items": [{"first": "A"}]}) == (False, "row: fields outside the contract's row: ['age']")
@@ -217,24 +217,24 @@ def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
 
 def test_a_row_field_may_keep_more_text_than_the_default_cut():
     """people.search's `summary` is the evidence an agent checks a brief against: it keeps up to its
-    own `max` while every other text field is still cut to ROW_TEXT_MAX."""
+    own `maxLength` while every other text field is still cut to ROW_TEXT_MAX."""
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
-    cap = cat.contracts["people.search"].row_fields["summary"]["max"]
+    cap = cat.contracts["people.search"].row_fields["summary"]["maxLength"]
     assert cap > C.ROW_TEXT_MAX
     ad = cat.adapters["parallel.people.search"]
     long = "evidence " * (cap // 4)
     row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": "https://linkedin.com/in/ada",
                                           "description": long}]})["people"][0]
     assert len(row["summary"]) == cap and len(row["name"]) == C.ROW_TEXT_MAX
-    doc = {"identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
-           "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}}}}
+    doc = {"identity": [{"q": "string"}], "output": {"people": {"type": "array", "required": True}},
+           "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "string"}}}}
     for bad in (0, -5, True, "1000", 1.5):
         with pytest.raises(ValueError, match="max"):
-            C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "str", "max": bad}}}}}})
-    with pytest.raises(ValueError, match="max"):
-        C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "url", "max": 10}}}}}})
+            C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "string", "maxLength": bad}}}}}})
+    with pytest.raises(ValueError, match="maxLength"):
+        C.parse_contracts({"contracts": {"y": {**doc, "row": {**doc["row"], "fields": {"name": {"type": "string", "format": "url", "maxLength": 10}}}}}})
 
 
 def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention_domain_match():
@@ -248,7 +248,7 @@ def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention
     assert body["company_domain"]["note"].startswith("identity; the employer's website domain")
     assert "domain_match" not in cat.by_id["treg.people.search"]["input"]["note"]
     assert "domain_match" in cat.by_id["treg.people.email.find"]["input"]["note"]
-    doc = {"identity": [{"q": "str"}], "output": {"a": "str"}}
+    doc = {"identity": [{"q": "string"}], "output": {"a": "string"}}
     assert C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": {"q": " words "}}}})["y"].identity_notes == {"q": "words"}
     for bad in ({"nope": "x"}, {"q": ""}, {"q": 3}, {}, ["q"]):
         with pytest.raises(ValueError, match="identity_notes"):
@@ -300,7 +300,7 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     assert exa.to_upstream(scoped, adapter_accepts(exa, scoped))[1]["query"] == "CTO at stripe.com"
     with pytest.raises(ValueError, match="stand_in"):
         from treg.domain.catalog.routing import contracts as C
-        C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+        C.parse_contracts({"contracts": {"y": {"identity": [{"q": "string"}], "output": {"a": "string"},
                                                "miss": "a == null", "stand_in": {"nope": "q"}}}})
 
 
@@ -587,9 +587,9 @@ def test_rows_rank_holders_of_the_asked_role_now_ahead_of_past_holders():
 
 def test_a_malformed_rank_by_role_fails_the_load():
     from treg.domain.catalog.routing.contracts import parse_contracts
-    base = {"identity": [{"title": "str"}], "output": {"people": {"type": "list"}},
-            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "str"}, "title": {"type": "str"},
-                                                                   "past": {"type": "list"}, "until": {"type": "str"}, "m": {"type": "str"}}}}
+    base = {"identity": [{"title": "string"}], "output": {"people": {"type": "array"}},
+            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "string"}, "title": {"type": "string"},
+                                                                   "past": {"type": "array"}, "until": {"type": "string"}, "m": {"type": "string"}}}}
     ok = {"asked": "title", "now": "title", "since": "title", "past": "past", "ended": "until", "flag": "m"}
     assert parse_contracts({"contracts": {"y": {**base, "row": {**base["row"], "rank_by_role": ok}}}})["y"].row_rank == ok
     for bad in ({**ok, "asked": "q"}, {**ok, "flag": "nope"}, {"asked": "title"}):
@@ -608,7 +608,7 @@ def test_in_rollout_is_stable_per_team_and_never_without_one():
 
 def test_a_percent_rule_applies_only_to_teams_in_its_rollout_and_rules_keep_their_order():
     from treg.domain.catalog.routing.contracts import in_rollout, parse_contracts
-    doc = {"contracts": {"y": {"identity": [{"q": "str"}, {"title": "str"}], "output": {"a": "str"},
+    doc = {"contracts": {"y": {"identity": [{"q": "string"}, {"title": "string"}], "output": {"a": "string"},
                                "prefer": ["c"],
                                "prefer_when": [{"sent": ["q", "title"], "prefer": ["b"]},
                                                {"sent": ["title"], "prefer": ["a"], "percent": 50}]}}}
@@ -637,7 +637,7 @@ async def test_the_routed_plan_buckets_by_the_callers_team(clients, people_searc
 @pytest.mark.parametrize("percent", [0, 100, 50.5, True, "50", None])
 def test_a_prefer_when_percent_outside_1_to_99_fails_the_load(percent):
     from treg.domain.catalog.routing.contracts import parse_contracts
-    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+    doc = {"contracts": {"y": {"identity": [{"q": "string"}], "output": {"a": "string"},
                                "prefer_when": [{"sent": ["q"], "prefer": ["exa"], "percent": percent}]}}}
     with pytest.raises(ValueError, match="prefer_when"):
         parse_contracts(doc)
@@ -665,7 +665,7 @@ async def test_a_domain_suffix_rule_goes_ahead_of_prefer_when(clients, enrichmen
 ])
 def test_a_malformed_prefer_when_fails_the_load(rule):
     from treg.domain.catalog.routing.contracts import parse_contracts
-    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"}, "prefer_when": [rule]}}}
+    doc = {"contracts": {"y": {"identity": [{"q": "string"}], "output": {"a": "string"}, "prefer_when": [rule]}}}
     with pytest.raises(ValueError, match="prefer_when"):
         parse_contracts(doc)
     with pytest.raises(ValueError, match="prefer_when"):
@@ -2572,7 +2572,7 @@ async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
 
 async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
         clients: AsyncClient, people_search_on, monkeypatch):
-    """`q` is `text`: a list would be skipped by the providers' text joins, which would then search
+    """`q` is a string: a list would be skipped by the providers' text joins, which would then search
     the domain alone and bill for it."""
     from treg.domain.catalog.routing import contracts as C
 
@@ -2580,8 +2580,11 @@ async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 4}, seen))
     r = await clients.post("/call/treg.people.search",
                            json={"q": ["executives"], "company_domain": "example.com", "limit": 3})
-    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
-    doc = {"identity": [{"q": "str", "title": "str"}], "output": {"a": "str"}, "scoping": ["q"]}
+    assert r.status_code == 400 and seen == [], r.text
+    assert {k: r.json()["detail"][k] for k in ("error", "parameter")} == {
+        "error": "catalog_parameter_invalid", "parameter": "q"}
+    assert "executives" not in r.text
+    doc = {"identity": [{"q": "string", "title": "string"}], "output": {"a": "string"}, "scoping": ["q"]}
     assert C.parse_contracts({"contracts": {"y": {**doc, "carried_by": {"q": ["title"]}}}})["y"].carried_by == {
         "q": ("title",)}
     for bad in ({"title": ["q"]}, {"q": []}, {"q": ["nope"]}, {"q": ["q"]}, ["q"]):
@@ -2610,12 +2613,12 @@ def test_fill_target_is_the_limit_only_on_the_listed_key_set(body, target):
     "q", [], ["q"], [[]], [["nope"]], [[1]], {"q": True},
 ])
 def test_a_malformed_fill_limit_when_fails_the_load(raw):
-    base = {"identity": [{"q": "str"}], "filters": {"limit": {"type": "int"}},
-            "output": {"people": {"type": "list", "required": True}}}
+    base = {"identity": [{"q": "string"}], "filters": {"limit": {"type": "integer"}},
+            "output": {"people": {"type": "array", "required": True}}}
     assert parse_contracts({"contracts": {"y": {**base, "fill_limit_when": [["q"]]}}})["y"].fill_limit_when == (("q",),)
     with pytest.raises(ValueError, match="fill_limit_when"):
         parse_contracts({"contracts": {"y": {**base, "fill_limit_when": raw}}})
-    for broken in ({**base, "filters": {}}, {**base, "output": {"people": {"type": "str"}}}):
+    for broken in ({**base, "filters": {}}, {**base, "output": {"people": {"type": "string"}}}):
         with pytest.raises(ValueError, match="fill_limit_when"):
             parse_contracts({"contracts": {"y": {**broken, "fill_limit_when": [["q"]]}}})
 
@@ -3339,10 +3342,10 @@ def test_empty_output_uses_list_and_count_defaults_not_null():
     from treg.application.call.route import _empty_output
     from types import SimpleNamespace
     contract = SimpleNamespace(output={
-        "results": {"type": "list", "required": True},
-        "count": {"type": "int"},
-        "email": {"type": "str"},
-        "followers": {"type": "int"},
+        "results": {"type": "array", "required": True},
+        "count": {"type": "integer"},
+        "email": {"type": "string"},
+        "followers": {"type": "integer"},
     })
     assert _empty_output(contract) == {
         "results": [], "count": 0, "email": None, "followers": None,
@@ -3567,7 +3570,8 @@ async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_
     detail = r.json()["detail"]
     assert detail["error"] == "catalog_parameter_invalid"
     assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
-    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
+    assert detail["message"] == ("treg.people.search needs limit: a whole number from 1 to 100" if limit == 0 else
+                                 "treg.people.search: limit must be a whole number. Nothing was charged.")
     assert called == []
     r, called = await post(10)
     assert r.status_code == 200, r.text
@@ -3808,7 +3812,7 @@ def test_a_whole_request_miss_is_ranked_at_the_hold_the_routed_request_reserves(
             if cost.get("type") != "per_result" or cost.get("bills_miss") is not True or cost.get("miss_units"):
                 continue
             adapter = cat.adapters[eid]
-            ident = {k: (["alpha", "beta"] if contract.identity_types.get(k) == "list" else examples.get(k, "alpha"))
+            ident = {k: (["alpha", "beta"] if (contract.identity_specs.get(k) or {}).get("type") == "array" else examples.get(k, "alpha"))
                      for k in adapter.accepts[0]}
             if "limit" in (contract.filters or {}):
                 ident["limit"] = limit
@@ -3854,7 +3858,7 @@ def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     those children in miss_billed_by and never claims misses are free while one of them bills."""
     from treg.domain.catalog.routing import contracts as C, synthetic
 
-    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_specs={"q": {"type": "string"}},
                           derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
     ids = ("a.find", "b.find", "c.find")
     adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
@@ -3894,8 +3898,8 @@ def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
 def _suffix_contract(rule, **extra):
     from treg.domain.catalog.routing.contracts import parse_contracts
     return parse_contracts({"contracts": {"x.find": {
-        "identity": [{"full_name": "str", "domain": "str"}, {"linkedin_url": "url"}],
-        "output": {"email": {"type": "str"}}, "prefer_by_domain_suffix": rule, **extra}}})["x.find"]
+        "identity": [{"full_name": "string", "domain": "string"}, {"linkedin_url": {"type": "string", "format": "url"}}],
+        "output": {"email": {"type": "string"}}, "prefer_by_domain_suffix": rule, **extra}}})["x.find"]
 
 
 @pytest.mark.parametrize("domain, first", [
@@ -3914,7 +3918,7 @@ def test_a_suffix_rule_matches_whole_labels_at_the_end_of_the_domain(domain, fir
 def test_prefer_by_domain_suffix_takes_the_longest_suffix_then_the_contract_prefer():
     from treg.domain.catalog.routing.contracts import default_prefer, parse_contracts
     doc = {"contracts": {"x.find": {
-        "identity": [{"full_name": "str", "domain": "str"}], "output": {"email": {"type": "str"}},
+        "identity": [{"full_name": "string", "domain": "string"}], "output": {"email": {"type": "string"}},
         "prefer": ["tomba", "hunter"], "prefer_by_domain_suffix": {".uk": ["hunter"], "co.uk": ["enrow"]}}}}
     contract = parse_contracts(doc)["x.find"]
     assert default_prefer(contract, {"domain": "acme.co.uk"}) == ["enrow", "tomba", "hunter"]
@@ -3928,15 +3932,15 @@ def test_prefer_by_domain_suffix_takes_the_longest_suffix_then_the_contract_pref
 ])
 def test_a_malformed_prefer_by_domain_suffix_fails_the_load(rule):
     from treg.domain.catalog.routing.contracts import parse_contracts
-    doc = {"contracts": {"x.find": {"identity": [{"full_name": "str", "domain": "str"}],
-                                    "output": {"email": {"type": "str"}}, "prefer_by_domain_suffix": rule}}}
+    doc = {"contracts": {"x.find": {"identity": [{"full_name": "string", "domain": "string"}],
+                                    "output": {"email": {"type": "string"}}, "prefer_by_domain_suffix": rule}}}
     with pytest.raises(ValueError, match="prefer_by_domain_suffix"):
         parse_contracts(doc)
 
 
 def test_prefer_by_domain_suffix_needs_a_domain_identity():
     from treg.domain.catalog.routing.contracts import parse_contracts
-    doc = {"contracts": {"x.find": {"identity": [{"linkedin_url": "url"}], "output": {"email": {"type": "str"}},
+    doc = {"contracts": {"x.find": {"identity": [{"linkedin_url": {"type": "string", "format": "url"}}], "output": {"email": {"type": "string"}},
                                     "prefer_by_domain_suffix": {"fr": ["enrow"]}}}}
     with pytest.raises(ValueError, match="domain"):
         parse_contracts(doc)
@@ -4015,7 +4019,10 @@ async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients,
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 2}, seen))
     r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": value})
     get_settings.cache_clear()
-    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == [], r.text
+    assert r.status_code == 400 and seen == [], r.text
+    assert r.json()["detail"] | {"charged_micro": 0} == {
+        "error": "catalog_parameter_invalid", "endpoint_id": "treg.web.search", "parameter": "contents",
+        "message": "treg.web.search: contents must be true or false. Nothing was charged.", "charged_micro": 0}
 
 
 async def test_passages_asked_for_and_not_served_are_named_in_ignored_filters(clients, platform_on, monkeypatch):
@@ -4055,13 +4062,17 @@ async def test_a_request_without_the_flag_samples_providers_as_before(clients, p
     assert seen == {True, False}, "the sample split the questions both ways"
 
 
-def test_only_bool_filters_get_the_strict_flag_check():
-    """`ai_overview` is a bool identity key of google.serp.organic: a blank one is still not sent, as before."""
+def test_a_blank_flag_is_not_sent():
+    """A blank boolean, an identity key (`ai_overview`) or a filter (`contents`), is not sent, so
+    neither check refuses it; a string `"false"` is refused."""
+    from treg.domain.catalog import params
     from treg.domain.catalog.routing.contracts import invalid_identity
 
     cat = catalog_store.load()
     assert invalid_identity(cat.contracts["google.serp.organic"], {"q": "example", "ai_overview": ""}) == []
-    assert invalid_identity(cat.contracts["web.search"], {"q": "example", "contents": ""})[0]["type"] == "bool"
+    assert params.refusal(cat.contracts["google.serp.organic"].identity_specs["ai_overview"], "") is None
+    assert params.refusal(cat.contracts["web.search"].filters["contents"], "") is None
+    assert params.refusal(cat.contracts["web.search"].filters["contents"], "false") == "must be true or false"
 
 
 async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(clients, platform_on, monkeypatch):
@@ -4125,14 +4136,14 @@ def test_instagram_handles_reads_the_accounts_a_page_names():
 def test_fill_rows_fills_every_request_and_needs_a_list_output():
     from treg.domain.catalog.routing import contracts as C
 
-    doc = {"identity": [{"q": "str"}], "output": {"users": {"type": "list", "required": True}}, "miss": "users == []"}
+    doc = {"identity": [{"q": "string"}], "output": {"users": {"type": "array", "required": True}}, "miss": "users == []"}
     c = C.parse_contracts({"contracts": {"y": {**doc, "fill_rows": 25}}})["y"]
     assert c.fill_target({"q": "x"}) == 25
     for bad in (1, True, "25", 0):
         with pytest.raises(ValueError, match="fill_rows"):
             C.parse_contracts({"contracts": {"y": {**doc, "fill_rows": bad}}})
     with pytest.raises(ValueError, match="fill_rows"):
-        C.parse_contracts({"contracts": {"y": {**doc, "output": {"a": "str"}, "fill_rows": 25}}})
+        C.parse_contracts({"contracts": {"y": {**doc, "output": {"a": "string"}, "fill_rows": 25}}})
 
 
 @pytest.mark.parametrize("bio_rows, providers", [(10, ["scrapecreators", "exa"]), (25, ["scrapecreators"])])

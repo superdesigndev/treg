@@ -74,6 +74,7 @@ from ...domain.capacity.signatures import classify as classify_capacity, is_exha
 from ...domain import plugins
 from ...domain import money as ledger
 from ...domain.catalog import outcome as catalog_outcome
+from ...domain.catalog import params
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
@@ -91,7 +92,7 @@ from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _host_of, _marketplace_secret
+from .resolve import _anonymous_offer, _host_of, _marketplace_secret, _parameter_refused
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -909,8 +910,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
-    if contract:
-        _require_ranges(ep, contract.filters, given)
+    for name, spec in ({**contract.identity_specs, **contract.filters}.items() if contract else ()):
+        if name in given and (reason := params.refusal(spec, given[name])):
+            raise _parameter_refused(ep, name, reason)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()

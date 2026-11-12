@@ -297,12 +297,25 @@ A `retired`/`broken` tombstone is refused with 410, its `status_note` and option
 `superseded_by`, before credentials are selected (audited `refused_by=retired`). An org's own tool
 named like the old id already resolved above and is not shadowed.
 
-`strict_query` rows (`_enforce_catalog_query`) reject bodies, undeclared or duplicate query
-parameters, missing required inputs and unsupported enum values; declared path placeholders pass
-and are consumed. `body_allowlist` rows (`_enforce_catalog_body`) reject undeclared top-level JSON
-fields, missing required fields, invalid declared scalars and arrays outside their declared
-cardinality or item enum (an array of objects may require all or any named item fields; an omitted
-optional array is allowed). Both apply on every tier and never to raw own-tool relays.
+### Catalog request checks
+
+Every declared parameter a catalog call sends meets its declaration, on every tier and before
+anything is held or relayed: `_enforce_declared_query` reads each query and path value, and
+`_enforce_catalog_body` each top-level body field (a dotted name reads the nested value; a JSON
+array body is read task by task, a form body as strings), both through `catalog.params.refusal`
+([catalog schema](catalog-schema.md#parameter-types)). A value outside its type, enum or range is a
+400 `catalog_parameter_invalid` naming the parameter (`queryParams.limit`, `body.urls`,
+`body.0.limit` in a task array) and the declared rule, never the value. An undeclared parameter is
+relayed as sent, and a body that does not parse or repeats a JSON field is left for the provider (and
+treg's key refuses a repeat later). The routed road reads the same function
+([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)).
+
+Two opt-in row flags narrow a tool to its advertised surface. `strict_query` rows
+(`_enforce_catalog_query`) reject bodies, undeclared or duplicate query parameters and missing
+required inputs; declared path placeholders pass and are consumed. `strict_body` and
+`body_allowlist` rows require one JSON object body, and `body_allowlist` rows also reject undeclared
+top-level fields and missing required ones (an array of objects may require all or any named item
+fields). All of these apply on every tier and never to raw own-tool relays.
 
 ### Authorization and deny rules
 
@@ -367,7 +380,9 @@ the [call-time SSRF guard](#call-time-ssrf-guard) with its address-space list.
 
 A `kind: routed` row (`treg.<capability>`, [catalog](catalog.md) § Routing) never reaches the
 credential ladder itself. `service._execute_call` hands it to `application/call/route.py`, which
-runs each child endpoint through this same use case as a child `CallContext` (`call_ref`
+first holds each identity and filter field the caller sent to its contract spec (`catalog.params`,
+after `invalid_identity` reads `format: url` fields; a 400 `catalog_parameter_invalid` naming the
+field before any child is planned or held), then runs each child endpoint through this same use case as a child `CallContext` (`call_ref`
 `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
 `deferred_settles` and leaves its hold open; a child that is not billable or settles at a

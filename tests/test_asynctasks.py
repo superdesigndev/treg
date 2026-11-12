@@ -785,9 +785,11 @@ async def test_platform_model_selector_rejects_duplicate_json_keys(
     assert "repeats JSON field" in response.json()["detail"]
 
 
-async def test_byok_openrouter_remains_a_faithful_relay_for_model_choice(
+async def test_byok_openrouter_keeps_the_rows_declared_model(
     clients: AsyncClient, monkeypatch, openrouter_platform,
 ):
+    """A row's declared model enum holds on the team's own key too: another model is refused before
+    the relay, and the row's own model is relayed as sent."""
     await clients.post("/secrets", json={"name": "openrouter", "value": "own-token"})
     relayed = []
 
@@ -798,7 +800,11 @@ async def test_byok_openrouter_remains_a_faithful_relay_for_model_choice(
     monkeypatch.setattr(call_service, "relay", fake_relay)
     response = await clients.post("/call/openrouter.x.google-veo-3-1-lite", json={
         "model": "black-forest-labs/flux-3-video", "prompt": "A paper boat."})
-    assert response.status_code == 201 and relayed == [True]
+    assert response.status_code == 400 and relayed == [], response.text
+    assert response.json()["detail"]["parameter"] == "body.model"
+    response = await clients.post("/call/openrouter.x.google-veo-3-1-lite", json={
+        "model": "google/veo-3.1-lite", "prompt": "A paper boat."})
+    assert response.status_code == 201 and relayed == [True], response.text
     async with session_maker() as db:
         assert (await db.execute(select(AsyncTaskRecord))).scalars().all() == []
 
