@@ -970,9 +970,9 @@ adapters:
     # `summary` length; the place rides in the passage query, so the lines that name it come back.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
-    # A title and place the caller sent beside `q` ride in the text too (`phrase` skips what q
-    # already says, or what q was built from), so the search keeps the caller's role and place.
-    in_expr: {body.query: "join(phrase(q, title, location, country_name(country)), company_domain, csv(keywords))", body.numResults: limit,
+    # A title, place and company the caller sent beside `q` ride in the text too (`phrase` skips
+    # what q already says, or what q was built from), so the search keeps the caller's role and place.
+    in_expr: {body.query: "join(phrase(q, title, location, country_name(country), company_domain), csv(keywords))", body.numResults: limit,
               body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
     out: {people: results, count: "len(results)"}
@@ -988,7 +988,7 @@ adapters:
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
-    in_expr: {body.objective: "join(q, company_domain, csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
+    in_expr: {body.objective: "join(phrase(q, company_domain), csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
     const: {body.entity_type: people}
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"

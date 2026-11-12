@@ -393,11 +393,9 @@ contracts:
     # {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
     scoping: [company_domain, title, full_name, q]
     carried_by: {q: [title]}
-    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
-    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
-    # those adapters append them to q themselves. No domain: they fold a domain into a q the
-    # caller wrote, but a {company_domain} or {company_domain, title} request still skips them.
-    stand_in: {q: "join(full_name, title, location)"}
+    # exa and parallel take only {q}: a sentence from the caller's fields lets them answer the rest.
+    stand_in: {q: "people_text(full_name, title, company_domain, location, country_name(country))"}
+    stand_in_carries: {q: [full_name, title, company_domain, location, country]}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}

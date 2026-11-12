@@ -90,10 +90,38 @@ def phrase(*parts: Any) -> str | None:
     for p in parts:
         if not (isinstance(p, str) and p.strip()):
             continue
-        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
-        if not said:
+        if not _says(" ".join(words), p.strip()):
             words.append(p.strip())
     return " ".join(words) if words else None
+
+
+def _says(text: str, part: str) -> bool:
+    """Whether `text` holds `part` as whole words, case-insensitive. A domain ('example.com') is
+    whole only as the entire host: 'example.com.au' and 'sub.example.com' do not say it."""
+    if re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", part):
+        pattern = rf"(?<![\w.-]){re.escape(part)}(?![\w-]|\.[\w-])"
+    else:
+        pattern = rf"(?<!\w){re.escape(part)}(?!\w)"
+    return re.search(pattern, text, re.IGNORECASE) is not None
+
+
+def people_text(full_name: Any, title: Any, company_domain: Any, location: Any, country: Any) -> str | None:
+    """`people_text('Jane Doe', 'CTO', 'stripe.com', 'Dublin', 'Ireland')` → "Jane Doe, CTO at
+    stripe.com in Dublin, Ireland": who (the name, the title, both, or "people" when only the
+    company is known), at the company, in the place, as a profile search reads a brief. The country
+    follows the location unless the location already says it. A title listing several roles stays
+    as written. None when it names no person, role or company; a part not a string is left out."""
+    said = lambda v: v.strip() if isinstance(v, str) and v.strip() else None  # noqa: E731
+    name, role, domain = said(full_name), said(title), said(company_domain)
+    if not (name or role or domain):
+        return None
+    text = ", ".join(w for w in (name, role) if w) or "people"
+    if domain:
+        text += f" at {domain}"
+    where = said(location)
+    if (land := said(country)) and not (where and _says(where, land)):
+        where = f"{where}, {land}" if where else land
+    return f"{text} in {where}" if where else text
 
 
 def place(*parts: Any) -> str | None:
@@ -653,7 +681,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,

@@ -1221,17 +1221,27 @@ an invalid extra never disables the primary.
   `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
   `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
 - **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
-  identity key to an expression over the identity and filters (people.search:
-  `q = join(full_name, title, location)`). `adapter_accepts` tries the caller's own fields first and
-  builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
-  can answer a `{title}` request while every other provider's request is unchanged. The stand-in
-  never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
-  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard.
-  exa and parallel fold `company_domain` into the query text (`join(q, company_domain, …)`), and
+  identity key to an expression over the identity and filters. people.search builds `q` as a
+  sentence (`people_text`): who (name, title, both, or "people"), "at <domain>", "in <location>,
+  <country's name>" (the country left out when the location says it), so "Head of Tax at
+  stripe.com in Ireland" or "people at stripe.com".
+  `adapter_accepts` tries the caller's own fields first and builds the stand-in only when an
+  adapter accepts none of them, so exa and parallel (`{q}` only) can answer a `{title}`,
+  `{company_domain}` or `{company_domain, title}` request while every other provider's request is
+  unchanged. The stand-in never enters the plan's identity; `to_upstream` fills it for the matched
+  variant. The contract's `stand_in_carries` names the identity keys and filters the stand-in's
+  text may hold; `unscoped` counts one as sent and `ignored_filters` as used only when the text
+  says it: leaving it out changes the text, alone or beside one other key (a country the location
+  already names is said; a list, or a country code with no name, is not, so strict filters still
+  drop the provider). A key the expression reads but `stand_in_carries` leaves out
+  keeps its scoping guard, and the loader refuses a carried key the expression does not read.
+  A stand-in covers none of the caller's keys in `rank`'s specificity, so its provider follows
+  every provider that takes the caller's fields and enters earlier only through `prefer`,
+  `prefer_when`, the prefer header or a route rule. exa and parallel also fold `company_domain`
+  into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
+  said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
-  that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
-  builds from the title, still skips them. The stand-in key itself always counts as sent, and a
-  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key, typed
+  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
   `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
