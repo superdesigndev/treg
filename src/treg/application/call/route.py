@@ -446,12 +446,12 @@ def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
     in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
     refused before anything is planned or held."""
     for name, spec in (filters or {}).items():
-        if "max" not in (spec or {}):
+        if "min" not in (spec or {}):
             continue
         value = (given or {}).get(name)
-        if value not in (None, "") and not call_cost._whole(value, spec["max"], spec["min"]):
-            raise call_cost._invalid(ep, f"body.{name}",
-                                     f"{ep['id']} needs {name}: a whole number from {spec['min']} to {spec['max']}")
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
 
 
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:

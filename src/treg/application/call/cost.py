@@ -118,11 +118,15 @@ def _rows(rule: dict, request: dict) -> int | None:
     return int(rule["default"]["value"]) if rule.get("default") else None
 
 
-def _whole(value: object, top: int, low: int = 1) -> bool:
-    """A count parameter's value is a whole number from `low` to `top`: a JSON integer, or ASCII digits."""
+def _whole(value: object, top: int | None, low: int = 1) -> bool:
+    """A count parameter's value is a whole number from `low` to `top`, or of at least `low` when `top`
+    is None: a JSON integer, or ASCII digits."""
     if isinstance(value, str) and value.isascii() and value.isdigit():
-        return len(value.lstrip("0")) <= len(str(top)) and low <= int(value.lstrip("0") or "0") <= top
-    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= top
+        digits = value.lstrip("0")
+        if len(digits) > len(str(low if top is None else top)):
+            return top is None
+        value = int(digits or "0")
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value and (top is None or value <= top)
 
 
 def _invalid(ep: dict, parameter: str, message: str) -> ResolutionFailed:

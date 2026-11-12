@@ -45,7 +45,7 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                                                                   if k in contract.identity_notes else []))})
     for k, spec in (contract.filters or {}).items():
         body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
-                            **({"min": spec["min"], "max": spec["max"]} if "max" in (spec or {}) else {}),
+                            **{b: spec[b] for b in ("min", "max") if b in (spec or {})},
                             "note": "; ".join(["filter"]
                                               + ([f"default {spec['default']!r}"] if (spec or {}).get("default") is not None else [])
                                               + ([spec["note"]] if (spec or {}).get("note") else []))})
