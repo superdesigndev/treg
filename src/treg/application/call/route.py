@@ -72,6 +72,7 @@ from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
 from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
+from ...domain import money as ledger
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
@@ -177,6 +178,14 @@ MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
+
+
+def _over_ceiling(held: int | None, remaining: int) -> str:
+    """The skip note for a child its own reserve refused: the hold that did not fit (the adapted
+    request's price with margin) and the ceiling left, so a caller can size the ceiling."""
+    if not isinstance(held, int):
+        return "would exceed max cost"
+    return f"would exceed max cost: would hold ${ledger.usd(held):g}, ${ledger.usd(max(0, remaining)):g} left"
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -439,6 +448,19 @@ def _above(value: object, cap: int) -> bool:
         digits = value.lstrip("0")
         return len(digits) > len(str(cap)) or int(digits or "0") > cap
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
+def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
+    """A routed call's own filter that declares a range is, when the caller sends it, a whole number
+    in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
+    refused before anything is planned or held."""
+    for name, spec in (filters or {}).items():
+        if "min" not in (spec or {}):
+            continue
+        value = (given or {}).get(name)
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
 
 
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
@@ -887,6 +909,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    if contract:
+        _require_ranges(ep, contract.filters, given)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
@@ -997,8 +1021,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         except CallFailure as exc:
             _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
+                held = (exc.detail or {}).get("estimated_cost_micro") if isinstance(exc.detail, dict) else None
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
-                                     "would exceed max cost"))
+                                     _over_ceiling(held, (options.max_cost_micro or 0) - spent)))
                 cost_capped = True
                 continue
             if exc.kind == "org_endpoint_quota_exceeded":
@@ -1334,7 +1359,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                   **({"verification": _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
                                   **({"dropped": plan.dropped} if plan.dropped else {})}}
-            _summarize(parent, hit=False, tried_count=len(tried))
+            # The event reads the empty answer the caller got, so its counts say 0 rather than
+            # nothing (`rows: 0` on a people search that found no one).
+            _summarize(parent, hit=False, tried_count=len(tried), output=body_out["output"])
             _audit_parent(parent, ep, 200, spent, audit_client)
             headers = {"X-Treg-Providers-Tried": ",".join(t.provider for t in tried), "X-Treg-Route-Outcome": "miss",
                        **({"X-Treg-Route-Capped": "true"} if cost_capped else {})}
@@ -1459,7 +1486,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"ignored_filters": ignored} if ignored else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
-    _summarize(parent, served_by=served, tried_count=len(tried), output=output,
+    _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)

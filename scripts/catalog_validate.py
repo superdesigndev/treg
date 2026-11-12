@@ -542,30 +542,6 @@ def check_cost_settle_count(cost: dict, example: object, where: str, errors: lis
         fail(errors, where, f"cost.settle.count.path '{count['path']}' is not a list in the example_response")
 
 
-TAVILY_RATE_KEYS = {
-    "tavily.web.search": {"basic", "fast", "ultra_fast", "advanced"},
-    "tavily.web.extract": {"basic", "advanced"},
-    "tavily.web.map": {"regular", "instructions"},
-    "tavily.web.crawl": {
-        "basic", "basic_instructions", "advanced", "advanced_instructions",
-    },
-}
-
-
-def check_tavily_rates(endpoint_id: str, cost: dict, where: str,
-                        errors: list[str]) -> None:
-    """Tavily's provider-specific formulas require a complete positive finite mode table."""
-    expected = TAVILY_RATE_KEYS.get(endpoint_id)
-    if expected is None:
-        return
-    rates = cost.get("tavily_rates")
-    if not isinstance(rates, dict) or set(rates) != expected:
-        fail(errors, where, "cost.tavily_rates must contain exactly " + ", ".join(sorted(expected)))
-        return
-    if any(not _finite_number(value) or value <= 0 for value in rates.values()):
-        fail(errors, where, "cost.tavily_rates values must be positive finite numbers")
-
-
 OCTEN_RATE_KEYS = {
     "octen.web.search": {"call", "full_content_extra"},
     "octen.web.search.broad": {"subquery", "full_content_extra"},
@@ -659,8 +635,10 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
 
 
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
-                     provider: str | None = None) -> None:
-    """Validate a first-match AIGC price table and its explicit reserve upper bound."""
+                     provider: str | None = None, *, needs_default: bool = True) -> None:
+    """Validate a first-match AIGC price table and its explicit reserve upper bound. A v2 table
+    (`needs_default=False`) may compare an optional field without a default: an equality on an
+    absent field does not hold, so a later row or the fallback prices that request."""
     table = cost.get("table")
     if not isinstance(table, list) or not table:
         fail(errors, where, "cost.table must be a non-empty list")
@@ -689,7 +667,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
                 spec = fields.get(str(field))
                 if spec is None:
                     fail(errors, rwhere, f"when field '{field}' is not declared in input")
-                elif spec.get("required") is not True and "default" not in spec:
+                elif needs_default and spec.get("required") is not True and "default" not in spec:
                     fail(errors, rwhere, f"when field '{field}' must be required or declare a default")
                 elif isinstance(expected, (dict, list)) or expected is None:
                     fail(errors, rwhere, f"when field '{field}' must compare a scalar value")
@@ -1577,7 +1555,8 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         return
     view = schema.served(row, inp)["cost"]
     if "table" in view:
-        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider)
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider,
+                         needs_default=False)
         return
     for index, entry in enumerate(price.table):
         for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):
@@ -1830,8 +1809,6 @@ def main(argv: list[str]) -> int:
                     elif ("reserve" not in cost and eid not in UNDECLARED_RESERVE
                           and cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS):
                         fail(errors, where, "a per_result price in an entity unit needs cost.reserve")
-                    if service == "tavily":
-                        check_tavily_rates(eid, cost, where, errors)
                     if service == "octen":
                         check_octen_rates(eid, cost, where, errors)
                     if service == "enrichlayer":

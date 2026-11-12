@@ -16,6 +16,7 @@ from ... import plugins
 from .. import outcome
 from ..schema.v2 import is_v2
 from . import paths as P
+from .segments import SEGMENTERS
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
 
@@ -152,9 +153,17 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+    # Stand-in key -> the caller's identity keys and filters its text carries (`q`: [title,
+    # company_domain, country]). A provider sent the stand-in counts as sending these, so scoping
+    # keeps it and the filters are not ignored. A key the expression reads but this leaves out
+    # keeps its scoping guard.
+    stand_in_carries: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # Identity key -> what to put in it, shown to the caller beside the key (`q`: describe the
     # person in words). Without one a key reads only "identity", and an agent guesses its shape.
     identity_notes: dict[str, str] = field(default_factory=dict)
+    # The segment set (`segments.SEGMENTERS`) whose categories of the request a call event records
+    # in `input_meta` and a route rule may match on. Empty = none.
+    segments: str = ""
 
     def prefer_for(self, given, org_id: int | None = None) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity and filter keys `given`."""
@@ -377,7 +386,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when", "fill_limit_when", "identity_notes"})
+    "stand_in_carries",    "prefer_when", "fill_limit_when", "identity_notes", "segments"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -444,6 +453,12 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                     # must fail loudly, never quietly emit an identifier as a plain value.
                     raise ValueError(f"contract {cap}: {section}.{k} analytics must be key, value or skip "
                                      f"(filters: value or skip), got {mode!r}")
+        for k, spec in (c.get("filters") or {}).items():
+            if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
+                    spec.get("type") != "int" or type(spec.get("min")) is not int or spec["min"] < 1
+                    or ("max" in spec and (type(spec["max"]) is not int or spec["max"] < spec["min"]))):
+                raise ValueError(f"contract {cap}: filters.{k} range needs type int, a whole min of at least 1 "
+                                 f"and, when declared, a whole max of at least min, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
             identity_types=types, derive=dict(c.get("derive") or {}),
@@ -468,10 +483,21 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
             stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
+            stand_in_carries=_parse_stand_in_carries(cap, c.get("stand_in_carries"), c.get("stand_in") or {},
+                                                     {*types, *(c.get("filters") or {})}),
             identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
+            segments=_parse_segments(cap, c.get("segments")),
             **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
     return out
+
+
+def _parse_segments(cap: str, raw) -> str:
+    if raw is None:
+        return ""
+    if raw not in SEGMENTERS:
+        raise ValueError(f"contract {cap}: segments names one of {sorted(SEGMENTERS)}, got {raw!r}")
+    return raw
 
 
 def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]:
@@ -508,6 +534,18 @@ def _parse_carried_by(cap: str, raw, types: dict, scoping: list) -> dict[str, tu
             or any(k not in scoping or not isinstance(v, list) or not v or any(x not in types or x == k for x in v)
                    for k, v in raw.items())):
         raise ValueError(f"contract {cap}: carried_by maps scoping keys to other identity keys, got {raw!r}")
+    return {k: tuple(v) for k, v in raw.items()}
+
+
+def _parse_stand_in_carries(cap: str, raw, stand_in: dict, keys: set) -> dict[str, tuple[str, ...]]:
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not raw
+            or any(k not in stand_in or not isinstance(v, list) or not v
+                   or any(x not in keys or x == k or not re.search(rf"\b{re.escape(str(x))}\b", stand_in[k]) for x in v)
+                   for k, v in raw.items())):
+        raise ValueError(f"contract {cap}: stand_in_carries maps stand_in keys to the identity keys and "
+                         f"filters their expression reads, got {raw!r}")
     return {k: tuple(v) for k, v in raw.items()}
 
 

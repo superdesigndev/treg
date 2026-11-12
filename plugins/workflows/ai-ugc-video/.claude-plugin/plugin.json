@@ -1,0 +1,13 @@
+{
+  "name": "ai-ugc-video",
+  "version": "0.30.0",
+  "description": "\"Make realistic AI UGC videos cheaply: viral research, locked assets, scripts, Seedance/Avatar IV generation, and final edit. Use for AI UGC ads, talking-head videos, or AIGC short films.\"",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0"
+}

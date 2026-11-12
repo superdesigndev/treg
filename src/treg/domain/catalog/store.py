@@ -505,7 +505,7 @@ def _parse(directory: Path) -> Catalog:
                 kept = {k: v for k, v in raw.items() if k not in schema.v2.RESOLVED_KEYS}
                 ep = {**_normalize(kept, provider, directory), "tier": doc_tier[path]}
                 ep.update(schema.served(row, ep["input"]))
-                if (floor := _table_floor(ep["cost"], ep["input"])) is not None:
+                if (floor := _table_floor(schema.v2.floor_rows(ep["price"], ep["input"]), ep["input"])) is not None:
                     ep["cost"]["table_min"] = floor
                 if (span := _table_rate(ep["cost"])) is not None:
                     ep["cost"].update(table_rate=list(span[:2]), table_rate_unit=span[2])

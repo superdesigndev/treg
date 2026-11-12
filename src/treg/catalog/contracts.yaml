@@ -385,7 +385,7 @@ contracts:
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
-      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
+      limit: {type: int, default: 10, min: 1, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     # A child that cannot send one of these answers a different question. A `q` counts only when the
@@ -393,11 +393,9 @@ contracts:
     # {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
     scoping: [company_domain, title, full_name, q]
     carried_by: {q: [title]}
-    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
-    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
-    # those adapters append them to q themselves. No domain: they fold a domain into a q the
-    # caller wrote, but a {company_domain} or {company_domain, title} request still skips them.
-    stand_in: {q: "join(full_name, title, location)"}
+    # exa and parallel take only {q}: a sentence from the caller's fields lets them answer the rest.
+    stand_in: {q: "people_text(full_name, title, company_domain, location, country_name(country))"}
+    stand_in_carries: {q: [full_name, title, company_domain, location, country]}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
@@ -444,6 +442,9 @@ contracts:
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
+    # Categories of the request (title class, function, seniority, country spelling, limit) that
+    # call events record and route rules may match on; never the title or query itself.
+    segments: people_search
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
@@ -1482,7 +1483,7 @@ contracts:
       - {url: url}
       - {url: url, q: str}
     filters:
-      limit: {type: int, default: 10, note: "maximum discovered URLs"}
+      limit: {type: int, default: 10, min: 1, note: "maximum discovered URLs"}
     output:
       results: {type: list, required: true, note: "URL strings or provider-native URL objects; raw is the same body"}
       count: {type: int}

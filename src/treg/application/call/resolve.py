@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from email import policy
 from email.parser import BytesParser
@@ -686,25 +685,9 @@ _OPENMART_LOOKUP_ENDPOINTS = frozenset({
 })
 _OPENMART_PLATFORM_MAX_RECORDS = 25
 
-_TAVILY_ENDPOINTS = frozenset({
-    "tavily.web.search",
-    "tavily.web.extract",
-    "tavily.web.map",
-    "tavily.web.crawl",
-})
 _OCTEN_ENDPOINTS = frozenset({
     "octen.web.search", "octen.web.search.broad", "octen.web.search.news", "octen.web.extract",
 })
-_TAVILY_BOUNDED_SITE_ENDPOINTS = frozenset({"tavily.web.map", "tavily.web.crawl"})
-_TAVILY_PLATFORM_MAX_RESULTS = 20
-_TAVILY_RATE_KEYS = {
-    "tavily.web.search": frozenset({"basic", "fast", "ultra_fast", "advanced"}),
-    "tavily.web.extract": frozenset({"basic", "advanced"}),
-    "tavily.web.map": frozenset({"regular", "instructions"}),
-    "tavily.web.crawl": frozenset({
-        "basic", "basic_instructions", "advanced", "advanced_instructions",
-    }),
-}
 
 
 def _openmart_credits(records: int) -> int:
@@ -730,80 +713,6 @@ def _openmart_requested_records(endpoint_id: str, body: bytes) -> int | None:
     else:
         value = document.get("limit")
     return value if type(value) is int else None
-
-
-def _tavily_rate_credits(endpoint_id: str, cost: dict, name: str) -> float:
-    """Read a complete positive Tavily rate set, or refuse the call before reserve/relay."""
-    rates = cost.get("tavily_rates")
-    expected = _TAVILY_RATE_KEYS[endpoint_id]
-    valid = (
-        isinstance(rates, dict)
-        and set(rates) == expected
-        and all(
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(float(value))
-            and value > 0
-            for value in rates.values()
-        )
-    )
-    if not valid:
-        raise ResolutionFailed(
-            "catalog_price_invalid", status_code=503, detail={
-                "error": "catalog_price_invalid",
-                "endpoint_id": endpoint_id,
-                "message": "Tavily pricing is unavailable because its catalog rates are invalid",
-            },
-        )
-    return float(rates[name])
-
-
-def _tavily_pricing(endpoint_id: str, cost: dict, body: bytes) -> tuple[int, int]:
-    """Return Tavily's bounded hold and frozen response unit without rewriting the request."""
-    rate = catalog_store.load().credit_rates.get("tavily")
-    if (not isinstance(rate, (int, float)) or isinstance(rate, bool)
-            or not math.isfinite(float(rate)) or rate <= 0):
-        raise ResolutionFailed(
-            "catalog_price_invalid", status_code=503, detail={
-                "error": "catalog_price_invalid",
-                "endpoint_id": endpoint_id,
-                "message": "Tavily pricing is unavailable because its credit rate is invalid",
-            },
-        )
-    credit_micro = _usd_to_micro(float(rate))
-    document = _json_object(body)
-    if endpoint_id == "tavily.web.search":
-        depth = document.get("search_depth")
-        if depth == "advanced":
-            credits = _tavily_rate_credits(endpoint_id, cost, "advanced")
-        elif depth in ("basic", "fast", "ultra-fast"):
-            # An explicit depth overrides auto_parameters, including explicit basic.
-            credits = _tavily_rate_credits(endpoint_id, cost, str(depth).replace("-", "_"))
-        elif document.get("auto_parameters") is True:
-            credits = _tavily_rate_credits(endpoint_id, cost, "advanced")
-        else:
-            credits = _tavily_rate_credits(endpoint_id, cost, "basic")
-        return _usd_to_micro(float(rate) * credits), credit_micro
-
-    instructions = document.get("instructions")
-    instructed = isinstance(instructions, str) and bool(instructions.strip())
-    if endpoint_id == "tavily.web.extract":
-        requested = document.get("urls")
-        count = len(requested) if isinstance(requested, list) and requested else _TAVILY_PLATFORM_MAX_RESULTS
-        count = min(count, _TAVILY_PLATFORM_MAX_RESULTS)
-        mode = "advanced" if document.get("extract_depth") == "advanced" else "basic"
-    else:
-        limit = document.get("limit")
-        count = limit if type(limit) is int and 1 <= limit <= _TAVILY_PLATFORM_MAX_RESULTS \
-            else _TAVILY_PLATFORM_MAX_RESULTS
-        if endpoint_id == "tavily.web.map":
-            mode = "instructions" if instructed else "regular"
-        else:
-            depth = "advanced" if document.get("extract_depth") == "advanced" else "basic"
-            mode = f"{depth}_instructions" if instructed else depth
-    per_result_micro = _usd_to_micro(
-        float(rate) * _tavily_rate_credits(endpoint_id, cost, mode))
-    return count * per_result_micro, per_result_micro
 
 
 def _json_object(body: bytes) -> dict:
@@ -901,8 +810,6 @@ def _marketplace_pricing(
         return enrichlayer.estimate_micro(endpoint_id, cost, query_values, credit)
     if not cost:
         return 0, 0
-    if provider == "tavily" and endpoint_id in _TAVILY_ENDPOINTS:
-        return _tavily_pricing(endpoint_id, cost, body)
     if provider == "openmart" and endpoint_id in _OPENMART_METERED_ENDPOINTS:
         rate = catalog_store.load().credit_rates.get("openmart")
         if rate:
@@ -1795,23 +1702,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "tavily" and ep.get("id") in _TAVILY_BOUNDED_SITE_ENDPOINTS:
-        document = _request_body_document(ep, body, headers)
-        limit = document.get("limit")
-        if type(limit) is not int or not 1 <= limit <= _TAVILY_PLATFORM_MAX_RESULTS:
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
-                    "error": "catalog_parameter_invalid",
-                    "endpoint_id": ep["id"],
-                    "parameter": "body.limit",
-                    "expected": "an integer from 1 to 20",
-                    "message": (
-                        "Tavily platform Map and Crawl calls require an explicit integer limit "
-                        "from 1 to 20; connect your own key for the upstream range"
-                    ),
-                },
-            )
-
     if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
         _enforce_apify_run_options(ep, query)
 
@@ -2289,17 +2179,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     )
     # A table computes the request-specific hold even when the response's generic reported charge
     # will decide settlement. Do not leave `estimate_micro` at the table's fallback ceiling.
-    if service != "tavily" and (raw_cost.get("table")
-                                or basis.get("amount", {}).get("kind") == "usage"):
+    if raw_cost.get("table") or basis.get("amount", {}).get("kind") == "usage":
         info_est = int(basis["reserve_micro"])
-    if service == "tavily" and ep["id"] in _TAVILY_ENDPOINTS:
-        # Tavily's synchronous formulas are provider-specific response evidence. Search reports
-        # this request's credits; Extract/Map/Crawl settle from this request's returned successes.
-        # In every case the provider-specific request calculation above is the safe fallback hold.
-        basis = {
-            "when": "response", "amount": {"kind": "observed"},
-            "fallback_micro": info_est, "reserve_micro": info_est,
-        }
     if service == "octen" and ep["id"] in _OCTEN_ENDPOINTS:
         basis = {
             "when": "response", "amount": {"kind": "observed"},
