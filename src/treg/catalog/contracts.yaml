@@ -1425,7 +1425,7 @@ contracts:
       - {q: str}
     filters:
       limit: {type: int, default: 10, note: "maximum results, where the provider accepts one"}
-      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents"}
+      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents", analytics: value}
     output:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
