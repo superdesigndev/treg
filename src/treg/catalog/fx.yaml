@@ -27,6 +27,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  asin: {usd: 0.0003, basis: "Entry plan (Starter): $9 a month for 30,000 credits = $0.0003 per credit; search, history and known offers are free, a fresh offers read is 1 credit", source: "https://www.asin.dev/pricing", checked: "2026-11-09"}
   orbisearch: {usd: 0.0062, basis: "Purchased 10,000 credits for $62 = $0.0062 per credit; 0.2 credits per verification and one per finder search or company enrichment", source: "Account owner supplied purchase and https://orbisearch.com/docs/concepts/credits", checked: "2026-10-28"}
   dropcontact: {usd: 0.034, basis: "Operator-supplied Growth tier: EUR 120 / 4,000 credits = EUR 0.03 per credit, converted at EUR 1 = USD 1.1150 to USD 0.03345 and rounded up to USD 0.034. Unused credits increase effective cost; carry-over can offset that", source: "Operator-supplied plan and https://www.dropcontact.com/pricing and https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml", checked: "2026-10-28"}
   anymailfinder: {usd: 0.020, basis: "Operator-supplied 10,000-credit monthly plan: $199 / 10,000 credits = $0.0199 per credit, rounded up to $0.020 platform replacement cost", source: "Operator-supplied plan and https://anymailfinder.com/pricing", checked: "2026-10-28"}

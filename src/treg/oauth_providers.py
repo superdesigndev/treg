@@ -4273,6 +4273,31 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+ASIN = OAuthProvider(
+    service="asin",
+    display_name="Asin",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="asin_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.asin.dev/app",
+    setup_action_label="Get your Asin API key",
+    setup_steps=(
+        "Sign in to Asin and create an API key in your dashboard (it starts with asin_).",
+        "Copy your API key.",
+    ),
+    setup_note="Search, history and known offers are free; reading offers from Amazon spends 1 credit; the account check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Search Amazon, read a product's sellers and prices, and get its price history by ASIN.",
+    base_url="https://www.asin.dev/api/v1",
+    docs_url="https://www.asin.dev/docs",
+    probe_path="/account",  # free; an invalid key gets 401 {"error": {"code": "unauthorized", ...}}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4291,6 +4316,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        ASIN,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,

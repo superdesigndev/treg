@@ -53,6 +53,9 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    # Asin: an empty balance is a 402 {"error": {"code": "insufficient_credits", ...}}; an account whose
+    # email is unconfirmed has no credits and answers 402 {"error": {"code": "email_not_verified", ...}}.
+    Signature("asin", 402, r"insufficient_credits|email_not_verified", "balance"),
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("filtrat-finder", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),

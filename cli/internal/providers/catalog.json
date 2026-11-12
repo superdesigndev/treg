@@ -1,5 +1,5 @@
 {
- "version": 27,
+ "version": 28,
  "providers": [
   {
    "provider": "Google Ads",
@@ -1174,6 +1174,17 @@
     "shape": "api_key_header",
     "header": "X-API-KEY"
    }
+  },
+  {
+   "provider": "Asin",
+   "tokens": [
+    "ASIN"
+   ],
+   "base_url": "https://www.asin.dev/api/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "account"
   },
   {
    "provider": "SerpAPI",

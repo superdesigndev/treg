@@ -1072,6 +1072,16 @@ async def _piapi(c, key):
             "note": "equivalent_in_usd from account info"}
 
 
+async def _asin(c, key):
+    d = await _get(c, "https://www.asin.dev/api/v1/account", headers={"Authorization": f"Bearer {key}"})
+    remaining = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if remaining is None or remaining < 0:
+        raise ValueError("Asin returned no valid remaining-credit balance")
+    return {"value": remaining, "unit": "credits",
+            "note": f"plan {d.get('plan_name') or d.get('plan') or '?'}; tracked products use "
+                    f"{d.get('monthly_credits', '?')} credits a month"}
+
+
 BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
@@ -1151,6 +1161,7 @@ BALANCE_ROUTES = {
     "apify": _apify,
     "serpstat": _serpstat,
     "thecompaniesapi": _thecompaniesapi,
+    "asin": _asin,
 }
 
 # Verified to publish NO free standalone balance/credits API. Some are dashboard-only; Scrubby
