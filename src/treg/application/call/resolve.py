@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from email import policy
 from email.parser import BytesParser
@@ -36,6 +37,8 @@ from . import cost as call_cost
 from . import keyslots
 from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
+
+_param_log = logging.getLogger("treg.param_check")
 
 
 AUTHORIZATION_METHOD_HEADER = "X-Treg-Authorization-Method"
@@ -1286,7 +1289,10 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
     values: dict[str, str] = {}
     invalid = has_body
     for name, value in query.multi_items():
-        if name in values or not isinstance(fields.get(name), dict):
+        spec = fields.get(name)
+        if name in values or not isinstance(spec, dict):
+            invalid = True
+        elif spec.get("enum") is not None and value not in [params.wire(e) for e in spec["enum"]]:
             invalid = True
         values[name] = value
     if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
@@ -1295,7 +1301,7 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400,
             detail={"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                    "message": "Use only the declared query parameters, once each; "
+                    "message": "Use only the declared query parameters and allowed values, once each; "
                                "include required parameters and omit the request body."},
         )
 
@@ -1310,9 +1316,9 @@ def _parameter_refused(ep: dict, parameter: str, reason: str) -> ResolutionFaile
     )
 
 
-def _query_refusal(ep: dict, query: QueryValues) -> tuple[str, str] | None:
-    """(parameter, reason) of the first declared query or path parameter the request sends that
-    breaks its declaration (`catalog.params.refusal`, reading each string by its declared type),
+def _query_refusal(ep: dict, query: QueryValues) -> tuple[str, str, str] | None:
+    """(parameter, rule, reason) of the first declared query or path parameter the request sends
+    that breaks its declaration (`catalog.params.check`, reading each string by its declared type),
     else None. An undeclared parameter is relayed as sent."""
     inputs = ep.get("input") or {}
     declared = {**{name: ("queryParams", spec) for name, spec in (inputs.get("queryParams") or {}).items()},
@@ -1323,16 +1329,32 @@ def _query_refusal(ep: dict, query: QueryValues) -> tuple[str, str] | None:
     for name, values in sent.items():
         location, spec = declared.get(name, (None, None))
         if isinstance(spec, dict) and (
-                reason := params.refusal(spec, values[0] if len(values) == 1 else values, text=True)):
-            return f"{location}.{name}", reason
+                found := params.check(spec, values[0] if len(values) == 1 else values, text=True)):
+            return f"{location}.{name}", *found
     return None
 
 
-def _enforce_declared_query(ep: dict, query: QueryValues) -> None:
+def param_check_refuses() -> bool:
+    """Whether the parameter check refuses (`TREG_PARAM_CHECK=refuse`) or only logs."""
+    return get_settings().param_check == "refuse"
+
+
+def would_refuse(endpoint_id: str, parameter: str, rule: str, tier: str, road: str) -> None:
+    """One `catalog_parameter_would_refuse` line for a request the check lets through in log mode:
+    the endpoint, the parameter, the rule it breaks, the tier and the road, never the value."""
+    _param_log.info("%s %s", "catalog_parameter_would_refuse", json.dumps(
+        {"endpoint_id": endpoint_id, "parameter": parameter, "rule": rule, "tier": tier, "road": road},
+        separators=(",", ":")))
+
+
+def _enforce_declared_query(ep: dict, query: QueryValues) -> tuple[str, str] | None:
     """Every declared query and path parameter the request sends meets its declaration, on every
-    tier, before anything is held."""
+    tier, before anything is held: refused in refuse mode, else (parameter, rule) to log."""
     if refused := _query_refusal(ep, query):
-        raise _parameter_refused(ep, *refused)
+        if param_check_refuses():
+            raise _parameter_refused(ep, refused[0], refused[2])
+        return refused[0], refused[1]
+    return None
 
 
 def _body_fields(declared: object) -> tuple[dict, dict | None]:
@@ -1378,9 +1400,9 @@ def _field_values(document: dict, name: str) -> list:
     return current
 
 
-def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
-    """(parameter, reason) of the first declared body field the request sends that breaks its
-    declaration (`catalog.params`), else None. A JSON array body (a list of task objects) is read
+def _body_refusal(ep: dict, body: bytes) -> tuple[str, str, str] | None:
+    """(parameter, rule, reason) of the first declared body field the request sends that breaks
+    its declaration (`catalog.params.check`), else None. A JSON array body (a list of task objects) is read
     task by task, a form body as strings by the declared types, and every value of a repeated JSON
     field is checked; a body that does not parse is relayed for the provider to judge. On a
     ``strict_body`` or ``body_allowlist`` row an absent required field is read as sent. A multipart
@@ -1406,8 +1428,8 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
         except (ValueError, UnicodeDecodeError, RecursionError):
             return None
         if whole is not None:
-            reason = params.refusal(whole, parsed)
-            return ("body", reason) if reason else None
+            found = params.check(whole, parsed)
+            return ("body", *found) if found else None
     tasks = isinstance(parsed, list)
     for index, document in enumerate(parsed if tasks else [parsed]):
         if not isinstance(document, dict):
@@ -1418,25 +1440,35 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str] | None:
             if not isinstance(spec, dict) or not (values or strict and spec.get("required")):
                 continue
             for value in values or [None]:
-                if reason := params.refusal(spec, value, text=text):
-                    return prefix + name, reason
+                if found := params.check(spec, value, text=text):
+                    return prefix + name, *found
     return None
 
 
-def _enforce_catalog_body(ep: dict, body: bytes) -> None:
+def _enforce_catalog_body(ep: dict, body: bytes) -> tuple[str, str] | None:
     """Every declared body field the request sends meets its declaration (`_body_refusal`), on
-    every tier, before anything is held; the body is never rewritten.
+    every tier, before anything is held: refused in refuse mode, else (parameter, rule) to log.
+    The body is never rewritten.
 
     ``strict_body`` and ``body_allowlist`` are the opt-in exceptions for a catalog tool whose
-    advertised contract is intentionally smaller than the upstream surface: the body must be one
-    JSON object, and ``body_allowlist`` also refuses undeclared fields and absent required ones and
-    reads `item_required_all`/`item_required_any` on an array of objects. A team's raw tool remains
-    a faithful relay.
+    advertised contract is intentionally smaller than the upstream surface, refused in either
+    mode: the body must be one JSON object and its arrays meet their item enum and count;
+    ``body_allowlist`` also refuses undeclared fields and absent required ones, holds each declared
+    scalar to its type, enum and numeric bounds, and reads `item_required_all`/`item_required_any`
+    on an array of objects. A team's raw tool remains a faithful relay.
     """
-    fields, _ = _body_fields((ep.get("input") or {}).get("body"))
-    document: dict = {}
     if ep.get("strict_body") or ep.get("body_allowlist"):
-        document = _strict_json_object(body, ep["id"])
+        _enforce_strict_body(ep, body)
+    if refused := _body_refusal(ep, body):
+        if param_check_refuses():
+            raise _parameter_refused(ep, refused[0], refused[2])
+        return refused[0], refused[1]
+    return None
+
+
+def _enforce_strict_body(ep: dict, body: bytes) -> None:
+    document = _strict_json_object(body, ep["id"])
+    fields = (ep.get("input") or {}).get("body") or {}
     if ep.get("body_allowlist"):
         unknown = sorted(set(document) - set(fields))
         missing = sorted(
@@ -1454,27 +1486,79 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                     **({"missing": missing} if missing else {}),
                 },
             )
-    if refused := _body_refusal(ep, body):
-        raise _parameter_refused(ep, *refused)
-    if not ep.get("body_allowlist"):
-        return
-    for name, spec in fields.items():
-        value = document.get(name)
-        required_all = (spec.get("item_required_all") or []) if isinstance(spec, dict) else []
-        required_any = (spec.get("item_required_any") or []) if isinstance(spec, dict) else []
-        if not isinstance(value, list) or not (required_all or required_any):
-            continue
-        for index, item in enumerate(value):
-            present = ({field for field, field_value in item.items()
-                        if field_value not in (None, "", [])} if isinstance(item, dict) else set())
-            if not set(required_all) <= present or (required_any and not set(required_any) & present):
+        scalar_types = {
+            "string": lambda value: isinstance(value, str),
+            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+            "boolean": lambda value: isinstance(value, bool),
+            "object": lambda value: isinstance(value, dict),
+        }
+        for name, value in document.items():
+            spec = fields.get(name)
+            if not isinstance(spec, dict):
+                continue
+            declared = spec.get("type")
+            checker = scalar_types.get(declared) if isinstance(declared, str) else None
+            invalid = checker is not None and not checker(value)
+            if not invalid and declared != "array" and spec.get("enum") is not None:
+                invalid = value not in spec["enum"]
+            if not invalid and declared in {"integer", "number"}:
+                minimum, maximum = spec.get("min"), spec.get("max")
+                invalid = ((isinstance(minimum, (int, float)) and value < minimum)
+                           or (isinstance(maximum, (int, float)) and value > maximum))
+            if invalid:
                 raise ResolutionFailed(
                     "catalog_parameter_invalid", status_code=400, detail={
-                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                        "parameter": f"body.{name}.{index}",
-                        "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
+                        "error": "catalog_parameter_invalid",
+                        "endpoint_id": ep["id"],
+                        "parameter": f"body.{name}",
+                        "message": f"{ep['id']} received an invalid value for body.{name}",
                     },
                 )
+    for name, spec in fields.items():
+        if not isinstance(spec, dict) or spec.get("type") != "array":
+            continue
+        if name not in document and not spec.get("required"):
+            continue
+        value = document.get(name)
+        minimum, maximum = spec.get("minItems"), spec.get("maxItems")
+        allowed = (spec.get("items") or {}).get("enum")
+        valid = isinstance(value, list)
+        if valid and allowed is not None:
+            valid = all(item in allowed for item in value)
+        if valid and isinstance(minimum, int):
+            valid = len(value) >= minimum
+        if valid and isinstance(maximum, int):
+            valid = len(value) <= maximum
+        if not valid:
+            expected = (
+                f"between {minimum} and {maximum}" if minimum != maximum
+                else f"exactly {minimum}"
+            )
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": f"body.{name}",
+                    "message": f"{ep['id']} requires {expected} item in body.{name}",
+                },
+            )
+        if ep.get("body_allowlist") and isinstance(value, list):
+            required_all = spec.get("item_required_all") or []
+            required_any = spec.get("item_required_any") or []
+            for index, item in enumerate(value):
+                if not (required_all or required_any):
+                    break
+                present = ({field for field, field_value in item.items()
+                            if field_value not in (None, "", [])} if isinstance(item, dict) else set())
+                if not set(required_all) <= present or (required_any and not set(required_any) & present):
+                    raise ResolutionFailed(
+                        "catalog_parameter_invalid", status_code=400, detail={
+                            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                            "parameter": f"body.{name}.{index}",
+                            "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
+                        },
+                    )
 
 
 def _request_headers(headers) -> dict[str, str]:
@@ -2272,10 +2356,26 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     )
 
 
-async def _resolve_marketplace_call(
+async def _resolve_marketplace_call(ep: dict, *, road: str = "catalog", **resolution) -> MarketplaceCall:
+    """Resolve a catalog call (`_resolve_catalog_tier`). In log mode (`TREG_PARAM_CHECK`) each
+    declared parameter the check would refuse is relayed as before and logged once, with the tier
+    the call resolved to (`none` when it did not resolve)."""
+    would: list[tuple[str, str]] = []
+    tier = "none"
+    try:
+        call = await _resolve_catalog_tier(ep, would=would, **resolution)
+        tier = call.tier
+        return call
+    finally:
+        for parameter, rule in would:
+            would_refuse(ep["id"], parameter, rule, tier, road)
+
+
+async def _resolve_catalog_tier(
     ep: dict, *, method: str, query: QueryValues, has_body: bool,
     read_body: Callable[[], Awaitable[bytes]], caller: Caller, db: AsyncSession,
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
+    would: list[tuple[str, str]],
     request_headers=None,
     authorization_method: str = "",
 ) -> MarketplaceCall:
@@ -2354,9 +2454,11 @@ async def _resolve_marketplace_call(
             ) from exc
 
     upstream, consumed = _marketplace_upstream(ep, provider, query, chosen_method)
-    _enforce_declared_query(ep, query)
+    if refused := _enforce_declared_query(ep, query):
+        would.append(refused)
     body = await read_body() if has_body else b""
-    _enforce_catalog_body(ep, body)
+    if refused := _enforce_catalog_body(ep, body):
+        would.append(refused)
     phash = _params_hash(ep["id"], query.multi_items(), body)
     # The catalog's estimate travels on EVERY tier - informational on tiers 1/2 (the provider bills
     # the org's own account; Activity shows "estimated") and the reserve amount on tier 4 only
@@ -2558,6 +2660,7 @@ async def resolve_marketplace_target(
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
     request_headers=None,
     authorization_method: str = "",
+    road: str = "catalog",
 ) -> MarketplaceCall:
     if oauth_providers.is_paused(ep.get("provider")):
         raise provider_paused(ep["provider"], ep["id"])
@@ -2579,6 +2682,7 @@ async def resolve_marketplace_target(
             resolve_call=resolve_call,
             request_headers=request_headers,
             authorization_method=authorization_method,
+            road=road,
         )
 
 

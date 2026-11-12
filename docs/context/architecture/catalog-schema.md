@@ -72,15 +72,17 @@ The models still parse `minimum`/`maximum` and the contracts parser the earlier 
 comparison; the validator refuses both. A contract identity variant names each key with a type word
 or a spec (`{linkedin_url: {type: string, format: url}}`).
 
-**The check.** `params.refusal(spec, value)` is the one reading of a sent value: its type, enum and
-range, and each item of an array. It does not read an object's `properties`: a row's body is checked
+**The check.** `params.check(spec, value)` is the one reading of a sent value: its type, enum and
+range, and each item of an array, answering the rule broken and why (`params.refusal` the why
+alone). It does not read an object's `properties`: a row's body is checked
 field by field at the top level (a field declared by a dotted name, `pagination.limit`, reads the
 nested value), so a field nested inside a declared object is declared but not checked. A null or
 empty value is not sent and meets an optional spec. A query, path or form value is a string read by
 the declared type (ASCII digits for an integer, a decimal for a number, `true`/`false`, JSON for an
 object or array; a repeated parameter is an array); a JSON body value keeps its JSON type, except
 that an integer may be ASCII digits, as the count rule reads it. A query array that is not JSON (a
-comma list) is relayed unread. The refusal names the declared rule, never the value. Where the request path calls it:
+comma list) is relayed unread. The refusal names the declared rule, never the value. Where the
+request path calls it, and whether a broken rule is refused or only logged (`TREG_PARAM_CHECK`):
 [proxy model](proxy-model.md#catalog-request-checks) and [catalog](catalog.md) routing.
 
 **The rewrite into it**: `scripts/catalog_param_types.py` (dry run by default, `--apply`), kept for

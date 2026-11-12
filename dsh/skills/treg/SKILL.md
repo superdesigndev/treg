@@ -200,14 +200,12 @@ one mistake. treg does not switch providers on a direct call; only you know whic
 - Discovery jobs usually come in two shapes: structured (filters such as title, location, followers,
   funding) and semantic (describe what you want). When a brief mixes hard limits with a fuzzy niche,
   run one tool of each shape and merge the results.
-- Every declared query and path parameter and top-level body field is checked on every key before
-  anything is charged: its type (a whole number for `integer`, `true`/`false` for `boolean`), its
-  allowed values, its range or length, and each item of an array. A field nested inside a declared
-  object, or any field of a multipart body, is not checked. A value outside them answers a 400
-  `catalog_parameter_invalid` naming the parameter and the rule, and is not forwarded; send each
-  single-valued parameter once. Fields the tool does not declare are forwarded as sent.
-- A tool marked `strict_query: true` accepts only its declared query parameters, with required
-  fields present and no body.
+- A tool marked `strict_query: true` accepts only its declared query parameters, once each, with
+  required fields and allowed values enforced, and no body. Rejected input is not forwarded.
+- Send each declared parameter within its declared type (a whole number for `integer`,
+  `true`/`false` for `boolean`), allowed values and range, each single-valued one once, and a row
+  count such as `limit` as a whole number within its stated maximum: a tool that enforces this
+  answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 **How a catalog call is served**, in this order:
 

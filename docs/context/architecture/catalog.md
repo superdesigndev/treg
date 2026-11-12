@@ -990,11 +990,12 @@ returned and never documented as stable. An output field may say where it lands 
   a 422 before anything is held.
 - A filter typed `integer` may declare a range: `min` (required, a whole number of at least 1) and
   `max` (optional, a whole number of at least `min`); anything else fails the load. The routed row
-  shows the range, and the parameter check refuses a sent value that is not a whole number in it
-  (a JSON integer, or ASCII digits; null and `""` are not sent): 400 `catalog_parameter_invalid`
-  naming `body.<filter>`, before anything is planned or held. Without a `max`, every whole number
-  from `min` up passes. `web.map` and `people.search` declare `limit` with `min: 1` and no upper
-  bound.
+  shows the range, and the routed call refuses a sent value that is not a whole number in it, read as
+  a count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
+  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held, whatever
+  the parameter check's mode. Without a `max`, every whole number from `min` up passes. This is the
+  routed path's own check (`route.py::_require_ranges`). `web.map` and `people.search` declare
+  `limit` with `min: 1` and no upper bound.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
@@ -1027,9 +1028,9 @@ returned and never documented as stable. An output field may say where it lands 
   `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
   page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
-  A boolean filter must be `true` or `false` (400 `catalog_parameter_invalid` otherwise, the
-  parameter check), and one that is off is left out of the provider-sample hash (`flags_off`), so a
-  request that never sends it samples as before the filter existed.
+  A boolean filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off
+  is left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
+  before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
@@ -1094,14 +1095,15 @@ request (a number, or a string of ASCII digits) rather than letting it answer le
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
-before any candidate is held. A filter's own range is read by the parameter check before planning
-([catalog schema](catalog-schema.md#parameter-types)); where the child's adapter also declares that
-`max`, a larger value drops the child instead. A child whose request, as its adapter builds it for
-this identity, breaks the child's own declarations (the check it runs before a hold) is then dropped
+before any candidate is held. A filter with its own range is checked against it first; where the
+child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
+is not reached. A child whose request, as its adapter builds it for this identity, breaks the
+child's own declarations (the parameter check it runs before a hold) is, in refuse mode, dropped
 from the plan as `needs <child parameter>: <rule>`, never the value, rather than answer a 400 the
 router reads as the caller's fault; with none left the routed call answers 422
-`route_no_candidate`. `verified` is filled only from an explicit mailbox deliverability verdict,
-never a lookup-success flag.
+`route_no_candidate`. In log mode the plan keeps the child and the route logs the drop it would have
+made ([proxy model](proxy-model.md#catalog-request-checks)). `verified` is filled only from an
+explicit mailbox deliverability verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that
@@ -1171,12 +1173,14 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
-  - Before planning, each identity field of `format: url` must parse as an HTTP URL with a dotted host
-    and no userinfo (`invalid_identity`, 422, even when another complete variant was sent); a
-    scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
-    value. Then every identity and filter field sent is held to its spec by the parameter check
-    ([catalog schema](catalog-schema.md#parameter-types)): a 400 `catalog_parameter_invalid` naming the
-    field, before any child is planned or held.
+  - Before planning, each identity field is read (`invalid_identity`, 422, even when another
+    complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
+    no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A
+    derived `linkedin_url` is built only from a handle-shaped value. Then every identity and filter
+    field sent is held to its spec by the parameter check
+    ([catalog schema](catalog-schema.md#parameter-types)): in refuse mode a 400
+    `catalog_parameter_invalid` naming the field before any child is planned or held, in log mode a
+    `catalog_parameter_would_refuse` line ([proxy model](proxy-model.md#catalog-request-checks)).
   - A 2xx lacking a REQUIRED core field is a MISS. The waterfall is on by default;
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
@@ -1251,7 +1255,7 @@ an invalid extra never disables the primary.
   said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
   that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, a
-  `string` (anything else is refused 400 `catalog_parameter_invalid`): a caller's `q` counts as sent
+  `string` (anything else is refused 422 `invalid_identity`, as a stand-in key): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
   dropped; icypeas answers `{q, title}` through `{title}` and stays.

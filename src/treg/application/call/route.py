@@ -93,7 +93,7 @@ from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import (QueryValues, _anonymous_offer, _body_refusal, _host_of, _marketplace_secret,
-                      _parameter_refused, _query_refusal)
+                      _parameter_refused, _query_refusal, param_check_refuses, would_refuse)
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -452,6 +452,19 @@ def _above(value: object, cap: int) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
 
 
+def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
+    """A routed call's own filter that declares a range is, when the caller sends it, a whole number
+    in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
+    refused before anything is planned or held."""
+    for name, spec in (filters or {}).items():
+        if "min" not in (spec or {}):
+            continue
+        value = (given or {}).get(name)
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
+
+
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
     """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
     number from 1 to that row's max when the caller sends it, or the routed call is refused before
@@ -467,8 +480,7 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
         for name in sorted(names & set(filters or {})):
             value = (given or {}).get(name)
             if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
-                raise call_cost._invalid(ep, f"body.{name}",
-                                         f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
 
 
 def _empty_output(contract) -> dict:
@@ -576,11 +588,12 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     return out
 
 
-def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str] | None:
-    """(child parameter, rule) the adapter's request for this identity breaks, by the check the
-    child runs on every tier before a hold, else None. Sent, the child's 400 would read as the
-    caller's fault and end the routed call, so the plan drops the child instead. A request the
-    adapter cannot build is left to the run, which records it."""
+def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str, str] | None:
+    """(child parameter, rule, reason) the adapter's request for this identity breaks, by the
+    check the child runs on every tier before a hold, else None. Sent in refuse mode, the child's
+    400 would read as the caller's fault and end the routed call, so the plan drops the child
+    instead; in log mode the child stays and the drop is logged. A request the adapter cannot build
+    is left to the run, which records it."""
     try:
         query, body = adapter.to_upstream(identity, variant)
     except Exception:  # noqa: BLE001
@@ -617,10 +630,14 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     raw = capped
     _require_counts(ep, raw, contract.filters, identity_given)
     fitting = []
+    would: dict[str, tuple[str, str]] = {}
     for e, ad, v in raw:
-        if refused := _declaration_refusal(e, ad, identity, v):
-            dropped.append({"endpoint_id": e["id"], "why": f"needs {refused[0]}: {refused[1]}"})
+        if not (refused := _declaration_refusal(e, ad, identity, v)):
+            fitting.append((e, ad, v))
+        elif param_check_refuses():
+            dropped.append({"endpoint_id": e["id"], "why": f"needs {refused[0]}: {refused[2]}"})
         else:
+            would[e["id"]] = refused[0], refused[1]
             fitting.append((e, ad, v))
     raw = fitting
     scoped = []
@@ -660,6 +677,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
     given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
+    would_drop: list[dict] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
@@ -669,6 +687,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "anonymous" if anonymous else
             "platform"
         )
+        if found := would.pop(e["id"], None):
+            would_drop.append({"endpoint_id": e["id"], "parameter": found[0], "rule": found[1], "tier": tier})
         cv = cat.cost_view(e.get("cost"), e["provider"])
         direct_exhausted = tier == "platform" and keyslots.all_exhausted(
             e["provider"], e["id"], metered=spends_balance((e.get("cost") or {}).get("type")))
@@ -722,6 +742,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
+    would_drop += [{"endpoint_id": eid, "parameter": found[0], "rule": found[1], "tier": "none"}
+                   for eid, found in would.items()]
     decision = None
     if route_rules_app.enabled():
         input_type, meta, _ = call_events.segment(contract, identity_given)
@@ -753,7 +775,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             orders["rule"] = _endpoints(ruled)
             ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
-                route_rule=route_rule, orders=orders)
+                route_rule=route_rule, orders=orders, would_drop=would_drop)
 
 
 def _endpoints(cands) -> list[str]:
@@ -782,7 +804,8 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
     items = tuple(query.items())
     return CallInput(method=ep["method"], raw_rest=ep["id"], raw_headers=tuple(headers), query_items=items,
                      raw_query=urlencode(items), body=_Bytes(payload), caller=parent.input.caller,
-                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only)
+                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only,
+                     routed_child=True)
 
 
 async def _read(response: UpstreamResponse) -> bytes:
@@ -923,13 +946,19 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    if contract:
+        _require_ranges(ep, contract.filters, given)
     for name, spec in ({**contract.identity_specs, **contract.filters}.items() if contract else ()):
-        if name in given and (reason := params.refusal(spec, given[name])):
-            raise _parameter_refused(ep, f"body.{name}", reason)
+        if name in given and (found := params.check(spec, given[name])):
+            if param_check_refuses():
+                raise _parameter_refused(ep, f"body.{name}", found[1])
+            would_refuse(ep["id"], f"body.{name}", found[0], "routed", "routed")
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
+    for drop in plan.would_drop:
+        would_refuse(drop["endpoint_id"], drop["parameter"], drop["rule"], drop["tier"], "routed_plan")
     _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the

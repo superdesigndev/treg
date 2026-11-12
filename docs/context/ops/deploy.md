@@ -185,6 +185,10 @@ meaning is not obvious from the field:
   `TREG_FIND_ENGINE` ([find](../architecture/find.md)) are their own kill switches.
 - `TREG_REQUIRED_EXTENSIONS` names installed [policy extensions](../architecture/policy-extensions.md)
   so a build that lost one fails to start instead of serving without it.
+- `TREG_PARAM_CHECK` is `log` (the default; any value but `refuse` reads as it) or `refuse`. Log
+  mode relays a catalog request that breaks a declared type, enum or range as before and logs a
+  `catalog_parameter_would_refuse` line; read those lines before turning on `refuse`, which answers
+  them 400 ([proxy model](../architecture/proxy-model.md#catalog-request-checks)).
 
 Credentials stay in the deployment secret store.
 

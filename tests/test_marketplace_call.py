@@ -3426,7 +3426,7 @@ def test_icypeas_company_scrape_bills_the_company_rate():
 
 
 _ERROR_IN_2XX = [
-    ("justoneapi", "GET", "/call/justoneapi.x.twitter-search-v1?keyword=example&searchType=TOP&cursor=0",
+    ("justoneapi", "GET", "/call/justoneapi.x.twitter-search-v1?keyword=example&searchType=Top&cursor=0",
      None, b'{"code":301,"data":null,"message":"COLLECT FAILED, SEND REQUEST AGAIN"}'),
     ("harvestapi", "GET", "/call/harvestapi.linkedin.user.profile?publicIdentifier=someone-example",
      None, b'{"data":null,"error":"Too many queued requests (code_22)","status":429}'),

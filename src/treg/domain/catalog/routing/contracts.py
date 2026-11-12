@@ -855,14 +855,27 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's `format: url` identity fields that are present but read as no URL (`N/A`, a
-    bare word). Every other declared rule is the parameter check's (`catalog.params`)."""
+    """The caller's identity fields, and boolean filters, that are present but unreadable: a
+    `format: url` field that reads as no URL (`N/A`, a bare word), a stand-in key (text the
+    contract can write itself) that is not a string, a boolean filter that is not true or false
+    (`"false"` or `0` would otherwise read as asked for). Every other declared rule is the
+    parameter check's (`catalog.params`)."""
     bad = []
-    for k, spec in contract.identity_specs.items():
+    flags = [(k, "bool") for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "boolean"]
+    for k, kind in [*((k, None) for k in contract.identity_specs), *flags]:
         v = given.get(k)
-        if _sent(v) and (norm := _normaliser(spec)) is not None and norm(v) is None:
+        spec = contract.identity_specs.get(k) or {}
+        if kind == "bool":
+            wrong = v is not None and not isinstance(v, bool)
+        elif not _sent(v):
+            wrong = False
+        elif (norm := _normaliser(spec)) is not None:
+            kind, wrong = spec["format"], norm(v) is None
+        else:
+            kind, wrong = "text", k in contract.stand_in and not isinstance(v, str)
+        if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
-            bad.append({"field": k, "type": spec["format"],
+            bad.append({"field": k, "type": kind,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
 

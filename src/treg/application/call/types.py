@@ -271,6 +271,8 @@ class CallInput:
     # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
     # runs, no undisclosed second price).
     child_of: str | None = None
+    # Set on every child call of a routed call.
+    routed_child: bool = False
 
 
 class FinalizationState(Enum):

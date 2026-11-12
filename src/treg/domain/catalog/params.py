@@ -148,14 +148,21 @@ def _number(bound: object) -> bool:
 
 
 def refusal(spec: Mapping | None, value: object, *, text: bool = False) -> str | None:
-    """None when `value` meets `spec`, else why not, in words that name the declared rule and never
-    the value. A null or empty value is not sent and meets an optional spec; a required one checks
-    it as sent. `text` reads a value that arrived as a string (a query, path or form value) by the
-    declared type first: ASCII digits for an integer, a decimal for a number, true or false, JSON
-    for an object or an array; a list of such strings is a repeated query parameter. In a JSON
-    body an integer may also be ASCII digits, as the count rule reads it. An enum on an array
-    names whole values; `items` holds what each item must be. A spec without a type word of the
-    vocabulary declares nothing to check."""
+    """Why `value` breaks `spec` (`check`), or None."""
+    found = check(spec, value, text=text)
+    return found[1] if found else None
+
+
+def check(spec: Mapping | None, value: object, *, text: bool = False) -> tuple[str, str] | None:
+    """None when `value` meets `spec`, else (rule, reason): the rule broken (`type`, `repeat`,
+    `enum`, `range`, `length`, `array_length`, or `items:<rule>`) and why, in words that name the
+    declared rule and never the value. A null or empty value is not sent and meets an optional
+    spec; a required one checks it as sent. `text` reads a value that arrived as a string (a query,
+    path or form value) by the declared type first: ASCII digits for an integer, a decimal for a
+    number, true or false, JSON for an object or an array; a list of such strings is a repeated
+    query parameter. In a JSON body an integer may also be ASCII digits, as the count rule reads
+    it. An enum on an array names whole values; `items` holds what each item must be. A spec
+    without a type word of the vocabulary declares nothing to check."""
     if not isinstance(spec, Mapping):
         return None
     if not sent(value) and not spec.get("required"):
@@ -165,7 +172,7 @@ def refusal(spec: Mapping | None, value: object, *, text: bool = False) -> str |
         return None
     repeated = text and isinstance(value, list)
     if repeated and "array" not in kinds:
-        return "must be sent once"
+        return "repeat", "must be sent once"
     if repeated:
         kind, read = "array", value
     else:
@@ -174,14 +181,15 @@ def refusal(spec: Mapping | None, value: object, *, text: bool = False) -> str |
             if fits:
                 break
         else:
-            return "must be " + " or ".join(_NAMES.get(k, k) for k in kinds)
+            return "type", "must be " + " or ".join(_NAMES.get(k, k) for k in kinds)
     if spec.get("enum") is not None and read is not None and not _in_enum(spec, read, value):
-        return _enum_reason(spec)
+        return "enum", _enum_reason(spec)
     if kind == "array" and isinstance(spec.get("items"), Mapping):
         for index, item in enumerate(read if isinstance(read, list) else ()):
-            if sent(item) and (reason := refusal({**spec["items"], "required": False}, item, text=repeated)):
-                return f"item {index} {reason}"
-    return _range_reason(kind, spec, read)
+            if sent(item) and (inner := check({**spec["items"], "required": False}, item, text=repeated)):
+                return f"items:{inner[0]}", f"item {index} {inner[1]}"
+    reason = _range_reason(kind, spec, read)
+    return ({"string": "length", "array": "array_length"}.get(kind, "range"), reason) if reason else None
 
 
 _BOUNDS = {"min": ("integer", "number"), "max": ("integer", "number"), "minLength": ("string",),

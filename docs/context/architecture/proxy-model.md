@@ -299,27 +299,41 @@ named like the old id already resolved above and is not shadowed.
 
 ### Catalog request checks
 
-Every declared parameter a catalog call sends meets its declaration, on every tier and before
-anything is held or relayed: `_enforce_declared_query` reads each query and path value, and
-`_enforce_catalog_body` each top-level body field (a dotted name reads the nested value; a JSON
-array body is read task by task, a form body as strings, each value of a repeated JSON field), both
-through `catalog.params.refusal` ([catalog schema](catalog-schema.md#parameter-types)). A field
-nested in a declared object's `properties` is not checked, nor is any field of a multipart body. A
-value outside its type, enum or range is a 400 `catalog_parameter_invalid` naming the parameter
-(`queryParams.limit`, `body.urls`, `body.0.limit` in a task array) and the declared rule, never the
-value. An undeclared parameter is relayed as sent, a body that does not parse is left for the
-provider, and a body that repeats a JSON field is relayed as sent once every value passes. The
-routed road reads the same function
+The parameter check holds every declared parameter a catalog call sends to its declaration, on
+every tier and before anything is held or relayed: `_enforce_declared_query` reads each query and
+path value, and `_enforce_catalog_body` each top-level body field (a dotted name reads the nested
+value; a JSON array body is read task by task, a form body as strings, each value of a repeated JSON
+field), both through `catalog.params.check` ([catalog schema](catalog-schema.md#parameter-types)). A
+field nested in a declared object's `properties` is not checked, nor is any field of a multipart
+body. An undeclared parameter is relayed as sent, and a body that does not parse is left for the
+provider. The routed road reads the same function for the routed call's own fields
 ([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)), and its plan runs each
-child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`) to drop a
-child that would refuse it.
+child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`).
 
-Two opt-in row flags narrow a tool to its advertised surface. `strict_query` rows
-(`_enforce_catalog_query`) reject bodies, undeclared or duplicate query parameters and missing
-required inputs; declared path placeholders pass and are consumed. `strict_body` and
-`body_allowlist` rows require one JSON object body, and `body_allowlist` rows also reject undeclared
-top-level fields and missing required ones (an array of objects may require all or any named item
-fields). All of these apply on every tier and never to raw own-tool relays.
+`TREG_PARAM_CHECK` (`Settings.param_check`) sets what a broken declaration does:
+
+- **`log`**, the default and the reading of any value but `refuse`: the call goes on exactly as
+  without the check (relayed as sent, the routed plan unchanged) and the check writes one INFO line
+  on the `treg.param_check` logger, `catalog_parameter_would_refuse` followed by JSON:
+  `endpoint_id`, `parameter` (`queryParams.limit`, `body.urls`, `body.0.limit` in a task array),
+  `rule` (`type`, `repeat`, `enum`, `range`, `length`, `array_length`, `items:<rule>`), `tier` and
+  `road`, never the value. `road` is `catalog` (a direct call), `routed` (a routed call's own
+  identity or filter field; `tier` is `routed`), `routed_plan` (a child the routed plan would drop,
+  at the tier the plan gave it) or `routed_child` (that child's own request when it is sent). `tier`
+  is the one the call resolved to, or `none` when another rule refused the call first. Counting
+  `catalog` and `routed` lines counts the calls refuse mode would answer 400; `routed_plan` lines
+  count children it would leave out of a plan.
+- **`refuse`**: a 400 `catalog_parameter_invalid` naming the parameter and the declared rule, never
+  the value, and nothing is charged; the routed plan drops the child as `needs <parameter>: <rule>`.
+
+Rules that refused before the parameter check refuse in either mode. `strict_query` rows
+(`_enforce_catalog_query`) reject bodies, undeclared or duplicate query parameters, missing required
+inputs and values outside a declared enum; declared path placeholders pass and are consumed.
+`strict_body` and `body_allowlist` rows (`_enforce_strict_body`) require one JSON object body and
+hold its arrays to their item enum and count; `body_allowlist` rows also reject undeclared top-level
+fields and missing required ones, hold each declared scalar to its type, enum and numeric bounds, and
+may require all or any named item fields of an array of objects. All of these apply on every tier
+and never to raw own-tool relays.
 
 ### Authorization and deny rules
 
@@ -384,9 +398,10 @@ the [call-time SSRF guard](#call-time-ssrf-guard) with its address-space list.
 
 A `kind: routed` row (`treg.<capability>`, [catalog](catalog.md) § Routing) never reaches the
 credential ladder itself. `service._execute_call` hands it to `application/call/route.py`, which
-first holds each identity and filter field the caller sent to its contract spec (`catalog.params`,
-after `invalid_identity` reads `format: url` fields; a 400 `catalog_parameter_invalid` naming the
-field before any child is planned or held), then runs each child endpoint through this same use
+first reads the identity (`invalid_identity`) and filter ranges (`_require_ranges`), then holds each
+identity and filter field the caller sent to its contract spec (the parameter check, in its mode:
+a 400 `catalog_parameter_invalid` naming the field before any child is planned or held, or a
+`catalog_parameter_would_refuse` line), then runs each child endpoint through this same use
 case as a child `CallContext` (`call_ref` `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
 `deferred_settles` and leaves its hold open; a child that is not billable or settles at a

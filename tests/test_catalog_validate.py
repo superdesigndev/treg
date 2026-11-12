@@ -25,11 +25,10 @@ def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
         }},
     }
 
-    for body in ({"name": "example"}, {"name": "example", "formats": ["markdown"]},
-                 {"name": "example", "formats": None}):
+    for body in ({"name": "example"}, {"name": "example", "formats": ["markdown"]}):
         resolve._enforce_catalog_body(endpoint, json.dumps(body).encode())
 
-    for formats in ([], ["markdown", "text"], "markdown", ["html", "markdown", "html"]):
+    for formats in ([], ["markdown", "text"], "markdown", None):
         with pytest.raises(ResolutionFailed) as exc:
             resolve._enforce_catalog_body(
                 endpoint, json.dumps({"name": "example", "formats": formats}).encode(),

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
+import logging
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -965,34 +966,60 @@ async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(
     get_settings.cache_clear()
 
 
-async def test_a_child_whose_request_breaks_its_declaration_is_dropped_not_called(clients, monkeypatch):
-    """Tavily declares max_results up to 20 and holds every tier to it, so a routed limit of 25 drops
-    it from the plan, naming its parameter and never the value, and the next provider serves. Sent,
-    its 400 would have ended the routed call as the caller's fault."""
+async def _route_tavily_over_its_max_results(clients, monkeypatch, mode: str, answers: dict):
+    monkeypatch.setenv("TREG_PARAM_CHECK", mode)
     monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa")
     get_settings.cache_clear()
     seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "exa": [(200, {
-            "results": [{"title": "Example", "url": "https://example.com"}],
-            "costDollars": {"total": 0.007},
-        })],
-    }, seen))
-
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers, seen))
     response = await clients.post(
         "/call/treg.web.search",
         json={"q": "example query", "limit": 25},
         headers={"X-Treg-Route-Prefer": "tavily,exa"},
     )
+    get_settings.cache_clear()
+    return response, seen
+
+
+_EXA_HIT = (200, {"results": [{"title": "Example", "url": "https://example.com"}], "costDollars": {"total": 0.007}})
+
+
+async def test_a_child_whose_request_breaks_its_declaration_is_dropped_not_called(clients, monkeypatch):
+    """Tavily declares max_results up to 20: in refuse mode a routed limit of 25 drops it from the
+    plan, naming its parameter and never the value, and the next provider serves. Sent, its 400
+    would have ended the routed call as the caller's fault."""
+    response, seen = await _route_tavily_over_its_max_results(clients, monkeypatch, "refuse", {"exa": [_EXA_HIT]})
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["_treg"]["served_by"] == "exa.web.search"
     assert [row[0] for row in seen] == ["exa"]
     assert {"endpoint_id": "tavily.web.search",
             "why": "needs body.max_results: must be at most 20"} in data["_treg"]["dropped"]
-    get_settings.cache_clear()
+
+
+async def test_in_log_mode_the_child_is_kept_and_its_drop_is_logged(clients, monkeypatch, caplog):
+    """In log mode the plan keeps the child and sends its request as before; the drop it would have
+    made, and the child's own check, each write one line naming the parameter and never the value."""
+    caplog.set_level(logging.INFO, logger="treg.param_check")
+    response, seen = await _route_tavily_over_its_max_results(clients, monkeypatch, "log", {
+        "tavily": [(200, {"results": [{"title": "Example", "url": "https://example.com", "content": "x"}],
+                          "usage": {"credits": 1}})],
+        "exa": [_EXA_HIT]})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["_treg"]["served_by"] == "tavily.web.search"
+    assert [row[0] for row in seen] == ["tavily"] and seen[0][3]["max_results"] == 25
+    assert not any(d["endpoint_id"] == "tavily.web.search" for d in data["_treg"].get("dropped") or [])
+    lines = [r.getMessage() for r in caplog.records
+             if r.name == "treg.param_check" and '"endpoint_id":"tavily.web.search"' in r.getMessage()]
+    assert lines == [
+        'catalog_parameter_would_refuse {"endpoint_id":"tavily.web.search","parameter":"body.max_results",'
+        '"rule":"range","tier":"platform","road":"routed_plan"}',
+        'catalog_parameter_would_refuse {"endpoint_id":"tavily.web.search","parameter":"body.max_results",'
+        '"rule":"range","tier":"platform","road":"routed_child"}',
+    ]
 
 
 def test_identity_variants_derive_and_never_cross():
@@ -2670,18 +2697,15 @@ async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
 
 async def test_a_q_that_is_not_a_string_is_refused_before_any_provider(
         clients: AsyncClient, people_search_on, monkeypatch):
-    """`q` is a string: a list would be skipped by the providers' text joins, which would then search
-    the domain alone and bill for it."""
+    """`q` is text (the contract's stand-in key): a list would be skipped by the providers' text
+    joins, which would then search the domain alone and bill for it."""
     from treg.domain.catalog.routing import contracts as C
 
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 4}, seen))
     r = await clients.post("/call/treg.people.search",
                            json={"q": ["executives"], "company_domain": "example.com", "limit": 3})
-    assert r.status_code == 400 and seen == [], r.text
-    assert {k: r.json()["detail"][k] for k in ("error", "parameter")} == {
-        "error": "catalog_parameter_invalid", "parameter": "body.q"}
-    assert "executives" not in r.text
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
     doc = {"identity": [{"q": "string", "title": "string"}], "output": {"a": "string"}, "scoping": ["q"]}
     assert C.parse_contracts({"contracts": {"y": {**doc, "carried_by": {"q": ["title"]}}}})["y"].carried_by == {
         "q": ("title",)}
@@ -3667,9 +3691,8 @@ async def test_a_count_a_routed_child_prices_by_is_refused_before_any_candidate_
     assert r.status_code == 400, r.text
     detail = r.json()["detail"]
     assert detail["error"] == "catalog_parameter_invalid"
-    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "body.limit")
-    assert detail["message"] == ("treg.people.search needs limit: a whole number from 1 to 100" if limit == 0 else
-                                 "treg.people.search: body.limit must be a whole number. Nothing was charged.")
+    assert (detail["endpoint_id"], detail["parameter"]) == ("treg.people.search", "limit")
+    assert detail["message"] == "treg.people.search needs limit: a whole number from 1 to 100"
     assert called == []
     r, called = await post(10)
     assert r.status_code == 200, r.text
@@ -3714,14 +3737,13 @@ async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_h
     clients: AsyncClient, monkeypatch, platform_on, capability, limit,
 ):
     """web.map and people.search declare `limit` with min 1: a value that is not a whole number of
-    at least 1 (a JSON integer or ASCII digits) is refused by the parameter check, naming the routed
-    call's own body.limit, before anything is planned, held or called."""
+    at least 1, read as a count is read, is refused naming the routed call's own body.limit before
+    anything is planned, held or called."""
     r, seen = await _post_ranged_limit(clients, monkeypatch, capability, limit)
     assert r.status_code == 400, r.text
-    rule = "at least 1" if limit in (0, -1) and not isinstance(limit, bool) else "a whole number"
     assert r.json()["detail"] == {
         "error": "catalog_parameter_invalid", "endpoint_id": f"treg.{capability}", "parameter": "body.limit",
-        "message": f"treg.{capability}: body.limit must be {rule}. Nothing was charged.", "charged_micro": 0}
+        "message": f"treg.{capability} needs limit: a whole number of at least 1", "charged_micro": 0}
     assert seen == []
     async with session_maker() as db:
         assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all() == []
@@ -4118,10 +4140,7 @@ async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients,
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"results": []})] * 2}, seen))
     r = await clients.post("/call/treg.web.search", json={"q": "example", "contents": value})
     get_settings.cache_clear()
-    assert r.status_code == 400 and seen == [], r.text
-    assert r.json()["detail"] | {"charged_micro": 0} == {
-        "error": "catalog_parameter_invalid", "endpoint_id": "treg.web.search", "parameter": "body.contents",
-        "message": "treg.web.search: body.contents must be true or false. Nothing was charged.", "charged_micro": 0}
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == [], r.text
 
 
 async def test_passages_asked_for_and_not_served_are_named_in_ignored_filters(clients, platform_on, monkeypatch):
@@ -4161,17 +4180,13 @@ async def test_a_request_without_the_flag_samples_providers_as_before(clients, p
     assert seen == {True, False}, "the sample split the questions both ways"
 
 
-def test_a_blank_flag_is_not_sent():
-    """A blank boolean, an identity key (`ai_overview`) or a filter (`contents`), is not sent, so
-    neither check refuses it; a string `"false"` is refused."""
-    from treg.domain.catalog import params
+def test_only_bool_filters_get_the_strict_flag_check():
+    """`ai_overview` is a bool identity key of google.serp.organic: a blank one is still not sent, as before."""
     from treg.domain.catalog.routing.contracts import invalid_identity
 
     cat = catalog_store.load()
     assert invalid_identity(cat.contracts["google.serp.organic"], {"q": "example", "ai_overview": ""}) == []
-    assert params.refusal(cat.contracts["google.serp.organic"].identity_specs["ai_overview"], "") is None
-    assert params.refusal(cat.contracts["web.search"].filters["contents"], "") is None
-    assert params.refusal(cat.contracts["web.search"].filters["contents"], "false") == "must be true or false"
+    assert invalid_identity(cat.contracts["web.search"], {"q": "example", "contents": ""})[0]["type"] == "bool"
 
 
 async def test_a_merged_answer_names_a_filter_any_contributing_provider_ignored(clients, platform_on, monkeypatch):

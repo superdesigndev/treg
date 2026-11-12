@@ -258,6 +258,8 @@ class Plan:
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
+    # {endpoint_id, parameter, rule, tier}: children kept that the parameter check would drop (log mode)
+    would_drop: list[dict] = field(default_factory=list)
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
