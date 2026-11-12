@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 
@@ -98,6 +99,8 @@ async def _answering(status: int, doc: dict) -> None:
     (418, {}, ("upstream", "other")),
     (502, {"kind": "injection_failed"}, ("treg", "treg_error")),
     (500, {"kind": "unexpected_exception"}, ("treg", "treg_error")),
+    (422, {"refused_by": "request", "kind": "route_no_candidate"}, ("treg", "caller_input")),
+    (503, {"kind": "route_no_candidate"}, ("treg", "treg_capacity")),
     (503, {"answered": False}, ("treg", "treg_error")),
     (409, {"kind": "credential_missing"}, ("treg", "caller_provider_account")),
 ])
@@ -238,6 +241,21 @@ async def test_a_bad_treg_token_is_its_own_class(clients: AsyncClient, lines):
     assert r.status_code == 401, r.text
     (line,) = lines()
     assert (line["error_class"], line["caller_side"], line["by"]) == ("caller_auth", False, "treg")
+
+
+@pytest.mark.parametrize("encoding", ["", "gzip"])
+def test_an_own_key_out_of_credit_answer_is_read_whatever_its_encoding(lines, encoding):
+    answer = json.dumps({"error": "You don't have enough credits", "echo": SECRET_ANSWER}).encode()
+    headers = [(b"content-type", b"application/json")]
+    if encoding:
+        answer = gzip.compress(answer)
+        headers.append((b"content-encoding", encoding.encode()))
+    call_errors.emit(400, org_id=1, call_ref="abc", road="catalog", endpoint_id=EP,
+                     provider="tikhub", tier="credential", body=answer, headers=headers)
+    (line,) = lines()
+    assert (line["signal"], line["error_class"], line["caller_side"]) == (
+        "unrecorded", "caller_provider_account", True)
+    assert SECRET_ANSWER not in json.dumps(line)
 
 
 def test_a_routed_child_carries_its_step(lines):

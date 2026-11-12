@@ -244,7 +244,9 @@ belongs to whoever holds that account. An access error (an upstream 401/403) is
 an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
 OAuth app it is `our_provider_account`, like every error on treg's own key. A routed parent the
-provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. A failed hub run is
+provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`; one refused because
+treg's capacity took every candidate away (`route_no_candidate` answered 503) is `treg_capacity`.
+The answer is decoded by its `Content-Encoding` before its error code is read. A failed hub run is
 read by the error its detail names when that is a known failure kind: a crash in treg
 (`hub_run_crashed`) is `treg_error`, `by` `treg`; the caller's price ceiling (`hub_run_max_cost`)
 and a refusal that stops every step (the caller's balance or a cap) are `caller_balance_or_cap`.
