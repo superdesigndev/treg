@@ -94,7 +94,7 @@ endpoints:
       fallback: {value: '2', note: "The documented maximum is the two-credit advanced search selected explicitly or by auto_parameters."}
       currency: credit
       unit: call
-      note: "Basic, fast and ultra-fast cost one credit per request; advanced costs two. auto_parameters may select advanced, while an explicit basic depth overrides that selection. Platform Search settles from this request's usage.credits; BYOK is unmetered."
+      note: "Basic, fast and ultra-fast cost one credit per request; advanced costs two. When a request names no depth, auto_parameters can select advanced; an explicit depth decides the price. Platform Search settles from this request's usage.credits; BYOK is unmetered."
     settle: {reported: {path: response.usage.credits, unit: credit}}
     miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
