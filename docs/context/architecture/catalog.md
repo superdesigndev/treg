@@ -201,9 +201,10 @@ conflict on. It is not `verified` and not `source.curated`.
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
-  priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
-  provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
-  once the fresh row declares `resource_ownership.requires`.
+  priced row's `price` (a freshly generated `price.note` replaces the carried one only for an
+  ingester that opts in, AnyAPI) together with its `provenance` (an absent one stays absent and
+  inherits the provider's default), and a `null` that opts the row out of a default, but not
+  `platform_blocked` once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
