@@ -11,10 +11,11 @@ from httpx import AsyncClient
 
 from treg import api as A
 from treg.application.call import call_errors
-from treg.application.call.types import _BLAME_BY_KIND
+from treg.application.call.types import ResolutionFailed
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
+from treg.infra.org_concurrency import AdmissionRejected
 
 EP = "tikhub.tiktok.video.comments"
 SECRET_INPUT = "7461234567890123456"
@@ -61,9 +62,20 @@ async def _answering(status: int, doc: dict) -> None:
     (429, {"refused_by": "cap", "kind": "daily_cap_reached"}, ("treg", "caller_balance_or_cap")),
     (429, {"refused_by": "cap", "kind": "provider_rate_limited"}, ("treg", "treg_capacity")),
     (429, {"refused_by": "cap"}, ("treg", "caller_balance_or_cap")),
-    (403, {"refused_by": "policy"}, ("treg", "treg_policy")),
+    (403, {"refused_by": "policy"}, ("treg", "caller_policy")),
+    (403, {"refused_by": "policy", "kind": "tool_access_denied"}, ("treg", "caller_policy")),
+    (403, {"refused_by": "policy", "kind": "org_endpoint_quota_exceeded"}, ("treg", "treg_policy")),
     (410, {"refused_by": "retired", "kind": "platform_account_retired"}, ("treg", "our_provider_account")),
+    (410, {"refused_by": "retired", "kind": "catalog_retired"}, ("treg", "treg_policy")),
     (503, {"refused_by": "paused"}, ("treg", "treg_policy")),
+    (503, {"kind": "provider_paused"}, ("treg", "treg_policy")),
+    (429, {"refused_by": "capacity", "kind": "share_busy"}, ("treg", "treg_policy")),
+    (409, {"refused_by": "request", "kind": "idempotency_in_progress"}, ("treg", "treg_capacity")),
+    (429, {"refused_by": "cap", "kind": "org_concurrency_limit"}, ("treg", "treg_policy")),
+    (429, {"refused_by": "cap", "kind": "org_traffic_paused"}, ("treg", "treg_policy")),
+    (401, {"refused_by": "auth"}, ("treg", "caller_auth")),
+    (400, {"refused_by": "request", "kind": "route_caller_fault"}, ("upstream", "caller_input")),
+    (404, {"refused_by": "resolution", "kind": "route_not_found"}, ("upstream", "not_found")),
     (503, {"refused_by": "capacity", "kind": "provider_capacity"}, ("treg", "treg_capacity")),
     (402, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (401, {"tier": "tool"}, ("upstream", "caller_provider_account")),
@@ -71,6 +83,11 @@ async def _answering(status: int, doc: dict) -> None:
     (402, {"tier": "anonymous"}, ("upstream", "our_provider_account")),
     (400, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
     (400, {"tier": "credential", "signal": "balance"}, ("upstream", "caller_provider_account")),
+    (400, {"tier": "tool", "signal": "unrecorded"}, ("upstream", "caller_provider_account")),
+    (400, {"tier": "platform", "signal": "unrecorded"}, ("upstream", "our_provider_account")),
+    (402, {"tier": "tool", "billed_oauth": True}, ("upstream", "our_provider_account")),
+    (400, {"tier": "tool", "billed_oauth": True, "signal": "quota"}, ("upstream", "our_provider_account")),
+    (401, {"tier": "tool", "billed_oauth": True}, ("upstream", "caller_provider_account")),
     (429, {"tier": "platform", "signal": "burst"}, ("upstream", "rate_limit")),
     (403, {"tier": "platform", "signal": "edge_block"}, ("upstream", "upstream_error")),
     (404, {}, ("upstream", "not_found")),
@@ -88,12 +105,8 @@ def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
 
 
-def test_every_failure_kind_has_a_class():
-    assert set(_BLAME_BY_KIND) <= set(call_errors._CLASS_OF_KIND)
-
-
 def test_caller_side_is_the_classes_a_default_view_leaves_out():
-    assert call_errors.CALLER_SIDE == {"caller_balance_or_cap", "caller_provider_account", "treg_policy"}
+    assert call_errors.CALLER_SIDE == {"caller_balance_or_cap", "caller_policy", "caller_provider_account"}
 
 
 async def test_a_balance_refusal_logs_the_caller_side_line(clients: AsyncClient, platform_on, lines):
@@ -154,17 +167,54 @@ async def test_an_unknown_endpoint_never_logs_the_name_it_was_called_by(clients:
     assert line["error_class"] == "not_found"
 
 
+async def test_a_missing_required_parameter_logs_its_name_and_rule(clients: AsyncClient, lines):
+    await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
+    r = await clients.get(f"/call/{EP}?count=5")
+    assert r.status_code == 400, r.text
+    assert set(r.json()) == {"detail"} and isinstance(r.json()["detail"], str)
+    (line,) = lines()
+    assert (line["by"], line["error_class"], line["kind"]) == ("treg", "caller_input",
+                                                               "catalog_parameter_invalid")
+    assert (line["parameter"], line["rule"]) == ("queryParams.aweme_id", "required")
+
+
 def test_a_refused_parameter_is_named_only_when_declared(lines):
-    for parameter in ("queryParams.aweme_id", "queryParams.someone@example.com"):
+    for parameter in ("queryParams.aweme_id", "queryParams.someone@example.com", "aweme_id",
+                      "query.count", "someone@example.com"):
+        failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
+                                   rule="undeclared", detail=SECRET_INPUT)
         call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
-                         provider="tikhub", tier="platform", refused_by="request",
-                         kind="catalog_parameter_invalid",
-                         detail={"parameter": parameter, "rule": "type", "message": SECRET_INPUT},
+                         provider="tikhub", tier="platform", refused_by="request", failure=failure,
                          answered=False)
-    declared, undeclared = lines()
-    assert (declared["parameter"], declared["rule"]) == ("queryParams.aweme_id", "type")
-    assert undeclared["parameter"] == "undeclared"
-    assert declared["error_class"] == "caller_input" and declared["caller_side"] is False
+    assert [line["parameter"] for line in lines()] == [
+        "queryParams.aweme_id", "undeclared", "aweme_id", "query.count", "undeclared"]
+
+
+def test_a_parameter_in_the_refusal_detail_is_read_and_list_values_are_not(lines):
+    for parameter in ("queryParams.count", ["body.a", "body.b"]):
+        failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform",
+                                   detail={"parameter": parameter})
+        call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
+                         provider="tikhub", tier="platform", refused_by="request", failure=failure,
+                         answered=False)
+    named, listed = lines()
+    assert (named["parameter"], named["rule"]) == ("queryParams.count", "platform")
+    assert (listed["parameter"], listed["rule"]) == (None, "platform")
+
+
+def test_operator_flow_control_is_not_a_spend_cap(lines):
+    call_errors.emit(429, org_id=1, call_ref="x", road="unresolved", refused_by="cap",
+                     failure=AdmissionRejected(retry_after_s=1, version=1), answered=False)
+    (line,) = lines()
+    assert (line["kind"], line["error_class"], line["caller_side"]) == (
+        "org_concurrency_limit", "treg_policy", False)
+
+
+async def test_a_bad_treg_token_is_its_own_class(clients: AsyncClient, lines):
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Token": "nope"})
+    assert r.status_code == 401, r.text
+    (line,) = lines()
+    assert (line["error_class"], line["caller_side"], line["by"]) == ("caller_auth", False, "treg")
 
 
 def test_a_routed_child_carries_its_step(lines):

@@ -227,30 +227,38 @@ a routed parent, a hub refusal, and the router's fallback for a refusal nothing 
 | `status`, `refused_by` | the status the caller got, and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
 | `error_class` | one word below |
-| `caller_side` | `true` for `caller_balance_or_cap`, `caller_provider_account` and `treg_policy` |
+| `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
 | `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`) |
 | `signal` | the provider's documented error read from its answer (`balance`, `quota`, `burst`), per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for a refused parameter: its declared name (`undeclared` for a name the endpoint does not declare), and the rule when the refusal names one |
+| `parameter`, `rule` | for treg's own refusal of a request: the field it is about (`queryParams.limit`; `undeclared` for a name the endpoint does not declare) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform` for a limit of treg's shared key, `authorization_method`, `unsupported`). Both ride on the refusal (`CallFailure.parameter`, `.rule`), never in what the caller sees |
 
-`error_class` comes from one table in `call_errors.py`, read in order: the failure kind, else
-`refused_by`, else the provider's documented error, else the status. `caller_input`,
-`caller_balance_or_cap`, `caller_provider_account`, `not_found`, `rate_limit`, `upstream_error`,
-`timeout`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other`. An
-account error (an upstream 401/402/403, or a documented out-of-credit answer under any status) is
-`caller_provider_account` on the `credential` and `tool` tiers and `our_provider_account` on every
-other. No request or answer value, header, credential or message text is logged; the answer is read
-only for its documented error code.
+`error_class` is read in order from the failure kind (its class sits beside its blame in
+`types.FAILURE_KINDS`, one table for both), else `refused_by`, else the provider's documented error,
+else the status (`call_errors.py`). `caller_input`, `caller_balance_or_cap`, `caller_policy` (the
+team's own deny rules: `policy_denied`, `tool_access_denied`, `tag_blocked`), `caller_auth` (no
+valid treg token), `caller_provider_account`, `not_found`, `rate_limit`, `upstream_error`,
+`timeout`, `treg_capacity`, `treg_policy` (a paused provider, a retired tool, an operator's quota or
+flow control, fair share), `our_provider_account`, `treg_error`, `other`. A provider account error
+belongs to whoever holds that account. An access error (an upstream 401/403) is
+`caller_provider_account` on the `credential` and `tool` tiers. A credit error (an upstream 402, or
+an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
+stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
+OAuth app it is `our_provider_account`, like every error on treg's own key. A routed parent the
+provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`. No request or answer
+value, header, credential or message text is logged; the answer is read only for its documented
+error code.
 
 A default error view leaves `caller_side` out; the full count is the same query without that
-filter. In Loki, with the deployment's own stream selector:
+filter. A routed call writes its parent's line and one per failed child, check or poll, so a count
+of calls keeps only root lines (`step` empty). In Loki, with the deployment's own stream selector:
 
 ```logql
 sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
   | pattern "call_error <payload>" | line_format "{{.payload}}" | json | __error__=""
-  | caller_side="false" [1h]))
+  | step="" | caller_side="false" [1h]))
 ```
 
-The full count drops `| caller_side="false"`.
+The full count drops `| caller_side="false"`; a count of attempts drops `| step=""`.
 
 `scripts/call_events_actionable_errors.sql` is the same view over the events: failed calls by
 class, refuser, tier and endpoint, with per-class totals, leaving caller-side classes out unless

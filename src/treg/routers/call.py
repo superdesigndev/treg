@@ -269,8 +269,8 @@ async def _stamp_call_exit(
             endpoint_id=getattr(marketplace, "endpoint_id", None),
             provider=getattr(marketplace, "provider", None),
             tier=getattr(marketplace, "tier", None), refused_by=_refusal_kind(status_code),
-            kind=failure.kind if failure is not None else failure_kind,
-            detail=failure.detail if failure is not None else None, answered=False)
+            failure=failure, kind=failure_kind,
+            billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
         if failure_kind:
             _capture_exceptional_call(
                 request, call_ref=call_ref, status_code=status_code, failure_kind=failure_kind)
@@ -431,6 +431,7 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
             streaming = True  # The ASGI response now owns cleanup and slot release.
         return response
     except (org_concurrency.AdmissionRejected, org_flow_control.PauseRejected) as exc:
+        request.state.call_failure = exc
         raise HTTPException(status_code=exc.status_code, detail=exc.detail,
                             headers={"Retry-After": str(exc.retry_after_s)}) from exc
     except CallFailure as exc:

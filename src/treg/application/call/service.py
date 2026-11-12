@@ -234,7 +234,7 @@ def _set_caller_max_cost(request, mk: MarketplaceCall) -> None:
     try:
         mk.max_cost_micro = int(round(float(raw) * 1_000_000))
     except (ValueError, OverflowError) as exc:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
                                detail=f"{routed.MAX_COST_HEADER} must be a USD number, got {raw!r}") from exc
 
 
@@ -906,8 +906,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                "provider": "hub", "credential_tier": "hub", **_tag_telemetry(meta)})
                 call_errors.emit(exc.status_code, org_id=caller.org_id, call_ref=call_ref, road="hub",
                                  provider="hub", tier="hub",
-                                 refused_by=_refusal_kind(exc.status_code), kind=exc.kind,
-                                 detail=exc.detail, answered=False)
+                                 refused_by=_refusal_kind(exc.status_code), failure=exc,
+                                 answered=False)
             raise
         request.state.call_audited = True
         request.state.call_cost_micro = charged
@@ -1034,8 +1034,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 status_code=mkexc.status_code, refused_by=refused)
             call_errors.emit(mkexc.status_code, org_id=caller.org_id, call_ref=call_ref,
                              road="catalog", endpoint_id=ep["id"], provider=ep.get("provider"),
-                             refused_by=refused, kind=mkexc.kind, detail=mkexc.detail,
-                             answered=False)
+                             refused_by=refused, failure=mkexc, answered=False)
             analytics.capture(caller.email, "tool_called",
                 _tool_called_props(request, tool_name=ep["id"], status_code=mkexc.status_code,
                                    call_ref=call_ref, own_tool=False, refused_by=refused,
@@ -1182,9 +1181,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             road="catalog" if mk is not None else "own_tool",
             endpoint_id=mk.endpoint_id if mk is not None else None,
             provider=mk.provider if mk is not None else None,
-            tier=mk.tier if mk is not None else "tool", refused_by=refused_by,
-            kind=failure.kind if failure is not None else None,
-            detail=failure.detail if failure is not None else None, answered=answered,
+            tier=mk.tier if mk is not None else "tool", refused_by=refused_by, failure=failure,
+            billed_oauth=mk is not None and mk.billed_oauth, answered=answered,
             body=provider_error[0] if provider_error else None,
             headers=provider_error[1] if provider_error else None)
         if mk is not None:
@@ -2126,9 +2124,7 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         retained_extra=int(summary.get("size") or 0) + answer_size)
     call_errors.emit(status, org_id=request.caller.org_id, call_ref=request.context.call_ref,
                      road="routed", endpoint_id=ep["id"], provider="treg", tier="routed",
-                     refused_by=refused_by, kind=failure.kind if failure is not None else None,
-                     detail=failure.detail if failure is not None else None,
-                     answered=failure is None)
+                     refused_by=refused_by, failure=failure, answered=failure is None)
 
 
 def _finished_on_submission(mk, body: bytes) -> bool:

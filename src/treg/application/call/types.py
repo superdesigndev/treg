@@ -12,82 +12,90 @@ if TYPE_CHECKING:
 
 Blame = Literal["caller", "treg", "upstream", "org_connection"]
 
-_BLAME_BY_KIND: dict[str, Blame] = {
-    "metadata_invalid": "caller",
-    "metadata_pin_mismatch": "caller",
-    "idempotency_mismatch": "caller",
-    "idempotency_in_progress": "treg",
-    "invalid_target": "caller",
-    "tool_access_denied": "caller",
-    "target_not_found": "caller",
-    "hub_not_runnable": "treg",
-    "hub_input_invalid": "caller",
-    "hub_run_failed": "upstream",
-    "hub_busy": "caller",
-    "hub_price_unaffordable": "caller",
-    "unknown_endpoint": "caller",
-    "target_ambiguous": "caller",
-    "catalog_retired": "caller",
-    "catalog_parameter_invalid": "caller",
-    "async_resource_not_owned": "caller",
-    "provider_resource_not_owned": "caller",
-    "provider_resource_state_failed": "treg",
-    "capability_pinned": "caller",
-    "policy_denied": "caller",
+FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
+    "metadata_invalid": ("caller", "caller_input"),
+    "metadata_pin_mismatch": ("caller", "caller_input"),
+    "idempotency_mismatch": ("caller", "caller_input"),
+    "idempotency_in_progress": ("treg", "treg_capacity"),
+    "invalid_target": ("caller", "caller_input"),
+    "tool_access_denied": ("caller", "caller_policy"),
+    "target_not_found": ("caller", "not_found"),
+    "hub_not_runnable": ("treg", "treg_error"),
+    "hub_input_invalid": ("caller", "caller_input"),
+    "hub_run_failed": ("upstream", "upstream_error"),
+    "hub_busy": ("caller", "treg_policy"),
+    "hub_price_unaffordable": ("caller", "caller_balance_or_cap"),
+    "unknown_endpoint": ("caller", "not_found"),
+    "target_ambiguous": ("caller", "caller_input"),
+    "catalog_retired": ("caller", "treg_policy"),
+    "catalog_parameter_invalid": ("caller", "caller_input"),
+    "async_resource_not_owned": ("caller", "treg_policy"),
+    "provider_resource_not_owned": ("caller", "treg_policy"),
+    "provider_resource_state_failed": ("treg", "treg_error"),
+    "capability_pinned": ("caller", "treg_policy"),
+    "policy_denied": ("caller", "caller_policy"),
     # An installed policy extension refused treg's money for this call (`call_admission`).
-    "admission_denied": "caller",
-    "daily_cap_reached": "caller",
-    "org_endpoint_quota_exceeded": "caller",
-    "public_demo_rate_limited": "caller",
-    "trial_allowance_unavailable": "treg",
-    "trial_allowance_reached": "caller",
-    "platform_cap_unavailable": "treg",
-    "money_admission_timeout": "treg",
-    "catalog_price_invalid": "treg",
-    "platform_daily_cap_reached": "caller",
-    "tag_budget_unavailable": "treg",
-    "tag_cardinality_exceeded": "caller",
-    "tag_blocked": "caller",
-    "tag_call_cap_reached": "caller",
-    "tag_spend_cap_reached": "caller",
-    "insufficient_balance": "caller",
-    "free_credit_excludes_video": "caller",
+    "admission_denied": ("caller", "treg_policy"),
+    "daily_cap_reached": ("caller", "caller_balance_or_cap"),
+    "org_endpoint_quota_exceeded": ("caller", "treg_policy"),
+    "public_demo_rate_limited": ("caller", "treg_policy"),
+    "trial_allowance_unavailable": ("treg", "treg_capacity"),
+    "trial_allowance_reached": ("caller", "caller_balance_or_cap"),
+    "platform_cap_unavailable": ("treg", "treg_capacity"),
+    "money_admission_timeout": ("treg", "treg_capacity"),
+    "catalog_price_invalid": ("treg", "treg_error"),
+    "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
+    "tag_budget_unavailable": ("treg", "treg_capacity"),
+    "tag_cardinality_exceeded": ("caller", "caller_input"),
+    "tag_blocked": ("caller", "caller_policy"),
+    "tag_call_cap_reached": ("caller", "caller_balance_or_cap"),
+    "tag_spend_cap_reached": ("caller", "caller_balance_or_cap"),
+    "insufficient_balance": ("caller", "caller_balance_or_cap"),
+    "free_credit_excludes_video": ("caller", "caller_balance_or_cap"),
     # treg's OWN vendor account for the provider is out (balance/quota) — a 503 the caller cannot
     # fix, answered before any hold exists, with the same-capability alternatives named.
-    "provider_capacity": "treg",
+    "provider_capacity": ("treg", "treg_capacity"),
     # This deployment paused the provider (TREG_PAUSED_PROVIDERS): refused before any hold.
-    "provider_paused": "treg",
+    "provider_paused": ("treg", "treg_policy"),
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
-    "share_busy": "caller",
+    "share_busy": ("caller", "treg_policy"),
     # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
     # refused before it was sent, not charged; a routed job moves to its next provider.
-    "provider_rate_limited": "treg",
+    "provider_rate_limited": ("treg", "treg_capacity"),
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
-    "route_no_candidate": "caller",
-    "route_max_cost": "caller",
-    "route_failed": "upstream",
-    "route_caller_fault": "caller",
-    "route_not_found": "caller",       # the requested page or record does not exist at its source
-    "injection_failed": "treg",
-    "platform_account_retired": "treg",
-    "platform_account_split": "treg",
-    "platform_account_unavailable": "treg",
-    "ssrf_refused": "treg",
-    "connect_failed": "upstream",
-    "read_timeout": "upstream",
-    "stream_interrupted": "upstream",
-    "response_buffer_limit": "treg",
-    "refresh_failed": "org_connection",
-    "credential_missing": "org_connection",
-    "authorization_required": "org_connection",
-    "method_mismatch": "caller",
+    "route_no_candidate": ("caller", "caller_input"),
+    "route_max_cost": ("caller", "caller_balance_or_cap"),
+    "route_failed": ("upstream", "upstream_error"),
+    "route_caller_fault": ("caller", "caller_input"),
+    "route_not_found": ("caller", "not_found"),       # the requested page or record does not exist at its source
+    "injection_failed": ("treg", "treg_error"),
+    "platform_account_retired": ("treg", "our_provider_account"),
+    "platform_account_split": ("treg", "our_provider_account"),
+    "platform_account_unavailable": ("treg", "our_provider_account"),
+    "ssrf_refused": ("treg", "treg_error"),
+    "connect_failed": ("upstream", "upstream_error"),
+    "read_timeout": ("upstream", "timeout"),
+    "stream_interrupted": ("upstream", "upstream_error"),
+    "response_buffer_limit": ("treg", "treg_error"),
+    "refresh_failed": ("org_connection", "caller_provider_account"),
+    "credential_missing": ("org_connection", "caller_provider_account"),
+    "authorization_required": ("org_connection", "caller_provider_account"),
+    "method_mismatch": ("caller", "caller_input"),
+    "db_pool": ("treg", "treg_capacity"),
+    "unexpected_exception": ("treg", "treg_error"),
+    "org_concurrency_limit": ("caller", "treg_policy"),
+    "org_rate_limit": ("caller", "treg_policy"),
+    "org_traffic_paused": ("caller", "treg_policy"),
 }
 
 
 class CallFailure(Exception):
-    """A call failure translated once by the HTTP adapter."""
+    """A call failure translated once by the HTTP adapter.
+
+    `parameter` and `rule` name the request field a refusal is about and the rule it broke, for the
+    `call_error` log line only (call_errors.py); the caller sees `detail` alone."""
 
     def __init__(
         self,
@@ -96,13 +104,19 @@ class CallFailure(Exception):
         status_code: int,
         detail: str | dict,
         retry_after_s: int | None = None,
+        parameter: str | None = None,
+        rule: str | None = None,
     ) -> None:
         super().__init__(str(detail))
         self.kind = kind
-        self.blame = _BLAME_BY_KIND[kind]
+        self.blame = FAILURE_KINDS[kind][0]
         self.status_code = status_code
         self.detail = detail
         self.retry_after_s = retry_after_s
+        named = detail.get("parameter") if isinstance(detail, dict) else None
+        self.parameter = parameter if parameter is not None else (
+            named if isinstance(named, str) else None)
+        self.rule = rule
 
 
 class IntakeFailed(CallFailure):

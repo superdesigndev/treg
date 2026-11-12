@@ -391,13 +391,13 @@ class RouteOptions:
             max_cost = int(round(float(mc) * 1_000_000)) if mc else (
                 default_max_cost_micro if default_max_cost_micro is not None else DEFAULT_MAX_COST_MICRO)
         except (ValueError, OverflowError) as exc:
-            raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
                                    detail=f"{MAX_COST_HEADER} must be a USD number, got {mc!r}") from exc
         wf = str(get(WATERFALL_HEADER) or "").strip().lower()
         try:
             mr = max(1, int(get(MIN_RESULTS_HEADER) or 1))
         except ValueError as exc:
-            raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
                                    detail=f"{MIN_RESULTS_HEADER} must be a whole number, got {get(MIN_RESULTS_HEADER)!r}") from exc
         mg = str(get(MERGE_HEADER) or "").strip().lower()
         sf = str(get(STRICT_FILTERS_HEADER) or "").strip().lower()
@@ -460,7 +460,7 @@ def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
         value = (given or {}).get(name)
         if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
             bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
-            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
+            raise call_cost._invalid(ep, f"body.{name}", "range", f"{ep['id']} needs {name}: a whole number {bound}")
 
 
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
@@ -478,7 +478,7 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
         for name in sorted(names & set(filters or {})):
             value = (given or {}).get(name)
             if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
-                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+                raise call_cost._invalid(ep, name, "range", f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
 
 
 def _empty_output(contract) -> dict:
@@ -860,9 +860,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     try:
         given = json.loads(body_bytes or b"{}")
     except ValueError as exc:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail=f"{ep['id']} expects a JSON object body") from exc
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter="body", rule="json",
+                               detail=f"{ep['id']} expects a JSON object body") from exc
     if not isinstance(given, dict):
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail=f"{ep['id']} expects a JSON object body")
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
+                               detail=f"{ep['id']} expects a JSON object body")
     parent.route_summary = {"identity": given, "size": len(body_bytes or b"")}
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
@@ -875,7 +877,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if options.verify and (contract is None or contract.check is None):
         # Refused before anything is planned or held: an agent must not believe a check ran.
         checked = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.check)
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
             "error": "route_verify_unsupported", "endpoint_id": ep["id"],
             "message": f"{VERIFY_HEADER} works only on {', '.join(checked)}; {ep['id']} has no check. "
                        "Nothing was charged."})
@@ -883,7 +885,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # Refused before anything is planned or held, like the check: an agent must not believe a
         # second provider was asked. With the waterfall off there is no second provider to ask.
         confirmable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.confirm)
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
             "error": "route_confirm_unsupported", "endpoint_id": ep["id"],
             "message": (f"{CONFIRM_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if contract and contract.confirm else
                         f"{CONFIRM_HEADER} works only on {', '.join(confirmable)}; {ep['id']} has no confirm field. ")
@@ -892,7 +894,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # Refused before anything is planned or held, like confirm: with no deciding words, or no
         # waterfall to go on with, the caller would believe an undecided answer was the last word.
         decidable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.verdict_decisive)
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
             "error": "route_decisive_unsupported", "endpoint_id": ep["id"],
             "message": (f"{DECISIVE_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if contract and contract.verdict_decisive else
                         f"{DECISIVE_HEADER} works only on {', '.join(decidable)}; {ep['id']} has no deciding verdict words. ")
@@ -900,7 +902,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if options.upgrade and (contract is None or (options.upgrade,) not in contract.identity
                             or options.upgrade not in contract.output):
         # Refused before anything is planned or held: the caller would believe a second lookup ran.
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
             "error": "route_upgrade_unsupported", "endpoint_id": ep["id"],
             "message": f"{UPGRADE_HEADER} names an identity key the answer carries and {ep['id']} accepts on its own; "
                        f"{options.upgrade!r} is not one. Nothing was charged."})
