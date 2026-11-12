@@ -1146,8 +1146,20 @@ def _marketplace_no_credential(
     lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
     if ep is not None:
         lines.extend(_capability_alternatives(ep))
-    return ResolutionFailed(
-        "credential_missing", status_code=404, detail="\n".join(lines))
+    kind = "platform_key_missing" if ep is not None and _platform_key_missing(ep, provider) \
+        else "credential_missing"
+    return ResolutionFailed(kind, status_code=404, detail="\n".join(lines))
+
+
+def _platform_key_missing(ep: dict, provider) -> bool:
+    """Would treg serve `ep` without the team's credential (its own key, or the anonymous
+    fallback) but for this deployment's key or allow-list for the provider?"""
+    if not catalog_store.load().platform_eligible(ep):
+        return False
+    settings = get_settings()
+    if ep.get("platform_auth") == "anonymous":
+        return not settings.platform_provider_enabled(ep["provider"])
+    return provider.uses_pasted_secret and not settings.platform_key_for(ep["provider"])
 
 
 _VALID_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")

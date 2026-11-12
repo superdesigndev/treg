@@ -141,8 +141,9 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
 
     `failure` is the refusal treg raised: its `kind`, and the `parameter` and `rule` it names, are
     read; `kind` stands in when there is none. `body` and `headers` are the provider's error answer,
-    read only for its documented error code (`domain.capacity.signatures`), decoded by its
-    `Content-Encoding`; no part of them is logged."""
+    read only for its documented error code (`domain.capacity.signatures`, the generic ones alone
+    when `provider` is unknown, as on an own tool), decoded by its `Content-Encoding`; no part of
+    them is logged."""
     if status < 400:
         return
     try:
@@ -150,11 +151,11 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
         endpoint_id = endpoint_id if endpoint_id in catalog else None
         kind = getattr(failure, "kind", None) or kind
         signal = None
-        if refused_by is None and kind is None and body is not None and provider:
+        if refused_by is None and kind is None and body is not None:
             encoding = next((v.decode("latin-1") for k, v in headers or ()
                              if k.lower() == b"content-encoding"), "")
             plain = _decompress_for_scan(body, encoding) or b""
-            found = capacity_signatures.classify(provider, status, headers, plain[:4096])
+            found = capacity_signatures.classify(provider or "", status, headers, plain[:4096])
             signal = found.kind if found is not None else None
         by, cls = classify(status, tier=tier, refused_by=refused_by, kind=kind, signal=signal,
                            answered=answered, billed_oauth=billed_oauth)

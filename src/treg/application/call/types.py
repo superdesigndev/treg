@@ -85,6 +85,9 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "response_buffer_limit": ("treg", "treg_error"),
     "refresh_failed": ("org_connection", "caller_provider_account"),
     "credential_missing": ("org_connection", "caller_provider_account"),
+    # A catalog call treg's own key should serve, with no key or allow-list entry for its provider
+    # in this deployment: the caller sees `credential_missing`'s answer.
+    "platform_key_missing": ("treg", "our_provider_account"),
     "authorization_required": ("org_connection", "caller_provider_account"),
     "method_mismatch": ("caller", "caller_input"),
     "db_pool": ("treg", "treg_capacity"),

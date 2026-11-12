@@ -243,7 +243,13 @@ belongs to whoever holds that account. An access error (an upstream 401/403) is
 `caller_provider_account` on the `credential` and `tool` tiers. A credit error (an upstream 402, or
 an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
 stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
-OAuth app it is `our_provider_account`, like every error on treg's own key. A routed parent the
+OAuth app it is `our_provider_account`, like every error on treg's own key. An own tool's provider
+is not known, so only the generic documented errors and the phrase check are read on its answer. A
+catalog call refused for want of a credential (404) is `caller_provider_account`
+(`credential_missing`) when only the team's own key can serve the endpoint, and
+`our_provider_account` (`platform_key_missing`, the same answer to the caller) when treg's own key
+or the anonymous fallback should serve it but the deployment has no key or allow-list entry for its
+provider. A routed parent the
 provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`; one refused because
 treg's capacity took every candidate away (`route_no_candidate` answered 503) is `treg_capacity`.
 The answer is decoded by its `Content-Encoding` before its error code is read. A failed hub run is
@@ -272,5 +278,6 @@ The full count drops `| caller_side="false"`; a count of attempts drops `| step=
 class, refuser, tier and endpoint, with per-class totals, leaving caller-side classes out unless
 `include_caller_side` is set to true. An event has only `status_code`, `refused_by` and
 `credential_tier`, so the query's class is the coarser reading: a refusal kind or a provider's
-documented error code that changes the class shows only in the log line. A direct attempt that
+documented error code that changes the class shows only in the log line; a missing credential is
+`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A direct attempt that
 overflow later served still logs its line and keeps its event, as both record the attempt.

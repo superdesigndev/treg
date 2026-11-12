@@ -103,6 +103,7 @@ async def _answering(status: int, doc: dict) -> None:
     (503, {"kind": "route_no_candidate"}, ("treg", "treg_capacity")),
     (503, {"answered": False}, ("treg", "treg_error")),
     (409, {"kind": "credential_missing"}, ("treg", "caller_provider_account")),
+    (404, {"refused_by": "resolution", "kind": "platform_key_missing"}, ("treg", "our_provider_account")),
 ])
 def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
@@ -256,6 +257,30 @@ def test_an_own_key_out_of_credit_answer_is_read_whatever_its_encoding(lines, en
     assert (line["signal"], line["error_class"], line["caller_side"]) == (
         "unrecorded", "caller_provider_account", True)
     assert SECRET_ANSWER not in json.dumps(line)
+
+
+def test_an_own_tool_out_of_credit_answer_is_read_without_a_provider(lines):
+    answer = json.dumps({"error": "You don't have enough credits", "echo": SECRET_ANSWER}).encode()
+    call_errors.emit(400, org_id=1, call_ref="abc", road="own_tool", provider=None, tier="tool",
+                     body=answer, headers=[(b"content-type", b"application/json")])
+    (line,) = lines()
+    assert (line["signal"], line["error_class"], line["caller_side"]) == (
+        "unrecorded", "caller_provider_account", True)
+    assert SECRET_ANSWER not in json.dumps(line)
+
+
+@pytest.mark.parametrize(("target", "kind", "expected", "caller_side"), [
+    (f"{EP}?aweme_id=7", "platform_key_missing", "our_provider_account", False),
+    ("anymailfinder.account", "credential_missing", "caller_provider_account", True),
+])
+async def test_a_missing_credential_is_the_account_of_whoever_should_hold_the_key(
+        clients: AsyncClient, lines, target, kind, expected, caller_side):
+    r = await clients.get(f"/call/{target}")
+    assert r.status_code == 404, r.text
+    assert "platform_key_missing" not in r.text
+    (line,) = lines()
+    assert (line["kind"], line["by"], line["error_class"], line["caller_side"]) == (
+        kind, "treg", expected, caller_side)
 
 
 def test_a_routed_child_carries_its_step(lines):

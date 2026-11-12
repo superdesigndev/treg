@@ -17,7 +17,10 @@
 -- for an operator's quota is `policy` here and `treg_policy` there; a 402 on treg's pay-per-use
 -- OAuth app is the team's account here and treg's there; treg's own refusals at the relay stage,
 -- recorded without a `refused_by` (its account's declared rate, a credential it could not inject,
--- an address it would not reach, an answer over its buffer), are `upstream` here and `treg` there).
+-- an address it would not reach, an answer over its buffer), are `upstream` here and `treg` there;
+-- a 404 for want of a credential is `not_found` here, left in, since an event cannot tell an
+-- endpoint only the team's own key serves (`caller_provider_account` there, caller-side) from one
+-- treg's key should serve but this deployment has none for (`our_provider_account` there)).
 --
 -- DuckDB over the Iceberg catalog attached as `treg`. Replace the fixed UTC bounds; keep the window
 -- bounded, since a day costs the same scan whatever the filters select.
