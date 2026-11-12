@@ -6,9 +6,9 @@
 #
 # AnyAPI is a per-request USD gateway over 362 normalized endpoints. Two properties matter for
 # this catalog:
-#   1. PRICE. `cost.value` is MEASURED, not listed: the p90 of every charge AnyAPI actually billed
+#   1. PRICE. `price.value` is MEASURED, not listed: the p90 of every charge AnyAPI actually billed
 #      for that endpoint over the trailing 60 days (scripts/data/anyapi_measured_charges.json),
-#      which is why `source: observed`. It replaces the live rate card's cheapest-source price,
+#      which is why `provenance.source: observed`. It replaces the live rate card's cheapest-source price,
 #      which read far below what buyers really pay wherever the cheap source rarely wins, and far
 #      above it wherever a per-result endpoint was priced at its input maximum. A p90 is a shelf
 #      price, NOT a ceiling: about one call in ten settles above the reserve, which is exactly what
@@ -16,9 +16,9 @@
 #      and the next reserve is the gate. Across the same 60 days, under the older and much worse
 #      prices, that overrun came to $18.66 on $695.05 settled, 2.7%. Every SKU also publishes
 #      `failoverMaxUsd`, the dearest source that may rescue a failed attempt; that ceiling is named
-#      per endpoint in `cost.note`.
+#      per endpoint in `price.note`.
 #      FIVE core rows are the exception and list the rate card's CHEAPEST SOURCE price instead
-#      (`source: rate_card_api`): maps.search, maps.place, maps.reviews, twitter.profile and
+#      (`provenance.source: rate_card_api`): maps.search, maps.place, maps.reviews, twitter.profile and
 #      twitter.replies. Their sources charge very different amounts for the SAME number of results,
 #      so the p90 there measures which source won rather than how much work the call did. Measured
 #      per source over the same 60 days, maps.search is scrapertech $0.00175 flat (312 calls),
@@ -31,7 +31,7 @@
 #      not shelf-ranked, nor to a single-source per-result row like linkedin.company_employees or
 #      linkedin.jobs, whose cheapest advertised price is HIGHER than its measured p90.
 #   2. SETTLEMENT. Every 2xx run body carries a top-level `costUsd` — the exact USD charged for
-#      that call. `cost.reported_charge` makes treg settle on that number instead of the estimate,
+#      that call. `defaults.settle.reported` makes treg settle on that number instead of the estimate,
 #      so a rescued request bills what it really cost and a cheap request can bill LESS than the
 #      catalogued price.
 #   3. CEILING. This file declares `ceiling_param` (`max_cost_usd` on the query). When a call
@@ -43,6 +43,8 @@
 #   4. RESPONSE BUDGET. The header `queryParams` (`fields`, `max_items`, `summary`, `jq`) are
 #      AnyAPI's response-trimming controls on every `/v1/run/...` path, merged into each endpoint's
 #      inputs. They trim the body, never the charge: `costUsd` still settles the real number.
+#      `fields` is one comma-separated value, so every row declares `queryArrayEncoding: comma`: a
+#      list a caller passes is joined, not sent as repeated keys a v2 row refuses.
 # A request that no source could serve returns a non-2xx and is not charged. A source that answers
 # not-found is a 2xx with `output.found: false` and IS charged at the row's price: linkedin.email
 # billed $0.011 for a profile that does not exist (probed 2026-09-19), so a miss is not free here.
@@ -80,6 +82,10 @@ queryParams:
     note: 'jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`.'
 pricing_url: https://getanyapi.com/catalog
 proposed_capabilities:
+# Both tiers. The answer's `costUsd` is the bill, zero included, whatever the answer found; a 2xx
+# without a readable one settles at the hold, or at nothing when the row's miss rule holds.
+defaults:
+  settle: {reported: {path: response.costUsd, unit: usd}}
 endpoints:
 - id: anyapi.x.search.posts
   capability: x.search.posts
@@ -124,26 +130,30 @@ endpoints:
         note: 'Result ranking: ''Latest'', ''Top'', ''Photos'', or ''Videos'' (e.g. Latest).'
         default: Latest
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: openai
       limit: 20
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0154 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.search
     checked: '2026-09-11'
     confidence: verified
-    note: 'One source bills per result, so a small `limit` can cost less than the listed price. 4 sources
-      serve this, cheapest first; a failed attempt retries on the next, up to $0.0154 at the dearest. The
-      charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any
-      source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   example_response: examples/anyapi.x.search.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -165,31 +175,31 @@ endpoints:
         note: Twitter/X handle without the leading @.
         example: nasa
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: nasa
-  cost:
-    type: per_success
-    value: 0.00022
+  price:
+    value: '0.00022'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'The listed price is the cheapest source''s; a failover to a dearer one costs more. 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.profile
     checked: '2026-09-11'
     confidence: verified
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 5 sources serve
-      this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge
-      follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source
-      dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.output.found, op: equals, value: false}}
+  note: 'A handle that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.x.user.profile.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'handle not found: 200 with output.found false, BILLED $0.00022 (observed 2026-09-19)'
   docs_url: https://getanyapi.com/api/twitter/profile
 - id: anyapi.instagram.search.reels
   capability: instagram.search.reels
@@ -216,24 +226,29 @@ endpoints:
         note: Search keyword (e.g. "travel").
         example: travel
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: travel
-  cost:
-    type: per_success
-    value: 0.0015
+  price:
+    value: '0.0015'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.reels_search
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
   example_response: examples/anyapi.instagram.search.reels.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -314,25 +329,30 @@ endpoints:
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time
           restriction).'
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: best coffee maker
       limit: 1
-  cost:
-    type: per_success
-    value: 0.0009
+  price:
+    value: '0.0009'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'Flat per request whatever the result count. One source serves this, at up to $0.0009 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.search
     checked: '2026-09-11'
     confidence: verified
-    note: 'Flat per request whatever the result count. One source serves this, at up to $0.0009 a call. The
-      charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any
-      source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
   example_response: examples/anyapi.google.serp.organic.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -369,26 +389,21 @@ endpoints:
         note: The post search query.
         example: hiring
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: hiring
       datePosted: last-week
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'The cheap source charges about $0.0012 and the failover source about $0.008. 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 'The cheap source charges about $0.0012 and the failover source about $0.008. 2 sources serve this,
-      cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows
-      the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer
-      than your ceiling. A `found: false` answer is still charged.'
   example_response: examples/anyapi.linkedin.search.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -428,26 +443,30 @@ endpoints:
         max: 100
         example: 20
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: levelsio
       limit: 20
-  cost:
-    type: per_success
-    value: 0.0005
+  price:
+    value: '0.0005'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_tweets
     checked: '2026-09-11'
     confidence: verified
-    note: One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve
-      this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows
-      the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer
-      than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
   example_response: examples/anyapi.x.user.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -535,26 +554,22 @@ endpoints:
         - onsite
         example: remote
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: software engineer
       location: United States
       limit: 3
-  cost:
-    type: per_success
-    value: 0.0005
+  price:
+    value: '0.0005'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00066 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.jobs_thin
     checked: '2026-09-11'
     confidence: verified
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00066 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   example_response: examples/anyapi.linkedin.search.jobs.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -578,30 +593,31 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: zachking
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: zachking
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.output.found, op: equals, value: false}}
+  note: 'A handle that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.tiktok.user.profile.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'handle not found: 200 with output.found false, BILLED $0.00045 (observed 2026-09-19)'
   docs_url: https://getanyapi.com/api/tiktok/profile
 - id: anyapi.linkedin.user.profile
   capability: linkedin.user.profile
@@ -622,33 +638,32 @@ endpoints:
         note: Full LinkedIn profile URL.
         example: https://www.linkedin.com/in/williamhgates
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.linkedin.com/in/williamhgates
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile_thin
     checked: '2026-09-11'
     confidence: verified
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.output.found, op: equals, value: false}}
+  note: 'The cheap tier of the LinkedIn profile read: core profile fields only; `anyapi.linkedin.user.profile.full` returns the full record. A profile that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.user.profile.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'profile not found: 200 with output.found false, BILLED $0.0012 (observed 2026-09-19, 11 s)'
   docs_url: https://getanyapi.com/api/linkedin/profile-thin
-  note: 'The cheap tier of the LinkedIn profile read: core profile fields only; `anyapi.linkedin.user.profile.full`
-    returns the full record.'
 - id: anyapi.google.serp.maps
   capability: google.serp.maps
   platform: google
@@ -715,27 +730,22 @@ endpoints:
         - withWebsite
         - withoutWebsite
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: coffee
       location: Austin, TX
       limit: 1
-  cost:
-    type: per_success
-    value: 0.00175
+  price:
+    value: '0.00175'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'The cheapest source charges $0.00175 and serves most calls; the two failover sources are far dearer. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.116 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.search
     checked: '2026-09-11'
     confidence: verified
-    note: 'The cheapest source charges $0.00175 and serves most calls; the two failover sources are far dearer.
-      3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.116 at the dearest.
-      The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse
-      any source dearer than your ceiling. A `found: false` answer is still charged.'
   example_response: examples/anyapi.google.serp.maps.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -824,27 +834,23 @@ endpoints:
         - date
         example: relevance
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: artificial intelligence
       datePosted: last-week
       limit: 10
       sort: relevance
-  cost:
-    type: per_success
-    value: 0.0143
+  price:
+    value: '0.0143'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_posts_full
     checked: '2026-09-11'
     confidence: verified
-    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   example_response: examples/anyapi.linkedin.search.posts.full.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -878,30 +884,31 @@ endpoints:
           instead of charged for an empty result.'
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.instagram.com/reel/DWzrfE2kaY8/
-  cost:
-    type: per_success
-    value: 0.0015
+  price:
+    value: '0.0015'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.post
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.output.found, op: equals, value: false}}
+  note: 'A post that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.instagram.post.detail.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'post not found: 200 with output.found false, BILLED $0.0005 (observed 2026-09-19, 16 s)'
   docs_url: https://getanyapi.com/api/instagram/post
 - id: anyapi.instagram.user.reels
   capability: instagram.user.reels
@@ -929,24 +936,29 @@ endpoints:
         required: false
         note: Instagram user id (faster than handle when known).
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: nasa
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_reels
     checked: '2026-09-11'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
   example_response: examples/anyapi.instagram.user.reels.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -973,24 +985,29 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: nasa
-  cost:
-    type: per_success
-    value: 0.0024
+  price:
+    value: '0.0024'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
   example_response: examples/anyapi.instagram.user.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1015,33 +1032,32 @@ endpoints:
         note: Full LinkedIn profile URL.
         example: https://www.linkedin.com/in/patrickcollison
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.linkedin.com/in/patrickcollison
-  cost:
-    type: per_success
-    value: 0.0042
+  price:
+    value: '0.0042'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0042 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile
     checked: '2026-09-11'
     confidence: verified
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0042 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - {path: response.output.found, op: equals, value: false}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: {path: response.output.found, op: equals, value: false}}
+  note: 'The full tier of the LinkedIn profile read: experience, education, skills and recommendations; `anyapi.linkedin.user.profile` returns core fields only. A profile that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.user.profile.full.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'profile not found: 200 with output.found false, BILLED $0.004 (observed 2026-09-19, 1 s)'
   docs_url: https://getanyapi.com/api/linkedin/profile
-  note: 'The full tier of the LinkedIn profile read: experience, education, skills and recommendations;
-    `anyapi.linkedin.user.profile` returns core fields only.'
 - id: anyapi.x.user.posts.timeline
   capability: x.user.posts
   platform: x
@@ -1065,24 +1081,29 @@ endpoints:
         note: Twitter/X handle without the leading @.
         example: levelsio
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: levelsio
-  cost:
-    type: per_success
-    value: 0.00075
+  price:
+    value: '0.00075'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_posts
     checked: '2026-09-11'
     confidence: verified
-    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
   example_response: examples/anyapi.x.user.posts.timeline.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1134,26 +1155,31 @@ endpoints:
         - reel
         example: reel
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       datePosted: last-month
       hashtag: skincare
       mediaType: reel
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00312 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.search_hashtag
     checked: '2026-09-11'
     confidence: verified
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00312 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
   example_response: examples/anyapi.instagram.hashtag.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1181,24 +1207,20 @@ endpoints:
         note: TikTok username without the leading @.
         example: zachking
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       handle: zachking
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile_videos
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
   example_response: examples/anyapi.tiktok.user.videos.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1225,24 +1247,31 @@ endpoints:
         note: Full Instagram post or reel URL.
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.instagram.com/reel/DWzrfE2kaY8/
-  cost:
-    type: per_success
-    value: 0.00144
+  price:
+    value: '0.00144'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.post_comments
     checked: '2026-09-11'
     confidence: verified
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any:
+        - {path: response.output.data.comments, op: absent}
+        - {path: response.output.data.comments, op: empty}
   example_response: examples/anyapi.instagram.post.comments.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1281,24 +1310,20 @@ endpoints:
         required: false
         note: 'Sort order: relevance, most-liked, date-posted.'
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: funny
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_top
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
   example_response: examples/anyapi.tiktok.search.general.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1325,24 +1350,31 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@zachking/video/7650468599424945422?_r=1&u_code=f0hj7d780760m9&preview_pb=0&sharer_language=en&_d=f0hj7blh067h71&share_item_id=7650468599424945422&source=h5_m
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.tiktok.com/@zachking/video/7650468599424945422?_r=1&u_code=f0hj7d780760m9&preview_pb=0&sharer_language=en&_d=f0hj7blh067h71&share_item_id=7650468599424945422&source=h5_m
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_comments
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any:
+        - {path: response.output.data.comments, op: absent}
+        - {path: response.output.data.comments, op: empty}
   example_response: examples/anyapi.tiktok.video.comments.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1378,24 +1410,20 @@ endpoints:
         note: The URL of a public Facebook group to fetch posts from (e.g. https://www.facebook.com/groups/1270525996445602/).
         example: https://www.facebook.com/groups/1270525996445602/
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.facebook.com/groups/1270525996445602/
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.group_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
   example_response: examples/anyapi.facebook.group.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1426,24 +1454,29 @@ endpoints:
         note: Full Facebook page/profile URL.
         example: https://www.facebook.com/nike
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.facebook.com/nike
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile_posts
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
   example_response: examples/anyapi.facebook.user.posts.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1466,24 +1499,20 @@ endpoints:
         note: Full Facebook post URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.facebook.com/reel/2166091230582141/
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.post
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
   example_response: examples/anyapi.facebook.post.detail.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1537,26 +1566,31 @@ endpoints:
         - '2'
         example: 0
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       datePosted: 0
       query: cooking
       sortBy: 0
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_keyword
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.videos, op: absent}, {path: response.output.data.videos, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.videos, op: absent}, {path: response.output.data.videos, op: empty}]
   example_response: examples/anyapi.tiktok.search.videos.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1578,24 +1612,20 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@washingtonpost/video/7609177768793787679
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://www.tiktok.com/@washingtonpost/video/7609177768793787679
-  cost:
-    type: per_success
-    value: 0.002
+  price:
+    value: '0.002'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_transcript
     checked: '2026-09-11'
     confidence: verified
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
   example_response: examples/anyapi.tiktok.video.captions.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1649,25 +1679,31 @@ endpoints:
           y years. So 2h is the last two hours, 30d the last thirty days, 6m the last six months. Omit
           this field, or send ''all'', to search without a time limit.'
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       gl: us
       hl: en
       query: openai
-  cost:
-    type: per_success
-    value: 0.00099
+  price:
+    value: '0.00099'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.news
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not
-      the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   example_response: examples/anyapi.google.serp.news.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1702,25 +1738,29 @@ endpoints:
         note: Full URL of the X (Twitter) post to fetch replies for (e.g. https://x.com/nasa/status/1846987139428634858).
         example: https://x.com/jack/status/20
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       url: https://x.com/i/status/20
-  cost:
-    type: per_success
-    value: 0.0005
+  price:
+    value: '0.0005'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0138 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.replies
     checked: '2026-09-11'
     confidence: verified
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 4 sources serve
-      this, cheapest first; a failed attempt retries on the next, up to $0.0138 at the dearest. The charge
-      follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source
-      dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   example_response: examples/anyapi.x.post.comments.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1756,31 +1796,25 @@ endpoints:
         max: 10
         example: 3
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       company: stripe
       limit: 3
-  cost:
-    type: per_success
-    value: 0.105
+  price:
+    value: '0.105'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'Billed per employee returned, about $0.011 each, so the charge follows `limit`: the maximum of 10 costs up to $0.11. One source serves this. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A company that does not exist reports `costUsd: 0` and costs nothing.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_employees
     checked: '2026-09-11'
     confidence: verified
-    note: 'Billed per employee returned, about $0.011 each, so the charge follows `limit`: the maximum of
-      10 costs up to $0.11. One source serves this. The charge follows the answer''s `costUsd`, not the listed
-      price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.'
+  note: 'A company that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.company.people.json
   verified: '2026-09-19'
   added: '2026-09-19'
-  miss:
-    status: 200
-    means: 'company not found: 200 with output.found false and costUsd 0, free (observed 2026-09-19)'
   docs_url: https://getanyapi.com/api/linkedin/company-employees
 - id: anyapi.linkedin.email.work.find
   added: '2026-09-19'
@@ -1803,23 +1837,18 @@ endpoints:
           work email for.
         example: https://www.linkedin.com/in/satyanadella
     bodyType: json
-  cost:
-    type: per_success
-    value: 0.011
+    queryArrayEncoding: comma
+  price:
+    value: '0.011'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'One source serves this, at up to $0.011 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A profile with no work email is charged in full.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.email
     checked: '2026-09-11'
     confidence: verified
-    note: One source serves this, at up to $0.011 a call. The charge follows the answer's `costUsd`, not the
-      listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
-  miss:
-    status: 200
-    means: 'no work email for this profile: 200 with output.found false, BILLED at the full $0.011 (observed 2026-09-19, 6.7 s); not an API failure'
+  note: 'A profile with no work email answers 200 with `output.found: false`; it is not an API failure.'
   docs_url: https://getanyapi.com/api/linkedin/email
   untestable: Returns a named individual's work email; no automated verification request or stored
     example under the catalog PII rule. Price observed once on 2026-09-19 (costUsd 0.011, exact).
@@ -1842,24 +1871,20 @@ endpoints:
         note: The question or prompt to answer with a Google AI Overview.
         example: How does photosynthesis work?
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       prompt: How does photosynthesis work?
-  cost:
-    type: per_success
-    value: 0.0018
+  price:
+    value: '0.0018'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00336 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.ai_overview
     checked: '2026-09-11'
     confidence: verified
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00336 at the
-      dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
   example_response: examples/anyapi.google.serp.ai_overview.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -1975,27 +2000,23 @@ endpoints:
         - onsite
         example: remote
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       limit: 3
       location: United States
       query: software engineer
       workplaceType: remote
-  cost:
-    type: per_success
-    value: 0.0286
+  price:
+    value: '0.0286'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'One source serves this, at up to $0.0286 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/linkedin.jobs
     checked: '2026-10-06'
     confidence: verified
-    note: 'One source serves this, at up to $0.0286 a call. The charge follows the answer''s `costUsd`, not
-      the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found:
-      false` answer is still charged.'
   example_response: examples/anyapi.linkedin.search.jobs.full.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -2023,24 +2044,29 @@ endpoints:
         note: The keyword to search TikTok accounts for.
         example: chef
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: chef
-  cost:
-    type: per_success
-    value: 0.0012
+  price:
+    value: '0.0012'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_users
     checked: '2026-09-11'
     confidence: verified
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the
-      dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost
-      to refuse any source dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.users, op: absent}, {path: response.output.data.users, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.users, op: absent}, {path: response.output.data.users, op: empty}]
   example_response: examples/anyapi.tiktok.search.users.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -2100,27 +2126,30 @@ endpoints:
         - highestRanking
         - lowestRanking
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       limit: 3
       placeId: ChIJN1t_tDeuEmsRUsoyG83frY4
-  cost:
-    type: per_success
-    value: 0.0035
+  price:
+    value: '0.0035'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'The three sources are priced an order of magnitude apart and one bills per review returned, so the charge varies widely with the source and the count. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0441 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.reviews
     checked: '2026-09-11'
     confidence: verified
-    note: 'The three sources are priced an order of magnitude apart and one bills per review returned, so
-      the charge varies widely with the source and the count. 3 sources serve this, cheapest first; a failed
-      attempt retries on the next, up to $0.0441 at the dearest. The charge follows the answer''s `costUsd`,
-      not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found:
-      false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   example_response: examples/anyapi.google.maps.reviews.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -2186,26 +2215,30 @@ endpoints:
         - withWebsite
         - withoutWebsite
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       location: San Francisco, CA
       query: Blue Bottle Coffee
-  cost:
-    type: per_success
-    value: 0.00175
+  price:
+    value: '0.00175'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0099 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+  provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.place
     checked: '2026-09-11'
     confidence: verified
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 3 sources serve
-      this, cheapest first; a failed attempt retries on the next, up to $0.0099 at the dearest. The charge
-      follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source
-      dearer than your ceiling.
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
   example_response: examples/anyapi.google.serp.maps.place.json
   verified: '2026-09-19'
   added: '2026-09-19'
@@ -2239,24 +2272,31 @@ endpoints:
         note: The partial Google search query.
         example: best coff
     bodyType: json
+    queryArrayEncoding: comma
   test_request:
     body:
       query: best coff
-  cost:
-    type: per_success
-    value: 0.00099
+  price:
+    value: '0.00099'
     currency: USD
     unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
+    note: 'One source serves this, at up to $0.00099 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+  provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.autocomplete
     checked: '2026-09-11'
     confidence: verified
-    note: 'One source serves this, at up to $0.00099 a call. The charge follows the answer''s `costUsd`, not
-      the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found:
-      false` answer is still charged.'
+  bill:
+    error: charged
+    free_when:
+      - {path: response.costUsd, op: absent}
+      - any: [{path: response.output.data.suggestions, op: absent}, {path: response.output.data.suggestions, op: empty}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss:
+    when:
+      any:
+        - {path: response.output.data.suggestions, op: absent}
+        - {path: response.output.data.suggestions, op: empty}
   example_response: examples/anyapi.google.keywords.ideas.json
   verified: '2026-09-19'
   added: '2026-09-19'

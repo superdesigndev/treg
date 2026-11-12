@@ -35,7 +35,9 @@ var helpGroups = []struct {
 	}},
 	{"TEAM MANAGEMENT", [][2]string{
 		{"audit", "Who called/ran what, when, and the result."},
-		{"org", "Manage teams (orgs): create, switch, members, agent keys."},
+		{"org", "Manage teams (orgs): create, switch, join, members, agent keys."},
+		{"invites", "List invites addressed to your email."},
+		{"accept", "Accept an invite addressed to your email."},
 	}},
 	{"CONFIG", [][2]string{
 		{"config", "Show or set the registry this CLI talks to."},

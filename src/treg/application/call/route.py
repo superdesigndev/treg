@@ -441,6 +441,19 @@ def _above(value: object, cap: int) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
 
 
+def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
+    """A routed call's own filter that declares a range is, when the caller sends it, a whole number
+    in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
+    refused before anything is planned or held."""
+    for name, spec in (filters or {}).items():
+        if "min" not in (spec or {}):
+            continue
+        value = (given or {}).get(name)
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
+
+
 def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
     """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
     number from 1 to that row's max when the caller sends it, or the routed call is refused before
@@ -887,6 +900,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    if contract:
+        _require_ranges(ep, contract.filters, given)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()

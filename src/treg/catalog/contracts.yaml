@@ -385,7 +385,7 @@ contracts:
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it", analytics: value}
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
-      limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
+      limit: {type: int, default: 10, min: 1, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     # A child that cannot send one of these answers a different question. A `q` counts only when the
@@ -1482,7 +1482,7 @@ contracts:
       - {url: url}
       - {url: url, q: str}
     filters:
-      limit: {type: int, default: 10, note: "maximum discovered URLs"}
+      limit: {type: int, default: 10, min: 1, note: "maximum discovered URLs"}
     output:
       results: {type: list, required: true, note: "URL strings or provider-native URL objects; raw is the same body"}
       count: {type: int}
