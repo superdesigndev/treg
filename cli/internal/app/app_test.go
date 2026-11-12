@@ -1,23 +1,27 @@
 package app
 
 import (
-	"bytes"
 	"encoding/json/v2"
 	"io"
-	"os"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/superdesigndev/treg/cli/internal/telemetry"
 )
 
 // lastEvent runs one invocation in a fresh config directory and returns the properties of the
-// usage event it queued.
-func lastEvent(t *testing.T, argv ...string) map[string]any {
+// usage event it sent to the relay. Main flushes the queue in the background, so the event reaches
+// the relay through that flush or through the one run here, never the queue file at a known moment.
+func lastEvent(t *testing.T, relay string, events <-chan map[string]any, argv ...string) map[string]any {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("TREG_CONFIG", filepath.Join(dir, "config.json"))
-	t.Setenv("TREG_URL", "http://127.0.0.1:9")
+	t.Setenv("TREG_URL", relay)
 	t.Setenv("TREG_TELEMETRY", "")
 	t.Setenv("DO_NOT_TRACK", "")
 	t.Setenv("TREG_NO_AUTO_UPDATE", "1")
@@ -25,25 +29,40 @@ func lastEvent(t *testing.T, argv ...string) map[string]any {
 	if code := Main(argv, io.Discard); code != usageError {
 		t.Fatalf("%v exited %d, want %d", argv, code, usageError)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "telemetry-queue.jsonl"))
-	if err != nil {
-		t.Fatalf("%v queued nothing: %v", argv, err)
+	telemetry.Flush(t.Context(), relay, http.DefaultTransport)
+	select {
+	case p := <-events:
+		if p["command"] != "usage_error" {
+			t.Fatalf("%v recorded %v", argv, p["command"])
+		}
+		return p
+	case <-time.After(10 * time.Second):
+		t.Fatalf("%v sent nothing", argv)
+		return nil
 	}
-	lines := bytes.Split(bytes.TrimSpace(raw), []byte("\n"))
-	var event struct {
-		Event      string         `json:"event"`
-		Properties map[string]any `json:"properties"`
-	}
-	if err := json.Unmarshal(lines[len(lines)-1], &event); err != nil {
-		t.Fatal(err)
-	}
-	if event.Properties["command"] != "usage_error" {
-		t.Fatalf("%v recorded %v", argv, event.Properties["command"])
-	}
-	return event.Properties
+}
+
+func newRelay(t *testing.T) (string, <-chan map[string]any) {
+	events := make(chan map[string]any, 64)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var batch struct {
+			Events []struct {
+				Properties map[string]any `json:"properties"`
+			} `json:"events"`
+		}
+		body, _ := io.ReadAll(req.Body)
+		_ = json.Unmarshal(body, &batch)
+		for _, e := range batch.Events {
+			events <- e.Properties
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, events
 }
 
 func TestAUsageErrorNamesOnlyKnownCommands(t *testing.T) {
+	relay, events := newRelay(t)
 	for _, c := range []struct {
 		argv        []string
 		in, missing string
@@ -58,7 +77,7 @@ func TestAUsageErrorNamesOnlyKnownCommands(t *testing.T) {
 		{[]string{"org", "ls", "--bogus"}, "org_ls", "", "--bogus"},
 		{[]string{"org", "join"}, "org_join", "", ""},
 	} {
-		p := lastEvent(t, c.argv...)
+		p := lastEvent(t, relay, events, c.argv...)
 		in, _ := p["in_command"].(string)
 		missing, _ := p["missing_command"].(string)
 		var options []string
