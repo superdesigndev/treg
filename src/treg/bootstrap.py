@@ -19,12 +19,13 @@ from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index, media
-from . import bootstrap_handlers, policy
+from .application import arena, find_index, images, media
+from . import bootstrap_handlers, page_media, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
@@ -511,10 +512,20 @@ class _MediaStatic(StaticFiles):
     """Page media under stable, unversioned names (`/media/<page>/...`). With no Cache-Control a
     browser applies a heuristic lifetime and never revalidates, so a page's edited script or
     stylesheet would keep running old code against new HTML. Code and text therefore revalidate
-    on every use (`no-cache`; the ETag makes that a 304), and images, video and fonts, which a page
-    only ever swaps by renaming, keep a day's cache like the logos."""
+    on every use (`no-cache`; the ETag makes that a 304), and images and fonts, which a page only
+    ever swaps by renaming, keep a day's cache like the logos.
+
+    Video is not here: `page_media` names its copy in the public media bucket, and the path
+    redirects there. The redirect is short-lived because the copy's key changes with its bytes."""
 
     _REVALIDATE = frozenset({".js", ".mjs", ".css", ".html", ".json", ".md", ".txt"})
+
+    async def get_response(self, path, scope):
+        key = page_media.manifest().get(Path(path).as_posix())
+        if key:
+            return RedirectResponse(images.public_url(key), status_code=302,
+                                    headers={"Cache-Control": "public, max-age=300"})
+        return await super().get_response(path, scope)
 
     def file_response(self, full_path, *args, **kwargs):
         response = super().file_response(full_path, *args, **kwargs)
