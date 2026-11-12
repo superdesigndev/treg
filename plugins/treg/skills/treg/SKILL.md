@@ -240,7 +240,7 @@ each call, not the loop.
   exceed it (402 `route_max_cost`, nothing charged). Where the catalog says the provider accepts a
   ceiling parameter, treg also forwards the remaining ceiling upstream, so a provider that fails
   over to a dearer source cannot settle above it; a refusal from that parameter is a non-2xx and
-  costs nothing. For every other provider the header stays a pre-reservation guard. It applies to
+  costs nothing. For every other provider the header stays a pre-reservation guard. The reservation is the price at the requested size rounded up to the provider's billing block (one billed per 25 results holds a whole block for 5 rows), plus treg's margin, so catalog price × limit can fall short; when a provider's hold does not fit, `_treg.tried` names the hold and the ceiling left. It applies to
   each request on its own and does not add up across calls. Direct calls have no default; on a
   routed call it also bounds the whole waterfall, $1 by default, and each child receives the
   unspent remainder.

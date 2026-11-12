@@ -133,6 +133,9 @@ def test_expression_language():
     assert P.evaluate("split_first(data.name)", {"data": {"name": "Patrick Collison"}}) == "Patrick"
     assert P.evaluate("split_last(data.name)", {"data": {"name": "Patrick"}}) is None
     assert P.evaluate("join(a, b)", {"a": "Patrick", "b": "Collison"}) == "Patrick Collison"
+    assert P.evaluate("one_place(location)", {"location": " Dublin "}) == "Dublin"
+    assert P.evaluate("one_place(location)", {"location": "London, United Kingdom"}) is None
+    assert P.evaluate("choose(unlocked, email, null)", {"unlocked": False, "email": "j***@x.io"}) is None
     assert P.evaluate("at_most(limit, 10)", {"limit": 3}) == 3
     assert P.evaluate("at_most(limit, 10)", {"limit": 25}) == 10
     assert P.evaluate("at_least(limit, 10)", {"limit": 3}) == 10
@@ -692,6 +695,23 @@ async def test_firecrawl_web_routed_calls_serve_and_settle(
     assert response.headers["X-Treg-Route-Outcome"] == "hit"
     assert before - await _balance(clients) == expected_cost
     assert len(seen) == 1 and seen[0][3] == expected_body
+
+
+async def test_a_ceiling_is_judged_on_the_adapted_request_not_the_plan_upper_bound(clients, monkeypatch):
+    """The plan prices a v2 row at its upper bound; the child holds the adapted request's own price
+    with margin. A ceiling between the two is enough, so the call runs."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.25)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tavily": [(200, {"results": [{"title": "Example", "url": "https://example.com"}], "usage": {"credits": 1}})],
+    }, seen))
+    response = await clients.post("/call/treg.web.search", json={"q": "example query", "limit": 3},
+                                  headers={"X-Treg-Route-Prefer": "tavily", "X-Treg-Route-Max-Cost": "0.016"})
+    assert response.status_code == 200, response.text
+    assert response.json()["_treg"]["served_by"] == "tavily.web.search" and [r[0] for r in seen] == ["tavily"]
 
 
 async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(
@@ -1462,6 +1482,20 @@ async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cos
     # free misses do not consume the ceiling, but hunter (2.45¢ > 2¢) and everything dearer is skipped
     assert [p for p, *_ in seen] == ["tomba", "findymail"]
     assert all(t["outcome"] in ("miss", "skipped") for t in r.json()["_treg"]["tried"]) and r.json()["_treg"]["charged_micro"] == 0
+
+
+async def test_a_ceiling_at_the_catalog_price_skips_a_child_whose_hold_carries_margin(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """The child holds its price plus margin, so a ceiling set to the bare price cannot fit it: the
+    route skips it before any byte goes upstream and says what it would hold and what was left."""
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.25)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})] * 6}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Nobody Here", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Max-Cost": "0.0245", "X-Treg-Route-Prefer": "hunter"})
+    hunter = next(t for t in r.json()["_treg"]["tried"] if t["provider"] == "hunter")
+    assert hunter["outcome"] == "skipped" and "hunter" not in [p for p, *_ in seen]
+    assert "would hold $0.030625" in hunter["detail"] and "$0.0245 left" in hunter["detail"]
 
 
 async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: AsyncClient, enrichment_on, monkeypatch):
@@ -2333,6 +2367,24 @@ def test_a_people_search_adapter_lists_its_wider_variants_first():
         {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane", "title": "CFO",
          "company": "Example Inc", "company_domain": "example.com", "location": "Austin, US",
          "summary": "CFO at Example"}]
+
+
+def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
+    """A row map that cannot read the provider's body hands the caller the vendor's own row
+    (dropleads' camelCase leads, aiark's employer under company.summary): every routed adapter
+    maps rows, and each example row comes back with contract keys only."""
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    for eid, ad in cat.adapters.items():
+        ep = cat.by_id.get(eid) or {}
+        if ep.get("capability") != "people.search" or not ad.route:
+            continue
+        assert ad.row_map and set(ad.row_map) <= set(contract.row_fields), eid
+        example = json.loads(catalog_store.example_path(eid).read_text())
+        # a saved example's truncation marker ("… 8 more item(s) truncated") is not a row
+        for row in [r for r in ad.from_upstream(example).get("people") or [] if not isinstance(r, str)]:
+            assert isinstance(row, dict) and set(row) <= set(contract.row_fields), (eid, row)
+            assert any(row.get(k) for k in contract.row_needs), (eid, row)
 
 
 def adapter_accepts_of(adapter, identity):
