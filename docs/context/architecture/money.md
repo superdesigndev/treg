@@ -991,10 +991,11 @@ a balance, hold or ledger row; both are allowlisted on their own (`capacity_exha
 `MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve` checks
 the actual estimate with margin before opening its transaction. Direct calls set it only from
 `X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
-route's remainder. A refusal is a 402 `route_max_cost` that moves no money. The route plans
-against the same figure: a candidate is skipped (or the whole route refused) when `with_margin`
-of its `cost_at` price, which rounds rows up to the cost's `per` block, exceeds what is left, and
-the skip in `_treg.tried` names that hold and the remainder. Overflow inherits the
+route's remainder. A refusal is a 402 `route_max_cost` that moves no money. The route first drops
+a candidate whose bare plan price (`cost_at`, rows rounded up to the cost's `per` block) exceeds
+what is left; that price can be an upper bound, so margin is not added there. A child it admits
+is checked again at its reserve on the adapted request's own price with margin, and that
+refusal's skip in `_treg.tried` names the hold and the remainder. Overflow inherits the
 field and checks its own estimate; a preceding direct charge reduces the remainder.
 
 Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))

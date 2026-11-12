@@ -697,6 +697,23 @@ async def test_firecrawl_web_routed_calls_serve_and_settle(
     assert len(seen) == 1 and seen[0][3] == expected_body
 
 
+async def test_a_ceiling_is_judged_on_the_adapted_request_not_the_plan_upper_bound(clients, monkeypatch):
+    """The plan prices a v2 row at its upper bound; the child holds the adapted request's own price
+    with margin. A ceiling between the two is enough, so the call runs."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.25)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tavily": [(200, {"results": [{"title": "Example", "url": "https://example.com"}], "usage": {"credits": 1}})],
+    }, seen))
+    response = await clients.post("/call/treg.web.search", json={"q": "example query", "limit": 3},
+                                  headers={"X-Treg-Route-Prefer": "tavily", "X-Treg-Route-Max-Cost": "0.016"})
+    assert response.status_code == 200, response.text
+    assert response.json()["_treg"]["served_by"] == "tavily.web.search" and [r[0] for r in seen] == ["tavily"]
+
+
 async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(
     clients, monkeypatch,
 ):

@@ -939,9 +939,7 @@ adapters:
     miss: "results == []"
     row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
-    # Wiza now refuses `size` ("The size parameter is not allowed."), which the shared key pins to 1
-    # so one row is one price: every routed call was a 400. Routed again once a size-less answer
-    # and its charge are observed.
+    # Wiza refuses `size`, which the shared key pins to 1 so one row is one price.
     route: false
     accepts: [[title]]
     in: {title: body.filters.job_title}

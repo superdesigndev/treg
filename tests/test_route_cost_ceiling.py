@@ -182,7 +182,7 @@ async def test_ceiling_names_the_minimum_when_nothing_fits(clients, enrichment_o
     assert detail['plan'][0]['endpoint_id'] == _DEAR and detail['plan'][0]['price_micro'] == 245_000
     assert detail['plan'][1]['endpoint_id'] == _CHEAP
     assert detail['message'] == (
-        'the cheapest candidate (tomba.people.email.find) would hold $0.054, more than x-treg-route-max-cost')
+        'the cheapest candidate (tomba.people.email.find) costs more than x-treg-route-max-cost')
     assert seen == [] and await _balance(clients) == before
     await _assert_no_holds()
 
