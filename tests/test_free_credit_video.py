@@ -10,6 +10,7 @@ from sqlmodel import select
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import CreditBlock, Hold, LedgerEntry
 
@@ -27,6 +28,11 @@ def openrouter_platform(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def video_purchased_only(monkeypatch):
+    monkeypatch.setitem(catalog_store.load().platforms["video-gen"], "purchased_credit_only", True)
 
 
 async def _org_id(clients: AsyncClient) -> int:
@@ -57,7 +63,7 @@ async def _invariant(org_id: int) -> None:
 
 
 async def test_free_only_team_is_refused_video_with_a_402_and_nothing_charged(
-    clients: AsyncClient, monkeypatch, openrouter_platform,
+    clients: AsyncClient, monkeypatch, openrouter_platform, video_purchased_only,
 ):
     async def must_not_relay(*args, **kwargs):
         raise AssertionError("a refused video call reached the provider")
@@ -82,7 +88,7 @@ async def test_free_only_team_is_refused_video_with_a_402_and_nothing_charged(
 
 
 async def test_purchased_credit_pays_video_and_free_credit_stays_untouched(
-    clients: AsyncClient, monkeypatch, openrouter_platform,
+    clients: AsyncClient, monkeypatch, openrouter_platform, video_purchased_only,
 ):
     async def fake_relay(*args, **kwargs):
         return _response(201, {"id": "paid-video"})

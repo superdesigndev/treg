@@ -22,7 +22,7 @@ func orgCmd(env *Env) *cobra.Command {
 	cmd := group("org", "Manage teams (orgs): create, switch, invite, members, join, leave, delete.",
 		"treg org ls", `treg org create "Superdesign"`, "treg org use superdesign")
 	cmd.Short = "Manage teams (orgs): create, switch, invite, members, join, leave."
-	cmd.AddCommand(orgCreateCmd(env), orgLsCmd(env), orgUseCmd(env), orgMembersCmd(env),
+	cmd.AddCommand(orgCreateCmd(env), orgLsCmd(env), orgUseCmd(env), orgMembersCmd(env), orgJoinCmd(env),
 		orgAgentNewCmd(env), orgAgentsCmd(env), orgAgentRmCmd(env))
 	return cmd
 }
