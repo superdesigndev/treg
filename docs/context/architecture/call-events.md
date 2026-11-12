@@ -217,7 +217,8 @@ Every failed call (status 400 or above) also writes one `call_error` line on the
 logger, `call_error` followed by JSON, where its outcome is final: the call's audit (every resolved
 catalog call, a routed child, check or poll included, and own tools), an unresolved catalog call,
 a routed parent, a hub run that failed or was refused, and for a refusal nothing audited, the
-router's fallback on a root and `execute_call` on a child (`call_errors.emit`). It is a log line, not a column: no table changes.
+router's fallback on a root and `execute_call` on a child (`call_errors.emit`). It is a log line,
+not a column: no table changes.
 
 | Field | Value |
 | --- | --- |
@@ -249,13 +250,14 @@ read with the documented errors of the provider whose base URL is on the tool's 
 refused for want of a credential (404, `credential_missing` to the caller and the Arena) is
 `caller_provider_account` when only the team's own key can serve the endpoint, and
 `our_provider_account` (`kind` `platform_key_missing`, the refusal's internal `log_kind`) when
-treg's own key or the anonymous fallback should serve it but the deployment has no key or allow-list
-entry for its provider. A routed parent the provider refused (`route_caller_fault`, `route_not_found`) is `by` `upstream`; one refused because
-treg's capacity took every candidate away (`route_no_candidate` answered 503) is `treg_capacity`.
-The answer is decoded by its `Content-Encoding` before its error code is read. A failed hub run is
-read by the error its detail names when that is a known failure kind: a crash in treg
-(`hub_run_crashed`) is `treg_error`, `by` `treg`; the caller's price ceiling (`hub_run_max_cost`)
-and a refusal that stops every step (the caller's balance or a cap) are `caller_balance_or_cap`.
+treg's own key or the anonymous fallback should serve it but the deployment has no key or
+allow-list entry for its provider. A routed parent the provider refused (`route_caller_fault`,
+`route_not_found`) is `by` `upstream`; one refused because treg's capacity took every candidate
+away (`route_no_candidate` answered 503) is `treg_capacity`. The answer is decoded by its
+`Content-Encoding` before its error code is read. A failed hub run is read by the error its
+detail names when that is a known failure kind: a crash in treg (`hub_run_crashed`) is
+`treg_error`, `by` `treg`; the caller's price ceiling (`hub_run_max_cost`) and a refusal that stops
+every step (the caller's balance or a cap) are `caller_balance_or_cap`.
 Any other is `upstream_error`, `by` `upstream`: a failed step, the maker's script, or a limit the
 maker's manifest declares (`hub_step_cap`, `hub_wall_clock`). No request or answer value, header,
 credential or message text is logged; the answer is read only for its documented error code.
@@ -279,5 +281,6 @@ class, refuser, tier and endpoint, with per-class totals, leaving caller-side cl
 `include_caller_side` is set to true. An event has only `status_code`, `refused_by` and
 `credential_tier`, so the query's class is the coarser reading: a refusal kind or a provider's
 documented error code that changes the class shows only in the log line; a missing credential is
-`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A direct attempt that
-overflow later served still logs its line and keeps its event, as both record the attempt.
+`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A direct
+attempt that overflow later served still logs its line and keeps its event, as both record the
+attempt.
