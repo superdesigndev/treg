@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -281,34 +282,75 @@ def test_a_routed_child_records_the_filters_its_request_carries():
 _PEOPLE_SEARCH_ADAPTERS = sorted(
     e for e, a in catalog_store.load().adapters.items()
     if (catalog_store.load().by_id.get(e) or {}).get("capability") == "people.search")
+_CALLER = {"company_domain": "acme.example", "title": "VP Sales", "full_name": "Ann Lee",
+           "q": "sales leaders", "country": "US", "location": "Austin", "limit": 7,
+           "keywords": ["saas"]}
+
+
+def _category(field, value):
+    """What a read-back value must agree with the caller's on: its category, not its spelling."""
+    if field == "limit":
+        return S.limit_bucket(value)
+    if field == "country":
+        return S.iso2(value)
+    if field == "title":
+        return S.title_function(value), S.title_seniority(value)
+    if field in ("location", "keywords"):
+        return bool(value)
+    if isinstance(value, list):
+        value = value[0] if len(value) == 1 else value
+    return ev.normalize(field, value)
+
+
+def _sent(adapter, variant, field):
+    """Whether the adapter's own request (`to_upstream`, as a routed child builds it) carries the
+    field: it changes when the field is left out."""
+    without = {k: v for k, v in _CALLER.items() if k != field}
+    return adapter.to_upstream(_CALLER, variant) != adapter.to_upstream(without, variant)
+
+
+def _mixed(adapter, contract, field):
+    """Every expression sending the field also names another field (`coalesce(location, country)`,
+    a `join`), so the value sent cannot say which field it came from."""
+    names = set(contract.identity_types) | set(contract.filters or {})
+    exprs = [e for e in (adapter.in_expr or {}).values()
+             if isinstance(e, str) and re.search(rf"\b{field}\b", e)]
+    return bool(exprs) and all(set(re.findall(r"[a-z_][a-z0-9_]*", e)) & (names - {field}) for e in exprs)
 
 
 @pytest.mark.parametrize("endpoint_id", _PEOPLE_SEARCH_ADAPTERS)
-def test_every_filter_a_child_sends_reads_back_into_its_parents_category(endpoint_id):
-    """Each adapter builds its own request (`to_upstream`), as a routed child does; whatever filter
-    it sends where it can be read back lands in the parent's category, through lists, objects,
-    country transforms and limit clamps alike."""
+def test_every_field_a_child_sends_reads_back_in_its_callers_category(endpoint_id):
+    """What each adapter's request carries, judged without the readback under test: a field the
+    request carries reads back in the caller's category, unless only a mixed expression sends it.
+    A lossy read (`split_first(full_name)` as the whole name) fails the category."""
     adapter = catalog_store.load().adapters[endpoint_id]
     contract = _contract()
-    paths = {f for f, _, _ in ev.field_paths(adapter, contract)}
     variant = next((v for v in adapter.accepts if all(k in _CALLER for k in v)), None)
-    if variant is None:
-        pytest.skip(f"{endpoint_id} takes none of the probe's identity shapes")
+    assert variant is not None, f"{endpoint_id} takes none of the test caller's shapes"
     query, body = adapter.to_upstream(_CALLER, variant)
     given = ev.vendor_identity(adapter, contract, query.items(), json.dumps(body).encode())
-    parent = ev.segment(contract, _CALLER)[1]
-    child = ev.segment(contract, given)[1]
-    if "limit" in paths:
-        assert child["limit_bucket"] == parent["limit_bucket"]
-    if "country" in paths:
-        assert child["has_country"] == "true" and child["country_iso2"] == parent["country_iso2"]
-    if "location" in paths:
-        assert child["has_location"] == "true"
+    for field in _CALLER:
+        if not _sent(adapter, variant, field) or _mixed(adapter, contract, field):
+            continue
+        assert field in given, f"{endpoint_id} sends {field} but it does not read back"
+        assert _category(field, given[field]) == _category(field, _CALLER[field]), field
+    # every identity field read back is the caller's, whatever the adapter sent it through, unless
+    # a mixed expression built it (exa's `q` joins the title and place into the query it sends)
+    for field in set(given) & set(contract.identity_types):
+        if not _mixed(adapter, contract, field):
+            assert _category(field, given[field]) == _category(field, _CALLER[field]), field
 
 
-_CALLER = {"company_domain": "acme.example", "title": "VP Sales", "full_name": "Ann Lee",
-           "q": "sales leaders", "country": "US", "location": "Austin", "limit": 40,
-           "keywords": ["saas"]}
+def test_a_name_sent_in_halves_reads_back_whole_and_never_as_one_word():
+    adapter = catalog_store.load().adapters["enrichlayer.people.search"]
+    ids = set()
+    for name in ("Ann Lee", "Ann Smith"):
+        query, body = adapter.to_upstream({"full_name": name, "limit": 1}, ("full_name",))
+        given = ev.vendor_identity(adapter, _contract(), query.items(), json.dumps(body).encode())
+        assert given["full_name"] == name
+        assert ev.segment(_contract(), given)[1]["limit_bucket"] == "<=5"
+        ids.add(ev.segment(_contract(), given)[2]["full_name"])
+    assert len(ids) == 2
 
 
 def test_the_limit_and_country_of_list_and_clamped_requests_read_back():

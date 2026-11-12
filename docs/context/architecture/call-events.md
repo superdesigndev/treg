@@ -129,12 +129,17 @@ vocabulary changes. No title, query, name, place or domain is recorded, only the
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
 keys. A direct or child call's request is read back through its adapter (`vendor_identity`).
 Besides the `in` map, every field an `in_expr` sends where it can be found is read back
-(`field_paths`): each expression is run once on placeholder values, and a field is read from the
-place its placeholder lands, provided it lands there alone, no other field's placeholder reaches
-that expression, and none fills the place when the field is not sent. So `list(country)`,
-`obj('include', list(upper(country)))`, `list(obj('domain', company_domain))` and
-`at_most(limit, 50)` read back, and `coalesce(location, country_name(country))` or a `join` of
-several fields do not. A routed child therefore lands in its parent's segment for whatever it
+(`field_paths`): each expression is run on placeholder values, and a field is read from the
+place its placeholder lands whole, provided it lands there alone, no other field's placeholder
+reaches that expression, and none fills the place when the field is not sent. Text placeholders
+are several upper-case words, so a lossy transform (`split_first(full_name)`) never reads back as
+the whole field; a number is tried at sizes on both sides of the usual page-size clamps. So
+`list(country)`, `obj('include', list(upper(country)))`, `list(obj('domain', company_domain))`,
+`at_most(limit, 10)` and `at_least(limit, 10)` read back, and `coalesce(location,
+country_name(country))` or a `join` of several fields do not. A name sent as
+`split_first(full_name)` plus `split_last(full_name)` reads back as those two words joined, which
+is exactly what the provider was asked. An `in` entry whose place holds an object (`{v: title}`)
+gives way to the field's path inside it. A routed child therefore lands in its parent's segment for whatever it
 sent; a filter its provider takes nowhere reads as not sent, and a clamped limit as the value sent.
 Its `country_raw_case` is the spelling it sent the provider; group routed calls by the parent's
 (`parent_ref`) for the caller's question. Categories need the request to read back into a complete

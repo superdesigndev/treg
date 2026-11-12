@@ -71,6 +71,7 @@ _ROLE_LOCALS = frozenset({
 _VALUE_MAX = 256
 # `limit` or `country_code(country)`: an `in_expr` a filter's value can be read back through.
 _field_paths: dict[int, tuple[Adapter, Contract, tuple]] = {}
+_NAME_HALF = re.compile(r"split_(first|last)\(\s*([a-z_][a-z0-9_]*)\s*\)")
 _SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
@@ -189,32 +190,43 @@ def field_paths(adapter: Adapter, contract: Contract) -> tuple[tuple[str, str, t
     if cached is not None and cached[0] is adapter and cached[1] is contract:
         return cached[2]
     fields = [*contract.identity_types, *(contract.filters or {})]
-    # Upper-case and longer than a country code, so case and country transforms pass it through;
-    # an int inside the usual page-size clamps.
+    kinds = {k: str(((contract.filters or {}).get(k) or {}).get("type") or contract.identity_types.get(k, "str"))
+             for k in fields}
+    # Several upper-case words: case and country transforms pass a placeholder through whole,
+    # while a lossy one (`split_first(full_name)`) returns part of it, which is never found.
     marks: dict[str, Any] = {}
     for i, k in enumerate(fields):
-        kind = str(((contract.filters or {}).get(k) or {}).get("type") or contract.identity_types.get(k, "str"))
-        marks[k] = 37 + i if kind == "int" else (["ZQX%dQZX" % i] if kind == "list" else "ZQX%dQZX" % i)
+        text = "ZQX%d QZX%d WXQ%d" % (i, i, i)
+        marks[k] = 900 + i if kinds[k] == "int" else [text] if kinds[k] == "list" else text
     out = []
     for field_name in fields:
-        mark = marks[field_name][0] if isinstance(marks[field_name], list) else marks[field_name]
-        if isinstance(mark, bool):
+        if kinds[field_name] == "bool":
             continue
+        # A number is tried at sizes on both sides of the usual page-size clamps
+        # (`at_most(limit, 10)`, `at_least(limit, 10)`), so one of them passes through untouched.
+        tries = (7, 37, 900) if kinds[field_name] == "int" else (marks[field_name],)
         others = {(m[0] if isinstance(m, list) else m) for k, m in marks.items() if k != field_name}
         for target, expr in (adapter.in_expr or {}).items():
             if not isinstance(expr, str):
                 continue
-            try:
-                full = P.evaluate(expr, marks)
-                without = P.evaluate(expr, {k: v for k, v in marks.items() if k != field_name})
-            except Exception:  # noqa: BLE001 - an expression this probe cannot run is not read back
-                continue
-            found = _locate(full, mark)
-            if len(found) != 1 or any(_locate(full, o) for o in others) \
-                    or any(_locate(_descend(without, found[0]), o) for o in others):
-                continue
-            out.append((field_name, target, found[0]))
-            break
+            hit = None
+            for value in tries:
+                env = {**marks, field_name: value}
+                mark = value[0] if isinstance(value, list) else value
+                try:
+                    full = P.evaluate(expr, env)
+                    without = P.evaluate(expr, {k: v for k, v in marks.items() if k != field_name})
+                except Exception:  # noqa: BLE001 - an expression this probe cannot run is not read back
+                    break
+                found = _locate(full, mark)
+                if any(_locate(full, o) for o in others):
+                    break
+                if len(found) == 1 and not any(_locate(_descend(without, found[0]), o) for o in others):
+                    hit = found[0]
+                    break
+            if hit is not None:
+                out.append((field_name, target, hit))
+                break
     result = tuple(out)
     _field_paths[id(adapter)] = (adapter, contract, result)
     return result
@@ -241,6 +253,8 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
         v = P.get_path(doc, target)
         if isinstance(v, list) and len(v) == 1 and contract.identity_types.get(field_name, "str") != "list":
             v = v[0]
+        if isinstance(v, dict) and contract.identity_types.get(field_name) != "object":
+            continue  # the field sits inside this object (`{v: title, s: i}`): read by its path below
         if v not in (None, ""):
             given[field_name] = v
     # An expression that is just an identity field (`body.url: linkedin_url`, used where the
@@ -258,6 +272,18 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             v = _descend(P.get_path(doc, target), steps)
             if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
                 given[field_name] = v
+    # A name sent as its first and last word (`split_first(full_name)`, `split_last(full_name)`)
+    # reads back as those two words: exactly what the provider was asked, never one word alone.
+    halves: dict[str, dict[str, Any]] = {}
+    for target, expr in (adapter.in_expr or {}).items():
+        if isinstance(expr, str) and (m := _NAME_HALF.fullmatch(expr.strip())):
+            halves.setdefault(m.group(2), {})[m.group(1)] = P.get_path(doc, target)
+    for field_name, got in halves.items():
+        first, last = got.get("first"), got.get("last")
+        if field_name in contract.identity_types and field_name not in given \
+                and isinstance(first, str) and first.strip():
+            given[field_name] = f"{first.strip()} {last.strip()}" if isinstance(last, str) and last.strip() \
+                else first.strip()
     readable = {**contract.identity_types, **(contract.filters or {})}
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
