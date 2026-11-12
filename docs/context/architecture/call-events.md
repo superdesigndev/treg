@@ -71,8 +71,8 @@ through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 ## Linking
 
 `call_ref` is the call's `X-Treg-Call-Id`. A child's ref is its parent's plus a step
-(`:rN` waterfall attempt N, `:v` the check, `:pN` a routed poll, `:sN` a hub step); events carry
-`parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
+(`:rN` waterfall attempt N, `:v` the check, `:u` the upgrade, `:pN` a routed poll, `:sN` a hub
+step); events carry `parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
 (`async_submit`) and its outcome (`async_terminal`) share the submission's `call_ref`; the terminal
 event carries `hit`, `verdict`, `cost_charged_micro` (what the task settled at; the submission's
 is null), `async_outcome` (`success`, `failure`, `billed_failure`,
@@ -222,7 +222,7 @@ not a column: no table changes.
 
 | Field | Value |
 | --- | --- |
-| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`p1`/`s1` on a child (null on a root) |
+| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child (null on a root) |
 | `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
 | `status`, `refused_by` | the status of this attempt (the caller's, except on a direct attempt overflow served), and treg's refusal mechanism as the event's `refused_by` |

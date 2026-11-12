@@ -380,6 +380,7 @@ def test_ref_parts():
     assert ev.ref_parts("abc") == (None, None, None)
     assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
     assert ev.ref_parts("abc:v") == ("abc", "v", None)
+    assert ev.ref_parts("abc:u") == ("abc", "u", None)
     assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
 
 
