@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { json, signIn } from './helpers'
 
 test('sign in, create team, switch pages, refresh and navigate back', async ({ page }) => {
@@ -159,23 +159,44 @@ test('a dialog takes its first field and hands focus back, even when its code ar
   await expect(opener).toBeFocused()
 })
 
-test('a routed tool can be tried by hand, and says who serves it in one line', async ({ page }) => {
-  await signIn(page, 'routed-try')
-  // The browser-test server holds no platform keys; answer the access dry-run the way a deployment
-  // with two providers keyed would.
-  await page.route('**/catalog/endpoints/treg.companies.enrich/access', route => route.fulfill(json({
-    tier: 'routed', detail: 'routed',
-    plan: [{ endpoint_id: 'dropleads.companies.enrich', provider: 'dropleads', tier: 'platform' },
-           { endpoint_id: 'hunter.companies.enrich', provider: 'hunter', tier: 'platform' }],
-    dropped: [{ endpoint_id: 'apollo.companies.enrich', why: 'no apollo key on this deployment and no own key' }],
-  })))
-  await page.goto('/app#platform/companies/enrich')
-  await page.locator('.pl-autocard').getByRole('button', { name: 'Try it', exact: true }).click()
-  const drawer = page.getByRole('dialog', { name: /treg\.companies\.enrich/ })
-  await expect(drawer.getByText(/One call: 2 providers can serve it for this team now/)).toBeVisible()
-  await drawer.getByRole('button', { name: 'Manual', exact: true }).click()
-  await expect(drawer.getByRole('button', { name: /Run/ })).toBeVisible()
-  await expect(drawer.getByText(/needs a key/)).toHaveCount(0)
+// The suite's sign-ins sit at the per-IP code limit, so the Try it tests share one.
+test.describe('Try it', () => {
+  let page: Page
+  test.beforeAll(async ({ browser }, info) => {
+    page = await browser.newPage({ baseURL: info.project.use.baseURL, viewport: info.project.use.viewport })
+    await signIn(page, 'try-it')
+  })
+  test.afterAll(async () => { await page?.close() })
+
+  test('a routed tool can be tried by hand, and says who serves it in one line', async () => {
+    // The browser-test server holds no platform keys; answer the access dry-run the way a deployment
+    // with two providers keyed would.
+    await page.route('**/catalog/endpoints/treg.companies.enrich/access', route => route.fulfill(json({
+      tier: 'routed', detail: 'routed',
+      plan: [{ endpoint_id: 'dropleads.companies.enrich', provider: 'dropleads', tier: 'platform' },
+             { endpoint_id: 'hunter.companies.enrich', provider: 'hunter', tier: 'platform' }],
+      dropped: [{ endpoint_id: 'apollo.companies.enrich', why: 'no apollo key on this deployment and no own key' }],
+    })))
+    await page.goto('/app#platform/companies/enrich')
+    await page.locator('.pl-autocard').getByRole('button', { name: 'Try it', exact: true }).click()
+    const drawer = page.getByRole('dialog', { name: /treg\.companies\.enrich/ })
+    await expect(drawer.getByText(/One call: 2 providers can serve it for this team now/)).toBeVisible()
+    await drawer.getByRole('button', { name: 'Manual', exact: true }).click()
+    await expect(drawer.getByRole('button', { name: /Run/ })).toBeVisible()
+    await expect(drawer.getByText(/needs a key/)).toHaveCount(0)
+  })
+
+  test("it uploads the parts a tool's verified request sends as files", async () => {
+    await page.goto('/app/marketplace/fishaudio')
+    await page.getByRole('button', { name: /create private voice/ }).click()
+    await page.getByRole('complementary', { name: 'Tool details' }).getByRole('button', { name: 'Try it', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: /fishaudio\.voices\.create/ })
+    await dialog.getByRole('button', { name: 'CLI', exact: true }).click()
+    await expect(dialog.locator('pre').last()).toContainText('--upload voices=@<reference-audio>')
+    await expect(dialog.locator('pre').last()).toContainText('--form title=')
+    await dialog.getByRole('button', { name: 'API', exact: true }).click()
+    await expect(dialog.locator('pre').last()).toContainText('-F "voices=@<reference-audio>"')
+  })
 })
 
 test("a tool drawer's primary button is the next step to an agent using the tool", async ({ page }) => {
@@ -194,27 +215,13 @@ test("a tool drawer's primary button is the next step to an agent using the tool
 })
 
 test("a tool drawer names each parameter's type in words", async ({ page }) => {
-  await signIn(page, 'param-types')
-  await page.goto('/app/marketplace/tavily')
-  await page.locator('.pl-tool', { has: page.getByText('Search the open web', { exact: true }) }).click()
+  await page.goto('/catalog/web/search')
+  await page.getByRole('table').getByRole('row').filter({ has: page.getByRole('cell', { name: 'Tavily', exact: true }) }).click()
   const type = (name: string) => page.getByRole('complementary', { name: 'Tool details' })
     .locator('.td-params dt', { has: page.getByText(name, { exact: true }) }).locator('span')
   await expect(type('include_answer')).toHaveText('boolean or string')
   await expect(type('include_domains')).toHaveText('array of string')
   await expect(type('query')).toHaveText('string')
-})
-
-test("Try it uploads the parts a tool's verified request sends as files", async ({ page }) => {
-  await signIn(page, 'try-upload')
-  await page.goto('/app/marketplace/fishaudio')
-  await page.getByRole('button', { name: /create private voice/ }).click()
-  await page.getByRole('complementary', { name: 'Tool details' }).getByRole('button', { name: 'Try it', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: /fishaudio\.voices\.create/ })
-  await dialog.getByRole('button', { name: 'CLI', exact: true }).click()
-  await expect(dialog.locator('pre').last()).toContainText('--upload voices=@<reference-audio>')
-  await expect(dialog.locator('pre').last()).toContainText('--form title=')
-  await dialog.getByRole('button', { name: 'API', exact: true }).click()
-  await expect(dialog.locator('pre').last()).toContainText('-F "voices=@<reference-audio>"')
 })
 
 test('a provider key saved as a secret is a connection: listed on Connections, not among Secrets', async ({ page }) => {
