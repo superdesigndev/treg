@@ -376,6 +376,112 @@ async def test_a_routed_identity_or_filter_outside_its_declaration_before_any_pr
     assert _logged(caplog) == []
 
 
+# -- the sweep: strict rows and union-typed parameters, every documented value and every JSON type ----
+
+_PROBES = ["x", "1", "0", "true", 1, 0, 1.5, True, False, None, {}, {"k": "v"}, [], ["x"], [1], [{"k": "v"}]]
+# Declared on `body_allowlist` rows as `dict`/`list`, words the allowlist check never read; read in the
+# one vocabulary as `object`/`array`, it now holds them to that type in either mode.
+_HELD_SINCE_THE_VOCABULARY = {
+    ("litescrape.web.fetch.post", "viewport"), ("litescrape.web.fetch.post", "markdown"),
+    ("litescrape.web.fetch.post", "set_cookies"), ("litescrape.web.fetch.post", "inject_page_script"),
+    ("litescrape.web.fetch.post", "inject_frame_script"), ("litescrape.web.screenshot.post", "viewport"),
+    ("litescrape.web.screenshot.post", "set_cookies"), ("litescrape.web.screenshot.post", "inject_page_script"),
+    ("litescrape.web.screenshot.post", "inject_frame_script"),
+}
+
+
+def _declared(ep: dict):
+    inputs = ep.get("input") or {}
+    for location in ("queryParams", "pathParams", "body"):
+        block = inputs.get(location) or {}
+        block = block.get("properties", block) if isinstance(block.get("properties"), dict) else block
+        for name, spec in block.items() if isinstance(block, dict) else ():
+            if isinstance(spec, dict):
+                yield location, name, spec
+
+
+def _swept():
+    """(row, location, field, spec, test body, test query) for every field of a strict_body or
+    body_allowlist row and every union-typed parameter."""
+    for ep in catalog_store.load().by_id.values():
+        if ep.get("kind") == "routed":
+            continue
+        strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
+        test = ep.get("test_request") or {}
+        body = test.get("body") if isinstance(test.get("body"), dict) else {}
+        query = test.get("query") if isinstance(test.get("query"), dict) else {}
+        for location, name, spec in _declared(ep):
+            if strict or isinstance(spec.get("type"), list):
+                yield ep, location, name, spec, body, query
+
+
+def _verdict(ep: dict, location: str, name: str, value, body: dict, query: dict) -> str | None:
+    """None when the request checks pass with the field set to `value`, else the refused
+    parameter; anything else raises."""
+    if location == "body":
+        body = {**body, name: value}
+    elif isinstance(value, (str, int, float)):
+        query = {**query, name: value if isinstance(value, str) else json.dumps(value)}
+    return _request_verdict(ep, body, query)
+
+
+def _request_verdict(ep: dict, body: dict, query: dict) -> str | None:
+    sent = json.dumps(body).encode() if body or (ep.get("input") or {}).get("body") else b""
+    values = call_resolve.QueryValues(tuple((k, str(v)) for k, v in query.items()))
+    try:
+        call_resolve._enforce_declared_query(ep, values)
+        call_resolve._enforce_catalog_body(ep, sent)
+    except call_resolve.ResolutionFailed as exc:
+        return str((exc.detail or {}).get("parameter") if isinstance(exc.detail, dict) else exc.detail)
+    return None
+
+
+def _documented(spec: dict, location: str, name: str, body: dict, query: dict) -> list:
+    values = [spec[key] for key in ("example", "default") if key in spec] + list(spec.get("enum") or [])
+    values += [[entry] for entry in ((spec.get("items") or {}).get("enum") or [])]
+    sample = (body if location == "body" else query).get(name)
+    return values + ([sample] if sample is not None else [])
+
+
+@pytest.mark.parametrize("mode", ["log", "refuse"])
+def test_strict_rows_and_union_parameters_take_their_documented_values(monkeypatch, mode):
+    """Every documented value of a field on a strict_body or body_allowlist row, and of a parameter
+    declared with a type list, passes wherever the row's own test request passes, and a value of
+    any JSON type is answered or refused, never raised (a 500)."""
+    monkeypatch.setenv("TREG_PARAM_CHECK", mode)
+    get_settings.cache_clear()
+    try:
+        refused = {}
+        for ep, location, name, spec, body, query in _swept():
+            baseline = _request_verdict(ep, body, query)
+            for value in _documented(spec, location, name, body, query):
+                if (found := _verdict(ep, location, name, value, body, query)) != baseline:
+                    refused[(ep["id"], name, json.dumps(value))] = found
+            for value in _PROBES:
+                _verdict(ep, location, name, value, body, query)
+        assert refused == {}, refused
+    finally:
+        get_settings.cache_clear()
+
+
+def test_in_log_mode_strict_rows_hold_the_fields_their_words_now_name(monkeypatch):
+    """In log mode only main's own checks refuse. On a body_allowlist row those read each field's
+    declared type, so a field main declared as `dict` or `list` (words it never read) is now held to
+    `object` or `array`: that is the whole of what refuses beyond main outside the switch."""
+    monkeypatch.setenv("TREG_PARAM_CHECK", "log")
+    get_settings.cache_clear()
+    try:
+        cat = catalog_store.load()
+        for row, name in sorted(_HELD_SINCE_THE_VOCABULARY):
+            ep = cat.by_id[row]
+            body = (ep.get("test_request") or {}).get("body") or {}
+            assert ep.get("body_allowlist") and _verdict(ep, "body", name, "a string", body, {}) == f"body.{name}"
+            kind = ep["input"]["body"][name]["type"]
+            assert _verdict(ep, "body", name, {} if kind == "object" else [], body, {}) is None
+    finally:
+        get_settings.cache_clear()
+
+
 def test_every_routed_call_template_meets_its_own_declarations():
     cat = catalog_store.load()
     refused = {row["id"]: call_resolve._body_refusal(row, json.dumps(row["test_request"]["body"]).encode())

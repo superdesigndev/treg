@@ -1497,8 +1497,8 @@ def _enforce_strict_body(ep: dict, body: bytes) -> None:
             spec = fields.get(name)
             if not isinstance(spec, dict):
                 continue
-            declared = spec.get("type")
-            checker = scalar_types.get(declared) if isinstance(declared, str) else None
+            declared = spec.get("type") if isinstance(spec.get("type"), str) else None
+            checker = scalar_types.get(declared)
             invalid = checker is not None and not checker(value)
             if not invalid and declared != "array" and spec.get("enum") is not None:
                 invalid = value not in spec["enum"]
