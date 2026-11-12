@@ -69,6 +69,13 @@ def split_last(name: Any) -> str | None:
     return parts[-1] if len(parts) > 1 else None
 
 
+def first_part(v: Any) -> str | None:
+    """`first_part('London, United Kingdom')` → 'London': the text before the first comma."""
+    if not isinstance(v, str):
+        return None
+    return v.split(",", 1)[0].strip() or None
+
+
 def join(*parts: Any) -> str | None:
     words = [str(p).strip() for p in parts if isinstance(p, str) and p.strip()]
     return " ".join(words) if words else None
@@ -624,7 +631,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "first_part": first_part, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
