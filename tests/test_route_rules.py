@@ -249,6 +249,44 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
     assert header == ["hunter"], "the caller's prefer header replaces published rules"
 
 
+@pytest.mark.parametrize("contents, first", [(True, "exa"), (False, "crawl4ai"), (None, "crawl4ai")])
+async def test_a_web_search_rule_on_contents_puts_exa_first_only_when_passages_are_asked(
+        clients, platform_on, monkeypatch, published, contents, first):
+    """What `prefer_when: {sent: [contents]}` did, as a published rule: `contents: true` goes to the
+    provider that returns passages; `false` or no flag keeps the snippet-only default."""
+    from treg.config import get_settings
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    await published(envelope(version=2, rules=[
+        {"id": "web-search-contents", "capability": "web.search", "match": {"contents": "true"}, "order": ["exa"]}]))
+    body = {"q": "top B2B sales influencers on Instagram", **({} if contents is None else {"contents": contents})}
+    got = await _first_providers("treg.web.search", body, n=1)
+    get_settings.cache_clear()
+    assert got == [first]
+
+
+def test_a_people_search_rule_on_q_without_a_title_covers_what_prefer_when_did():
+    """`prefer_when: {sent: [q]}` as a rule: `{q}`, `{q, company_domain}` and `{q, full_name}` match
+    `{input_type: q, title_class: none}`; a `{q, title}` request does not, as before."""
+    parsed = R.parse(envelope(version=2, rules=[
+        {"id": "q", "capability": "people.search", "match": {"input_type": "q", "title_class": "none"},
+         "order": ["exa", "parallel"]}]))
+    R.check_against(parsed, catalog_store.load().contracts, reader_app._servers_of, ev.segment_checks)
+    contract = catalog_store.load().contracts["people.search"]
+
+    def rule(given):
+        input_type, meta, _ = ev.segment(contract, given)
+        found = R.match(parsed, "people.search", {**meta, "input_type": input_type})
+        return found.id if found else None
+    assert rule({"q": "b2b sales coaches"}) == "q"
+    assert rule({"q": "executives", "company_domain": "openai.com"}) == "q"
+    assert rule({"q": "founder", "full_name": "Ann Lee"}) == "q"
+    assert rule({"q": "in phoenix", "title": "Head of Tax"}) is None
+    assert rule({"title": "Head of Tax"}) is None
+
+
 async def test_a_domain_written_with_the_dns_root_matches_its_tld(clients, enrichment_on, published):
     await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
     contract = catalog_store.load().contracts["people.email.find"]
