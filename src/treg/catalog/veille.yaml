@@ -1,0 +1,250 @@
+provider: veille
+source:
+  docs: https://docs.veille.io
+  openapi: https://app.veille.io/openapi
+  curated: '2026-11-09'
+pricing_url: https://www.veille.io/pricing
+limits: Rate limits depend on the plan (2 to 100 requests per second); GET /v1/usage returns the key's credit balance and
+  per-second and per-minute limits.
+proposed_capabilities:
+  web.ip.reputation: Check an IP address for VPN, proxy, Tor, datacenter or abuse, with its network owner and location
+  companies.iban.verify: Check an IBAN is valid and get its bank, BIC and SEPA membership
+  markets.forex.rates: Get today's exchange rates for a base currency
+  people.email.disposable: Check whether an email domain is disposable.
+  web.domain.disposable: Is a domain disposable or a free webmail host
+  companies.vat.verify: Check that an EU VAT number is valid, and whose it is
+defaults:
+  expect:
+    path: response.error
+    op: absent
+  provenance:
+    source: docs
+    source_url: https://docs.veille.io
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: veille.people.email.verify
+  capability: people.email.verify
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /v1/intelligence/emailq
+  name: Verify an email address is deliverable
+  summary: Check an email address with an SMTP inbox test and catch-all detection, and return a verdict (valid, invalid, risky,
+    disposable or unknown) with a 0-100 risk score.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: contact@airbus.com
+        note: The email address to verify; normalized to lowercase.
+  test_request:
+    queryParams:
+      query: contact@airbus.com
+  price:
+    value: '5'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.people.email.disposable
+  capability: people.email.disposable
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /v1/intelligence/email
+  name: Check an email address for disposable, role or webmail
+  summary: 'Check an email address without an SMTP test: disposable or temporary inbox, role account, public webmail, relay
+    or alias, DNS health (MX, SPF, DMARC) and a 0-100 risk score.'
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: contact@airbus.com
+        note: The email address to check; normalized to lowercase.
+  test_request:
+    queryParams:
+      query: contact@airbus.com
+  price:
+    value: '3'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.people.phone.verify
+  capability: people.phone.verify
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /v1/intelligence/phone
+  name: Validate a phone number
+  summary: Validate a phone number in E.164 format and return its carrier, line type (mobile, fixed or VoIP), country, time
+    zones, virtual or disposable flags and a 0-100 risk score.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: '+33142928100'
+        note: The number in E.164 format, starting with +.
+  test_request:
+    queryParams:
+      query: '+33142928100'
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.web.ip.reputation
+  capability: web.ip.reputation
+  platform: web
+  domain: web
+  scope: any_account
+  method: GET
+  path: /v1/intelligence/ip
+  name: Check an IP address's reputation
+  summary: Check an IPv4 or IPv6 address for VPN, proxy, Tor exit, datacenter, abuse and crawler traffic, with its network
+    owner (ASN), location and a 0-100 threat score.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: 8.8.8.8
+        note: The IPv4 or IPv6 address.
+  test_request:
+    queryParams:
+      query: 8.8.8.8
+  price:
+    value: '2'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.web.domain.disposable
+  capability: web.domain.disposable
+  platform: web
+  domain: web
+  scope: any_account
+  method: GET
+  path: /v1/intelligence/domain
+  name: Check a domain for disposable or webmail email
+  summary: Check whether a domain hosts disposable, public webmail, relay or education email, with its DNS health, MX providers,
+    WHOIS dates and, on request, its certificate history.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: mailinator.com
+        note: A domain, a URL or an email address; the domain is extracted.
+      certificate_transparency:
+        type: boolean
+        required: false
+        default: false
+        note: Add the certificate history from Certificate Transparency logs.
+  test_request:
+    queryParams:
+      query: mailinator.com
+  price:
+    value: '2'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.companies.vat.verify
+  capability: companies.vat.verify
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /v1/vat
+  name: Verify an EU VAT number
+  summary: Check an EU VAT number against VIES and return whether it is valid, with the registered company name and address.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: FR40303265045
+        note: The VAT number with its country prefix.
+  test_request:
+    queryParams:
+      query: FR40303265045
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.companies.iban.verify
+  capability: companies.iban.verify
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /v1/vat/iban
+  name: Validate an IBAN
+  summary: Check an IBAN's structure and checksum and return its bank name, BIC, bank and branch codes, country and SEPA membership.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: FR7630006000011234567890189
+        note: The IBAN, with or without spaces.
+  test_request:
+    queryParams:
+      query: FR7630006000011234567890189
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
+- id: veille.markets.forex.rates
+  capability: markets.forex.rates
+  platform: markets
+  domain: markets
+  scope: any_account
+  method: GET
+  path: /v1/vat/rates
+  name: Get today's exchange rates
+  summary: Get the European Central Bank's daily exchange rates for a base currency, optionally limited to some target currencies.
+  input:
+    queryParams:
+      base:
+        type: string
+        required: false
+        default: EUR
+        example: USD
+        note: ISO 4217 code of the base currency.
+      symbols:
+        type: string
+        required: false
+        example: EUR,GBP
+        note: Comma-separated ISO 4217 codes to keep.
+  test_request:
+    queryParams:
+      base: USD
+      symbols: EUR,GBP
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  added: '2026-11-09'
+  docs_url: https://docs.veille.io
