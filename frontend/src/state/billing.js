@@ -134,6 +134,7 @@ async saveMemberCap(){ this.memberCapErr='';
           {method:'PATCH', headers:{'content-type':'application/json'},
            body:JSON.stringify({member_daily_spend_cap_micro:micro})});
         this.memberCapUsd=this.usdField(this.capCfg.member_daily_spend_cap_micro);
+        this.memberCapOpen=false;
         await this.loadOrgAdmin();
       }catch(e){ this.memberCapErr=this._errMsg(e, 'could not save that limit');
       }finally{ this.memberCapBusy=false; } },

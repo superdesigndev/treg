@@ -8,13 +8,14 @@ export default {
     title: { type: String, required: true },
     text: { type: String, required: true },
     align: { type: String, default: 'left' },  // left | right: which edge the tooltip hangs from
+    side: { type: String, default: 'top' },    // top | bottom: bottom for a table header under a sticky bar
   },
   data: () => ({ id: 'tip-' + (++uid) }),
 }
 </script>
 
 <template>
-  <span class="it" :class="'it-' + align">
+  <span class="it" :class="['it-' + align, 'it-' + side]">
     <button type="button" class="it-trigger" :aria-label="'About ' + title" :aria-describedby="id">
       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" /><path d="M10 9v5M10 6v1" /></svg>
     </button>
@@ -34,6 +35,8 @@ export default {
   /* transitions.dev tooltip timing: out is near-instant, in waits a beat and then fades + scales up. */
   transition:opacity var(--tt-out-dur,50ms) var(--tt-out-ease,ease-out),transform var(--tt-out-dur,50ms) var(--tt-out-ease,ease-out),visibility 0s linear var(--tt-out-dur,50ms)}
 .it-right .it-tip{left:auto;right:-6px;transform-origin:bottom right}
+.it-bottom .it-tip{bottom:auto;top:calc(100% + 8px);transform-origin:top left}
+.it-bottom.it-right .it-tip{transform-origin:top right}
 .it-tip strong{display:block;margin-bottom:4px;color:var(--ink);font-size:12.5px;font-weight:500}
 .it:is(:hover,:focus-within) .it-tip{visibility:visible;opacity:1;transform:scale(1);
   transition:opacity var(--tt-in-dur,150ms) var(--tt-in-ease,ease-out) var(--tt-delay,80ms),transform var(--tt-in-dur,150ms) var(--tt-in-ease,ease-out) var(--tt-delay,80ms),visibility 0s linear var(--tt-delay,80ms)}

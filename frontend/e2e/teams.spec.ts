@@ -49,7 +49,7 @@ test.afterAll(async () => { await owner?.close() })
 test('a member with no daily cap reads as no limit, a cap can be set and cleared, spend waits for the rollup, and tabs live in the address', async () => {
   const page = owner
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Team', exact: true }).click()
-  const cap = page.getByRole('spinbutton', { name: /^Daily cap for / })
+  const cap = page.getByRole('spinbutton', { name: /^Calls per day for / })
   await expect(cap).toHaveValue('')
   await expect(cap).toHaveAttribute('placeholder', 'No limit')
   await page.getByRole('button', { name: '＋ Add agent' }).click()
@@ -61,6 +61,20 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
     await page.reload()
     await expect(cap).toHaveValue(value)
   }
+
+  // The team's daily spend default lives behind the Spend / day header, in a dialog.
+  const setAll = page.getByRole('button', { name: 'Set for all' })
+  await setAll.click()
+  const dialog = page.getByRole('dialog', { name: 'Daily spend for every member' })
+  await dialog.getByRole('textbox', { name: 'Daily spend limit for every member' }).fill('5')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'All: $5.00' })).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: 'All: $5.00' }).click()
+  await dialog.getByRole('textbox', { name: 'Daily spend limit for every member' }).fill('')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(setAll).toBeVisible()
 
   // Spend per API key, on this signed-in session: the suite's sign-ins sit at the per-IP code limit.
   // Both the API Keys column and the Usage chart wait for the rollup, then read it.

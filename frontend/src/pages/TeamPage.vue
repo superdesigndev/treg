@@ -10,9 +10,22 @@ import { NO_KEY } from '../state/constants.js'
 import stripeSlate from '../assets/stripe-wordmark-slate.svg'
 import stripeWhite from '../assets/stripe-wordmark-white.svg'
 // The new agent's check-in poll lives as long as this page (state/agents.js).
+const TIPS = {
+  calls: 'How many calls and runs this member may make per day, on any key. Empty = no limit. Resets at 00:00 UTC.',
+  spend: "How many dollars this member may spend per day on treg's keys. Calls with your own keys are free and do not count. Empty = the team default; type none for no limit. Resets at 00:00 UTC. When a member has both limits, the first one reached stops them.",
+  setAll: 'Set one daily spend limit for every member and agent',
+  tools: 'Which tools this member may call or run. The owner always has all of them.',
+  local: 'Whether this member may run CLIs on their own machine. Off = server only.',
+}
 export default {
   components: { InfoTip, Money, Avatar, TeamShowcase, TeamAvatar, EnterpriseSSO },
-  data: () => ({ NO_KEY, stripeSlate, stripeWhite, memberSsoReady: false }),
+  data: () => ({ NO_KEY, TIPS, stripeSlate, stripeWhite, memberSsoReady: false }),
+  computed: {
+    memberCapLabel() {
+      const cap = this.capCfg && this.capCfg.member_daily_spend_cap_micro
+      return cap == null ? 'Set for all' : 'All: ' + this.money(cap)
+    },
+  },
   setup: useDashboard,
   mounted() { this.resumeCredentialIssue(); this.resumeAgentPoll(); this.loadMemberSso() },
   watch: {
@@ -20,6 +33,11 @@ export default {
     orgTab(tab) { if (tab === 'sso' && this.activeRole !== 'owner') this.loadMemberSso() },
   },
   methods: {
+    openMemberCap() {
+      this.memberCapUsd = this.usdField(this.capCfg && this.capCfg.member_daily_spend_cap_micro)
+      this.memberCapErr = ''
+      this.memberCapOpen = true
+    },
     async copyMemberSsoLink() {
       const url = new URL(`/auth/sso/${encodeURIComponent(this.activeOrg.slug)}/start`, location.origin).href
       this.orgMsg = await this.toClipboard(url) ? 'Employee sign-in link copied.' : 'Could not copy the sign-in link.'
@@ -114,19 +132,19 @@ export default {
           </div>
 
 
-              <div class="lbl" style="margin-top:14px">Members</div>
-              <p class="sub" style="margin:-2px 0 8px;font-size:12px">Daily cap = how many calls + runs a member may make per day. Leave it empty for no limit.</p>
-              <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>$/day</b> = how much a member may spend per day on treg's keys. It resets at 00:00 UTC. Empty = the team default below; <span class="mono">none</span> = no limit.</p>
-              <div v-if="capCfg" class="field" style="gap:8px;align-items:center;margin:0 0 10px">
-                <span style="font-size:12.5px">Daily spend per member</span>
-                <span class="muted">$</span><input v-model="memberCapUsd" class="msel" style="width:90px" placeholder="No limit" aria-label="Daily spend limit for every member" @keyup.enter="saveMemberCap"/>
-                <button class="btn sm" :disabled="memberCapBusy" @click="saveMemberCap">{{memberCapBusy?'…':'Save'}}</button>
-                <span class="muted" style="font-size:12px">Applies to every member and agent. Owners and admins have no limit unless you set one on their row.</span>
+              <div v-if="memberCapOpen" class="scrim" role="dialog" aria-modal="true" aria-labelledby="member-cap-title" v-dialog="() => { memberCapOpen=false }" @click.self="memberCapOpen=false">
+                <div class="modal" style="width:min(440px,92vw)"><div class="hd"><b id="member-cap-title">Daily spend for every member</b><button class="btn sm" @click="memberCapOpen=false" aria-label="Close">✕</button></div>
+                  <div style="padding:18px">
+                    <p class="sub" style="margin-top:0">The most each member and agent may spend per day on treg's keys. Owners and admins are not limited unless you set it on their row. A limit on a row always wins over this one.</p>
+                    <div class="field" style="align-items:center"><span class="muted">$</span><input v-model="memberCapUsd" inputmode="decimal" placeholder="No limit" aria-label="Daily spend limit for every member" @keyup.enter="saveMemberCap"/><span class="muted" style="white-space:nowrap">per day</span></div>
+                    <p class="sub" style="margin:0 0 12px;font-size:12px">Leave it empty for no limit. Resets at 00:00 UTC.</p>
+                    <button class="btn primary" :disabled="memberCapBusy" @click="saveMemberCap">{{memberCapBusy?'Saving…':'Save'}}</button>
+                    <div v-if="memberCapErr" class="banner" style="margin-top:12px">{{memberCapErr}}</div>
+                  </div></div>
               </div>
-              <p v-if="memberCapErr" class="banner" style="margin:0 0 10px">{{memberCapErr}}</p>
-              <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>Tools</b> = which endpoints/CLIs a member may call or run. <b>Local run</b> = may run CLIs on their own machine (off = server only). The owner always has full access.</p>
-              <table>
-                <tr><th>Email</th><th>Role</th><th style="text-align:right">Today</th><th>Daily cap</th><th>$/day</th><th>Tools</th><th>Local run</th><th></th></tr>
+              <div class="lbl" style="margin-top:14px">Members</div>
+              <table class="members-table">
+                <tr><th>Email</th><th>Role</th><th style="text-align:right">Calls today</th><th><span class="th-tip">Calls / day <InfoTip title="Calls / day" :text="TIPS.calls" side="bottom" /></span></th><th><span class="th-tip">Spend / day <InfoTip title="Spend / day" :text="TIPS.spend" side="bottom" /><button v-if="capCfg" type="button" class="th-set" @click="openMemberCap" :title="TIPS.setAll">{{memberCapLabel}}</button></span></th><th><span class="th-tip">Tools <InfoTip title="Tools" :text="TIPS.tools" side="bottom" align="right" /></span></th><th><span class="th-tip">Local run <InfoTip title="Local run" :text="TIPS.local" side="bottom" align="right" /></span></th><th></th></tr>
                 <!-- An empty roster under its header read as "no members" until the request answered. -->
                 <tr v-if="!orgMembersLoaded"><td colspan="8" class="muted">Loading members…</td></tr>
                 <template v-for="m in rosterMembers" :key="m.key">
@@ -153,8 +171,8 @@ export default {
                     <span v-else class="role" :class="m.role">{{m.role}}</span>
                   </td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
-                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Daily cap for '+(m.email||m.name)" title="Empty = no limit"/></td>
-                  <td><input class="msel" style="width:78px" :value="spendField(m)" :placeholder="spendHint(m)" @change="setSpendCap(m,$event.target.value)" :aria-label="'Daily spend limit for '+(m.email||m.name)" title="Dollars per day. Empty = the team default; none = no limit."/>
+                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Calls per day for '+(m.email||m.name)" title="Calls + runs per day. Empty = no limit."/></td>
+                  <td><input class="msel" style="width:100px" :value="spendField(m)" :placeholder="spendHint(m)" @change="setSpendCap(m,$event.target.value)" :aria-label="'Daily spend limit for '+(m.email||m.name)" title="Dollars per day. Empty = the team default; none = no limit."/>
                     <div v-if="m.effective_daily_spend_cap_micro!=null" class="muted" style="font-size:11px">{{money(m.spent_today_micro||0)}} of {{money(m.effective_daily_spend_cap_micro)}} today</div></td>
                   <td>
                     <span v-if="m.role==='owner'" class="chip">All</span>
@@ -756,6 +774,19 @@ export default {
 </template>
 
 <style>
+/* Wide screens: let the header tooltips out of the rounded table. On a phone the table keeps
+   base.css's own sideways scroll. */
+@media (min-width:761px) {
+  /* A collapsed border ignores border-radius; separate borders keep the round edge without the clip. */
+  .members-table { overflow:visible; border-collapse:separate; border-spacing:0; }
+  .members-table tr:first-child > :first-child { border-top-left-radius:var(--r); }
+  .members-table tr:first-child > :last-child { border-top-right-radius:var(--r); }
+  .members-table tr:last-child > :first-child { border-bottom-left-radius:var(--r); }
+  .members-table tr:last-child > :last-child { border-bottom-right-radius:var(--r); }
+}
+.th-tip { display:inline-flex; align-items:center; gap:2px; white-space:nowrap; }
+.th-set { margin-left:6px; padding:2px 8px; border:1px solid var(--line); border-radius:999px; background:var(--panel); color:var(--ink); font:inherit; font-size:11px; text-transform:none; letter-spacing:0; cursor:pointer; }
+.th-set:hover, .th-set:focus-visible { background:var(--panel2); }
 .saved-card-label { display:inline-flex; align-items:center; gap:5px; margin-left:auto; white-space:nowrap; }
 .saved-card-check { width:15px; height:15px; color:var(--green); flex:none; }
 .stripe-wordmark { width:38px; height:auto; display:block; }
