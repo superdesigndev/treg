@@ -927,6 +927,8 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
     _include_role_routes(app, api_module, role)
+    from .deploy_health_probe import router as _rollout_router
+    app.include_router(_rollout_router())
     _install_head_and_openapi(app)
 
     if role != "control" and _mcp is not None:
