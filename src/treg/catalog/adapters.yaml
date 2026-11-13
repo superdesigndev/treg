@@ -46,6 +46,17 @@ adapters:
     # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
     out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
     miss: "found_email == null"
+  filtrat-finder.companies.enrich:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.url}
+    const: {body.mode: json}
+    # Read live from the page; the extras (type, followers, specialties, locations, phone, social)
+    # ride in raw.
+    out: {name: company.name, domain: company.domain, website: company.website,
+          description: company.description, industry: company.industry,
+          employees: "coalesce(fmt('{}', company.employees), company.size)",
+          location: company.headquarters, linkedin_url: url}
+    miss: "status != 'found'"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
