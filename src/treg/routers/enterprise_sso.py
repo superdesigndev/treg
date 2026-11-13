@@ -68,6 +68,33 @@ async def sso_status(org_id: int, caller: Caller = Depends(require_member)) -> d
     return await enterprise_billing.status(org_id, include_plans=caller.role == "owner")
 
 
+@router.get("/orgs/{org_id}/sso/domains")
+async def sso_domains(org_id: int, caller: Caller = Depends(require_member)) -> dict:
+    """Read WorkOS's verification state without making the billing card depend on WorkOS."""
+    _owner(caller, org_id)
+    settings = get_settings()
+    if not settings.workos_api_key:
+        raise HTTPException(503, "WorkOS is not configured")
+    try:
+        _, config = await enterprise_sso.configured_team(org_id)
+        if not config.workos_org_id:
+            return {"status": "not_started", "domains": []}
+        async with httpx.AsyncClient() as client:
+            organization = await workos.get_organization(client, key=settings.workos_api_key,
+                organization=config.workos_org_id)
+        if organization.get("external_id") != str(org_id):
+            raise workos.WorkOSError("WorkOS organization does not belong to this team")
+        domains = [{"domain": item["domain"], "state": item["state"]}
+                   for item in (organization.get("domains") or [])
+                   if isinstance(item, dict) and isinstance(item.get("domain"), str)
+                   and item.get("state") in {"verified", "pending"}]
+        status = ("verified" if any(item["state"] == "verified" for item in domains)
+                  else "pending" if domains else "not_started")
+        return {"status": status, "domains": domains}
+    except (enterprise_sso.EnterpriseSSOError, workos.WorkOSError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @router.get("/orgs/{org_id}/sso/blocked")
 async def sso_blocked_members(org_id: int, caller: Caller = Depends(require_member)) -> dict:
     _owner(caller, org_id)
@@ -111,7 +138,7 @@ async def sso_setup(org_id: int, intent: str, request: Request,
         raise HTTPException(503, "WorkOS is not configured")
     try:
         org, config = await enterprise_sso.configured_team(org_id)
-        if intent not in {"sso", "dsync"} or (intent == "dsync" and config.plan != "sso_directory"):
+        if intent not in {"sso", "dsync", "domain_verification"} or (intent == "dsync" and config.plan != "sso_directory"):
             raise HTTPException(422, "setup option is unavailable")
         workos_org_id = config.workos_org_id
         async with httpx.AsyncClient() as client:
@@ -121,7 +148,7 @@ async def sso_setup(org_id: int, intent: str, request: Request,
                 await enterprise_sso.bind_workos_org(org_id, workos_org_id)
             link = await workos.portal_link(client, key=settings.workos_api_key,
                 organization=workos_org_id, intent=intent,
-                return_url=settings.public_url.rstrip("/") + "/app#sso")
+                return_url=settings.public_url.rstrip("/") + "/app#orgs/sso")
         await enterprise_sso.record_action(org_id, "sso.setup_link_generated", actor=caller.user.id)
         return {"url": link}
     except (enterprise_sso.EnterpriseSSOError, workos.WorkOSError) as exc:
