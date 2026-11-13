@@ -1,29 +1,22 @@
 -- Actionable errors in the call events (docs/context/architecture/call-events.md, "Failed calls").
 --
--- Failed calls in `treg.analytics.call_events` by error class, who refused them (treg or the
--- upstream), credential tier and endpoint. Caller-side classes are left out by default: treg's
--- balance and cap refusals, its policy refusals (the closest an event comes to the team's own deny
--- rules), and an upstream 401/402/403 on a team's own key or tool (the team's provider account).
--- Paused and retired refusals stay in. Set `include_caller_side` to true for the full count;
--- nothing else changes. The `total` rows count each class per refuser, which answers "how many
--- wrong-parameter calls did treg refuse, and how many did the upstream"; the `endpoint` rows split
--- them by tier, provider and endpoint. `root_calls` leaves out routed children, checks and polls.
+-- Failed calls by error class, refuser (treg or the upstream), tier and endpoint, with per-class
+-- totals; `root_calls` leaves out routed children, checks and polls. Caller-side classes are left
+-- out unless `include_caller_side` is true.
 --
--- The class here is read from `status_code`, `refused_by` and `credential_tier` only, the columns
--- an event has. The `call_error` log line classifies the same calls from the failure kind and the
--- provider's documented error code too, so it is the finer reading where the two differ (a 429
--- because treg's own spend-cap store did not answer is `cap` here and `treg_capacity` there; a
--- provider's 400 that its documentation says means an empty account is `caller_input` here; a 403
--- for an operator's quota is `policy` here and `treg_policy` there; a 402 on treg's pay-per-use
--- OAuth app is the team's account here and treg's there; treg's own refusals at the relay stage,
--- recorded without a `refused_by` (its account's declared rate, a credential it could not inject,
--- an address it would not reach, an answer over its buffer), are `upstream` here and `treg` there;
--- a routed parent the provider refused (`route_caller_fault`) is `refused_by = 'request'`, so it is
--- `treg` here and `upstream` there: for the treg-or-upstream split of wrong parameters on routed
--- calls read the log line, and read `root_calls` here only for calls that are not routed;
--- a 404 for want of a credential is `not_found` here, left in, since an event cannot tell an
--- endpoint only the team's own key serves (`caller_provider_account` there, caller-side) from one
--- treg's key should serve but this deployment has none for (`our_provider_account` there)).
+-- An event has only `status_code`, `refused_by` and `credential_tier`, so this reading is coarser
+-- than the `call_error` log line, which also reads the failure kind and the provider's documented
+-- error code. Where they differ (here / log line):
+--   - a 429 because treg's spend-cap store did not answer: `caller_balance_or_cap` /
+--     `treg_capacity`
+--   - a 403 for an operator's quota: `caller_policy` / `treg_policy`
+--   - a provider's 400 documented as an empty account: `caller_input` / a provider account class
+--   - a 402 on treg's pay-per-use OAuth app: the team's account / treg's
+--   - treg's relay-stage refusals without a `refused_by` (declared rate, failed injection, refused
+--     address, buffer limit): `upstream` / `treg`
+--   - a routed parent the provider refused (`route_caller_fault`): `treg` / `upstream`; for the
+--     treg-or-upstream split of routed calls read the log line
+--   - a 404 for want of a credential: `not_found`, left in / the team's or treg's provider account
 --
 -- DuckDB over the Iceberg catalog attached as `treg`. Replace the fixed UTC bounds; keep the window
 -- bounded, since a day costs the same scan whatever the filters select.

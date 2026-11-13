@@ -214,59 +214,37 @@ collapsed. So a find's `answer_keys['email']` equals a later verify's `input_key
 ## Failed calls
 
 Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
-logger, `call_error` followed by JSON, where its outcome is final: the call's audit (every resolved
-catalog call, a routed child, check or poll included, and own tools), an unresolved catalog call,
-a routed parent, a hub run that failed or was refused, and for a refusal or crash nothing
-audited, the router's fallback on a root and `execute_call` on a child (`call_errors.emit`). It is
-a log line, not a column: no table changes.
+logger: `call_error` followed by JSON. `call_errors.emit` runs where an attempt's outcome is final,
+so each attempt logs once; the router's fallback covers a root nothing audited and `execute_call`
+a child. It is a log line, not a column.
 
 | Field | Value |
 | --- | --- |
 | `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child, `s1.0` on a hub `for_each` item (null on a root) |
 | `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
-| `status`, `refused_by` | the status of this attempt (the caller's, except on a direct attempt overflow served), and treg's refusal mechanism as the event's `refused_by` |
+| `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
-| `error_class` | one word below |
+| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other` |
 | `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
-| `kind` | the failure kind treg raised (`daily_cap_reached`, `catalog_parameter_invalid`), or its internal `log_kind` when it has one |
-| `signal` | the provider's documented error read from its answer (`balance`, `quota`, `burst`), per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for treg's own refusal of a request: the field it is about (`queryParams.limit`, `body.urls.0`; `undeclared` for a name the endpoint does not declare, a field refused as undeclared, or an index that is not a short index into a field declared an array; a JSON key may hold dots, so it is never read as a path) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform` for a limit of treg's shared key, `authorization_method`, `unsupported`). Both ride on the refusal (`CallFailure.parameter`, `.rule`), never in what the caller sees |
+| `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
+| `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
 
-`error_class` is read in order from the failure kind (its class sits beside its blame in
-`types.FAILURE_KINDS`, one table for both), else `refused_by`, else the provider's documented error,
-else the status (`call_errors.py`). `caller_input`, `caller_balance_or_cap`, `caller_policy` (the
-team's own deny rules: `policy_denied`, `tool_access_denied`, `tag_blocked`), `caller_auth` (no
-valid treg token), `caller_provider_account`, `not_found`, `rate_limit`, `upstream_error`,
-`timeout`, `treg_capacity`, `treg_policy` (a paused provider, a retired tool, an operator's quota or
-flow control, fair share), `our_provider_account`, `treg_error`, `other`. A provider account error
-belongs to whoever holds that account. An access error (an upstream 401/403) is
-`caller_provider_account` on the `credential` and `tool` tiers. A credit error (an upstream 402, or
-an out-of-credit answer, documented or matched by the `unrecorded` phrase check, whose `signal`
-stays on the line) is the caller's only when the caller pays the provider: on treg's pay-per-use
-OAuth app it is `our_provider_account`, like every error on treg's own key. An own tool's answer is
-read with the documented errors of the provider whose base URL is on the tool's host (its line's
-`provider` stays null), or with the generic ones and the phrase check when none is. A catalog call
-refused for want of a credential (404, `credential_missing` to the caller and the Arena) is
-`caller_provider_account` when only the team's own key can serve the endpoint, and
-`our_provider_account` (`kind` `platform_key_missing`, the refusal's internal `log_kind`) when
-treg's own key or the anonymous fallback should serve it but the deployment has no key or
-allow-list entry for its provider. A routed parent the provider refused (`route_caller_fault`,
-`route_not_found`) is `by` `upstream`; one refused because treg's capacity took every candidate
-away (`route_no_candidate` answered 503) is `treg_capacity`. The answer is decoded by its
-`Content-Encoding` before its error code is read. A failed hub run is read by the error its
-detail names when that is a known failure kind: a crash in treg (`hub_run_crashed`) is
-`treg_error`, `by` `treg`; the caller's price ceiling (`hub_run_max_cost`) and a refusal that stops
-every step (the caller's balance or a cap) are `caller_balance_or_cap`.
-Any other is `upstream_error`, `by` `upstream`: a failed step, the maker's script, or a limit the
-maker's manifest declares (`hub_step_cap`, `hub_wall_clock`). No request or answer value, header,
-credential or message text is logged; the answer is read only for its documented error code.
+`call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
+`refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`
+is its table. A provider account error belongs to whoever holds the account: an upstream 401/403 is
+`caller_provider_account` on the `credential` and `tool` tiers, and a credit error (a 402 or an
+out-of-credit answer) is the caller's only when the caller pays the provider, so treg's own key and
+its pay-per-use OAuth app are `our_provider_account`.
 
-A default error view leaves `caller_side` out; the full count is the same query without that
-filter. A routed call writes its parent's line and one per failed child, check or poll, so a count
-of failed calls keeps only root lines (`step` empty); a direct attempt that overflow served is a
-root line too, though the caller got the overflow's answer. In Loki, with the deployment's own
-stream selector:
+No request or answer value, header, credential or message text is logged. The answer is read only
+for its documented error code, and a parameter is named only when the endpoint declares every part
+of it: a field name the caller made up is request content.
+
+A default error view leaves `caller_side` out. A routed call or hub run logs its parent and each
+failed child, so a count of calls keeps only root lines (`step` empty); a direct attempt that
+overflow served is still a root line. In Loki, with the deployment's own stream selector:
 
 ```logql
 sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
@@ -276,14 +254,7 @@ sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
 
 The full count drops `| caller_side="false"`; a count of attempts drops `| step=""`.
 
-`scripts/call_events_actionable_errors.sql` is the same view over the events: failed calls by
-class, refuser, tier and endpoint, with per-class totals, leaving caller-side classes out unless
-`include_caller_side` is set to true. An event has only `status_code`, `refused_by` and
-`credential_tier`, so the query's class is the coarser reading: a refusal kind or a provider's
-documented error code that changes the class shows only in the log line; a missing credential is
-`not_found` there and stays in, since an event cannot tell the own-key-only half apart. A routed
-parent the provider refused (`route_caller_fault`) is `refused_by` `request` in its event, so the
-query counts it under treg while its line says `upstream`; for the treg-or-upstream split of wrong
-parameters read the log line, or the query's `root_calls` for calls that are not routed. A direct
-attempt that overflow later served still logs its line and keeps its event, as both record the
-attempt.
+`scripts/call_events_actionable_errors.sql` is the same view over the events. An event has only
+`status_code`, `refused_by` and `credential_tier`, so the query's class is coarser where a failure
+kind or a documented error code decides; its header lists where. Own tools write no event, so their
+errors are only in the log line.
