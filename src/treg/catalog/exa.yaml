@@ -41,8 +41,8 @@ endpoints:
         numResults: {type: integer, required: false, note: "1-100, default 10. The first 10 are covered by the base price; each result beyond 10 adds $0.001", example: 5}
         type: {type: string, required: false, note: "auto (default) | fast | instant | lite | deep-lite | deep | deep-reasoning. auto/fast bill the base; instant/lite bill $0.004, see exa.web.search.lite; use exa.web.search.deep for the deep modes", example: "auto"}
         category: {type: string, required: false, note: "focus on one sub-index: company | people | news | publication | personal site | financial report. The people/company/news/publication categories have their own curated routes below"}
-        includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths"}
-        excludeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false, note: "only these hosts or host paths"}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         startPublishedDate: {type: string, required: false, note: "ISO 8601; only pages published after this"}
         endPublishedDate: {type: string, required: false, note: "ISO 8601"}
         userLocation: {type: string, required: false, note: "two-letter ISO country code to localise results, e.g. US"}
@@ -83,8 +83,8 @@ endpoints:
         type: {type: string, required: true, enum: [lite], note: "must be `lite`", example: "lite"}
         numResults: {type: integer, required: false, note: "1-100, default 10; each result beyond 10 adds $0.001", example: 5}
         category: {type: string, required: false, note: "same values as exa.web.search"}
-        includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths"}
-        excludeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false, note: "only these hosts or host paths"}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         startPublishedDate: {type: string, required: false, note: "ISO 8601"}
         endPublishedDate: {type: string, required: false, note: "ISO 8601"}
         userLocation: {type: string, required: false, note: "two-letter ISO country code"}
@@ -123,9 +123,9 @@ endpoints:
         query: {type: string, required: true, example: "what changed in the EU AI Act implementing guidance this summer"}
         type: {type: string, required: true, note: "deep-lite ($12/1k) | deep ($12/1k) | deep-reasoning ($15/1k). This route exists so the deep modes carry their own price; the base route is exa.web.search", example: "deep-lite"}
         numResults: {type: integer, required: false, note: "1-100, default 10; results beyond 10 add $0.001 each", example: 5}
-        additionalQueries: {type: "array[string]", required: false, note: "extra query variations the deep search fans out over"}
-        includeDomains: {type: "array[string]", required: false}
-        excludeDomains: {type: "array[string]", required: false}
+        additionalQueries: {type: array, items: {type: string}, required: false, note: "extra query variations the deep search fans out over"}
+        includeDomains: {type: array, items: {type: string}, required: false}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         startPublishedDate: {type: string, required: false}
         endPublishedDate: {type: string, required: false}
         contents: {type: object, required: false, note: "same shape as exa.web.search"}
@@ -163,7 +163,7 @@ endpoints:
         query: {type: string, required: true, note: "describe the person in words — role, seniority, location, industry, anything a profile page would say. Free text, not filters: 'head of security at a fintech in berlin' works, so does 'ai safety researchers in greater phoenix'", example: "head of security at a fintech in berlin"}
         category: {type: string, required: true, note: "must be `people`", example: "people"}
         numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 5}
-        includeDomains: {type: "array[string]", required: false, note: "e.g. [\"linkedin.com\"] to keep to one profile host"}
+        includeDomains: {type: array, items: {type: string}, required: false, note: "e.g. [\"linkedin.com\"] to keep to one profile host"}
         contents: {type: object, required: false, note: "{highlights: true} returns the profile lines that matched the query"}
       note: "each result is a profile page: url (mostly linkedin.com/in/…), title (the person's name), publishedDate, and an `entities` block with the structured person record Exa extracted (name, current title, company, location). No contact data — pair with a people.enrich or people.email.find provider for that. Scored 72% R@1 / 94.5% R@10 on Exa's open people-search benchmark; the structured providers under this capability need role+location filters instead of free text."
     test_request:
@@ -201,7 +201,7 @@ endpoints:
         query: {type: string, required: true, note: "describe the company in words — what it does, stage, geography", example: "vector database startups"}
         category: {type: string, required: true, note: "must be `company`", example: "company"}
         numResults: {type: integer, required: false, example: 5}
-        includeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false}
         contents: {type: object, required: false, note: "{summary: {query: \"what does this company sell\"}} adds a $0.001/page summary"}
       note: "each result is the company's own site or profile page: url, title, and an `entities` block with the structured company record (name, description, location, industry, headcount range, founding year where known). Firmographic FILTERS (headcount, funding) belong to the structured providers under this capability; this one takes a description. The company category answers 400 for publication-date and crawl-date filters."
     test_request:
@@ -239,7 +239,7 @@ endpoints:
         startPublishedDate: {type: string, required: false, note: "ISO 8601 — the usual way to mean 'recent'", example: "2026-07-01"}
         endPublishedDate: {type: string, required: false}
         numResults: {type: integer, required: false, example: 5}
-        includeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false}
         contents: {type: object, required: false, note: "{highlights: true} or {summary: {query}}"}
       note: "results are articles: url, title, publishedDate, author"
     test_request:
@@ -276,7 +276,7 @@ endpoints:
         category: {type: string, required: true, note: "must be `publication`", example: "publication"}
         numResults: {type: integer, required: false, example: 5}
         startPublishedDate: {type: string, required: false}
-        includeDomains: {type: "array[string]", required: false, note: "e.g. [\"arxiv.org\"]"}
+        includeDomains: {type: array, items: {type: string}, required: false, note: "e.g. [\"arxiv.org\"]"}
         contents: {type: object, required: false, note: "{highlights: {query}} pulls the matching passage"}
       note: "results are paper pages (arxiv, publisher, DOI landing pages): url, title, publishedDate, author"
     test_request:
@@ -310,7 +310,7 @@ endpoints:
       bodyType: json
       body:
         query: {type: string, required: true, note: "describe the episode or what was said: a show, a guest, a topic, a claim ('what Jensen Huang said about inference demand on recent podcasts', 'the newest episode of Hard Fork')", example: "what Jensen Huang said about inference demand on recent podcasts"}
-        includeDomains: {type: "array[string]", required: true, note: "must be [\"exa.ai/library/podcast\"], the podcast index's host path. Without it results drift to podcast directories (Apple Podcasts, Podbean)", example: ["exa.ai/library/podcast"]}
+        includeDomains: {type: array, items: {type: string}, required: true, note: "must be [\"exa.ai/library/podcast\"], the podcast index's host path. Without it results drift to podcast directories (Apple Podcasts, Podbean)", example: ["exa.ai/library/podcast"]}
         numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 3}
         startPublishedDate: {type: string, required: false, note: "ISO 8601; filters on the episode's air date"}
         endPublishedDate: {type: string, required: false, note: "ISO 8601"}
@@ -346,9 +346,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, note: "one or more page URLs; each page is billed per content type requested", example: ["https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world"]}
-        text: {type: "boolean|object", required: false, note: "true, or {maxCharacters: N} — the page as clean text. $0.001 per page", example: {maxCharacters: 2000}}
-        highlights: {type: "boolean|object", required: false, note: "true, or {query, maxCharacters} — the passages most relevant to `query`. $0.001 per page"}
+        urls: {type: array, items: {type: string}, required: true, note: "one or more page URLs; each page is billed per content type requested", example: ["https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world"]}
+        text: {type: [boolean, object], required: false, note: "true, or {maxCharacters: N} — the page as clean text. $0.001 per page", example: {maxCharacters: 2000}}
+        highlights: {type: [boolean, object], required: false, note: "true, or {query, maxCharacters} — the passages most relevant to `query`. $0.001 per page"}
         summary: {type: object, required: false, note: "{query} — an AI summary of the page focused on `query`. $0.001 per page"}
         maxAgeHours: {type: integer, required: false, note: "serve cache if younger than this, else live-crawl; omit for Exa's default freshness"}
         livecrawlTimeout: {type: integer, required: false, note: "ms, default 10000"}
@@ -391,8 +391,8 @@ endpoints:
         numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 5}
         excludeSourceDomain: {type: boolean, required: false, note: "drop results from the input URL's own domain — usually what you want", example: true}
         category: {type: string, required: false, note: "company | people | news | publication | personal site | financial report"}
-        includeDomains: {type: "array[string]", required: false}
-        excludeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         startPublishedDate: {type: string, required: false}
         contents: {type: object, required: false, note: "same shape as exa.web.search"}
       note: "results carry url, title, publishedDate, author and a similarity `score`"
@@ -427,7 +427,7 @@ endpoints:
       bodyType: json
       body:
         query: {type: string, required: true, note: "describe the creators in words — niche, city/region, language, audience, brand mentions, follower scale ('Italian specialty-coffee baristas who post latte art', 'Belo Horizonte food guides recommending restaurants'). Keep city and niche words in the query; they are how Exa matches profile and post text", example: "Instagram creators who post their trucks fitted with Nitto tires, 8k+ followers"}
-        includeDomains: {type: "array[string]", required: true, note: "pin the platform: [\"instagram.com\"] | [\"tiktok.com\"] | [\"youtube.com\"] | [\"x.com\", \"twitter.com\"] | [\"twitch.tv\"]. Without it results drift to news and LinkedIn", example: ["instagram.com"]}
+        includeDomains: {type: array, items: {type: string}, required: true, note: "pin the platform: [\"instagram.com\"] | [\"tiktok.com\"] | [\"youtube.com\"] | [\"x.com\", \"twitter.com\"] | [\"twitch.tv\"]. Without it results drift to news and LinkedIn", example: ["instagram.com"]}
         numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 15}
         contents: {type: object, required: false, note: "{highlights: {query, maxCharacters: 400}} returns the matching caption/bio lines — the evidence a reviewer needs", example: {highlights: {query: "nitto tires", maxCharacters: 400}}}
       note: "Do NOT set category: people — that returns LinkedIn profiles, not creators. Results are profile and post URLs on the platform (instagram.com/<handle>/p/…); take the handle from the URL, dedupe on it. This is the SEMANTIC shape of creator discovery: it follows meaning (niche, brand mentions, city) but cannot enforce follower ranges or engagement. The STRUCTURED shape is influencersclub.creators.search (follower/engagement/location/language filters, audience data). Best results come from running both and merging on handle — on the LessieAI people-search-bench influencer track (2026-08-27) Exa rows qualified 100% and influencers.club rows 63%, and the union scored 55 vs 38 for either alone."

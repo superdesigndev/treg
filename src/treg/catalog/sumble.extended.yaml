@@ -163,6 +163,7 @@ endpoints:
         description: List of job titles to look up
         required: true
       file_name:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -270,8 +271,8 @@ endpoints:
         note: Words or a short question to search for. Uses BM25 and bag of words.
       limit:
         type: integer
-        maximum: 10
-        minimum: 1
+        max: 10
+        min: 1
         default: 5
         required: false
   docs_url: https://docs.sumble.com/api/api
@@ -412,6 +413,7 @@ endpoints:
         required: true
     queryParams:
       file_name:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -524,6 +526,7 @@ endpoints:
         default: false
         required: false
       file_name:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -722,6 +725,8 @@ endpoints:
       filter:
         properties:
           organization_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -732,6 +737,8 @@ endpoints:
             examples:
             - - 171
           person_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -742,6 +749,8 @@ endpoints:
             examples:
             - - 12729201
           signal_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -752,6 +761,8 @@ endpoints:
             examples:
             - - 123
           technology_slugs:
+            type: array
+            items: {type: string}
             anyOf:
             - items:
                 type: string
@@ -761,6 +772,8 @@ endpoints:
             examples:
             - - zoominfo
           job_functions:
+            type: array
+            items: {type: string}
             anyOf:
             - items:
                 type: string
@@ -770,6 +783,8 @@ endpoints:
             examples:
             - - Account Executive
           priorities:
+            type: array
+            items: {type: string}
             anyOf:
             - items:
                 type: string
@@ -783,6 +798,8 @@ endpoints:
             examples:
             - - high
           account_list_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -793,6 +810,8 @@ endpoints:
             examples:
             - - 4
           signal_config_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -809,15 +828,15 @@ endpoints:
         required: false
       limit:
         type: integer
-        maximum: 100.0
-        minimum: 1.0
+        max: 100.0
+        min: 1.0
         description: Maximum number of signals to return.
         default: 100
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of signals to skip.
         default: 0
         required: false
@@ -856,6 +875,8 @@ endpoints:
       filter:
         properties:
           organization_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -866,6 +887,8 @@ endpoints:
             examples:
             - - 171
           person_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -876,6 +899,8 @@ endpoints:
             examples:
             - - 12729201
           signal_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -886,6 +911,8 @@ endpoints:
             examples:
             - - 123
           job_post_ids:
+            type: array
+            items: {type: integer}
             anyOf:
             - items:
                 type: integer
@@ -896,6 +923,7 @@ endpoints:
             examples:
             - - 789
           is_relevant:
+            type: boolean
             anyOf:
             - type: boolean
             - type: 'null'
@@ -910,15 +938,15 @@ endpoints:
         required: false
       limit:
         type: integer
-        maximum: 100.0
-        minimum: 1.0
+        max: 100.0
+        min: 1.0
         description: Maximum number of priority signals to return.
         default: 20
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of priority signals to skip.
         default: 0
         required: false
@@ -959,6 +987,7 @@ endpoints:
     bodyType: json
     body:
       is_relevant:
+        type: boolean
         anyOf:
         - type: boolean
         - type: 'null'
@@ -1030,12 +1059,14 @@ endpoints:
         maxLength: 5000
         required: true
       url:
+        type: string
         anyOf:
         - type: string
           maxLength: 2048
         - type: 'null'
         required: false
       page_title:
+        type: string
         anyOf:
         - type: string
           maxLength: 500
@@ -1076,6 +1107,7 @@ endpoints:
         maxLength: 5000
         required: true
       url:
+        type: string
         anyOf:
         - type: string
           maxLength: 2048

@@ -30,6 +30,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: '<em>keywords</em><br><strong>required field</strong><br>UTF-8 encoding<br>The maximum number of keywords you can specify: 1000;<br>The maximum number of characters in a single keyword: 250;<br>The keywords will be converted to lowercase format;<p>learn more about rules and limitations of <code>keywo'
         example:
@@ -83,6 +84,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -156,6 +158,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities with aggregation keys. Required field. Between 2 and 10 keyed target sets (else upstream 40501: "The number of ''targets'' items must be between 2 and 10."). Each nested target array can contain up to 10 domain/keyword entities. Requests must include at least one domain_entity or keyword_entity with search_filter: include. Metrics are grouped by targets[].key. This live endpoint returns a rolling trailing window (~4-5 months), not calendar-month buckets; identical back-to-back calls can return different aggregates. For reproducible monthly time series use dataforseo.x.ai-optimization-llm-mentions-historical-live.'
         example:
@@ -197,10 +200,12 @@ endpoints:
         example: google
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -209,6 +214,7 @@ endpoints:
           - 10
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       limit:
@@ -271,6 +277,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -304,6 +311,7 @@ endpoints:
         example: google
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
         example:
@@ -312,6 +320,7 @@ endpoints:
           - 1000
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
         example:
@@ -372,6 +381,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -405,6 +415,7 @@ endpoints:
         example: chat_gpt
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -455,6 +466,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -488,6 +500,7 @@ endpoints:
         example: google
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -501,6 +514,7 @@ endpoints:
         example: 6
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -546,6 +560,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -629,6 +644,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -712,6 +728,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -747,10 +764,12 @@ endpoints:
         example: chat_gpt
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -769,6 +788,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -777,10 +797,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_brand_categories:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of brand_categories to include in the response</em><br>optional field<br>if specified, only the listed brand categories will be returned in the <code>items</code> array<br>example:<br><code>"include_brand_categories": ["business"]</code>'
       exclude_brand_categories:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of brand categories to exclude from the response</em><br>optional field<br>if specified, the listed brand categories will be omitted from the <code>items</code> array<br>example:<br><code>"exclude_brand_categories": ["business"]</code>'
       tag:
@@ -825,6 +847,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -860,10 +883,12 @@ endpoints:
         example: chat_gpt
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -882,6 +907,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -890,10 +916,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_brand_categories:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of brand categories to include in the response</em><br>optional field<br>if specified, only the listed brand categories will be returned in the <code>items</code> array<br>example:<br><code>["company","insurance"]</code>
       exclude_brand_categories:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of brand categories to exclude from the response</em><br>optional field<br>if specified, the listed brand categories will be omitted from the <code>items</code> array<br>example:<br><code>["company","insurance"]</code>
       tag:
@@ -938,6 +966,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -973,10 +1002,12 @@ endpoints:
         example: chat_gpt
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -995,6 +1026,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1003,10 +1035,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_brands:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of brands to include in the response</em><br>optional field<br>if specified, only the listed brands will be returned in the <code>items</code> array<br>example:<br><code>"include_brands": ["Audi"]</code>'
       exclude_brands:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of brands to exclude from the response</em><br>optional field<br>if specified, the listed brands will be omitted from the <code>items</code> array<br>example:<br><code>"exclude_brands": ["Audi"]</code>'
       tag:
@@ -1051,6 +1085,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -1086,10 +1121,12 @@ endpoints:
         example: chat_gpt
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -1108,6 +1145,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1116,10 +1154,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_brands:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of brands to include in the response</em><br>optional field<br>if specified, only the listed brands will be returned in the <code>items</code> array<br>example:<br><code>["BMW","Audi"]</code>
       exclude_brands:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of brands to exclude from the response</em><br>optional field<br>if specified, the listed brands will be omitted from the <code>items</code> array<br>example:<br><code>["BMW","Audi"]</code>
       tag:
@@ -1164,6 +1204,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -1204,10 +1245,12 @@ endpoints:
         example: sources
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -1226,6 +1269,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1234,10 +1278,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_domains:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of domains to include in the response</em><br>optional field<br>if specified, only the listed domains will be returned in the <code>items</code> array<br>example:<br><code>"include_domains": ["en.wikipedia.org"]</code>'
       exclude_domains:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of domains to exclude from the response</em><br>optional field<br>if specified, the listed domains will be omitted from the <code>items</code> array<br>example:<br><code>"exclude_domains": ["en.wikipedia.org"]</code>'
       tag:
@@ -1283,6 +1329,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -1323,10 +1370,12 @@ endpoints:
         example: sources
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -1345,6 +1394,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1353,10 +1403,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_domains:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of domains to include in the response</em><br>optional field<br>if specified, only the listed domains will be returned in the <code>items</code> array<br>example:<br><code>["dataforseo.com","seoinsider.com"]</code>
       exclude_domains:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of domains to exclude from the response</em><br>optional field<br>if specified, the listed domains will be omitted from the <code>items</code> array<br>example:<br><code>["google.com","bing.com"]</code>
       tag:
@@ -1402,6 +1454,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -1442,10 +1495,12 @@ endpoints:
         example: sources
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -1464,6 +1519,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1472,10 +1528,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_pages:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of pages to include in the response</em><br>optional field<br>if specified, only the listed pages will be returned in the <code>items</code> array<br>example:<br><code>"include_pages": ["https://example.page/"]</code>'
       exclude_pages:
         type: array
+        items: {type: string}
         required: false
         note: '<em>array of pages to exclude from the response</em><br>optional field<br>if specified, the listed pages will be omitted from the <code>items</code> array<br>example:<br><code>"exclude_pages": ["https://example.page/"]</code>'
       tag:
@@ -1521,6 +1579,7 @@ endpoints:
     body:
       target:
         type: array
+        items: {type: object}
         required: false
         note: 'array of objects containing target entities. Required field. You can specify up to 10 entities (objects) in the target field. One target entity can contain either one domain or one keyword and related parameters. All target entities are AND-combined into one filter / one metrics series (not one series per brand). To compare brands: use dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, or one call per brand.'
         example:
@@ -1561,10 +1620,12 @@ endpoints:
         example: sources
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>=</code>, <cod
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>array of filter expressions applied before aggregation</em><br>optional field<br>you can use this array to filter expressions applied to the raw mentions database before aggregation to limit the rows contributing to the result;<p><strong>you can add several filters at once (8 filters maximum)</s
         example:
@@ -1583,6 +1644,7 @@ endpoints:
         example: 2
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       offset:
@@ -1591,10 +1653,12 @@ endpoints:
         note: '<em>offset in the results array of the returned mentions data</em><br>optional field<p>default value: <code>0</code><br>example: if you specify the <code>10</code> value, the first ten mentions objects in the results array will be omitted and the data will be provided for the successive objects;<br>'
       include_pages:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of page URLs to include in the response</em><br>optional field<br>if specified, only the listed pages will be returned in the <code>items</code> array<br>example:<br>`["https://dataforseo.com/apis/ai-optimization-api/llm-mentions-api", "https://dataforseo.com/apis/ai-optimization-api"]`
       exclude_pages:
         type: array
+        items: {type: string}
         required: false
         note: <em>array of page URLs to exclude from the response</em><br>optional field<br>if specified, the listed pages will be omitted from the <code>items</code> array<br>example:<br>`["https://dataforseo.com/apis/ai-optimization-api/llm-mentions-api", "https://dataforseo.com/apis/ai-optimization-api"]`
       tag:
@@ -1641,6 +1705,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000; the keywords will be converted to lowercase format learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -1724,10 +1789,12 @@ endpoints:
         note: 'the maximum number of products in the results array optional field default value: 100; maximum value: 1000'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, ilike, not_ilike, like, not_like, ma'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
       offset:
@@ -1796,10 +1863,12 @@ endpoints:
         note: 'mode for finding asin intersections optional field possible values: union, intersect; default value: intersect; learn more about the parameter in this help center guide'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, ilike, not_ilike, like, not_like, ma'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
       offset:
@@ -1838,6 +1907,7 @@ endpoints:
     body:
       asins:
         type: array
+        items: {type: string}
         required: false
         note: 'product IDs to compare required field product IDs to receive ranking data for; the maximum number of ASINs you can specify in this array is 1000; you can receive the asin parameter by making a separate request to the Amazon Products endpoint Note: all letters in ASIN code must be specified in upperc'
         example:
@@ -1923,10 +1993,12 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like, match, not_match you'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
       offset:
@@ -2537,6 +2609,7 @@ endpoints:
     body:
       categories:
         type: array
+        items: {type: string}
         required: false
         note: app categories optional field the categories you specify are used to search for app listings; you can get the full list of available app listing categories by this link you can specify up to 10 categories
         example:
@@ -2553,6 +2626,7 @@ endpoints:
         example: vpn
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
         example:
@@ -2561,6 +2635,7 @@ endpoints:
           - 4.5
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
         example:
@@ -2928,10 +3003,12 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["intersections",">",500] [["competitor_metric'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -2997,10 +3074,12 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["keyword_data.keyword_info.search_volume",">"'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -3043,6 +3122,7 @@ endpoints:
     body:
       app_ids:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the apps required field IDs of mobile applications on App Store; you can find the ID in the URL of every app listed on App Store; example: in the URL https://apps.apple.com/us/app/id835599320 the id is 835599320; the maximum number of IDs you can specify in this field is 1000'
         example:
@@ -3119,10 +3199,12 @@ endpoints:
         note: "language code; one of language_code | language_name is required. This App Store route supports only English (en); any other language returns 40501 Invalid Field."
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["keyword_data.keyword_info.search_volume",">"'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -3255,6 +3337,7 @@ endpoints:
         note: 'include direct URL for each ranked result optional field if set to true, the returned results will contain direct URLs of the ranked websites by default, the URLs in Baidu results are encoded by the search engine, for example: http://www.baidu.com/link?url=KQt6LSwU5OHnPtB8210R8flBP40grY6lTPxH_0UO7S2'
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_value:
@@ -3398,6 +3481,7 @@ endpoints:
         example: 29.6821525,-82.4098881,100
       age:
         type: array
+        items: {type: string}
         required: false
         note: 'selection of age ranges for targeting possible values: eighteen_to_twenty_four, fifty_to_sixty_four, sixty_five_and_above, thirteen_to_seventeen, thirty_five_to_forty_nine, twenty_five_to_thirty_four, unknown, zero_to_twelve'
         example:
@@ -3416,12 +3500,14 @@ endpoints:
         example: 24
       gender:
         type: array
+        items: {type: string}
         required: false
         note: 'gender to target possible values: male, female, unknown'
         example:
         - male
       industry:
         type: array
+        items: {type: string}
         required: false
         note: 'industry of LinkedIn profile targeting if you use this field, you can receive the list of available industry names with industry_id by making a separate request to the https://api.dataforseo.com/v3/keywords_data/bing/audience_estimation/industries example: 806301758'
         example:
@@ -3429,6 +3515,7 @@ endpoints:
         - '806301758'
       job_function:
         type: array
+        items: {type: string}
         required: false
         note: 'job function of LinkedIn profile targeting if you use this field, you can receive the list of available job function names with job_function_id by making a separate request to the https://api.dataforseo.com/v3/keywords_data/bing/audience_estimation/job_functions example: 806300451'
         example:
@@ -3469,6 +3556,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 1000 The maximum number of characters for each keyword: 80 The maximum number of words for each keyword phrase: 10 the specified keywords will be converted to lowercase, data will be provided in a separate array learn more about'
         example:
@@ -3537,6 +3625,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: keywords required field you can specify the maximum of 200 keywords with each keyword containing no more than 100 characters; the specified keywords will be converted to lowercase, data will be provided in a separate array learn more about rules and limitations of keyword and keywords fields in Data
         example:
@@ -3571,6 +3660,7 @@ endpoints:
         note: 'results sorting parameters optional field Use these parameters to sort the results by search_volume, cpc, competition or relevance in the descending order default value: relevance'
       keywords_negative:
         type: array
+        items: {type: string}
         required: false
         note: keywords negative array optional field These keywords will be ignored in the results array; You can specify a maximum of 200 terms that you want to exclude from the results; the specified keywords will be converted to lowercase format
       device:
@@ -3648,6 +3738,7 @@ endpoints:
         example: en
       keywords_negative:
         type: array
+        items: {type: string}
         required: false
         note: keywords negative array optional field These keywords will be ignored in the results array; You can specify a maximum of 200 terms that you want to exclude from the results; the specified keywords will be converted to lowercase format
       device:
@@ -3699,6 +3790,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 1000 The maximum number of characters for each keyword: 100 the specified keywords will be converted to lowercase, data will be provided in a separate arraylearn more about rules and limitations of keyword and keywords fields in'
         example:
@@ -3779,6 +3871,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 1000 The maximum number of characters for each keyword: 100 the specified keywords will be converted to lowercase, data will be provided in a separate arraylearn more about rules and limitations of keyword and keywords fields in'
         example:
@@ -3807,6 +3900,7 @@ endpoints:
         example: en
       device:
         type: array
+        items: {type: string}
         required: false
         note: 'device types optional field specify this field if you want to get the data for a particular device types possible values: mobile, desktop, tablet, non_smartphones default value: ["mobile", "desktop", "tablet", "non_smartphones"]'
       period:
@@ -3910,6 +4004,7 @@ endpoints:
         note: target domain, subdomain, or webpage to get results for optional field a domain or a subdomain should be specified without https:// and www. note that the results of target-specific tasks will only include SERP elements that contain a url string; you can also use a wildcard (‘*’) character to specif
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_type:
@@ -4025,6 +4120,7 @@ endpoints:
         note: target domain, subdomain, or webpage to get results for optional field a domain or a subdomain should be specified without https:// and www. note that the results of target-specific tasks will only include SERP elements that contain a url string; you can also use a wildcard (‘*’) character to specif
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_type:
@@ -4129,6 +4225,7 @@ endpoints:
         example: communicate as if we are in a business meeting
       message_chain:
         type: array
+        items: {type: object}
         required: false
         note: 'conversation history optional field array of message objects representing previous conversation turns; each object must contain: role string with either user or ai role; message string with message content (max 500 characters); you can specify maximum of 10 message objects in the array; Note: for Pe'
         example:
@@ -4291,6 +4388,7 @@ endpoints:
         example: communicate as if we are in a business meeting
       message_chain:
         type: array
+        items: {type: object}
         required: false
         note: 'conversation history optional field array of message objects representing previous conversation turns; each object must contain: role string with either user or ai role; message string with message content (max 500 characters); you can specify maximum of 10 message objects in the array; Note: for Pe'
         example:
@@ -4378,6 +4476,7 @@ endpoints:
         example: communicate as if we are in a business meeting
       message_chain:
         type: array
+        items: {type: object}
         required: false
         note: 'conversation history optional field array of message objects representing previous conversation turns; each object must contain: role string with either user or ai role; message string with message content (max 500 characters); you can specify maximum of 10 message objects in the array; Note: for Pe'
         example:
@@ -4668,6 +4767,7 @@ endpoints:
         note: <em>number of adults</em><br>optional field<br>if you don't specify this field, two adults will be used by default<br>example:<br><code>1</code>
       children:
         type: array
+        items: {type: integer}
         required: false
         note: <em>number and age of children</em><br>optional field<br>if you don't specify this field, no children will be included in the search;<p>set the following value if you want to include one 14-years-old child:<br><code>[14]</code><br>set the following value if you want to include one 13-years-old child
       load_prices_by_dates:
@@ -4769,12 +4869,14 @@ endpoints:
         example: 2
       children:
         type: array
+        items: {type: integer}
         required: false
         note: 'number and age of children optional field if you don’t specify this field, no children will be included in the search; age of child can be from 0 to 17; note that you can specify up to 6 persons including both adults and children set the following value if you want to include one 14-year-old child: '
         example:
         - '14'
       stars:
         type: array
+        items: {type: number}
         required: false
         note: 'hotel stars optional field set this field to [5] if you want to get the list of 5-star hotels only example: [3,4,5]'
       min_rating:
@@ -4804,6 +4906,7 @@ endpoints:
         note: 'search for vacation rentals optional field set this field to true if you want to get the list of vacation rentals instead of hotels default value: false'
       amenities:
         type: array
+        items: {type: string}
         required: false
         note: 'hotel amenities optional field you can use this field to specify different hotel amenities example: [ "free_parking", "pets_allowed" ] possible values: "air_conditioning", "all_inclusive_available", "bar", "free_breakfast", "fitness_center", "kid_friendly", "free_parking", "pets_allowed", "pool", "r'
       tag:
@@ -5286,10 +5389,12 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["intersections",">",500] [["competitor_metric'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -5355,10 +5460,12 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["keyword_data.keyword_info.search_volume",">"'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -5417,6 +5524,7 @@ endpoints:
     body:
       app_ids:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the app required field IDs of the mobile applications on Google Play; you can find the ID in the URL of every app listed on Google Play; example: in the URL https://play.google.com/store/apps/details?id=org.telegram.messenger the id is org.telegram.messenger; the maximum number of IDs you can'
         example:
@@ -5470,6 +5578,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000 the keywords will be converted to lowercase format learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -5525,6 +5634,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: target domains, subdomains, and webpages required field you can specify domains, subdomains, and webpages in this field; domains and subdomains should be specified without https:// and www.; pages should be specified with absolute URL, including https:// and www.; you can set up to 1000 domains, sub
         example:
@@ -5551,6 +5661,7 @@ endpoints:
         example: en
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response Note: if the item_types array contains item types that are different from organic, the results will be ordered by the first item type in the array possible values: ["organic", "paid", "featured_'
         example:
@@ -5629,6 +5740,7 @@ endpoints:
         note: 'data collection mode optional field you can use this field to filter the results; possible types of filtering: live — return metrics for SERPs in which the specified target currently has ranking results; lost — return metrics for SERPs in which the specified target had previously had ranking results'
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response Note: if the item_types array contains item types that are different from the organic object, the results will be ordered by the first item type in the array; you will not be able to sort and fi'
         example:
@@ -5638,10 +5750,12 @@ endpoints:
         - local_pack
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in example: ["metrics.organic.pos_1,">",'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to specify a sorting type example: ["m'
       limit:
@@ -5687,6 +5801,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000 the keywords will be converted to lowercase format learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -5755,6 +5870,7 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response Note: if the item_types array contains item types that are different from organic, the results will be ordered by the first item type in the array; you will not be able to sort and filter result'
       include_clickstream_data:
@@ -5763,10 +5879,12 @@ endpoints:
         note: 'include or exclude data from clickstream-based metrics in the result optional field if the parameter is set to true, you will receive clickstream_etv, clickstream_gender_distribution, and clickstream_age_distribution fields with clickstream data in the response default value: false with this paramet'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in example: ["metrics.organic.count",">"'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to specify a sorting type example: ["m'
       limit:
@@ -5788,10 +5906,12 @@ endpoints:
         note: 'indicates whether to exclude world’s largest websites optional field default value: false set to true if you want to get highly-relevant competitors excluding the websites listed below: wikipedia.org pinterest.com amazon.com google.com facebook.com wordpress.com medium.com quora.com reddit.com youtu'
       exclude_domains:
         type: array
+        items: {type: string}
         required: false
         note: 'exclude domains from the results optional field use this parameter to exclude specific domains from the results Note: you can specify up to 1000 domains in this array example: "exclude_domains": [ "reddit.com", "youtube.com" ]'
       intersecting_domains:
         type: array
+        items: {type: string}
         required: false
         note: additional domains for improving results accuracy optional field to improve the accuracy of the result, you can specify domains that are known to intersect with the target in SERPs; if you use this array, metrics in the result will be based on SERPs where both target website and intersecting_domains
         example:
@@ -5867,6 +5987,7 @@ endpoints:
         note: 'domain intersections in SERP optional field if you set intersections to true, you will get the keywords for which both target domains specified as target1 and target2 have results within the same SERP; the corresponding SERP elements for both domains will be provided in the results array Note: this '
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'search results type indicates type of search results included in the response optional field possible values: ["organic", "paid", "featured_snippet", "local_pack"] default value: ["organic", "paid"]'
       include_serp_info:
@@ -5889,10 +6010,12 @@ endpoints:
         note: 'offset in the items array of returned keywords optional field default value: 0 if you specify the 10 value, the first ten keywords in the results array will be omitted and the data will be provided for the successive keywords'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
       tag:
@@ -5926,6 +6049,7 @@ endpoints:
     body:
       category_codes:
         type: array
+        items: {type: string}
         required: false
         note: 'product and service categories required field The maximum number of categories you can specify: 5 you can download the full list of possible categories'
         example:
@@ -5961,6 +6085,7 @@ endpoints:
         example: en
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response; Note: if the item_types array contains item types that are different from the organic object, the results will be ordered by the first item type in the array; you will not be able to sort and f'
       top_categories_count:
@@ -5994,10 +6119,12 @@ endpoints:
         note: 'offset in the results array of returned domains optional field default value: 0; if you specify the 10 value, the first ten domains in the results array will be omitted and the data will be provided for the successive domains'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum); you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike,'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; default rule: ["organic_etv,desc"]; possible sorting types: asc – results will be sorted in ascending order desc – results will be sorted in descending order; you should use a comma to set u'
       tag:
@@ -6094,6 +6221,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: [object, string]}
         required: false
         note: target domains and subdomains required field you can specify domains and subdomains in this field; domains and subdomains should be specified without https:// and www.; you can set up to 1000 domains or subdomains
         example:
@@ -6134,6 +6262,7 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response; Note: if the item_types array contains item types that are different from organic, the results will be ordered by the first item type in the array; possible values: ["organic", "paid", "feature'
         example:
@@ -6175,6 +6304,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 700 The maximum number of characters for each keyword: 80 The maximum number of words for each keyword phrase: 10 the specified keywords will be converted to lowercase format, data will be provided in a separate array note that . Size: treg relays at most 8 MiB of response: a larger answer is refused with 502 response_buffer_limit and not charged; several hundred keywords can cross it, so split large batches'
         example:
@@ -6366,6 +6496,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field UTF-8 encoding The maximum number of keywords you can specify: 200. The keywords will be converted to lowercase format learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -6421,10 +6552,12 @@ endpoints:
         note: 'offset token for subsequent requests optional field provided in the identical filed of the response to each request; use this parameter to avoid timeouts while trying to obtain over 10,000 results in a single request; by specifying the unique offset_token value from the response array, you will get '
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter default '
       tag:
@@ -6459,6 +6592,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 700 The maximum number of characters for each keyword: 80 The maximum number of words for each keyword phrase: 10 the specified keywords will be converted to lowercase format, data will be provided in a separate array note that '
         example:
@@ -6567,10 +6701,12 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order a comma is used as a separator example: ["keyword_info.compet'
       limit:
@@ -6640,10 +6776,12 @@ endpoints:
         note: "language code; one of language_code | language_name is required. This Google Play route supports only English (en); any other language returns 40501 Invalid Field."
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in example: ["keyword_data.keyword_info.search_volume",">"'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results; possible sorting types: asc – results will be sorted in the ascending order; desc – results will be sorted in the descending order; you should use a comma to specify a sorting type; example:'
       limit:
@@ -6684,6 +6822,7 @@ endpoints:
     body:
       category_codes:
         type: array
+        items: {type: string}
         required: false
         note: 'product and service categories required field The maximum number of categories you can specify: 20 you can download the full list of possible categories'
         example:
@@ -6739,10 +6878,12 @@ endpoints:
         note: 'offset token for subsequent requests optional field provided in the identical filed of the response to each request; use this parameter to avoid timeouts while trying to obtain over 10,000 results in a single request; by specifying the unique offset_token value from the response array, you will get '
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["ke'
       tag:
@@ -6827,6 +6968,7 @@ endpoints:
         note: 'offset token for subsequent requests optional field provided in the identical filed of the response to each request; use this parameter to avoid timeouts while trying to obtain over 10,000 results in a single request; by specifying the unique offset_token value from the response array, you will get '
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
         example:
@@ -6835,6 +6977,7 @@ endpoints:
         - 0
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter default '
       tag:
@@ -6879,6 +7022,7 @@ endpoints:
           '2': https://cnn.com/*
       exclude_pages:
         type: array
+        items: {type: string}
         required: false
         note: URLs of pages you want to exclude optional field you can set up to 10 pages in this array if you use this array, results will contain the keywords for which URLs from the pages object rank, but URLs from exclude_pages array do not; note that if you specify this field, the results will be based on th
       location_name:
@@ -6901,6 +7045,7 @@ endpoints:
         note: 'language code required field if you don’t specify language_name Note: it is required to specify either language_name or language_code you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_a'
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'search results type indicates type of search results included in the response optional field possible values: ["organic", "paid", "featured_snippet", "local_pack"] default value: ["organic", "paid"]'
       limit:
@@ -6935,10 +7080,12 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, ilike, not_ilike, like, not_like, ma'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
       tag:
@@ -6996,6 +7143,7 @@ endpoints:
         note: 'language code optional field if you use this field, you don’t need to specify language_name you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_and_languages ignore this field to get the '
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response Note: if the item_types array contains item types that are different from organic, the results will be ordered by the first item type in the array; you will not be able to sort and filter result'
       include_clickstream_data:
@@ -7021,6 +7169,7 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true, only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in example: ["metrics.paid.count",">",0]'
         example:
@@ -7033,6 +7182,7 @@ endpoints:
           - 0
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'Optional. Flat array of comma-separated "field,direction" strings (asc or desc). Field names match the filters array. Nested [["field","desc"]] (the filters-array shape) returns task status 40501 Invalid Field: ''order_by''.'
         example: ["metrics.organic.etv,desc"]
@@ -7073,6 +7223,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000; the keywords will be converted to lowercase format learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -7120,6 +7271,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: keywords array required field the results will be based on the keywords you specify in this array UTF-8 encoding; the keywords will be converted to lowercase format; you can specify the maximum of 200 keywords learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs i
         example:
@@ -7148,6 +7300,7 @@ endpoints:
         note: 'indicates if the subdomains will be included in the search optional field if set to false, the subdomains will be ignored default value: true'
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'search results type indicates type of search results included in the response optional field possible values: ["organic", "paid", "featured_snippet", "local_pack"] default value: ["organic", "paid"]'
         example:
@@ -7163,10 +7316,12 @@ endpoints:
         note: 'offset in the results array of returned domains optional field default value: 0 if you specify the 10 value, the first ten domains in the results array will be omitted and the data will be provided for the successive domains'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order the comma is used as a separator example: ["avg_position,asc"'
       tag:
@@ -7224,6 +7379,7 @@ endpoints:
         note: 'language code optional field if you use this field, you don’t need to specify language_name you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/dataforseo_labs/locations_and_languages ignore this field to get the '
       item_types:
         type: array
+        items: {type: string}
         required: false
         note: 'display results by item type optional field indicates the type of search results included in the response Note: if the item_types array contains item types that are different from organic, the results will be ordered by the first item type in the array; you will not be able to sort and filter result'
       include_clickstream_data:
@@ -7240,6 +7396,7 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true, only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in example: ["metrics.paid.count",">",0]'
         example:
@@ -7252,6 +7409,7 @@ endpoints:
           - 0
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to specify a sorting type example: ["m'
       limit:
@@ -7328,10 +7486,12 @@ endpoints:
         note: 'ignore highly similar keywords optional field if set to true only core keywords will be returned, all highly similar keywords will be excluded; default value: false'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, match, not_match, ilike, not_ilike, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["ke'
       tag:
@@ -7375,12 +7535,13 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 1000 The maximum number of characters for each keyword: 80 The maximum number of words for each keyword phrase: 10 the keywords you specify will be converted to a lowercase format Note: Google Ads may return no data for certain '
         example:
         - seo marketing
       bid:
-        type: integer
+        type: "number"
         required: false
         note: the maximum custom bid required field the collected data will be based on this value it stands for the price you are willing to pay for an ad; the higher value you specify here, the higher values you will get in the returned metrics learn more in this help center article
         example: 999
@@ -7458,6 +7619,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field The maximum number of keywords you can specify: 20 The maximum number of characters for each keyword: 80 the keywords you specify will be converted to a lowercase format Note: Google Ads may return no data for certain groups of keywords visit our Help Center to learn more Als. Size: treg relays at most 8 MiB of response: a larger answer is refused with 502 response_buffer_limit and not charged; broad seeds can cross it well below 20 seeds, so send fewer seeds per call or narrow date_from/date_to'
         example:
@@ -7631,18 +7793,21 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field the maximum number of keywords you can specify: 5 the maximum number of characters you can specify in a keyword: 100 the minimum number of characters must be greater than 1 comma characters (,) in the specified keywords will be unset and ignored Note: keywords cannot consist '
         example:
         - rugby
         - cricket
       location_name:
-        type: string
+        type: [array, string]
+        items: {type: string}
         required: false
         note: full name of search engine location optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_code you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can r
         example: United States
       location_code:
-        type: string
+        type: [array, integer]
+        items: {type: integer}
         required: false
         note: search engine location code optional field if you don’t use this field, you will recieve global results if you use this field, you don’t need to specify location_name you can use this field as an array to set several locations, each corresponding to a specific keyword – learn more; you can receive t
       language_name:
@@ -8449,6 +8614,7 @@ endpoints:
     body:
       advertiser_ids:
         type: array
+        items: {type: string}
         required: false
         note: <p><em>advertiser identifiers</em><p><strong>required field if <code>target</code> is not specified</strong></p><br><p>you can specify the maximum of 25 values in this array;<p><code>advertiser_ids</code> values for this parameter can be found in the <a href="http://docs.dataforseo.com/v3/serp/googl
         example:
@@ -8795,6 +8961,7 @@ endpoints:
         example: 1m
       file_formats:
         type: array
+        items: {type: string}
         required: false
         note: '<p><em>file formats of the dataset</em><p>optional field<p>possible values: <code>other</code>, <code>archive</code>, <code>text</code>, <code>image</code>, <code>document</code>, <code>tabular</code></p>'
         example:
@@ -8812,6 +8979,7 @@ endpoints:
         example: true
       topics:
         type: array
+        items: {type: string}
         required: false
         note: '<p><em>dataset topics</em><p>optional field<p>possible values: <code>humanities</code>, <code>social_sciences</code>, <code>life_sciences</code>, <code>agriculture</code>, <code>natural_sciences</code>, <code>geo</code>, <code>computer</code>, <code>architecture_and_urban_planning</code>, <code>engi'
         example:
@@ -9295,6 +9463,7 @@ endpoints:
         note: <p><em>location search radius</em><p>optional field<p>location search radius in kilometers;<p><strong>Note:</strong> for countries that use the imperial system of units, you will need to convert miles to kilometers by multiplying the value in miles by <code>1.609</code>;<p>if value is not specified,
       employment_type:
         type: array
+        items: {type: string}
         required: false
         note: <p><em>employment contract type</em><p>optional field<p>type of employment contract for which the search results will be returned;<p>possible values:<p><code>fulltime</code>, <code>partime</code>, <code>contractor</code>, <code>intern</code></p>
     note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.serp-google-jobs-task-get-advanced, which only the submitting team can read
@@ -9694,6 +9863,7 @@ endpoints:
         note: <p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_type:
@@ -9714,6 +9884,7 @@ endpoints:
         note: <p><em>additional parameters of the search query</em><p>optional field<p><a href="https://dataforseo.com/help-center/google-search-engine-parameters-and-how-to-use-them">get the list of available parameters and additional details here</a></p><br><strong>Note:</strong> the following search engine par
       remove_from_url:
         type: array
+        items: {type: string}
         required: false
         note: '<p><em>remove specific parameters from URLs</em><p>optional field<p>using this field, you can specify up to 10 parameters to remove from URLs in the result<p>example:<p><code>"remove_from_url": ["srsltid"]</code><p><strong>Note:</strong> if the <code>target</code> field is specified, the specified U'
       people_also_ask_click_depth:
@@ -9763,10 +9934,12 @@ endpoints:
         note: '<p><em>target matching mode</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>defines how the crawl should stop when multiple targets are specified in <code>stop_crawl_on_match</code><p>possible values: <code>all</code>, <code>any</code><p><cod'
       find_targets_in:
         type: array
+        items: {type: string}
         required: false
         note: <p><em>SERP element types to check for targets</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>specifies which SERP element types should be checked for target matches<p>if not specified, all first-level elements with <code>url</code> and <cod
       ignore_targets_in:
         type: array
+        items: {type: string}
         required: false
         note: '<p><em>SERP element types to exclude from target search</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>specifies which SERP element types should be excluded when searching for target matches<p>possible values: <code>organic</code>, <code>pai'
     note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
@@ -10298,6 +10471,7 @@ endpoints:
     body:
       categories:
         type: array
+        items: {type: string}
         required: false
         note: app categories optional field the categories you specify are used to search for app listings; you can get the full list of available app listing categories by this link you can specify up to 10 categories
         example:
@@ -10314,6 +10488,7 @@ endpoints:
         example: vpn
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
         example:
@@ -10322,6 +10497,7 @@ endpoints:
           - 4.5
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting parameter example:'
         example:
@@ -10744,6 +10920,7 @@ endpoints:
         note: additional parameters of the search query optional field get the list of available parameters and additional details here
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_value:
@@ -10879,6 +11056,7 @@ endpoints:
         example: communicate as if we are in a business meeting
       message_chain:
         type: array
+        items: {type: object}
         required: false
         note: 'conversation history optional field array of message objects representing previous conversation turns; each object must contain: role string with either user or ai role; message string with message content (max 500 characters); you can specify maximum of 10 message objects in the array; Note: for Pe'
         example:
@@ -11026,6 +11204,7 @@ endpoints:
         note: 'calculate pixel rankings for SERP elements in advanced results optional field pixel ranking refers to the distance between the result snippet and top left corner of the screen; Visit Help Center to learn more>> by default, the parameter is set to false Note: if set to true, the charge per task will '
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_value:
@@ -11197,14 +11376,17 @@ endpoints:
         note: 'parsing depth optional field number of reviews in SERP; we strongly recommend setting the parsing depth in the multiples of ten, because our systems processes ten reviews in a row; default value: 10; max value: 4490 Your account will be billed per each SERP containing up to 10 results; Setting depth'
       ratings:
         type: array
+        items: {type: string}
         required: false
         note: 'Tripadvisor traveler rating for a place of interest optional field rating based on the written reviews by a traveler after they visited a place. possible values: excellent, very_good, average, poor, terrible you can specify several values at once'
       visit_type:
         type: array
+        items: {type: string}
         required: false
         note: 'filter by type of travelers who left a review optional field possible values: families, couples, solo, business, friends you can specify several values at once'
       months:
         type: array
+        items: {type: string}
         required: false
         note: 'filter by months when a traveler made a visit optional field possible values: january, february, march, april, may, april, june, july, august, september, october, november, december you can specify several values at once'
       search_reviews_keyword:
@@ -11671,6 +11853,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: '<em>domains, subdomains or webpages to get the number of backlinks for</em><br><strong>required field</strong><br>you can set up to 1000 domains, subdomains or webpages<br>the domain or subdomain should be specified without <code>https://</code> and <code>www.</code><br>the page should be specified '
         example:
@@ -11719,6 +11902,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: <em>domains, subdomains or webpages to get new & lost backlinks for</em><br><strong>required field</strong><br>you can set up to 1000 domains, subdomains or webpages<br>the domain or subdomain should be specified without `https://` and `www.` the page should be specified with absolute URL (including
         example:
@@ -11778,6 +11962,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: <em>domains, subdomains or webpages to get new & lost referring domains for</em><br><strong>required field</strong><br>you can set up to 1000 domains, subdomains or webpages<br>the domain or subdomain should be specified without <code>https://</code> and <code>www.</code><br>the page should be speci
         example:
@@ -11837,6 +12022,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: <em>domains, subdomains or webpages to get summary data for</em><br><strong>required field</strong><br>a domain or a subdomain should be specified without <code>https://</code> and <code>www.</code><br>a page should be specified with absolute URL (including <code>http://</code> or <code>https://</co
         example:
@@ -11878,6 +12064,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: domains, subdomains or webpages to get the number of referring domains for required field you can set up to 1000 domains, subdomains or webpages the domain or subdomain should be specified without https:// and www. the page should be specified with absolute URL (including http:// or https://) exampl
         example:
@@ -11927,6 +12114,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: 'domains, subdomains or webpages to get rank for required field you can set up to 1000 domains, subdomains or webpages the domain or subdomain should be specified without https:// and www. the page should be specified with absolute URL (including http:// or https://) example: "targets": [ "forbes.com'
         example:
@@ -11982,16 +12170,19 @@ endpoints:
           '2': ahrefs.com
       exclude_targets:
         type: array
+        items: {type: string}
         required: false
         note: '<em>domains, subdomains or webpages you want to exclude</em><br>optional field<br>you can specify up to 10 domains, subdomains or webpages<br>if you use this array, results will contain the referring domains that link to <code>targets</code> but don''t link to <code>exclude_targets</code><br>example:'
         example:
         - semrush.com
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: '<em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>regex</code>, '
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
         example:
@@ -12015,6 +12206,7 @@ endpoints:
         note: '<em>set what backlinks to return and count</em><br>optional field<br>you can use this field to choose what backlinks will be returned and used for aggregated metrics for your <code>targets</code>;<br>possible values: <br><code>all</code> - all backlinks will be returned and counted;<br><code>live</c'
       backlinks_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: <em>filter the backlinks of your <code>target</code></em><br>optional field<br>you can use this field to filter the initial backlinks that will be included in the dataset for aggregated metrics for your <code>target</code><br>you can filter the backlinks by all fields available in the response of <a
       include_subdomains:
@@ -12096,6 +12288,7 @@ endpoints:
         note: 'set what backlinks to return and count optional field you can use this field to choose what backlinks will be returned and used for aggregated metrics; possible values: all – all backlinks will be returned and counted; live – backlinks found during the last check will be returned and counted; lost –'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like, ilike, not_ilike, match, not_match'
         example:
@@ -12108,10 +12301,12 @@ endpoints:
           - '%sites%'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["pa'
       backlinks_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: filter the backlinks of your target optional field you can use this field to filter the initial backlinks that will be included in the dataset for aggregated metrics for your target you can filter the backlinks by all fields available in the response of this endpoint using this parameter, you can in
       include_subdomains:
@@ -12183,16 +12378,19 @@ endpoints:
         note: 'set what backlinks to return and count optional field you can use this field to choose what backlinks will be returned and used for aggregated metrics for your target; possible values: all – all backlinks will be returned and counted; live – backlinks found during the last check will be returned and'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like, ilike, not_ilike, match, not_match'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["ba'
         example:
         - backlinks,desc
       backlinks_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: filter the backlinks of your target optional field you can use this field to filter the initial backlinks that will be included in the dataset for aggregated metrics for your target you can filter the backlinks by all fields available in the response of this endpoint using this parameter, you can in
       include_subdomains:
@@ -12306,6 +12504,7 @@ endpoints:
           '2': fifa.com
       exclude_targets:
         type: array
+        items: {type: string}
         required: false
         note: 'domains, subdomains or webpages you want to exclude optional field you can set up to 10 domains, subdomains or webpages if you use this array, results will contain the referring pages that link to targets but don’t link to exclude_targets example: "exclude_targets": [ "bbc.com", "https://www.apple.c'
         example:
@@ -12316,6 +12515,7 @@ endpoints:
         note: 'set what backlinks to return and count optional field you can use this field to choose what backlinks will be returned and used for aggregated metrics for your targets; possible values: all – all backlinks will be returned and counted; live – backlinks found during the last check will be returned an'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like, ilike, not_ilike, match, not_match'
         example:
@@ -12328,6 +12528,7 @@ endpoints:
           - true
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["ra'
         example:
@@ -12433,6 +12634,7 @@ endpoints:
         note: 'set what backlinks to return and count optional field you can use this field to choose what backlinks will be returned and used for aggregated metrics for your target; possible values: all – all backlinks will be returned and counted; live – backlinks found during the last check will be returned and'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like, ilike, not_ilike, match, not_match'
         example:
@@ -12441,12 +12643,14 @@ endpoints:
         - 100
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["ba'
         example:
         - rank,desc
       backlinks_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: filter the backlinks of your target optional field you can use this field to filter the initial backlinks that will be included in the dataset for aggregated metrics for your target you can filter the backlinks by all fields available in the response of this endpoint using this parameter, you can in
         example:
@@ -12614,6 +12818,7 @@ endpoints:
     body:
       categories:
         type: array
+        items: {type: string}
         required: false
         note: <em>business categories</em><br>optional field<br>the categories you specify are used to search for business listings;<br>if you don't use this field, we will return business listings found in the specified location;<br>you can specify <strong>up to 10 categories</strong>
         example:
@@ -12640,6 +12845,7 @@ endpoints:
         example: 53.476225,-2.243572,10
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: '<em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>regex</code>, '
         example:
@@ -12694,6 +12900,7 @@ endpoints:
     body:
       categories:
         type: array
+        items: {type: string}
         required: false
         note: <em>business categories</em><br>optional field<br>the categories you specify are used to search for business listings;<br>if you don't use this field, we will return business listings found in the specified location;<br>you can specify <strong>up to 10 categories</strong>
         example:
@@ -12720,6 +12927,7 @@ endpoints:
         example: 53.476225,-2.243572,10
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: '<em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>regex</code>, '
         example:
@@ -12728,6 +12936,7 @@ endpoints:
           - 3
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
         example:
@@ -12783,6 +12992,7 @@ endpoints:
     body:
       targets:
         type: array
+        items: {type: string}
         required: false
         note: 'target URLs required field target page should be specified with its absolute URL (including http:// or https://) example: https://dataforseo.com/ Note: you can specify 10 targets maximum. You will be charged per earch URL you specify in this array'
         example:
@@ -12825,6 +13035,7 @@ endpoints:
         example: 10994
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
       search_mode:
@@ -12852,6 +13063,7 @@ endpoints:
         example: month
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'initial dataset filtering parameters optional field initial filtering parameters that apply to fields in the Search endpoint; you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_reg'
       rank_scale:
@@ -12896,6 +13108,7 @@ endpoints:
         note: 'target keyword fields and target keywords optional field use this parameter to filter the dataset by keywords that certain fields should contain; fields you can specify: title, main_title, previous_title, snippet you can indicate several fields; Note: to match an exact phrase instead of a stand-alon'
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
       search_mode:
@@ -12923,6 +13136,7 @@ endpoints:
         example: month
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'initial dataset filtering parameters optional field initial filtering parameters that apply to fields in the Search endpoint; you can add several filters at once (8 filters maximum); you should set a logical operator and, or between the conditions; the following operators are supported: regex, not_r'
       rank_scale:
@@ -12967,6 +13181,7 @@ endpoints:
         note: 'target keyword fields and target keywords optional field use this parameter to filter the dataset by keywords that certain fields should contain; fields you can specify: title, main_title, previous_title, snippet you can indicate several fields; Note: to match an exact phrase instead of a stand-alon'
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
       internal_list_limit:
@@ -12989,6 +13204,7 @@ endpoints:
         note: sentiment connotation threshold optional field specified as the probability index threshold for sentiment connotations related to the citation content if you specify this field, sentiment_connotations object in the response will only contain data on citations where the probability per each sentiment
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'initial dataset filtering parameters optional field initial filtering parameters that apply to fields in the Search endpoint you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_rege'
       rank_scale:
@@ -13034,6 +13250,7 @@ endpoints:
           snippet: logitech
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
         example:
@@ -13054,6 +13271,7 @@ endpoints:
         example: 10
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like,not_like, match, not_match you '
         example:
@@ -13062,6 +13280,7 @@ endpoints:
         - reviewfinder.ca
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["co'
         example:
@@ -13129,6 +13348,7 @@ endpoints:
         note: 'target keyword fields and target keywords optional field use this parameter to filter the dataset by keywords that certain fields should contain; fields you can specify: title, main_title, previous_title, snippet you can indicate several fields; Note: to match an exact phrase instead of a stand-alon'
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
       internal_list_limit:
@@ -13146,6 +13366,7 @@ endpoints:
         note: sentiment connotation threshold optional field specified as the probability index threshold for sentiment connotations related to the citation content if you specify this field, sentiment_connotations object in the response will only contain data on citations where the probability per each sentiment
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'initial dataset filtering parameters optional field initial filtering parameters that apply to fields in the Search endpoint you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_rege'
       rank_scale:
@@ -13188,6 +13409,7 @@ endpoints:
         note: 'target keyword fields and target keywords optional field use this parameter to filter the dataset by keywords that certain fields should contain; fields you can specify: title, main_title, previous_title, snippet you can indicate several fields; Note: to match an exact phrase instead of a stand-alon'
       page_type:
         type: array
+        items: {type: string}
         required: false
         note: 'target page types optional field use this parameter to filter the dataset by page types possible values: "ecommerce", "news", "blogs", "message-boards", "organization"'
         example:
@@ -13212,6 +13434,7 @@ endpoints:
         note: sentiment connotation threshold optional field specified as the probability index threshold for sentiment connotations related to the citation content if you specify this field, sentiment_connotations object in the response will only contain data on citations where the probability per each sentiment
       initial_dataset_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'initial dataset filtering parameters optional field initial filtering parameters that apply to fields in the Search endpoint you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_rege'
       rank_scale:
@@ -13275,6 +13498,7 @@ endpoints:
         example: entry
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in, like,not_like you can use the % operator with like and'
         example:
@@ -13287,6 +13511,7 @@ endpoints:
           - 800
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the following values to sort the results: groups_count, categories_count, technologies_count possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to se'
         example:
@@ -13380,12 +13605,14 @@ endpoints:
     body:
       search_terms:
         type: array
+        items: {type: string}
         required: false
         note: target search terms required field specify target HTML elements, tags, attributes, their content or all of the above if you specify more than one search term, you will receive only the domains containing all of the specified terms in the HTML code of their homepage maximum number of search terms you
         example:
         - data-attrid
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords in the domain’s title, description or meta keywords optional field UTF-8 encoding maximum number of keywords you can specify: 10 example: ["seo","software"] learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
       mode:
@@ -13394,10 +13621,12 @@ endpoints:
         note: 'search mode optional field possible search mode types: strict_entry – search for results exactly matching the order, intervals and separators in the specified search terms entry – search for results ignoring the order, intervals and separators in the specified search terms default value: entry'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % operator with like an'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field available fields: domain_rank, domain, last_visited, country_iso_code, language_code, content_language_code possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to'
         example:
@@ -13443,24 +13672,29 @@ endpoints:
     body:
       technology_paths:
         type: array
+        items: {type: object}
         required: false
         note: 'target technology paths required field if you don’t specify groups, technologies, keywords or categories at least one field (technology_paths, groups, technologies, keywords or categories) must be set; each technology path should be specified as a separate object containing “path” and “name”, where '
       groups:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the target technology groups required field if you don’t specify technologies, technology_paths, keywords or categories you can find the full list of technology group ids on this page note: you can specify up to 10 technology groups in this array example: ["sales", "marketing"]'
       categories:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the target technology categories required field if you don’t specify groups, technology_paths, keywords or technologies you can find the full list of technology category ids on this page note: you can specify up to 10 technology categories in this array example: ["payment_processors","crm"]'
       technologies:
         type: array
+        items: {type: string}
         required: false
         note: 'target technologies required field if you don’t specify groups, technology_paths, keywords or categories you can find the full list of technologies you can specify here on this page note: you can specify up to 10 technologies in this array example: ["Google Pay","Salesforce"]'
         example:
         - Nginx
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords in the domain’s title, description or meta keywords required field if you don’t specify groups, technology_paths, technologies or categories optional field you can specify the maximum of 10 keywords; UTF-8 encoding; example: ["seo","software"] learn more about rules and limitations o'
       mode:
@@ -13469,6 +13703,7 @@ endpoints:
         note: 'search mode optional field possible search mode types: as_is – search for results exactly matching the specified group ids, category ids, or technology names entry – search for results matching a part of the specified group ids, category ids, or technology names default value: as_is'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % operator with like an'
         example:
@@ -13481,6 +13716,7 @@ endpoints:
           - 800
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field available fields: domain_rank, domain, last_visited, country_iso_code, language_code, content_language_code possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to'
         example:
@@ -13553,24 +13789,29 @@ endpoints:
     body:
       technology_paths:
         type: array
+        items: {type: object}
         required: false
         note: target technology paths required field if you don’t specify groups, technologies and categories each technology path should be specified as a separate object containing “path” and “name”, where “path” is specified as “$group_id.$category_id” and “name” – as the name of the target technology; each ob
       groups:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the target technology groups required field if you don’t specify technologies, technology_paths, categories, or keywords you can find the full list of technology group ids on this page note: you can specify up to 10 technology groups in this array example: ["sales", "marketing"]'
       categories:
         type: array
+        items: {type: string}
         required: false
         note: 'ids of the target technology categories required field if you don’t specify groups, technology_paths, technologies, or keywords you can find the full list of technology category ids on this page note: you can specify up to 10 technology categories in this array example: ["payment_processors","crm"]'
       technologies:
         type: array
+        items: {type: string}
         required: false
         note: 'target technologies required field if you don’t specify groups, technology_paths, categories, or keywords you can find the full list of technologies you can specify here on this page note: you can specify up to 10 technologies in this array example: ["Google Pay","Salesforce"]'
         example:
         - Ngi
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords in the domain’s title, description or meta keywords required field if you don’t specify groups, technology_paths, categories, or technologies you can specify the maximum of 10 keywords; UTF-8 encoding; example: ["seo","software"] learn more about rules and limitations of keyword and '
         example:
@@ -13582,6 +13823,7 @@ endpoints:
         example: entry
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: <, <=, >, >=, =, <>, in, not_in, like,not_like you can use the % operator with like and'
         example:
@@ -13687,6 +13929,7 @@ endpoints:
         note: <em>token for subsequent requests</em><br>optional field<br>provided in the identical filed of the response to each request;<br>use this parameter to avoid timeouts while trying to obtain over 100,000 results in a single request;<br>by specifying the unique <code>offset_token</code> value from the r
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: '<em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>regex</code>, '
         example:
@@ -13696,6 +13939,7 @@ endpoints:
             - client_update_prohibited
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       tag:
@@ -13729,6 +13973,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000; each keyword should be at least 3 characters long; the keywords will be converted to lowercase format; Note: certain symbols and characters (e.g., UTF symbols, emojis) are not allowed to lea'
         example:
@@ -13776,6 +14021,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000 the keywords will be converted to lowercase format Note: certain symbols and characters (e.g., UTF symbols, emojis) are not allowed to learn more about which symbols and characters can be use'
         example:
@@ -13837,6 +14083,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'target keywords required field UTF-8 encoding maximum number of keywords you can specify in this array: 1000; each keyword should be at least 3 characters long; the keywords will be converted to lowercase format; Note: certain symbols and characters (e.g., UTF symbols, emojis) are not allowed to lea'
         example:
@@ -13874,6 +14121,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field the maximum number of keywords you can specify: 5 avoid symbols and special characters (e.g., UTF symbols, emojis); specifying non-Latin characters, you’ll get data for the countries where they are used learn more about rules and limitations of keyword and keywords fields in '
         example:
@@ -13940,6 +14188,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field the maximum number of keywords you can specify: 5 learn more about rules and limitations of keyword and keywords fields in DataForSEO APIs in this Help Center article'
         example:
@@ -14020,6 +14269,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field the maximum number of keywords you can specify: 5 avoid symbols and special characters (e.g., UTF symbols, emojis); specifying non-Latin characters, you’ll get data for the countries where they are used learn more about rules and limitations of keyword and keywords fields in '
         example:
@@ -14085,6 +14335,7 @@ endpoints:
     body:
       keywords:
         type: array
+        items: {type: string}
         required: false
         note: 'keywords required field the maximum number of keywords you can specify: 5 avoid symbols and special characters (e.g., UTF symbols, emojis); specifying non-Latin characters, you’ll get data for the countries where they are used learn more about rules and limitations of keyword and keywords fields in '
         example:
@@ -14393,6 +14644,7 @@ endpoints:
         note: 'the maximum number of returned keywords optional field default value: 100 maximum value: 1000'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like you can use the % operator with lik'
         example:
@@ -14401,6 +14653,7 @@ endpoints:
         - 5
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["fr'
       tag:
@@ -14454,10 +14707,12 @@ endpoints:
         example: true
       categories:
         type: array
+        items: {type: string}
         required: false
         note: <em>categories of Lighthouse audits</em><br>optional field<br>each category is a collection of audits and audit groups that applies weighting and scoring to the section (<a href="https://github.com/GoogleChrome/lighthouse/blob/master/docs/architecture.md#auditreport-terminology" rel="noopener norefe
       audits:
         type: array
+        items: {type: string}
         required: false
         note: <em>Lighthouse audits</em><br>optional field<br>audits are individual tests Lighthouse runs for each specific feature/optimization/metric to produce a numeric score (<a href="https://github.com/GoogleChrome/lighthouse/blob/master/docs/architecture.md#components--terminology" rel="noopener noreferrer
       version:
@@ -14549,6 +14804,7 @@ endpoints:
         note: 'offset in the results array of returned links optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten links in the results array will be omitted and the data will be provided for the successive links'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, =, <>, in, not_in, like, not_like you can use the % operator with lik'
         example:
@@ -14641,6 +14897,7 @@ endpoints:
         note: 'offset in the results array of returned pages optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten pages in the results array will be omitted and the data will be provided for the successive pages'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
         example:
@@ -14758,6 +15015,7 @@ endpoints:
         note: 'offset in the results array of returned pages optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten pages in the results array will be omitted and the data will be provided for the successive pages'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
         example:
@@ -14770,6 +15028,7 @@ endpoints:
           - 40
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["me'
         example:
@@ -14826,10 +15085,12 @@ endpoints:
         note: 'offset in the results array of returned pages optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten pages in the results array will be omitted and the data will be provided for the successive pages'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["me'
       tag:
@@ -14914,6 +15175,7 @@ endpoints:
         note: 'offset in the results array of returned redirect chains optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten redirect chains in the results array will be omitted and the data will be provided for the successive redirect chains'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can use only one filtering parameter with this endpoint the following filtering parameter is supported: is_redirect_loop the following operators are supported: regex, not_regex, =, <> examples: ["is_redirect_loop","=","true"] ["is_redirect_loo'
       tag:
@@ -14964,6 +15226,7 @@ endpoints:
         note: 'offset in the results array of returned resources optional field default value: 0 maximum value: 2000000 if you specify the 10 value, the first ten resources in the results array will be omitted and the data will be provided for the successive resources'
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: 'array of results filtering parameters optional field you can add several filters at once (8 filters maximum) you should set a logical operator and, or between the conditions the following operators are supported: regex, not_regex, <, <=, >, >=, =, <>, in, not_in, like, not_like you can use the % ope'
         example:
@@ -14976,10 +15239,12 @@ endpoints:
           - 100000
       relevant_pages_filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: filter the resources by relevant pages optional field you can use this field to obtain resources from pages matching to the defined parameters you can apply the same filters here as available for the pages endpoint you can add several filters at once (8 filters maximum) you should set a logical oper
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: 'results sorting rules optional field you can use the same values as in the filters array to sort the results possible sorting types: asc – results will be sorted in the ascending order desc – results will be sorted in the descending order you should use a comma to set up a sorting type example: ["si'
         example:
@@ -15054,6 +15319,7 @@ endpoints:
         note: 'enable sitewide checks when crawling a single page optional field set to true to get data on sitewide checks when crawling a single page; default value: false'
       priority_urls:
         type: array
+        items: {type: string}
         required: false
         note: 'urls to be crawled bypassing the queue optional field URLs specified in this array will be crawled in the first instance, bypassing the crawling queue; Note: you should specify the absolute URL; you can specify up to 20 URLs; all URLs in the array must belong to the target domain; subdomains will be'
       max_crawl_depth:
@@ -15161,10 +15427,12 @@ endpoints:
         note: 'include pages on subdomains optional field set to true if you want to crawl all subdomains of a target website default value: false'
       allowed_subdomains:
         type: array
+        items: {type: string}
         required: false
         note: 'subdomains to crawl optional field specify subdomains that you want to crawl example: ["blog.site.com", "my.site.com", "shop.site.com"] Note: to use this parameter, the allow_subdomains parameter should be set to false; otherwise, the content of allowed_subdomains field will be ignored and the resul'
       disallowed_subdomains:
         type: array
+        items: {type: string}
         required: false
         note: 'subdomains not to crawl optional field specify subdomains that you don’t want to crawl example: ["status.site.com", "docs.site.com"] Note: to use this parameter, the allow_subdomains parameter should be set to true'
       check_spell:
@@ -15177,6 +15445,7 @@ endpoints:
         note: 'language of the spell check optional field supported languages: ‘hy’, ‘eu’, ‘bg’, ‘ca’, ‘hr’, ‘cs’, ‘da’, ‘nl’, ‘en’, ‘eo’, ‘et’, ‘fo’, ‘fa’, ‘fr’, ‘fy’, ‘gl’, ‘ka’, ‘de’, ‘el’, ‘he’, ‘hu’, ‘is’, ‘ia’, ‘ga’, ‘it’, ‘rw’, ‘la’, ‘lv’, ‘lt’, ‘mk’, ‘mn’, ‘ne’, ‘nb’, ‘nn’, ‘pl’, ‘pt’, ‘ro’, ‘gd’, ‘sr’, ‘s'
       check_spell_exceptions:
         type: array
+        items: {type: string}
         required: false
         note: 'words excluded from spell check optional field specify the words that you want to exclude from spell check maximum word length: 100 characters maximum amount of words: 1000 example: "SERP", "minifiers", "JavaScript"'
       calculate_keyword_density:
@@ -15189,10 +15458,12 @@ endpoints:
         note: 'custom threshold values for checks optional field you can specify custom threshold values for the parameters included in the checks object of OnPage API responses; Note: only integer threshold values can be modified; for example, the high_loading_time and large_page_size parameters are set to 3 seco'
       disable_sitewide_checks:
         type: array
+        items: {type: string}
         required: false
         note: 'prevent certain sitewide checks from running optional field specify the following checks to prevent them from running on the target website: "test_page_not_found" "test_canonicalization" "test_https_redirect" "test_directory_browsing"example: "disable_sitewide_checks": ["test_directory_browsing", "t'
       disable_page_checks:
         type: array
+        items: {type: string}
         required: false
         note: 'prevent certain page checks from running optional field specify certain checks to prevent them from running and impacting the onpage_scoreexample: "disable_page_checks": ["is_5xx_code", "is_4xx_code"]'
       switch_pool:
@@ -15266,10 +15537,12 @@ endpoints:
         note: '<em>offset in the results array of returned uncrawlable resources</em><br>optional field<br>default value: <code>0</code><br> maximum value: <code>2000000</code><br>if you specify the <code>10</code> value, the first ten invalid resources in the results array will be omitted and the data will be pro'
       order_by:
         type: array
+        items: {type: string}
         required: false
         note: <em>results sorting rules</em><br>optional field<br>you can use the same values as in the <code>filters</code> array to sort the results<br>possible sorting types:<br><code>asc</code> - results will be sorted in the ascending order<br><code>desc</code> - results will be sorted in the descending orde
       filters:
         type: array
+        items: {type: [array, boolean, number, string]}
         required: false
         note: '<em>array of results filtering parameters</em><br>optional field<br><strong>you can add several filters at once (8 filters maximum)</strong><br>you should set a logical operator <code>and</code>, <code>or</code> between the conditions<br>the following operators are supported:<br><code>regex</code>, '
         example:
@@ -15412,6 +15685,7 @@ endpoints:
         note: additional parameters of the search query optional field get the list of available parameters and additional details here
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_value:
@@ -15515,6 +15789,7 @@ endpoints:
         note: additional parameters of the search query optional field get the list of available parameters and additional details here
       stop_crawl_on_match:
         type: array
+        items: {type: object}
         required: false
         note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
       match_value:

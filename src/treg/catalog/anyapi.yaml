@@ -376,12 +376,6 @@ endpoints:
         type: string
         required: false
         note: Filter by recency. One of last-hour, last-day, last-week, last-month, last-year.
-        enum:
-        - last-hour
-        - last-day
-        - last-week
-        - last-month
-        - last-year
         example: last-week
       query:
         type: string
@@ -524,7 +518,6 @@ endpoints:
         note: 'Accepted for compatibility and ignored: each call returns one full source page (10 or 25
           jobs depending on source); follow nextCursor for more.'
         min: 1
-        max: 25
         example: 3
       location:
         type: string
@@ -535,10 +528,6 @@ endpoints:
         type: string
         required: false
         note: Only jobs posted within this window (past 24 hours, week, or month).
-        enum:
-        - 24h
-        - week
-        - month
       query:
         type: string
         required: true
@@ -678,6 +667,7 @@ endpoints:
     body:
       categoryFilterWords:
         type: array
+        items: {type: string}
         required: false
         note: Optional list of Google Maps place-category names to keep; results are limited to places
           whose category matches one of these. Use lowercase category names as shown on Google Maps (e.g.
@@ -763,10 +753,12 @@ endpoints:
     body:
       authorCompanyNames:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts by people associated with these company names.
       authorIndustryIds:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts by authors associated with these LinkedIn industry IDs.
       authorKeywords:
@@ -776,6 +768,7 @@ endpoints:
           keywords.
       authorUrls:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts authored by these LinkedIn profile or company URLs.
       contentType:
@@ -816,6 +809,7 @@ endpoints:
         example: 10
       mentioningMemberUrls:
         type: array
+        items: {type: string}
         required: false
         note: Only return posts mentioning these LinkedIn member profile URLs.
       query:
@@ -1557,13 +1551,6 @@ endpoints:
         note: Sort order. Use the canonical JSON integer 0 for relevance, 1 for most liked, or 2 for newest
           first; legacy numeric strings remain accepted.
         default: 0
-        enum:
-        - 0
-        - 1
-        - 2
-        - '0'
-        - '1'
-        - '2'
         example: 0
     bodyType: json
     queryArrayEncoding: comma
@@ -1793,7 +1780,6 @@ endpoints:
         note: Maximum number of results to return (1-10, default 10). You are billed per result returned,
           so a lower limit costs less.
         min: 1
-        max: 10
         example: 3
     bodyType: json
     queryArrayEncoding: comma
@@ -2120,11 +2106,6 @@ endpoints:
         required: false
         note: Order in which reviews are returned (e.g. newest).
         default: newest
-        enum:
-        - newest
-        - mostRelevant
-        - highestRanking
-        - lowestRanking
     bodyType: json
     queryArrayEncoding: comma
   test_request:
@@ -2169,6 +2150,7 @@ endpoints:
     body:
       categoryFilterWords:
         type: array
+        items: {type: string}
         required: false
         note: Optional list of Google Maps place-category names to keep; the match is limited to a place
           whose category is one of these. Use lowercase category names as shown on Google Maps (e.g. ["coffee

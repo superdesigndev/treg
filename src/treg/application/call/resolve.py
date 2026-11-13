@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
-from ...domain.catalog import schema, store as catalog_store
+from ...domain.catalog import params, schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.connections.refresh import expiry_state
 from ...domain.governance import access as access_policy
@@ -36,6 +37,8 @@ from . import cost as call_cost
 from . import keyslots
 from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
+
+_param_log = logging.getLogger("treg.param_check")
 
 
 AUTHORIZATION_METHOD_HEADER = "X-Treg-Authorization-Method"
@@ -1289,7 +1292,7 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
         spec = fields.get(name)
         if name in values or not isinstance(spec, dict):
             invalid = True
-        elif spec.get("enum") is not None and value not in spec["enum"]:
+        elif spec.get("enum") is not None and value not in [params.wire(e) for e in spec["enum"]]:
             invalid = True
         values[name] = value
     if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
@@ -1303,19 +1306,167 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
         )
 
 
-def _enforce_catalog_body(ep: dict, body: bytes) -> None:
-    """Enforce an opt-in reviewed JSON-body surface without rewriting the request.
+def _parameter_refused(ep: dict, parameter: str, reason: str) -> ResolutionFailed:
+    """A declared parameter the request breaks: named, with the declared rule, never the value."""
+    return ResolutionFailed(
+        "catalog_parameter_invalid", status_code=400, detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
+            "message": f"{ep['id']}: {parameter} {reason}. Nothing was charged.",
+        },
+    )
 
-    Most catalog schemas describe the upstream API and deliberately leave BYOK requests as a
-    faithful relay. ``strict_body`` is the narrow exception for a catalog tool whose advertised
-    contract is intentionally smaller than the upstream surface. ``body_allowlist`` additionally
-    rejects undeclared fields and validates the declared scalar types, enums and numeric bounds.
-    Array limits are read from the existing input declaration. These constraints apply on every
-    credential tier when the caller chooses the catalog endpoint; a team's raw tool remains a
-    faithful relay.
+
+def _query_refusal(ep: dict, query: QueryValues) -> tuple[str, str, str] | None:
+    """(parameter, rule, reason) of the first declared query or path parameter the request sends
+    that breaks its declaration (`catalog.params.check`, reading each string by its declared type),
+    else None. An undeclared parameter is relayed as sent."""
+    inputs = ep.get("input") or {}
+    declared = {**{name: ("queryParams", spec) for name, spec in (inputs.get("queryParams") or {}).items()},
+                **{name: ("pathParams", spec) for name, spec in (inputs.get("pathParams") or {}).items()}}
+    sent: dict[str, list[str]] = {}
+    for name, value in query.multi_items():
+        sent.setdefault(name, []).append(value)
+    for name, values in sent.items():
+        location, spec = declared.get(name, (None, None))
+        if isinstance(spec, dict) and (
+                found := params.check(spec, values[0] if len(values) == 1 else values, text=True)):
+            return f"{location}.{name}", *found
+    return None
+
+
+def param_check_refuses() -> bool:
+    """Whether the parameter check refuses (`TREG_PARAM_CHECK=refuse`) or only logs."""
+    return get_settings().param_check == "refuse"
+
+
+def would_refuse(endpoint_id: str, parameter: str, rule: str, tier: str, road: str) -> None:
+    """One `catalog_parameter_would_refuse` line for a request the check lets through in log mode:
+    the endpoint, the parameter, the rule it breaks, the tier and the road, never the value."""
+    _param_log.info("%s %s", "catalog_parameter_would_refuse", json.dumps(
+        {"endpoint_id": endpoint_id, "parameter": parameter, "rule": rule, "tier": tier, "road": road},
+        separators=(",", ":")))
+
+
+def _enforce_declared_query(ep: dict, query: QueryValues) -> tuple[str, str] | None:
+    """Every declared query and path parameter the request sends meets its declaration, on every
+    tier, before anything is held: refused in refuse mode, else (parameter, rule) to log."""
+    if refused := _query_refusal(ep, query):
+        if param_check_refuses():
+            raise _parameter_refused(ep, refused[0], refused[2])
+        return refused[0], refused[1]
+    return None
+
+
+def _body_fields(declared: object) -> tuple[dict, dict | None]:
+    """(field specs, the whole-body spec): a body declared field by field, as an object with
+    `properties`, or as one spec for the whole document."""
+    if not isinstance(declared, dict) or not declared:
+        return {}, None
+    if isinstance(declared.get("properties"), dict):
+        return declared["properties"], None
+    if all(isinstance(spec, dict) for spec in declared.values()):
+        return declared, None
+    return {}, declared
+
+
+class _Repeated(list):
+    """Every value of a field a JSON object repeats: which one a provider reads is its own choice,
+    so each is checked."""
+
+
+def _all_pairs(pairs: list[tuple[str, object]]) -> dict:
+    document: dict = {}
+    for name, value in pairs:
+        if name not in document:
+            document[name] = value
+        elif isinstance(document[name], _Repeated):
+            document[name].append(value)
+        else:
+            document[name] = _Repeated([document[name], value])
+    return document
+
+
+def _each(value: object) -> list:
+    return list(value) if isinstance(value, _Repeated) else [value]
+
+
+def _field_values(document: dict, name: str) -> list:
+    """Every value sent for a declared body field: a key of that name, else the dotted path."""
+    if name in document:
+        return _each(document[name])
+    current: list = [document]
+    for part in name.split("."):
+        current = [v for c in current if isinstance(c, dict) and part in c for v in _each(c[part])]
+    return current
+
+
+def _body_refusal(ep: dict, body: bytes) -> tuple[str, str, str] | None:
+    """(parameter, rule, reason) of the first declared body field the request sends that breaks
+    its declaration (`catalog.params.check`), else None. A JSON array body (a list of task objects) is read
+    task by task, a form body as strings by the declared types, and every value of a repeated JSON
+    field is checked; a body that does not parse is relayed for the provider to judge. On a
+    ``strict_body`` or ``body_allowlist`` row an absent required field is read as sent. A multipart
+    body is not read."""
+    inputs = ep.get("input") or {}
+    fields, whole = _body_fields(inputs.get("body"))
+    text = inputs.get("bodyType") == "form"
+    strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
+    if not body or (not fields and whole is None) or inputs.get("bodyType") == "multipart":
+        return None
+    if text:
+        try:
+            pairs = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError:
+            return None
+        form: dict[str, list[str]] = {}
+        for name, value in pairs:
+            form.setdefault(name, []).append(value)
+        parsed: object = {name: v[0] if len(v) == 1 else v for name, v in form.items()}
+    else:
+        try:
+            parsed = json.loads(body, object_pairs_hook=_all_pairs)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        if whole is not None:
+            found = params.check(whole, parsed)
+            return ("body", *found) if found else None
+    tasks = isinstance(parsed, list)
+    for index, document in enumerate(parsed if tasks else [parsed]):
+        if not isinstance(document, dict):
+            continue
+        prefix = f"body.{index}." if tasks else "body."
+        for name, spec in fields.items():
+            values = _field_values(document, name)
+            if not isinstance(spec, dict) or not (values or strict and spec.get("required")):
+                continue
+            for value in values or [None]:
+                if found := params.check(spec, value, text=text):
+                    return prefix + name, *found
+    return None
+
+
+def _enforce_catalog_body(ep: dict, body: bytes) -> tuple[str, str] | None:
+    """Every declared body field the request sends meets its declaration (`_body_refusal`), on
+    every tier, before anything is held: refused in refuse mode, else (parameter, rule) to log.
+    The body is never rewritten.
+
+    ``strict_body`` and ``body_allowlist`` are the opt-in exceptions for a catalog tool whose
+    advertised contract is intentionally smaller than the upstream surface, refused in either
+    mode: the body must be one JSON object and its arrays meet their item enum and count;
+    ``body_allowlist`` also refuses undeclared fields and absent required ones, holds each declared
+    scalar to its type, enum and numeric bounds, and reads `item_required_all`/`item_required_any`
+    on an array of objects. A team's raw tool remains a faithful relay.
     """
-    if not ep.get("strict_body") and not ep.get("body_allowlist"):
-        return
+    if ep.get("strict_body") or ep.get("body_allowlist"):
+        _enforce_strict_body(ep, body)
+    if refused := _body_refusal(ep, body):
+        if param_check_refuses():
+            raise _parameter_refused(ep, refused[0], refused[2])
+        return refused[0], refused[1]
+    return None
+
+
+def _enforce_strict_body(ep: dict, body: bytes) -> None:
     document = _strict_json_object(body, ep["id"])
     fields = (ep.get("input") or {}).get("body") or {}
     if ep.get("body_allowlist"):
@@ -1346,11 +1497,10 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
             spec = fields.get(name)
             if not isinstance(spec, dict):
                 continue
-            declared = str(spec.get("type") or "")
+            declared = spec.get("type") if isinstance(spec.get("type"), str) else None
             checker = scalar_types.get(declared)
             invalid = checker is not None and not checker(value)
-            if (not invalid and not declared.startswith("array")
-                    and spec.get("enum") is not None):
+            if not invalid and declared != "array" and spec.get("enum") is not None:
                 invalid = value not in spec["enum"]
             if not invalid and declared in {"integer", "number"}:
                 minimum, maximum = spec.get("min"), spec.get("max")
@@ -1366,31 +1516,36 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                     },
                 )
     for name, spec in fields.items():
-        if not isinstance(spec, dict) or not str(spec.get("type") or "").startswith("array"):
+        if not isinstance(spec, dict) or spec.get("type") != "array":
             continue
         if name not in document and not spec.get("required"):
             continue
         value = document.get(name)
-        minimum = spec.get("minItems", spec.get("min"))
-        maximum = spec.get("maxItems", spec.get("max"))
+        minimum, maximum = spec.get("minItems"), spec.get("maxItems")
+        allowed = (spec.get("items") or {}).get("enum")
         valid = isinstance(value, list)
-        if valid and spec.get("enum") is not None:
-            valid = all(item in spec["enum"] for item in value)
+        if valid and allowed is not None:
+            valid = all(item in allowed for item in value)
         if valid and isinstance(minimum, int):
             valid = len(value) >= minimum
         if valid and isinstance(maximum, int):
             valid = len(value) <= maximum
         if not valid:
+            bounded = isinstance(minimum, int), isinstance(maximum, int)
             expected = (
-                f"between {minimum} and {maximum}" if minimum != maximum
-                else f"exactly {minimum}"
+                (f"between {minimum} and {maximum}" if minimum != maximum else f"exactly {minimum}")
+                if bounded == (True, True)
+                else f"at least {minimum}" if bounded[0]
+                else f"at most {maximum}" if bounded[1]
+                else None
             )
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "parameter": f"body.{name}",
-                    "message": f"{ep['id']} requires {expected} item in body.{name}",
+                    "message": (f"{ep['id']} requires {expected} item in body.{name}" if expected
+                                else f"{ep['id']} requires an array in body.{name}"),
                 },
             )
         if ep.get("body_allowlist") and isinstance(value, list):
@@ -1571,7 +1726,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
-    row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
+    row reserve for an expensive model. These pins never apply to a team's own key, which meets only
+    the declarations every tier is held to.
     """
     if ep.get("id") == "leadocean.people.search":
         limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
@@ -1706,12 +1862,16 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
-    # A path parameter with a declared enum names WHAT the shared key is spent on (Google AI's
-    # `model`): the price row and usage rates are that model's. Accepting any other value would
-    # let one catalog row run a different model on treg's key at the wrong rates.
-    for name, spec in sorted((input_schema.get("pathParams") or {}).items()):
-        allowed = spec.get("enum") if isinstance(spec, dict) else None
-        if isinstance(allowed, list) and (query.get(name) if query is not None else None) not in allowed:
+    rules = ep.get("platform_request") or {}
+    # A path pin names WHAT the shared key is spent on (Google AI's `model`): the price row and
+    # usage rates are that model's. Accepting any other value would let one catalog row run a
+    # different model on treg's key at the wrong rates.
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("pathParams."):
+            continue
+        name = str(path).split(".", 1)[1]
+        allowed = expected if isinstance(expected, list) else [expected]
+        if (query.get(name) if query is not None else None) not in [str(value) for value in allowed]:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
@@ -1719,7 +1879,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "message": f"{ep['id']} serves {name} " + ", ".join(map(str, allowed))
                                + " on treg's key; connect your own key for other values",
                 })
-    rules = ep.get("platform_request") or {}
     for path, expected in sorted(rules.items()):
         if not str(path).startswith("headers."):
             continue
@@ -1750,7 +1909,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     },
                 )
             continue
-        if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
+        allowed = expected if isinstance(expected, list) else [expected]
+        if len(supplied) != 1 or all(_query_value(supplied[0], value) != value for value in allowed):
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
@@ -2201,10 +2361,28 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     )
 
 
-async def _resolve_marketplace_call(
+async def _resolve_marketplace_call(ep: dict, *, log_would_refuse: bool = True,
+                                    **resolution) -> MarketplaceCall:
+    """Resolve a catalog call (`_resolve_catalog_tier`). In log mode (`TREG_PARAM_CHECK`) each
+    declared parameter the check would refuse is relayed as before and logged once, with the tier
+    the call resolved to (`none` when it did not resolve); a routed child's own check is not logged,
+    its plan already wrote the line."""
+    would: list[tuple[str, str]] = []
+    tier = "none"
+    try:
+        call = await _resolve_catalog_tier(ep, would=would, **resolution)
+        tier = call.tier
+        return call
+    finally:
+        for parameter, rule in would if log_would_refuse else ():
+            would_refuse(ep["id"], parameter, rule, tier, "catalog")
+
+
+async def _resolve_catalog_tier(
     ep: dict, *, method: str, query: QueryValues, has_body: bool,
     read_body: Callable[[], Awaitable[bytes]], caller: Caller, db: AsyncSession,
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
+    would: list[tuple[str, str]],
     request_headers=None,
     authorization_method: str = "",
 ) -> MarketplaceCall:
@@ -2283,8 +2461,11 @@ async def _resolve_marketplace_call(
             ) from exc
 
     upstream, consumed = _marketplace_upstream(ep, provider, query, chosen_method)
+    if refused := _enforce_declared_query(ep, query):
+        would.append(refused)
     body = await read_body() if has_body else b""
-    _enforce_catalog_body(ep, body)
+    if refused := _enforce_catalog_body(ep, body):
+        would.append(refused)
     phash = _params_hash(ep["id"], query.multi_items(), body)
     # The catalog's estimate travels on EVERY tier - informational on tiers 1/2 (the provider bills
     # the org's own account; Activity shows "estimated") and the reserve amount on tier 4 only
@@ -2486,6 +2667,7 @@ async def resolve_marketplace_target(
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
     request_headers=None,
     authorization_method: str = "",
+    log_would_refuse: bool = True,
 ) -> MarketplaceCall:
     if oauth_providers.is_paused(ep.get("provider")):
         raise provider_paused(ep["provider"], ep["id"])
@@ -2507,6 +2689,7 @@ async def resolve_marketplace_target(
             resolve_call=resolve_call,
             request_headers=request_headers,
             authorization_method=authorization_method,
+            log_would_refuse=log_would_refuse,
         )
 
 

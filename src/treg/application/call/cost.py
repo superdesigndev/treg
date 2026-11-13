@@ -9,6 +9,7 @@ from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from ...domain import plugins
 from ...domain.catalog import outcome as outcomes
+from ...domain.catalog import params
 from ...domain.catalog.schema.paths import holds, leaf_paths, parse_path, relative, select
 from ...domain.money import settlement as settlement_basis
 from .types import ResolutionFailed
@@ -144,8 +145,7 @@ def require_request(ep: dict, request_data: dict) -> None:
     for block in ("queryParams", "pathParams"):
         for name, value in (request_data.get(block) or {}).items():
             spec = declared.get(name)
-            if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
-                    and spec.get("type") != "list":
+            if isinstance(value, list) and isinstance(spec, dict) and not params.takes_list(spec):
                 raise _invalid(ep, name, f"{ep['id']} takes {name} once")
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and rule.get("param"):

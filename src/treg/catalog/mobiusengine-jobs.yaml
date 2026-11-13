@@ -25,12 +25,12 @@ endpoints:
     summary: "Search open job postings taken from employers' own career pages. Filter by title, company, country, remote, salary, job system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Oracle Cloud, SAP SuccessFactors, iCIMS, Workable, BambooHR, Paycom, ADP, UKG, Taleo and more) or posted date, newest first. Each job has its title, company, locations, dates, seniority, pay when published, skills and apply link, without the description text."
     input:
       queryParams:
-        title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
-        company: {type: "array[string]", required: false, note: "company name or board key contains any of these (repeat the parameter)", example: "stripe"}
-        countries: {type: "array[string]", required: false, note: "ISO-2 codes (repeat the parameter)", example: "US"}
-        locations: {type: "array[string]", required: false, note: "a place; every comma part must match", example: "Austin, Texas"}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
-        work_mode: {type: "array[string]", required: false, note: "On-site, Hybrid, Remote OK or Remote Solely", example: "Remote Solely"}
+        title: {type: array, items: {type: string}, required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
+        company: {type: array, items: {type: string}, required: false, note: "company name or board key contains any of these (repeat the parameter)", example: "stripe"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO-2 codes (repeat the parameter)", example: "US"}
+        locations: {type: array, items: {type: string}, required: false, note: "a place; every comma part must match", example: "Austin, Texas"}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
+        work_mode: {type: array, items: {type: string}, required: false, note: "On-site, Hybrid, Remote OK or Remote Solely", example: "Remote Solely"}
         posted_within_days: {type: integer, required: false, note: "1 to 365", example: 7}
         has_salary: {type: boolean, required: false, note: "only jobs with published pay"}
         limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "jobs per page and the price dial: every job returned is charged", example: 1}
@@ -64,12 +64,12 @@ endpoints:
     input:
       bodyType: json
       body:
-        title: {type: "array[string]", required: false, note: "title keywords; up to 10", example: ["data engineer"]}
-        company: {type: "array[string]", required: false, example: ["stripe"]}
-        countries: {type: "array[string]", required: false, example: ["US"]}
-        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
-        work_mode: {type: "array[string]", required: false, example: ["Remote Solely"]}
+        title: {type: array, items: {type: string}, required: false, note: "title keywords; up to 10", example: ["data engineer"]}
+        company: {type: array, items: {type: string}, required: false, example: ["stripe"]}
+        countries: {type: array, items: {type: string}, required: false, example: ["US"]}
+        locations: {type: array, items: {type: string}, required: false, example: ["Austin, Texas"]}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
+        work_mode: {type: array, items: {type: string}, required: false, example: ["Remote Solely"]}
         posted_within_days: {type: integer, required: false, example: 7}
         limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
         cursor: {type: string, required: false}
@@ -101,11 +101,11 @@ endpoints:
     summary: "The same search, with description_snippet on every job: the first 300 characters of its description, from employers' own career sites."
     input:
       queryParams:
-        title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10", example: "data engineer"}
-        company: {type: "array[string]", required: false, example: "stripe"}
-        countries: {type: "array[string]", required: false, example: "US"}
-        locations: {type: "array[string]", required: false, example: "Austin, Texas"}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
+        title: {type: array, items: {type: string}, required: false, note: "job title keywords (repeat the parameter); up to 10", example: "data engineer"}
+        company: {type: array, items: {type: string}, required: false, example: "stripe"}
+        countries: {type: array, items: {type: string}, required: false, example: "US"}
+        locations: {type: array, items: {type: string}, required: false, example: "Austin, Texas"}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
         posted_within_days: {type: integer, required: false, example: 7}
         limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
         cursor: {type: string, required: false}
@@ -138,11 +138,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        title: {type: "array[string]", required: false, example: ["data engineer"]}
-        company: {type: "array[string]", required: false, example: ["stripe"]}
-        countries: {type: "array[string]", required: false, example: ["US"]}
-        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
+        title: {type: array, items: {type: string}, required: false, example: ["data engineer"]}
+        company: {type: array, items: {type: string}, required: false, example: ["stripe"]}
+        countries: {type: array, items: {type: string}, required: false, example: ["US"]}
+        locations: {type: array, items: {type: string}, required: false, example: ["Austin, Texas"]}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
         posted_within_days: {type: integer, required: false, example: 7}
         limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
         cursor: {type: string, required: false}
@@ -174,12 +174,12 @@ endpoints:
     summary: "All open job postings at a company, found by its name or job-board key, newest first, with optional title, place and salary filters. Each job has its title, company, locations, dates, seniority, pay when published, skills and apply link, without the description text."
     input:
       queryParams:
-        title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
-        company: {type: "array[string]", required: true, note: "company name or board key contains any of these (repeat the parameter)", example: "stripe"}
-        countries: {type: "array[string]", required: false, note: "ISO-2 codes (repeat the parameter)", example: "US"}
-        locations: {type: "array[string]", required: false, note: "a place; every comma part must match", example: "Austin, Texas"}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
-        work_mode: {type: "array[string]", required: false, note: "On-site, Hybrid, Remote OK or Remote Solely", example: "Remote Solely"}
+        title: {type: array, items: {type: string}, required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
+        company: {type: array, items: {type: string}, required: true, note: "company name or board key contains any of these (repeat the parameter)", example: "stripe"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO-2 codes (repeat the parameter)", example: "US"}
+        locations: {type: array, items: {type: string}, required: false, note: "a place; every comma part must match", example: "Austin, Texas"}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
+        work_mode: {type: array, items: {type: string}, required: false, note: "On-site, Hybrid, Remote OK or Remote Solely", example: "Remote Solely"}
         posted_within_days: {type: integer, required: false, note: "1 to 365", example: 7}
         has_salary: {type: boolean, required: false, note: "only jobs with published pay"}
         limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "jobs per page and the price dial: every job returned is charged", example: 1}
@@ -212,12 +212,12 @@ endpoints:
     summary: "How many open job postings match, exactly, across all open postings. Use it to size a pull before you pay for it."
     input:
       queryParams:
-        title: {type: "array[string]", required: false, example: "data engineer"}
-        company: {type: "array[string]", required: false, example: "stripe"}
-        countries: {type: "array[string]", required: false, example: "US"}
-        locations: {type: "array[string]", required: false, example: "Austin, Texas"}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
-        work_mode: {type: "array[string]", required: false, example: "Remote Solely"}
+        title: {type: array, items: {type: string}, required: false, example: "data engineer"}
+        company: {type: array, items: {type: string}, required: false, example: "stripe"}
+        countries: {type: array, items: {type: string}, required: false, example: "US"}
+        locations: {type: array, items: {type: string}, required: false, example: "Austin, Texas"}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: "greenhouse"}
+        work_mode: {type: array, items: {type: string}, required: false, example: "Remote Solely"}
         posted_within_days: {type: integer, required: false, example: 7}
         has_salary: {type: boolean, required: false}
     test_request: {queryParams: {title: "software engineer", countries: "US"}}
@@ -247,11 +247,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        title: {type: "array[string]", required: false, example: ["data engineer"]}
-        company: {type: "array[string]", required: false, example: ["stripe"]}
-        countries: {type: "array[string]", required: false, example: ["US"]}
-        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
-        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
+        title: {type: array, items: {type: string}, required: false, example: ["data engineer"]}
+        company: {type: array, items: {type: string}, required: false, example: ["stripe"]}
+        countries: {type: array, items: {type: string}, required: false, example: ["US"]}
+        locations: {type: array, items: {type: string}, required: false, example: ["Austin, Texas"]}
+        sources: {type: array, items: {type: string}, required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters, oraclecloud, successfactors, icims, workable, bamboohr, teamtailor, paylocity, adp, paycom, ukg, jazzhr, dayforce, recruitee, breezy, personio, jobvite, pinpoint, rippling, applicantpro, peopleadmin, isolvedhire, usajobs, gem, governmentjobs, schooljobs, taleo, manatal, jsonld_sitemap", example: ["greenhouse"]}
         posted_within_days: {type: integer, required: false, example: 7}
     test_request: {body: {title: ["software engineer"], countries: ["US"]}}
     cost:

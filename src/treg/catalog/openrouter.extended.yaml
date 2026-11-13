@@ -960,6 +960,7 @@ endpoints:
         note: 'The live rate card marks generate_audio: false for this model. Speech comes from the prompt script (TTS) or an audio input_references item, not this flag.'
       input_references:
         type: array
+        items: {type: object}
         required: true
         note: 'Avatar IV needs a photo. The live rate card has supported_frame_images: null, so use input_references, not frame_images. Send one OpenRouter image object ({type: image_url, image_url: {url}}) and optionally one audio object ({type: audio_url, audio_url: {url}}) to lip-sync a supplied track.'
         example:

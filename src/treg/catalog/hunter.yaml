@@ -133,13 +133,13 @@ endpoints:
         limit: {type: integer, required: false, note: "emails to return, default 10, max 100 — THIS IS THE PRICE DIAL: 1 search credit per 10 returned", example: 10}
         offset: {type: integer, required: false, note: "records to skip, for paging"}
         type: {type: string, required: false, note: "personal (named people) | generic (info@, contact@)", example: "personal"}
-        seniority: {type: string, required: false, note: "junior, senior, executive — comma-separate to combine"}
+        seniority: {type: array, items: {type: string}, required: false, note: "junior, senior, executive — comma-separate to combine"}
         department: {type: string, required: false, note: "executive, it, finance, management, sales, legal, support, hr, marketing, communication, education, design, health, operations"}
-        required_field: {type: string, required: false, note: "comma-separated fields a result must have, e.g. full_name,position"}
+        required_field: {type: array, items: {type: string}, required: false, note: "comma-separated fields a result must have, e.g. full_name,position"}
         decision_maker: {type: boolean, required: false, note: "restrict to people Hunter classifies as decision makers"}
         verification_status: {type: string, required: false, note: "filter by deliverability status, e.g. valid"}
-        job_titles: {type: string, required: false, note: "comma-separated job titles to match"}
-        location: {type: string, required: false, note: "comma-separated locations to filter results by"}
+        job_titles: {type: array, items: {type: string}, required: false, note: "comma-separated job titles to match"}
+        location: {type: array, items: {type: string}, required: false, note: "comma-separated locations to filter results by"}
         aggregations: {type: boolean, required: false, note: "return aggregate breakdowns (by department, seniority) alongside the results"}
       note: "one of domain | company is required. Mapped to people.search because what it actually returns is a filtered list of PEOPLE at that company"
     test_request:

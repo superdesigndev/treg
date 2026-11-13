@@ -62,9 +62,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        contacts: {type: "array[object]", required: true, note: "the people to look up, each identified by email, linkedinUrl, or firstName + lastName + companyName|companyDomain", example: [{"firstName": "Jane", "lastName": "Doe", "companyDomain": "lusha.com"}]}
-        reveal: {type: "array[string]", required: false, note: "which datapoints to unlock: emails, phones, or both — EACH REVEALED DATAPOINT IS BILLED, so ask only for what you need", example: ["emails"]}
-        waterfallReveal: {type: "array[string]", required: false, note: "datapoints Lusha may fall through to third-party providers for when its own data misses; costs more"}
+        contacts: {type: array, items: {type: object}, required: true, note: "the people to look up, each identified by email, linkedinUrl, or firstName + lastName + companyName|companyDomain", example: [{"firstName": "Jane", "lastName": "Doe", "companyDomain": "lusha.com"}]}
+        reveal: {type: array, items: {type: string}, required: false, note: "which datapoints to unlock: emails, phones, or both — EACH REVEALED DATAPOINT IS BILLED, so ask only for what you need", example: ["emails"]}
+        waterfallReveal: {type: array, items: {type: string}, required: false, note: "datapoints Lusha may fall through to third-party providers for when its own data misses; costs more"}
       note: "the v3 replacement for the old GET /v2/person. Lusha's differentiator is verified DIRECT-DIAL and MOBILE numbers, not just emails — which is also why phones cost more than emails"
     test_request:
       body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["emails"]}
@@ -102,8 +102,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        contacts: {type: "array[object]", required: true, note: "ONE person to look up, identified by linkedinUrl, email, or firstName + lastName + companyDomain", example: [{"linkedinUrl": "https://www.linkedin.com/in/example"}]}
-        reveal: {type: "array[string]", required: true, note: "always [\"phones\"] on this route — the phone-only view of lusha.people.enrich, so the router can bill and rank it as a phone finder", example: ["phones"]}
+        contacts: {type: array, items: {type: object}, required: true, note: "ONE person to look up, identified by linkedinUrl, email, or firstName + lastName + companyDomain", example: [{"linkedinUrl": "https://www.linkedin.com/in/example"}]}
+        reveal: {type: array, items: {type: string}, required: true, note: "always [\"phones\"] on this route — the phone-only view of lusha.people.enrich, so the router can bill and rank it as a phone finder", example: ["phones"]}
       note: "the same search-and-enrich call as lusha.people.enrich with `reveal: [\"phones\"]`. THREE OUTCOMES, each with its own bill (live 2026-09-04): not found → `results[0].error.code == NOT_FOUND`, 0 credits; found but Lusha holds no number → a profile with no `phones` key, 1 credit (the contact search) and a top-level `status: partial`; found with a number → `phones: [{number, type, doNotCall, countryIso2}]`, 1 + 5 credits. Honour `doNotCall`. treg's account has Lusha's third-party phone waterfall NOT connected (`statusReason: WATERFALL_NOT_CONFIGURED`), so this answers from Lusha's native data only"
     test_request:
       body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["phones"]}
@@ -167,9 +167,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        ids: {type: "array[string]", required: true, note: "1-100 ids from a prospecting search — CORRECTED at verify time: the field is `ids`, not `contactIds` as the doc prose paraphrases it. Each revealed datapoint is billed, so send only the ids you want", example: ["4389064654"]}
-        reveal: {type: "array[string]", required: false, note: "emails | phones | both — the price dial", example: ["emails"]}
-        waterfallReveal: {type: "array[string]", required: false, note: "subset of `reveal` Lusha may source from third-party providers when its own data misses"}
+        ids: {type: array, items: {type: string}, required: true, note: "1-100 ids from a prospecting search — CORRECTED at verify time: the field is `ids`, not `contactIds` as the doc prose paraphrases it. Each revealed datapoint is billed, so send only the ids you want", example: ["4389064654"]}
+        reveal: {type: array, items: {type: string}, required: false, note: "emails | phones | both — the price dial", example: ["emails"]}
+        waterfallReveal: {type: array, items: {type: string}, required: false, note: "subset of `reveal` Lusha may source from third-party providers when its own data misses"}
         tableId: {type: string, required: false, note: "persist the results into a Lusha Table"}
       note: "the paid half of the prospecting flow, and the endpoint that makes Lusha's pricing legible: cost scales with ids x datapoints revealed"
     test_request:
@@ -207,7 +207,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        companies: {type: "array[object]", required: true, note: "the companies to look up, each identified by domain (preferred), name, or Lusha company id", example: [{"domain": "lusha.com"}]}
+        companies: {type: array, items: {type: object}, required: true, note: "the companies to look up, each identified by domain (preferred), name, or Lusha company id", example: [{"domain": "lusha.com"}]}
       note: "the v3 replacement for the old GET /v2/company. Pass domains rather than names wherever you have them — a name alone is ambiguous. POST /v3/companies/enrich takes companyIds (max 100) when you already hold ids from a prospecting search"
     test_request:
       body: {companies: [{domain: "lusha.com"}]}

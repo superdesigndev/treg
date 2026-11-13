@@ -200,6 +200,7 @@ endpoints:
         model: {type: string, required: true, enum: [MiniMax-H3, MiniMax-H3-Max], example: MiniMax-H3-Max}
         content:
           type: array
+          items: {type: object}
           required: true
           note: "Items of type text / image_url. One non-empty text item is required (max 7000 chars); up to two images (JPG/PNG/WEBP, <=30MB) set the first and last frame."
         resolution: {type: string, required: true, enum: [480P, 768P, 2K], example: 480P, note: "H3 supports 768P and 2K; H3-Max supports 480P and 768P."}
@@ -313,7 +314,7 @@ endpoints:
     input:
       body:
         model: {type: string, required: true, enum: [speech-2.8-hd], example: speech-2.8-hd}
-        text: {type: string, required: true, max: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
+        text: {type: string, required: true, maxLength: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
         stream: {type: boolean, required: true, enum: [false], example: false, note: "This catalog route is non-streaming so the relay returns one bounded JSON response."}
         output_format: {type: string, required: true, enum: [url], example: url, note: "The returned audio URL is valid for 24 hours."}
         voice_setting:
@@ -435,7 +436,7 @@ endpoints:
     input:
       body:
         model: {type: string, required: true, enum: [speech-2.8-turbo], example: speech-2.8-turbo}
-        text: {type: string, required: true, max: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
+        text: {type: string, required: true, maxLength: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
         stream: {type: boolean, required: true, enum: [false], example: false, note: "This catalog route is non-streaming so the relay returns one bounded JSON response."}
         output_format: {type: string, required: true, enum: [url], example: url, note: "The returned audio URL is valid for 24 hours."}
         voice_setting:

@@ -143,7 +143,7 @@ def audit(uses: Iterable[Use], headers: Iterable[tuple[str, Mapping[str, Any]]],
         used, allowed = words_at.get(at, set()), set(v.unread_input_words.get(at, ()))
         if extra := sorted(used - allowed):
             errors.append(f"{at}: input uses {', '.join(extra)}, JSON Schema words nothing reads; "
-                          "drop them, or say it with note, min, max, minItems or maxItems")
+                          "drop them, or say it with note, type, enum or a range key")
         if stale := sorted(allowed - used):
             errors.append(f"violations.yaml: unread_input_words.{at} no longer uses {', '.join(stale)}; remove it")
     for at, path in sorted(set(v.rejected) - rejected_hits):

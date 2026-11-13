@@ -19,8 +19,8 @@ def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
         "input": {"body": {
             "name": {"type": "string", "required": True},
             "formats": {
-                "type": "array[string]", "required": False,
-                "minItems": 1, "maxItems": 2, "enum": ["html", "markdown"],
+                "type": "array", "items": {"type": "string", "enum": ["html", "markdown"]},
+                "required": False, "minItems": 1, "maxItems": 2,
             },
         }},
     }
@@ -43,7 +43,7 @@ def test_catalog_body_required_arrays_remain_required():
         "method": "POST",
         "strict_body": True,
         "input": {"body": {
-            "items": {"type": "array[object]", "required": True, "min": 1, "max": 2},
+            "items": {"type": "array", "items": {"type": "object"}, "required": True, "minItems": 1, "maxItems": 2},
         }},
     }
 
@@ -51,6 +51,27 @@ def test_catalog_body_required_arrays_remain_required():
         resolve._enforce_catalog_body(endpoint, b"{}")
     assert exc.value.status_code == 400
     assert exc.value.detail["parameter"] == "body.items"
+
+
+@pytest.mark.parametrize(("bounds", "value", "message"), [
+    ({}, "a=b", "example.items requires an array in body.cookies"),
+    ({"minItems": 1}, [], "example.items requires at least 1 item in body.cookies"),
+    ({"maxItems": 1}, ["a", "b"], "example.items requires at most 1 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 2}, [], "example.items requires between 1 and 2 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 1}, [], "example.items requires exactly 1 item in body.cookies"),
+])
+def test_a_strict_array_refusal_names_only_the_bounds_it_declares(bounds, value, message):
+    endpoint = {
+        "id": "example.items",
+        "method": "POST",
+        "body_allowlist": True,
+        "input": {"body": {"cookies": {"type": "array", **bounds}}},
+    }
+
+    with pytest.raises(ResolutionFailed) as exc:
+        resolve._enforce_catalog_body(endpoint, json.dumps({"cookies": value}).encode())
+    assert exc.value.status_code == 400
+    assert exc.value.detail["message"] == message
 
 
 def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
@@ -694,22 +715,32 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
 
 @pytest.mark.parametrize('rule,valid', [
     ({'body.realtime': True}, True),
+    ({'body.realtime': False}, True),       # the field takes any boolean; the pin is treg's key's own
     ({'body.realtime': 1}, False),
-    ({'body.realtime': False}, False),
     ({'body.missing': True}, False),
     ({'queryParams.realtime': True}, False),
     ({'queryParams.memory': 1024}, True),
     ({'queryParams.memory': '1024'}, False),
+    ({'queryParams.memory': 64}, False),     # below the declared range
+    ({'body.mode': 'sync'}, True),
+    ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
     ({'body.realtime': None}, False),       # absence applies to query parameters only
     ({'headers.x-key': None}, False),
+    ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
+    ({'pathParams.model': 'stable'}, True),
+    ({'queryParams.memory': [1024, 2048]}, True),
+    ({'pathParams.model': []}, False),
+    ({'queryParams.memory': [1024, '2048']}, False),
+    ({'body.mode': ['sync']}, False),       # a body pin is one value
     ({}, False),
 ])
-def test_platform_request_requires_declared_fixed_body_value(rule, valid):
+def test_platform_request_pins_a_value_its_field_declares(rule, valid):
     errors = []
     validator.check_platform_request(rule, {'body': {
-        'realtime': {'type': 'boolean', 'enum': [True]},
-    }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
+        'realtime': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['sync']},
+    }, 'queryParams': {'memory': {'type': 'integer', 'min': 128}},
+        'pathParams': {'model': {'type': 'string', 'required': True}}}, 'test', errors)
     assert (not errors) is valid
 
 
@@ -869,7 +900,7 @@ def test_price_table_may_disclose_its_validated_maximum_only():
 @pytest.mark.parametrize('patch,valid', [
     ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
     ({'path': '/{id}'}, False),
-    ({'input': {'queryParams': {'mode': {'enum': [True]}}}}, False),
+    ({'input': {'queryParams': {'mode': 'string'}}}, False),
 ])
 def test_strict_query_contract_validation(patch, valid):
     ep = {'strict_query': True, 'method': 'GET', 'path': '/lookup',
@@ -889,7 +920,7 @@ def test_strict_query_accepts_a_declared_path_parameter():
 
 def test_body_allowlist_object_item_presence_rules():
     ep = {'body_allowlist': True, 'method': 'POST',
-          'input': {'body': {'data': {'type': 'array[object]',
+          'input': {'body': {'data': {'type': 'array', 'items': {'type': 'object'},
                                       'item_required_any': ['email', 'linkedin']}}}}
     errors = []
     validator.check_body_allowlist(ep, 'example', errors)
@@ -903,11 +934,12 @@ def test_body_allowlist_object_item_presence_rules():
     ({}, True),
     ({'strict_body': 'yes'}, False),
     ({'method': 'GET'}, False),
-    ({'input': {'body': {'items': {'type': 'array[object]', 'min': 2, 'max': 1}}}}, False),
+    ({'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 2, 'maxItems': 1}}}},
+     False),
 ])
 def test_strict_body_contract_validation(patch, valid):
     ep = {'strict_body': True, 'method': 'POST', 'path': '/lookup',
-          'input': {'body': {'items': {'type': 'array[object]', 'min': 1, 'max': 1}}}}
+          'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 1, 'maxItems': 1}}}}
     errors = []
     validator.check_strict_body(ep | patch, 'example', errors)
     assert bool(errors) is not valid

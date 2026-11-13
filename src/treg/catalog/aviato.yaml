@@ -43,7 +43,7 @@ endpoints:
         full: {type: boolean, required: false, note: "include funding rounds, investments, acquisitions, founders and funds"}
         rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false}
-        require: {type: "array[string]", required: false, note: "repeat for fields that must be non-empty; a miss returns 404 without charge"}
+        require: {type: array, items: {type: string}, required: false, note: "repeat for fields that must be non-empty; a miss returns 404 without charge"}
       note: "supply at least one identifier. Start with preview=true to resolve the entity for free, then request the full record."
     test_request:
       queryParams: {website: "stripe.com", preview: true}
@@ -82,10 +82,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        lookups: {type: "array[object]", required: true, note: "1-100 lookup objects; each can use Aviato company identifiers such as website or linkedinURL", example: [{website: "stripe.com"}]}
+        lookups: {type: array, items: {type: object}, required: true, note: "1-100 lookup objects; each can use Aviato company identifiers such as website or linkedinURL", example: [{website: "stripe.com"}]}
         rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
-        require: {type: "array[string]", required: false, note: "top-level fields that must be present; failed gates are not billed"}
+        require: {type: array, items: {type: string}, required: false, note: "top-level fields that must be present; failed gates are not billed"}
       note: "this is synchronous bulk enrichment. Each successful lookup returns the normal company object. Public docs do not offer company preview mode."
     test_request:
       body: {lookups: [{website: "stripe.com"}], require: ["name"]}
@@ -378,7 +378,7 @@ endpoints:
         full: {type: boolean, required: false, note: "include company/fund investments and founded companies"}
         rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false}
-        require: {type: "array[string]", required: false, note: "fields that must be present or a free 404 is returned"}
+        require: {type: array, items: {type: string}, required: false, note: "fields that must be present or a free 404 is returned"}
       note: "supply one identifier. Use preview=true to resolve the person without spending a credit."
     test_request:
       queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", preview: true}
@@ -415,11 +415,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        lookups: {type: "array[object]", required: true, note: "1-20 lookup objects; each can use identifiers such as linkedinURL or email", example: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}]}
+        lookups: {type: array, items: {type: object}, required: true, note: "1-20 lookup objects; each can use identifiers such as linkedinURL or email", example: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}]}
         rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
         preview: {type: boolean, required: false, note: "return minimal identification data without charging credits", example: true}
-        require: {type: "array[string]", required: false, note: "top-level fields required for billing; ignored in preview mode"}
+        require: {type: array, items: {type: string}, required: false, note: "top-level fields required for billing; ignored in preview mode"}
       note: "this is synchronous bulk enrichment. Use preview=true first for a free identifier check."
     test_request:
       body: {lookups: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}], preview: true}
@@ -537,7 +537,7 @@ endpoints:
     platform_request: {queryParams.type: personal}
     input:
       queryParams:
-        type: {type: string, required: true, enum: [personal], note: "personal on treg's key"}
+        type: {type: string, required: true, note: "personal on treg's key"}
         linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
         id: {type: string, required: false, note: "Aviato person id"}
         email: {type: string, required: false}
@@ -652,10 +652,10 @@ endpoints:
         enrich: {type: boolean, required: false, note: "when true, enriches and charges 1 person credit per result; false returns minimal rows", example: false}
         fullName: {type: string, required: false, note: "fuzzy name query", example: "Satya Nadella"}
         headline: {type: string, required: false, note: "headline keyword search"}
-        country: {type: "array[string]", required: false, note: "country NAMES, not ISO codes — `Guatemala` matched 84,145 people and `GT` matched 0 (live 2026-09-04); a code is a silent empty answer, not an error", example: ["Guatemala"]}
-        currentTitles: {type: "array[string]", required: false}
-        currentCompanyNames: {type: "array[string]", required: false}
-        skills: {type: "array[string]", required: false, note: "all specified skills must be present"}
+        country: {type: array, items: {type: string}, required: false, note: "country NAMES, not ISO codes — `Guatemala` matched 84,145 people and `GT` matched 0 (live 2026-09-04); a code is a silent empty answer, not an error", example: ["Guatemala"]}
+        currentTitles: {type: array, items: {type: string}, required: false}
+        currentCompanyNames: {type: array, items: {type: string}, required: false}
+        skills: {type: array, items: {type: string}, required: false, note: "all specified skills must be present"}
       note: "Use enrich=false for discovery. Aviato documents enrich=true at +1 credit/result, but repeat live probes returned id-only rows and charged only the base."
     test_request:
       queryParams: {page: 1, perPage: 1, enrich: false, fullName: "Satya Nadella"}

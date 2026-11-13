@@ -22,7 +22,8 @@ export default {
       const bodySec=secs.find(s=>s.key==='body');
       this.epTryBodyType=(bodySec&&bodySec.type)||'json'; this.epTryMultipart=[]; this.epTryFiles={};
       if(this.epTryBodyType==='multipart' && bodySec){
-        this.epTryMultipart=bodySec.rows.map(p=>({name:p.name,type:p.type||'string',required:!!p.required,
+        // A file part is one the verified request sent as a file (`test_request.files`).
+        this.epTryMultipart=bodySec.rows.map(p=>({name:p.name,type:p.type||'string',required:!!p.required,file:!!(tr.files||{})[p.name],
           value:tr.body&&tr.body[p.name]!=null?this.fmtExample(tr.body[p.name]):(p.example!=null?this.fmtExample(p.example):'')}));
       }
       let body='';
@@ -96,7 +97,7 @@ async runEpTry(){
         if(this.epTryBodyType==='multipart'){
           const form=new FormData();
           for(const p of this.epTryMultipart){
-            if(String(p.type).includes('file')) for(const file of (this.epTryFiles[p.name]||[])) form.append(p.name,file,file.name);
+            if(p.file) for(const file of (this.epTryFiles[p.name]||[])) form.append(p.name,file,file.name);
             else if(String(p.value)!=='') form.append(p.name,String(p.value));
           }
           opts.body=form;

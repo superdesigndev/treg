@@ -1702,7 +1702,8 @@ def _placeholder(spec: dict):
         # Keep structured examples structured until the wire encoder sees them: str() here would
         # give Python repr (`['US']`, `True`) before the JSON/comma metadata could choose.
         return example
-    return f"<{spec.get('type') or 'value'}>"
+    declared = spec.get("type")
+    return f"<{declared if isinstance(declared, str) and declared else 'value'}>"
 
 
 def wire_value(value) -> str:

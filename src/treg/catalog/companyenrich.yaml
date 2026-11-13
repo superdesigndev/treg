@@ -81,7 +81,7 @@ endpoints:
     input:
       queryParams:
         domain: {type: string, required: true, note: "company domain, no protocol or www; max 1024 chars", example: "stripe.com"}
-        expand: {type: "array[string]", required: false, note: "repeat the parameter per expansion. `workforce` adds the department headcount block and costs 5 EXTRA credits", example: "workforce"}
+        expand: {type: array, items: {type: string}, required: false, note: "repeat the parameter per expansion. `workforce` adds the department headcount block and costs 5 EXTRA credits", example: "workforce"}
       note: "the preferred lookup — one domain maps to exactly one company. A domain with no company behind it returns HTTP 404, not an empty body. The response carries firmographics, description, industries, NAICS, socials, technologies and funding."
     test_request:
       queryParams: {domain: "stripe.com"}
@@ -125,7 +125,7 @@ endpoints:
         instagramUrl: {type: string, required: false, note: "company Instagram profile URL"}
         youTubeUrl: {type: string, required: false, note: "company YouTube channel URL"}
       queryParams:
-        expand: {type: "array[string]", required: false, note: "`workforce` costs 5 EXTRA credits"}
+        expand: {type: array, items: {type: string}, required: false, note: "`workforce` costs 5 EXTRA credits"}
       note: "at least ONE of the seven properties must be supplied. Use this only when you do not have a domain — the domain route is deterministic, this one is a best-match and can resolve to the wrong company for a generic name. Supplying both a name and a social URL narrows it considerably."
     test_request:
       body: {name: "Anthropic", linkedinUrl: "https://www.linkedin.com/company/anthropicresearch"}
@@ -156,9 +156,9 @@ endpoints:
     summary: "Enriches a list of companies using their domain names — up to 50 domains per request"
     input:
       body:
-        domains: {type: "array[string]", required: true, note: "1-50 company domains. THIS IS THE PRICE DIAL — 1 credit per domain enriched", example: ["stripe.com", "anthropic.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "1-50 company domains. THIS IS THE PRICE DIAL — 1 credit per domain enriched", example: ["stripe.com", "anthropic.com"]}
       queryParams:
-        expand: {type: "array[string]", required: false, note: "`workforce` costs 5 EXTRA credits per company"}
+        expand: {type: array, items: {type: string}, required: false, note: "`workforce` costs 5 EXTRA credits per company"}
       note: "returns a plain ARRAY of company objects (not an envelope). This is the synchronous batch — it answers in the same request. For more than 50 domains use the async bulk job (companyenrich.companies.enrich.bulk.start), which takes up to 10,000."
     test_request:
       body: {domains: ["stripe.com", "anthropic.com"]}
@@ -190,7 +190,7 @@ endpoints:
     input:
       queryParams:
         id: {type: string, required: true, note: "the UUID returned in the `id` field of any enrich or search result", example: "0192577c-1d7a-715c-a5b7-1b9b530445e0"}
-        expand: {type: "array[string]", required: false, note: "`workforce` costs 5 EXTRA credits"}
+        expand: {type: array, items: {type: string}, required: false, note: "`workforce` costs 5 EXTRA credits"}
       note: "re-fetching by id costs the same 1 credit as enriching by domain, so cache the enrich response rather than round-tripping ids."
     test_request:
       queryParams: {id: "0192577c-1d7a-715c-a5b7-1b9b530445e0"}
@@ -284,32 +284,32 @@ endpoints:
         query: {type: string, required: false, note: "free-text match on company name and domain, max 250 chars"}
         semanticQuery: {type: string, required: false, note: "natural-language description of the companies you want; costs 2 credits per company instead of 1", example: "companies that sell payment infrastructure to developers"}
         semanticWeight: {type: number, required: false, note: "0-1, default 0.7 — higher favours semantic similarity over the structured filters"}
-        technologies: {type: "array[string]", required: false, note: "technology-stack names; resolve them first with the free /technologies/autocomplete", example: ["stripe"]}
-        keywords: {type: "array[string]", required: false, note: "description keywords; resolve them first with the free /keywords/autocomplete"}
-        countries: {type: "array[string]", required: false, note: "ISO 3166-1 alpha-2 codes", example: ["US"]}
-        regions: {type: "array[string]", required: false, note: "region ids from the free GET /geo/regions"}
-        states: {type: "array[integer]", required: false, note: "state ids from the free POST /geo/states"}
-        cities: {type: "array[integer]", required: false, note: "city ids from the free POST /geo/cities"}
-        employees: {type: "array[string]", required: false, note: "employee-count buckets, e.g. 1-10, 5K-10K, over-10K"}
-        reportedEmployees: {type: "array[string]", required: false, note: "same buckets, but the externally reported figure"}
-        workforceSize: {type: "array[object]", required: false, note: "absolute headcount ranges, finer-grained than the buckets"}
+        technologies: {type: array, items: {type: string}, required: false, note: "technology-stack names; resolve them first with the free /technologies/autocomplete", example: ["stripe"]}
+        keywords: {type: array, items: {type: string}, required: false, note: "description keywords; resolve them first with the free /keywords/autocomplete"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO 3166-1 alpha-2 codes", example: ["US"]}
+        regions: {type: array, items: {type: string}, required: false, note: "region ids from the free GET /geo/regions"}
+        states: {type: array, items: {type: integer}, required: false, note: "state ids from the free POST /geo/states"}
+        cities: {type: array, items: {type: integer}, required: false, note: "city ids from the free POST /geo/cities"}
+        employees: {type: array, items: {type: string}, required: false, note: "employee-count buckets, e.g. 1-10, 5K-10K, over-10K"}
+        reportedEmployees: {type: array, items: {type: string}, required: false, note: "same buckets, but the externally reported figure"}
+        workforceSize: {type: array, items: {type: object}, required: false, note: "absolute headcount ranges, finer-grained than the buckets"}
         workforceGrowth: {type: object, required: false, note: "filter by headcount growth rate over a window"}
-        revenue: {type: "array[string]", required: false, note: "revenue buckets, e.g. over-1b"}
-        category: {type: "array[string]", required: false, note: "b2b, b2c, b2g, saas, marketplace, service-provider …"}
-        type: {type: "array[string]", required: false, note: "private, public, nonprofit, educational, government"}
-        naicsCode: {type: "array[integer]", required: false, note: "2-6 digit NAICS; a short code matches all its children"}
+        revenue: {type: array, items: {type: string}, required: false, note: "revenue buckets, e.g. over-1b"}
+        category: {type: array, items: {type: string}, required: false, note: "b2b, b2c, b2g, saas, marketplace, service-provider …"}
+        type: {type: array, items: {type: string}, required: false, note: "private, public, nonprofit, educational, government"}
+        naicsCode: {type: array, items: {type: integer}, required: false, note: "2-6 digit NAICS; a short code matches all its children"}
         foundedYear: {type: object, required: false, note: "range object, e.g. {min: 2015, max: 2022}"}
-        fundingRounds: {type: "array[string]", required: false, note: "seed, debt_financing, angel, venture, series_a, series_b, series_c, series_d, series_e, series_f, series_g, series_h, other; hyphen forms like series-a are rejected", example: ["series_a"]}
+        fundingRounds: {type: array, items: {type: string}, required: false, note: "seed, debt_financing, angel, venture, series_a, series_b, series_c, series_d, series_e, series_f, series_g, series_h, other; hyphen forms like series-a are rejected", example: ["series_a"]}
         fundingAmount: {type: object, required: false, note: "range object in USD"}
         fundingYear: {type: object, required: false, note: "range object"}
-        require: {type: "array[string]", required: false, note: "features that MUST be present on the company record"}
+        require: {type: array, items: {type: string}, required: false, note: "features that MUST be present on the company record"}
         exclude: {type: object, required: false, note: "domains/companies to drop; the per-search exclude cap is plan-bound (500 Starter → 50,000 Scale)"}
         categoryOperator: {type: string, required: false, note: "and | or — how multiple `category` values combine"}
         keywordsOperator: {type: string, required: false, note: "and | or"}
         technologiesOperator: {type: string, required: false, note: "and | or"}
-        lists: {type: "array[integer]", required: false, note: "restrict to saved list ids (dashboard feature, plan-gated)"}
+        lists: {type: array, items: {type: integer}, required: false, note: "restrict to saved list ids (dashboard feature, plan-gated)"}
       queryParams:
-        expand: {type: "array[string]", required: false, note: "`workforce` costs 5 EXTRA credits PER COMPANY returned — expensive on a search"}
+        expand: {type: array, items: {type: string}, required: false, note: "`workforce` costs 5 EXTRA credits PER COMPANY returned — expensive on a search"}
       note: "ALWAYS call companyenrich.companies.search.count first: it is free and tells you the match total, so you never buy an unexpectedly large page. An empty result set still bills the 1-credit minimum. Deep pagination past 10,000 rows requires the scroll route."
     test_request:
       body: {pageSize: 1, page: 1, technologies: ["stripe"], countries: ["US"]}
@@ -374,8 +374,8 @@ endpoints:
     summary: "Returns the total count of companies matching the given search criteria without retrieving the actual results"
     input:
       body:
-        technologies: {type: "array[string]", required: false, note: "same filter object as companyenrich.companies.search — every field there is accepted here", example: ["stripe"]}
-        countries: {type: "array[string]", required: false, note: "ISO alpha-2 codes", example: ["US"]}
+        technologies: {type: array, items: {type: string}, required: false, note: "same filter object as companyenrich.companies.search — every field there is accepted here", example: ["stripe"]}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes", example: ["US"]}
       note: "FREE and it takes the entire search filter object, so it is the correct first call of any audience-building loop: tune filters here at zero cost, then spend credits once on the real search. Returns {count, total} where `count` is capped at the plan's page limit and `total` is the true match count."
     test_request:
       body: {technologies: ["stripe"], countries: ["US"]}
@@ -397,8 +397,8 @@ endpoints:
     summary: "Returns the top 25 results for free, perfect for previewing search results before running a full search"
     input:
       body:
-        technologies: {type: "array[string]", required: false, note: "same filter object as companyenrich.companies.search"}
-        countries: {type: "array[string]", required: false, note: "ISO alpha-2 codes"}
+        technologies: {type: array, items: {type: string}, required: false, note: "same filter object as companyenrich.companies.search"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes"}
       note: "PLAN-GATED. Only accounts on the vendor's top tier can call this; every other plan gets HTTP 403 with detail 'Your plan does not include access to preview functionality.' Check `capabilities.previews` on GET /me before calling. When available it is strictly better than paying for a first page."
     test_request:
       body: {technologies: ["stripe"], countries: ["US"]}
@@ -422,14 +422,14 @@ endpoints:
     summary: "Finds similar companies to the given company by id or domain — at most 100 companies are returned per request"
     input:
       body:
-        domains: {type: "array[string]", required: false, note: "1-10 seed domains; the result is similar to the SET, so several seeds sharpen the profile", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: false, note: "1-10 seed domains; the result is similar to the SET, so several seeds sharpen the profile", example: ["stripe.com"]}
         domain: {type: string, required: false, note: "DEPRECATED single-seed form — use `domains`"}
         page: {type: integer, required: false, note: "1-based page number", example: 1}
         pageSize: {type: integer, required: false, note: "1-100. THIS IS THE PRICE — 5 credits per company returned", example: 1}
         similarityWeight: {type: number, required: false, note: "-1 to 1, default 0; higher weights raw similarity over the structured filters"}
         minScore: {type: number, required: false, note: "0-1 floor on the similarity score"}
-        countries: {type: "array[string]", required: false, note: "narrow the lookalikes by geography — every companyenrich.companies.search filter is accepted here too"}
-        employees: {type: "array[string]", required: false, note: "narrow by size bucket"}
+        countries: {type: array, items: {type: string}, required: false, note: "narrow the lookalikes by geography — every companyenrich.companies.search filter is accepted here too"}
+        employees: {type: array, items: {type: string}, required: false, note: "narrow by size bucket"}
       note: "THE MOST EXPENSIVE ROW-PRICED ROUTE — 5 credits per company, so a default pageSize of 10 is 50 credits. Call companyenrich.companies.similar.count first (free) and set pageSize explicitly, every time."
     test_request:
       body: {domains: ["stripe.com"], pageSize: 1, page: 1}
@@ -462,7 +462,7 @@ endpoints:
     summary: "Finds similar companies with cursor-based pagination — allows paginating into more than 10.000 results"
     input:
       body:
-        domains: {type: "array[string]", required: false, note: "1-10 seed domains", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: false, note: "1-10 seed domains", example: ["stripe.com"]}
         pageSize: {type: integer, required: false, note: "1-100. THIS IS THE PRICE — 5 credits per company returned", example: 1}
         cursor: {type: string, required: false, note: "omit for the first page, then pass `next_cursor` from the previous response"}
       note: "same filters and same 5-credit-per-row price as companyenrich.companies.similar; only the pagination differs. At 5 credits a row, walking a lookalike list this way gets expensive fast — the async export job reserves credits up front and is the safer shape for large pulls."
@@ -495,7 +495,7 @@ endpoints:
     summary: "Returns the total count of similar companies matching the given search criteria without retrieving the actual results"
     input:
       body:
-        domains: {type: "array[string]", required: false, note: "1-10 seed domains", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: false, note: "1-10 seed domains", example: ["stripe.com"]}
         minScore: {type: number, required: false, note: "0-1 similarity floor — raise it here for free until the count looks right"}
       note: "FREE, and the single most valuable call on this provider given similar-company rows cost 5 credits each. Tune `minScore` and the filters against the count until the audience is the size you want, then buy exactly that many rows."
     test_request:
@@ -523,7 +523,7 @@ endpoints:
         - {kind: job, path: job_id}
     input:
       body:
-        domains: {type: "array[string]", required: true, note: "1-10,000 company domains. THIS IS THE PRICE — 1 credit per domain successfully enriched, charged on completion", example: ["anthropic.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "1-10,000 company domains. THIS IS THE PRICE — 1 credit per domain successfully enriched, charged on completion", example: ["anthropic.com"]}
         webhook_url: {type: string, required: false, note: "callback URL fired on completion. Not usable through a proxied call — poll companyenrich.companies.enrich.bulk.status instead, which is free"}
       note: "returns {job_id, status, total_domains, estimated_credits} in milliseconds and does the work in the background. Credits are charged ON COMPLETION and only for domains that actually enriched, so `estimated_credits` is an upper bound. Poll the status route (free) until status is `completed`, then download `results_url`."
     test_request:
@@ -689,11 +689,11 @@ endpoints:
       body:
         page: {type: integer, required: false, note: "1-based; page * pageSize may not exceed 10,000 — past that use the scroll route", example: 1}
         pageSize: {type: integer, required: false, note: "1-100, default 10. THIS IS THE PRICE — 2 credits per PERSON returned, so a default page costs 20 credits", example: 1}
-        domains: {type: "array[string]", required: false, note: "employer domains, up to 2,500 — the usual way to enumerate a company's staff", example: ["stripe.com"]}
-        positionQuery: {type: "array[string]", required: false, note: "free-text matches on the person's CURRENT job title; resolve real titles first with the free /positions/autocomplete", example: ["Chief Executive Officer"]}
-        seniority: {type: "array[string]", required: false, note: "one or more of owner, founder, c-suite, partner, vp, head, director, manager, senior, entry, intern. NOTE the hyphen in `c-suite` — an underscore is rejected with a bodyless HTTP 400", example: ["c-suite"]}
-        department: {type: "array[string]", required: false, note: "hierarchical department slugs, e.g. c-suite/finance-executive, engineering-technical/data-science"}
-        countries: {type: "array[string]", required: false, note: "ISO 3166-1 alpha-2 codes"}
+        domains: {type: array, items: {type: string}, required: false, note: "employer domains, up to 2,500 — the usual way to enumerate a company's staff", example: ["stripe.com"]}
+        positionQuery: {type: array, items: {type: string}, required: false, note: "free-text matches on the person's CURRENT job title; resolve real titles first with the free /positions/autocomplete", example: ["Chief Executive Officer"]}
+        seniority: {type: array, items: {type: string}, required: false, note: "one or more of owner, founder, c-suite, partner, vp, head, director, manager, senior, entry, intern. NOTE the hyphen in `c-suite` — an underscore is rejected with a bodyless HTTP 400", example: ["c-suite"]}
+        department: {type: array, items: {type: string}, required: false, note: "hierarchical department slugs, e.g. c-suite/finance-executive, engineering-technical/data-science"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO 3166-1 alpha-2 codes"}
         query: {type: string, required: false, note: "free-text match on the employer's name and domain, max 250 chars"}
         companyFilter: {type: object, required: false, note: "a nested company lookup — search people at companies matching firmographic criteria rather than a fixed domain list"}
         atCurrentCompanyAfter: {type: string, required: false, note: "UTC date — only people who joined their current employer after it; the job-change signal"}
@@ -703,7 +703,7 @@ endpoints:
         education: {type: object, required: false, note: "school/degree filter"}
         exclude: {type: object, required: false, note: "people or companies to drop from the results"}
       queryParams:
-        expand: {type: "array[string]", required: false, note: "`education` adds the education block at extra credit cost per person"}
+        expand: {type: array, items: {type: string}, required: false, note: "`education` adds the education block at extra credit cost per person"}
       note: "BILLS PER RESULT — 2 credits per person, with a 2-credit minimum when nothing matches. There is no free count route for people (unlike companies), so keep pageSize at 1 while you tune filters. Results carry name, location, socials.linkedin_url and the full `experiences` array with position, seniority and department per role — but NOT an email address; that is a separate, dearer call (companyenrich.people.email)."
     test_request:
       body: {pageSize: 1, page: 1, domains: ["stripe.com"], seniority: ["c-suite"]}
@@ -738,8 +738,8 @@ endpoints:
       body:
         pageSize: {type: integer, required: false, note: "1-100. THIS IS THE PRICE — 2 credits per person returned", example: 1}
         cursor: {type: string, required: false, note: "omit for the first page, then pass `next_cursor` from the previous response"}
-        domains: {type: "array[string]", required: false, note: "employer domains, up to 2,500", example: ["stripe.com"]}
-        positionQuery: {type: "array[string]", required: false, note: "matches on current job title", example: ["Chief Executive Officer"]}
+        domains: {type: array, items: {type: string}, required: false, note: "employer domains, up to 2,500", example: ["stripe.com"]}
+        positionQuery: {type: array, items: {type: string}, required: false, note: "matches on current job title", example: ["Chief Executive Officer"]}
       note: "identical filter set to companyenrich.people.search — every field there applies — with a cursor instead of a page number and no 10,000-row ceiling. For anything large, the async people export reserves credits up front and is safer."
     test_request:
       body: {pageSize: 1, domains: ["stripe.com"], positionQuery: ["Chief Executive Officer"]}
@@ -771,7 +771,7 @@ endpoints:
     input:
       queryParams:
         id: {type: integer, required: true, note: "the numeric `id` from a people search, lookup or email response", example: 256474769}
-        expand: {type: "array[string]", required: false, note: "`education` adds the education block at extra credit cost"}
+        expand: {type: array, items: {type: string}, required: false, note: "`education` adds the education block at extra credit cost"}
       note: "re-fetching a person costs the same 2 credits as returning them from a search, so cache search results rather than round-tripping ids."
     test_request:
       queryParams: {id: 256474769}
@@ -807,7 +807,7 @@ endpoints:
       body:
         email: {type: string, required: true, note: "a work email address; free-mail domains will not resolve to a company", example: "patrick@stripe.com"}
       queryParams:
-        expand: {type: "array[string]", required: false, note: "`education` adds the education block at extra credit cost"}
+        expand: {type: array, items: {type: string}, required: false, note: "`education` adds the education block at extra credit cost"}
       note: "READ THE MECHANISM BEFORE TRUSTING THE ANSWER. This is not a mailbox lookup — the provider resolves the employer from the domain and then guesses which employee the local part refers to, from that company's address patterns. Verified live 2026-08-20: `patrick@stripe.com` returned a Stripe employee named Patrick, but NOT the Patrick that address belongs to. Treat the result as a candidate, and confirm it against the returned experiences before acting on it."
     test_request:
       body: {email: "patrick@stripe.com"}
@@ -873,7 +873,7 @@ endpoints:
         - {kind: people_email_job, path: job_id}
     input:
       body:
-        items: {type: "array[object]", required: true, note: "1-1,000 objects of {person_id (required, integer), domain (optional string)}. NOTE the field is `person_id`, not `id` — using `id` is rejected with a bodyless HTTP 400", example: [{person_id: 256474769, domain: "stripe.com"}]}
+        items: {type: array, items: {type: object}, required: true, note: "1-1,000 objects of {person_id (required, integer), domain (optional string)}. NOTE the field is `person_id`, not `id` — using `id` is rejected with a bodyless HTTP 400", example: [{person_id: 256474769, domain: "stripe.com"}]}
         webhook_url: {type: string, required: false, note: "callback on completion; poll the free status route instead when calling through a proxy"}
       note: "the batch form of companyenrich.people.email. Returns {job_id, status, total_requests, estimated_credits} immediately; `estimated_credits` assumes every lookup succeeds and is charged fresh, so it is a strict upper bound. Completed jobs report found_count / not_found_count / unavailable_count separately."
     test_request:
@@ -932,11 +932,11 @@ endpoints:
     input:
       body:
         count: {type: integer, required: true, note: "how many people to export, up to 50,000. THIS IS THE PRICE — 2 credits each, reserved at submission", example: 1}
-        domains: {type: "array[string]", required: false, note: "employer domains, up to 2,500", example: ["stripe.com"]}
-        seniority: {type: "array[string]", required: false, note: "owner, founder, c-suite, partner, vp, head, director, manager, senior, entry, intern", example: ["c-suite"]}
-        department: {type: "array[string]", required: false, note: "hierarchical department slugs"}
-        positionQuery: {type: "array[string]", required: false, note: "matches on current job title"}
-        countries: {type: "array[string]", required: false, note: "ISO alpha-2 codes"}
+        domains: {type: array, items: {type: string}, required: false, note: "employer domains, up to 2,500", example: ["stripe.com"]}
+        seniority: {type: array, items: {type: string}, required: false, note: "owner, founder, c-suite, partner, vp, head, director, manager, senior, entry, intern", example: ["c-suite"]}
+        department: {type: array, items: {type: string}, required: false, note: "hierarchical department slugs"}
+        positionQuery: {type: array, items: {type: string}, required: false, note: "matches on current job title"}
+        countries: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes"}
         companyFilter: {type: object, required: false, note: "nested firmographic company filter"}
         webhook_url: {type: string, required: false, note: "callback on completion; poll the free status route instead when calling through a proxy"}
       note: "takes the same filters as companyenrich.people.search, flattened alongside a required `count`. The response echoes `total_matching` next to `requested_count`, which is the closest thing this provider offers to a free people count — the estimate arrives before the rows are built, though the credits are already reserved by then."
@@ -1213,7 +1213,7 @@ endpoints:
     input:
       body:
         query: {type: string, required: false, note: "state or province name; prefixes DO work here ('cali' matched California)", example: "cali"}
-        countryCodes: {type: "array[string]", required: false, note: "ISO alpha-2 codes to scope the search", example: ["US"]}
+        countryCodes: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes to scope the search", example: ["US"]}
         page: {type: integer, required: false, note: "1-based page number"}
       note: "FREE. Returns numeric state `id`s — those integers, not the names, are what the `states` filter on company search takes."
     test_request:
@@ -1236,7 +1236,7 @@ endpoints:
     input:
       body:
         query: {type: string, required: false, note: "city name; prefixes work ('san fran' matched three San Francisco entries)", example: "san fran"}
-        countryCodes: {type: "array[string]", required: false, note: "ISO alpha-2 codes to scope the search", example: ["US"]}
+        countryCodes: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes to scope the search", example: ["US"]}
         page: {type: integer, required: false, note: "1-based page number"}
       note: "FREE. Returns numeric city `id`s for the `cities` filter. Expect near-duplicates for one metro ('San Francisco', 'City and County of San Francisco', 'South San Francisco') — pass all the ids you mean, or you will silently narrow the audience."
     test_request:

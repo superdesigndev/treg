@@ -336,9 +336,9 @@ epTryCliCall(){ if(!this.epTry) return '';
       for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!==''))
         s+=` --header ${p.name}=${JSON.stringify(String(p.value))}`;
       if(this.epTryBodyType==='multipart'){
-        for(const p of this.epTryMultipart.filter(p=>!String(p.type).includes('file')&&String(p.value)!==''))
+        for(const p of this.epTryMultipart.filter(p=>!p.file&&String(p.value)!==''))
           s+=` --form ${p.name}=${JSON.stringify(String(p.value))}`;
-        for(const p of this.epTryMultipart.filter(p=>String(p.type).includes('file')))
+        for(const p of this.epTryMultipart.filter(p=>p.file))
           s+=` --upload ${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}`;
       }else if(method!=='GET' && this.epTryBody.trim()) s+=` --data ${this.epTryShellBody}`;
       if(this.epTry.id==='fishaudio.tts.s2-1-pro') s+=' > speech.mp3';
@@ -355,10 +355,10 @@ epTryCurl(){ if(!this.epTry) return '';
       let s=`curl -X ${method} "${url}" \\\n  -H "X-Treg-Token: ${tok}"`;
       if(this.sessionMode && this.activeSlugNow) s+=` \\\n  -H "X-Treg-Org: ${this.activeSlugNow}"`;  // minted identity token needs the org header
       if(this.epTryAuthMethod) s+=` \\\n  -H "X-Treg-Authorization-Method: ${this.epTryAuthMethod}"`;
-      for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!=='')) s+=` \\\n  -H "${p.name}: ${String(p.value).replace(/"/g,'\\"')}"`;
+      for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!=='')) s+=` \\\n  -H "${p.name}: ${String(p.value).replace(/["\\]/g,'\\$&')}"`;
       if(this.epTryBodyType==='multipart'){
-        for(const p of this.epTryMultipart.filter(p=>!String(p.type).includes('file')&&String(p.value)!=='')) s+=` \\\n  -F "${p.name}=${String(p.value).replace(/"/g,'\\"')}"`;
-        for(const p of this.epTryMultipart.filter(p=>String(p.type).includes('file'))) s+=` \\\n  -F "${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}"`;
+        for(const p of this.epTryMultipart.filter(p=>!p.file&&String(p.value)!=='')) s+=` \\\n  -F "${p.name}=${String(p.value).replace(/["\\]/g,'\\$&')}"`;
+        for(const p of this.epTryMultipart.filter(p=>p.file)) s+=` \\\n  -F "${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}"`;
       }else if(method!=='GET' && this.epTryBody.trim()) s+=` \\\n  -H "Content-Type: application/json" \\\n  --data ${this.epTryShellBody}`;
       if(this.epTry.id==='fishaudio.tts.s2-1-pro') s+=' \\\n  --output speech.mp3';
       return s; },

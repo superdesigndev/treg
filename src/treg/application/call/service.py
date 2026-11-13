@@ -997,6 +997,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 resolve_call=_resolve_call,
                 request_headers=request.headers,
                 authorization_method=request.headers.get(AUTHORIZATION_METHOD_HEADER, ""),
+                log_would_refuse=not request.context.input.routed_child,
             ), request, call_ref)
         except CallFailure as mkexc:
             # Catalog resolution is allowed to fall through from a named miss, but its own 404 must

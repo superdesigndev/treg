@@ -163,9 +163,10 @@ one mistake. treg does not switch providers on a direct call; only you know whic
   run one tool of each shape and merge the results.
 - A tool marked `strict_query: true` accepts only its declared query parameters, once each, with
   required fields and allowed values enforced, and no body. Rejected input is not forwarded.
-- Send each declared single-valued parameter once, and a row count such as `limit` as a whole
-  number within its stated maximum: a tool that enforces this answers a 400
-  `catalog_parameter_invalid` naming the parameter, and nothing is charged.
+- Send each declared parameter within its declared type (a whole number for `integer`,
+  `true`/`false` for `boolean`), allowed values and range, each single-valued one once, and a row
+  count such as `limit` as a whole number within its stated maximum: a tool that enforces this
+  answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 **How a catalog call is served**, in this order:
 

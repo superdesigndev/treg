@@ -10,7 +10,20 @@ ROUTED_KIND = "routed"
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
                    "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
                    "url": "https://example.com"}
+_PLACEHOLDERS = {"array": ["…"], "object": {}}
 ROUTED_PROVIDER = "treg"
+# What a contract field declares that the generated row's body shows and the parameter check reads.
+_DECLARED = ("type", "format", "items", "enum", "min", "max", "minLength", "maxLength", "minItems", "maxItems")
+
+
+def _placeholder(declared: object) -> object:
+    types = declared if isinstance(declared, list) else [declared]
+    return "…" if "string" in types else next((_PLACEHOLDERS[t] for t in types if t in _PLACEHOLDERS), "…")
+
+
+def _declared(spec: dict | None) -> dict:
+    spec = spec or {"type": "string"}
+    return {k: spec[k] for k in _DECLARED if k in spec}
 
 
 def _best_variant(contract: Contract, kids: list[dict], adapters: dict[str, Adapter]) -> tuple[str, ...]:
@@ -40,12 +53,11 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
     variants = " | ".join("{" + ", ".join(v) + "}" for v in contract.identity)
     for variant in contract.identity:
         for k in variant:
-            body.setdefault(k, {"type": contract.identity_types.get(k, "str"), "required": False,
+            body.setdefault(k, {**_declared(contract.identity_specs.get(k)), "required": False,
                                 "note": "; ".join(["identity"] + ([contract.identity_notes[k]]
                                                                   if k in contract.identity_notes else []))})
     for k, spec in (contract.filters or {}).items():
-        body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
-                            **{b: spec[b] for b in ("min", "max") if b in (spec or {})},
+        body.setdefault(k, {**_declared(spec), "required": False,
                             "note": "; ".join(["filter"]
                                               + ([f"default {spec['default']!r}"] if (spec or {}).get("default") is not None else [])
                                               + ([spec["note"]] if (spec or {}).get("note") else []))})
@@ -69,7 +81,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                            f"({variants})"
                            + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
                            + (". Omit a field you don't have: a url field holding something else, such as N/A, "
-                              "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
+                              "is refused (422 invalid_identity)"
+                              if any(s.get("format") == "url" for s in contract.identity_specs.values()) else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "
                            "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
                            "X-Treg-Served-By names the provider."
@@ -83,7 +96,7 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                            + (" X-Treg-Route-Decisive: true counts an answer only when its verdict is "
                               + " or ".join(contract.verdict_decisive) + ", asking up to two more providers (best measured "
                               "first, each at its own price), in _treg.decision." if contract.verdict_decisive else ""))},
-        "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, "…") for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
+        "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, _placeholder(body[k].get("type"))) for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
         "cost": {"type": "per_success", "value": lo, "currency": "USD", "per": 1, "unit": "call",
                  "source": "inferred", "confidence": "documented", "checked": None,
                  # No single quote is honest when children bill their misses: a $0 floor reads

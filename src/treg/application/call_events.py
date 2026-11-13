@@ -43,6 +43,7 @@ from .. import call_events as sink
 from ..config import get_settings
 from ..domain.arena import safe_output
 from ..domain.catalog import store as catalog_store
+from ..domain.catalog.params import takes_list, types_of
 from ..domain.catalog.routing import paths as P
 from ..domain.catalog.routing.contracts import Adapter, Contract, canonical_identity
 from ..domain.catalog.routing.segments import SEGMENTERS
@@ -72,7 +73,7 @@ _VALUE_MAX = 256
 # `limit` or `country_code(country)`: an `in_expr` a filter's value can be read back through.
 _field_paths: dict[int, tuple[Adapter, Contract, tuple]] = {}
 _NAME_HALF = re.compile(r"split_(first|last)\(\s*([a-z_][a-z0-9_]*)\s*\)")
-_SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
+_SCALAR_TYPES = {"boolean": bool, "integer": (int,), "number": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
 
@@ -189,22 +190,21 @@ def field_paths(adapter: Adapter, contract: Contract) -> tuple[tuple[str, str, t
     cached = _field_paths.get(id(adapter))
     if cached is not None and cached[0] is adapter and cached[1] is contract:
         return cached[2]
-    fields = [*contract.identity_types, *(contract.filters or {})]
-    kinds = {k: str(((contract.filters or {}).get(k) or {}).get("type") or contract.identity_types.get(k, "str"))
-             for k in fields}
+    fields = [*contract.identity_specs, *(contract.filters or {})]
+    kinds = {k: types_of((contract.filters or {}).get(k) or contract.identity_specs.get(k)) for k in fields}
     # Several upper-case words: case and country transforms pass a placeholder through whole,
     # while a lossy one (`split_first(full_name)`) returns part of it, which is never found.
     marks: dict[str, Any] = {}
     for i, k in enumerate(fields):
         text = "ZQX%d QZX%d WXQ%d" % (i, i, i)
-        marks[k] = 900 + i if kinds[k] == "int" else [text] if kinds[k] == "list" else text
+        marks[k] = 900 + i if "integer" in kinds[k] else [text] if "array" in kinds[k] else text
     out = []
     for field_name in fields:
-        if kinds[field_name] == "bool":
+        if "boolean" in kinds[field_name]:
             continue
         # A number is tried at sizes on both sides of the usual page-size clamps
         # (`at_most(limit, 10)`, `at_least(limit, 10)`), so one of them passes through untouched.
-        tries = (7, 37, 900) if kinds[field_name] == "int" else (marks[field_name],)
+        tries = (7, 37, 900) if "integer" in kinds[field_name] else (marks[field_name],)
         others = {(m[0] if isinstance(m, list) else m) for k, m in marks.items() if k != field_name}
         for target, expr in (adapter.in_expr or {}).items():
             if not isinstance(expr, str):
@@ -251,16 +251,16 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     given: dict = {}
     for field_name, target in adapter.in_map.items():
         v = P.get_path(doc, target)
-        if isinstance(v, list) and len(v) == 1 and contract.identity_types.get(field_name, "str") != "list":
+        if isinstance(v, list) and len(v) == 1 and not takes_list(contract.identity_specs.get(field_name)):
             v = v[0]
-        if isinstance(v, dict) and contract.identity_types.get(field_name) != "object":
+        if isinstance(v, dict) and "object" not in types_of(contract.identity_specs.get(field_name)):
             continue  # the field sits inside this object (`{v: title, s: i}`): read by its path below
         if v not in (None, ""):
             given[field_name] = v
     # An expression that is just an identity field (`body.url: linkedin_url`, used where the
     # body is an array) reads back like a plain `in` entry; computed ones cannot be inverted.
     for target, expr in (adapter.in_expr or {}).items():
-        if isinstance(expr, str) and expr in contract.identity_types and expr not in given:
+        if isinstance(expr, str) and expr in contract.identity_specs and expr not in given:
             v = P.get_path(doc, target)
             if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
                 given[expr] = v
@@ -280,14 +280,14 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             halves.setdefault(m.group(2), {})[m.group(1)] = P.get_path(doc, target)
     for field_name, got in halves.items():
         first, last = got.get("first"), got.get("last")
-        if field_name in contract.identity_types and field_name not in given \
+        if field_name in contract.identity_specs and field_name not in given \
                 and isinstance(first, str) and first.strip():
             given[field_name] = f"{first.strip()} {last.strip()}" if isinstance(last, str) and last.strip() \
                 else first.strip()
-    readable = {**contract.identity_types, **(contract.filters or {})}
+    readable = {**contract.identity_specs, **(contract.filters or {})}
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
-        if field_name in contract.identity_types:
+        if field_name in contract.identity_specs:
             try:
                 v = P.evaluate(expr, doc)
             except (TypeError, ValueError, AttributeError, IndexError):
@@ -311,7 +311,7 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
     hashing, so published route rules match calls exactly as their events record them."""
     identity, supplied = canonical_identity(contract, given or {})
-    norm = {k: n for k in contract.identity_types
+    norm = {k: n for k in contract.identity_specs
             if (n := normalize(k, identity.get(k))) is not None}
     variant = next((v for v in contract.identity if all(k in norm for k in v)), None)
     meta: dict[str, str] = {}
@@ -344,11 +344,11 @@ _SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email"
            "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
            "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
            "first_name": "Ann", "last_name": "Lee"}
-_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {"type": "object"}}
+_SAMPLE_BY_TYPE = {"boolean": True, "array": ["example"], "object": {"type": "object"}}
 
 
 def _sample(contract: Contract, key: str):
-    return _SAMPLE.get(key, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(key)), "example"))
+    return _SAMPLE.get(key, _SAMPLE_BY_TYPE.get(str((contract.identity_specs.get(key) or {}).get("type")), "example"))
 
 
 def recorded_variants(contract: Contract) -> dict[str, dict]:
@@ -361,7 +361,7 @@ def recorded_variants(contract: Contract) -> dict[str, dict]:
         fields = {k: _sample(contract, k) for k in variant}
         if segment(contract, fields)[0] != name:
             continue
-        for key in contract.identity_types:
+        for key in contract.identity_specs:
             if key not in fields and segment(contract, {**fields, key: _sample(contract, key)})[0] == name:
                 fields[key] = _sample(contract, key)
         out[name] = fields
@@ -383,10 +383,10 @@ def segment_checks(contract: Contract) -> dict:
     """Every key `segment` can produce for this contract's calls, each with a test of a value it
     can record: a recorded variant for `input_type`, a lower-cased label for `tld`."""
     checks: dict = {"input_type": recorded_variants(contract).__contains__}
-    if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
+    if any(k in contract.identity_specs for k in (*_DOMAIN_KEYS, "email")):
         checks["tld"] = _tld
         checks["domain_class"] = _DOMAIN_CLASSES.__contains__
-    if "phone" in contract.identity_types:
+    if "phone" in contract.identity_specs:
         checks["calling_code"] = _calling_code
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value":

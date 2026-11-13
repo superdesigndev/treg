@@ -454,3 +454,15 @@ async def test_the_shared_key_serves_only_the_declared_models(gemini):
     assert response.status_code == 400
     assert response.json()['detail']['parameter'] == 'pathParams.model'
     assert state['hits'] == 0
+
+
+async def test_the_teams_own_key_may_name_another_model(gemini):
+    """The model pin is treg's key's own (`platform_request`): the team's own key names any model,
+    and the call is relayed unmetered."""
+    client, state = gemini
+    stored = await client.post('/secrets', json={'name': 'google-ai', 'value': 'synthetic-own-key'})
+    assert stored.status_code == 200, stored.text
+    response = await client.post(f'/call/{GEMINI}?model=gemini-2.5-pro', json=GEMINI_REQUEST)
+    assert response.status_code == 200, response.text[:500]
+    assert 'x-treg-cost-micro' not in response.headers
+    assert state['hits'] == 1

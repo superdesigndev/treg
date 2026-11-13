@@ -307,31 +307,6 @@ endpoints:
       country:
         type: string
         required: false
-        enum:
-        - US
-        - AU
-        - BR
-        - CA
-        - CN
-        - FR
-        - DE
-        - IN
-        - IT
-        - MX
-        - NL
-        - SG
-        - ES
-        - TR
-        - AE
-        - GB
-        - JP
-        - SA
-        - PL
-        - SE
-        - BE
-        - EG
-        - ZA
-        - IE
         note: 'Country code for the Amazon marketplace. Available Values: - `US`: United States - `AU`: Australia - `BR`: Brazil - `CA`: Canada - `CN`: China - `FR`: France - `DE`: Germany - `IN`: India - `IT`: Italy - `MX`: Mexico - `NL`: Netherlands - `SG`: Singapore - `ES`: Spain - `TR`: Turkey - `AE`: United A One of: US, AU, BR, CA, CN, FR, DE, IN, IT, MX, NL, SG.'
         example: US
       sortBy:
@@ -1580,9 +1555,7 @@ endpoints:
       range:
         type: string
         required: false
-        enum:
-        - DAY_30
-        - DAY_90
+        enum: [DAY_30, DAY_90, '30', '90']
         note: 'Time range. Available Values: - `DAY_30`: Last 30 days - `DAY_90`: Last 90 days One of: DAY_30, DAY_90.'
         example: '90'
   test_request:
@@ -1673,19 +1646,13 @@ endpoints:
       liveType:
         type: string
         required: false
-        enum:
-        - ALL
-        - GAME
-        - ECOMMERCE
-        - OTHER
+        enum: [ALL, GAME, ECOMMERCE, OTHER, '1']
         note: 'Live room type filter. Available Values: - `ALL`: All live rooms - `GAME`: Game live rooms - `ECOMMERCE`: E-commerce live rooms - `OTHER`: Other live rooms One of: ALL, GAME, ECOMMERCE, OTHER.'
         example: '1'
       period:
         type: string
         required: false
-        enum:
-        - DAY_30
-        - DAY_90
+        enum: [DAY_30, DAY_90, '30', '90']
         note: 'Live data time period. Available Values: - `DAY_30`: Last 30 days - `DAY_90`: Last 90 days One of: DAY_30, DAY_90.'
         example: '30'
       onlyStarOrder:
@@ -1696,9 +1663,7 @@ endpoints:
       flowType:
         type: string
         required: false
-        enum:
-        - EXCLUDE
-        - INCLUDE
+        enum: [EXCLUDE, INCLUDE, '0']
         note: 'Flow type filter. Available Values: - `EXCLUDE`: Exclude - `INCLUDE`: Include One of: EXCLUDE, INCLUDE.'
         example: '0'
   test_request:
@@ -1734,19 +1699,13 @@ endpoints:
       liveCrowdType:
         type: string
         required: false
-        enum:
-        - AUDIENCE
-        - FANS
+        enum: [AUDIENCE, FANS, '2']
         note: 'Live audience profile type. Available Values: - `AUDIENCE`: Viewer profile - `FANS`: Follower profile One of: AUDIENCE, FANS.'
         example: '2'
       liveType:
         type: string
         required: false
-        enum:
-        - ALL
-        - GAME
-        - ECOMMERCE
-        - OTHER
+        enum: [ALL, GAME, ECOMMERCE, OTHER, '1']
         note: 'Live room type filter. Available Values: - `ALL`: All live rooms - `GAME`: Game live rooms - `ECOMMERCE`: E-commerce live rooms - `OTHER`: Other live rooms One of: ALL, GAME, ECOMMERCE, OTHER.'
         example: '1'
   test_request:
@@ -4523,17 +4482,13 @@ endpoints:
       sortOrder:
         type: string
         required: false
-        enum:
-        - RELEVANCE
-        - RECENT
+        enum: [RELEVANCE, RECENT, relevance, recent]
         note: 'Comment sort order. Available Values: - `RELEVANCE`: Sort comments by relevance - `RECENT`: Sort comments from most recent One of: RELEVANCE, RECENT.'
         example: relevance
       postType:
         type: string
         required: false
-        enum:
-        - ACTIVITY
-        - UGC
+        enum: [ACTIVITY, UGC, activity, ugc]
         note: 'LinkedIn post identifier type. Available Values: - `ACTIVITY`: LinkedIn activity post - `UGC`: LinkedIn user-generated content post One of: ACTIVITY, UGC.'
         example: activity
   test_request:
@@ -4569,13 +4524,7 @@ endpoints:
       type:
         type: string
         required: false
-        enum:
-        - ALL
-        - LIKE
-        - PRAISE
-        - EMPATHY
-        - APPRECIATION
-        - INTEREST
+        enum: [ALL, LIKE, PRAISE, EMPATHY, APPRECIATION, INTEREST, all, like, praise, empathy, appreciation, interest]
         note: 'Reaction type filter. Available Values: - `ALL`: All reaction types - `LIKE`: Like reactions - `PRAISE`: Praise reactions - `EMPATHY`: Empathy reactions - `APPRECIATION`: Appreciation reactions - `INTEREST`: Interest reactions One of: ALL, LIKE, PRAISE, EMPATHY, APPRECIATION, INTEREST.'
         example: all
   test_request:
@@ -7318,12 +7267,7 @@ endpoints:
       searchType:
         type: string
         required: false
-        enum:
-        - TOP
-        - LATEST
-        - MEDIA
-        - PEOPLE
-        - LISTS
+        enum: [TOP, LATEST, MEDIA, PEOPLE, LISTS, Top, Latest, Media, People, Lists]
         note: 'Search result type. Available Values: - `TOP`: Top search results - `LATEST`: Latest search results - `MEDIA`: Media search results - `PEOPLE`: People search results - `LISTS`: List search results One of: TOP, LATEST, MEDIA, PEOPLE, LISTS.'
         example: Top
       cursor:

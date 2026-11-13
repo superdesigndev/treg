@@ -70,7 +70,7 @@ endpoints:
         include_errors: {type: boolean, required: false, note: "adds a per-input error report to the output"}
         custom_output_fields: {type: string, required: false, note: "pipe-separated field list to trim the response", example: "url|about.updated_on"}
       body:
-        input: {type: array, required: true, note: "array of input objects for the chosen scraper — usually [{url: …}]", example: [{"url": "https://www.instagram.com/instagram"}]}
+        input: {type: array, items: {type: object}, required: true, note: "array of input objects for the chosen scraper — usually [{url: …}]", example: [{"url": "https://www.instagram.com/instagram"}]}
       bodyType: json
       note: "the API reference documents the body as {input: [...]}, while the quickstarts post a bare array [{url: …}] to the same path — both appear in official docs, so treat the array as the payload and the wrapper as optional until verified. HARD 1-minute timeout: past that the call returns HTTP 202 with a snapshot_id and you must collect the rows from brightdata.web.scrape.job.results instead. Use trigger/progress/snapshot for anything beyond a few URLs"
     test_request:
@@ -109,7 +109,7 @@ endpoints:
         uncompressed_webhook: {type: boolean, required: false}
         custom_output_fields: {type: string, required: false, note: "pipe-separated field list"}
       body:
-        input: {type: array, required: true, note: "one object per target, usually {url: …}. The body is posted as a BARE JSON array of these — `input` is a label for the array here, not a wrapper field to send", example: [{"url": "https://www.instagram.com/instagram"}]}
+        input: {type: array, items: {type: object}, required: true, note: "one object per target, usually {url: …}. The body is posted as a BARE JSON array of these — `input` is a label for the array here, not a wrapper field to send", example: [{"url": "https://www.instagram.com/instagram"}]}
       bodyType: json
       note: "returns {snapshot_id: \"s_…\"} immediately; nothing is billed until records are delivered. Always set limit_per_input on a discovery run — a discover_new job with no cap decides for itself how many records to produce, and each one is billable"
     test_request:
@@ -191,7 +191,7 @@ endpoints:
         dataset_id: {type: string, required: true, note: "pinned to the documented Instagram — Profiles dataset", example: "gd_l1vikfch901nx3by4", enum: ["gd_l1vikfch901nx3by4"]}
         format: {type: string, required: false, example: "json"}
       body:
-        input: {type: array, required: true, note: "one object per profile URL — a username alone is not accepted", example: [{"url": "https://www.instagram.com/instagram"}]}
+        input: {type: array, items: {type: object}, required: true, note: "one object per profile URL — a username alone is not accepted", example: [{"url": "https://www.instagram.com/instagram"}]}
       bodyType: json
       note: "same generic runner as brightdata.web.scrape.structured with the dataset_id fixed, which is why the id and output columns are stable enough to compare against tikhub / justoneapi. Batching several profile URLs into one call is both cheaper and faster than one call each; past 1 minute it falls back to 202 + snapshot_id"
     test_request:
@@ -221,7 +221,7 @@ endpoints:
         dataset_id: {type: string, required: true, note: "pinned to the documented LinkedIn — Profiles dataset", example: "gd_l1viktl72bvl7bjuj0", enum: ["gd_l1viktl72bvl7bjuj0"]}
         format: {type: string, required: false, example: "json"}
       body:
-        input: {type: array, required: true, note: "one object per profile URL (linkedin.com/in/…)", example: [{"url": "https://www.linkedin.com/in/satyanadella"}]}
+        input: {type: array, items: {type: object}, required: true, note: "one object per profile URL (linkedin.com/in/…)", example: [{"url": "https://www.linkedin.com/in/satyanadella"}]}
       bodyType: json
       note: "the any_account counterpart to linkedin.yaml's OAuth profile read: that one returns only the connected member, this one returns any public profile URL. Company and job datasets exist too, but their dataset ids are not published as literals in the docs and are not guessed here"
     test_request:

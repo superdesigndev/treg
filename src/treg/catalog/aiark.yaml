@@ -29,7 +29,7 @@ endpoints:
         contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: "Native person, role, location, skill and education filters."}
         lists: {type: object, required: false, note: Exclude temporary people_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
-        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+        size: {type: integer, required: true, min: 1, max: 100, example: 1}
       note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages. A successful response includes a single-use trackId that expires after six hours.
     platform_request: {body.size: 1}
     test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
@@ -89,11 +89,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        lookalikeDomains: {type: "array[string]", required: false, max: 5, example: [example.com]}
+        lookalikeDomains: {type: array, items: {type: string}, required: false, maxItems: 5, example: [example.com]}
         account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
         lists: {type: object, required: false, note: Exclude temporary company_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
-        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+        size: {type: integer, required: true, min: 1, max: 100, example: 1}
       note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages.
     platform_request: {body.size: 1}
     test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
@@ -126,7 +126,7 @@ endpoints:
       bodyType: json
       body:
         id: {type: string, required: false, note: AI Ark person id from search or preview.}
-        url: {type: string, required: false, format: uri, example: https://www.linkedin.com/in/example}
+        url: {type: string, required: false, format: url, example: https://www.linkedin.com/in/example}
       note: Provide id or url. V2 returns data null with HTTP 200 on a miss.
     test_request: {body: {url: https://www.linkedin.com/in/example}}
     cost: &one_credit_hit
@@ -157,7 +157,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        linkedin: {type: string, required: false, format: uri, example: https://www.linkedin.com/in/example}
+        linkedin: {type: string, required: false, format: url, example: https://www.linkedin.com/in/example}
         domain: {type: string, required: false, example: example.com}
         name: {type: string, required: false, example: Jane Doe}
       note: Provide linkedin alone, or provide domain and name together. V2 returns data null with HTTP 200 on a miss.
@@ -224,7 +224,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: https://www.linkedin.com/in/example}
+        url: {type: string, required: true, format: url, example: https://www.linkedin.com/in/example}
     test_request: {body: {url: https://www.linkedin.com/in/example}}
     expect: {json_path: success, equals: true}
     cost:
@@ -258,7 +258,7 @@ endpoints:
       body:
         id: {type: string, required: false, note: Existing list id. Omit to create a list.}
         type: {type: string, required: false, enum: [people_id, company_id], note: Required when creating a list.}
-        values: {type: "array[string]", required: true, min: 1, max: 10000}
+        values: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10000}
         mode: {type: string, required: false, default: APPEND, enum: [APPEND, REPLACE]}
       note: Lists expire after 24 hours. An account can keep up to 50 lists per day.
     cost: &free_cost {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://docs.ai-ark.com/reference/save-list, checked: '2026-09-17', confidence: verified, note: A live list create returned 200 with no balance change.}

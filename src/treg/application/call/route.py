@@ -74,6 +74,7 @@ from ...domain.capacity.signatures import classify as classify_capacity, is_exha
 from ...domain import plugins
 from ...domain import money as ledger
 from ...domain.catalog import outcome as catalog_outcome
+from ...domain.catalog import params
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
@@ -91,7 +92,8 @@ from . import admission, async_bridge, keyslots
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _host_of, _marketplace_secret
+from .resolve import (QueryValues, _anonymous_offer, _body_refusal, _host_of, _marketplace_secret,
+                      _parameter_refused, _query_refusal, param_check_refuses, would_refuse)
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -235,7 +237,7 @@ def _other_subject(contract, identity: dict, core: dict) -> str | None:
     identity field the contract also returns), else None. A renamed profile reports its new handle,
     a wrong match someone else's: `_complete_check` tells them apart by a second provider."""
     for k in contract.output:
-        if k in contract.identity_types and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
+        if k in contract.identity_specs and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
             if _subject(k, core[k]) != _subject(k, identity[k]):
                 return _subject(k, core[k])
     return None
@@ -484,17 +486,17 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
-    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    Required array fields are `[]`, never `null`: the catalog types `results` / `people` / … as arrays,
     and callers (and the miss rule `results == []`) treat null as a broken response rather than an
-    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    empty one. The list's companion `count` (integer) is `0`; every other scalar — including other integers
     such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
     """
     out = {}
     for k, spec in contract.output.items():
         t = (spec or {}).get("type")
-        if t == "list":
+        if t == "array":
             out[k] = []
-        elif t == "int" and k == "count":
+        elif t == "integer" and k == "count":
             out[k] = 0
         else:
             out[k] = None
@@ -505,7 +507,7 @@ def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
     for k in contract.required_output:
-        if (contract.output.get(k) or {}).get("type") == "list":
+        if (contract.output.get(k) or {}).get("type") == "array":
             return k
     return None
 
@@ -586,6 +588,19 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     return out
 
 
+def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str, str] | None:
+    """(child parameter, rule, reason) the adapter's request for this identity breaks, by the
+    check the child runs on every tier before a hold, else None. Sent in refuse mode, the child's
+    400 would read as the caller's fault and end the routed call, so the plan drops the child
+    instead; in log mode the child stays and the drop is logged. A request the adapter cannot build
+    is left to the run, which records it."""
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+    except Exception:  # noqa: BLE001
+        return None
+    return _query_refusal(e, QueryValues(tuple(query.items()))) or _body_refusal(e, _child_body(e, body))
+
+
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions) -> Plan:
     """Candidates for this org: adapters that accept the identity, own keys first, exhausted
     providers dropped, ranked by expected cost per hit. Reads only; nothing reserved."""
@@ -614,6 +629,17 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             capped.append((e, ad, v))
     raw = capped
     _require_counts(ep, raw, contract.filters, identity_given)
+    fitting = []
+    would: dict[str, tuple[str, str]] = {}
+    for e, ad, v in raw:
+        if not (refused := _declaration_refusal(e, ad, identity, v)):
+            fitting.append((e, ad, v))
+        elif param_check_refuses():
+            dropped.append({"endpoint_id": e["id"], "why": f"needs {refused[0]}: {refused[2]}"})
+        else:
+            would[e["id"]] = refused[0], refused[1]
+            fitting.append((e, ad, v))
+    raw = fitting
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -651,6 +677,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
     given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
+    would_drop: list[dict] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
@@ -660,6 +687,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "anonymous" if anonymous else
             "platform"
         )
+        if found := would.pop(e["id"], None):
+            would_drop.append({"endpoint_id": e["id"], "parameter": found[0], "rule": found[1], "tier": tier})
         cv = cat.cost_view(e.get("cost"), e["provider"])
         direct_exhausted = tier == "platform" and keyslots.all_exhausted(
             e["provider"], e["id"], metered=spends_balance((e.get("cost") or {}).get("type")))
@@ -713,6 +742,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
+    would_drop += [{"endpoint_id": eid, "parameter": found[0], "rule": found[1], "tier": "none"}
+                   for eid, found in would.items()]
     decision = None
     if route_rules_app.enabled():
         input_type, meta, _ = call_events.segment(contract, identity_given)
@@ -744,18 +775,23 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             orders["rule"] = _endpoints(ruled)
             ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
-                route_rule=route_rule, orders=orders)
+                route_rule=route_rule, orders=orders, would_drop=would_drop)
 
 
 def _endpoints(cands) -> list[str]:
     return [c.endpoint["id"] for c in cands]
 
 
+def _child_body(ep: dict, body) -> bytes:
+    """The JSON body a child call sends: none on a method that takes none."""
+    return json.dumps(body).encode() if ep["method"] in ("POST", "PUT", "PATCH") and body is not None else b""
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
-    has_body = ep["method"] in ("POST", "PUT", "PATCH") and body is not None
-    payload = json.dumps(body).encode() if has_body else b""
+    payload = _child_body(ep, body)
+    has_body = bool(payload)
     headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
     if remaining_micro is not None:
         # Replace the parent's total ceiling with the unspent amount. The child validates its
@@ -768,7 +804,8 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
     items = tuple(query.items())
     return CallInput(method=ep["method"], raw_rest=ep["id"], raw_headers=tuple(headers), query_items=items,
                      raw_query=urlencode(items), body=_Bytes(payload), caller=parent.input.caller,
-                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only)
+                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only,
+                     routed_child=True)
 
 
 async def _read(response: UpstreamResponse) -> bytes:
@@ -911,10 +948,17 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
     if contract:
         _require_ranges(ep, contract.filters, given)
+    for name, spec in ({**contract.identity_specs, **contract.filters}.items() if contract else ()):
+        if name in given and (found := params.check(spec, given[name])):
+            if param_check_refuses():
+                raise _parameter_refused(ep, f"body.{name}", found[1])
+            would_refuse(ep["id"], f"body.{name}", found[0], "routed", "routed")
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
+    for drop in plan.would_drop:
+        would_refuse(drop["endpoint_id"], drop["parameter"], drop["rule"], drop["tier"], "routed_plan")
     _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the

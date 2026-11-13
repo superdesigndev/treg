@@ -110,7 +110,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
-  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  field the contract types `boolean`, `integer` or `number` keeps its value (`name_match`, `ported`).
   A contract with a segment set that judges answers adds its row counts here (`rows`,
   `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
@@ -189,8 +189,8 @@ Where an output field goes is declared on the contract (`contracts.yaml`), defau
 
 ```yaml
 output:
-  email: {type: str, required: true, analytics: key}
-  verified: {type: bool, analytics: value}
+  email: {type: string, required: true, analytics: key}
+  verified: {type: boolean, analytics: value}
 ```
 
 The parser refuses any other word, and a filter can never be a `key`. The public catalog contract

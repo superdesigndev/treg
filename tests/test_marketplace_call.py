@@ -3837,7 +3837,7 @@ def test_strict_query_accepts_only_declared_path_parameters():
 
 def test_body_allowlist_requires_declared_fields_within_each_object():
     ep = {"id": "sample.people.find", "body_allowlist": True,
-          "input": {"body": {"data": {"type": "array[object]", "required": True,
+          "input": {"body": {"data": {"type": "array", "items": {"type": "object"}, "required": True,
                                       "minItems": 1, "maxItems": 1,
                                       "item_required_any": ["full_name", "linkedin"],
                                       "item_required_all": ["company"]}}}}

@@ -386,11 +386,11 @@ def test_ref_parts():
 def test_an_unknown_analytics_mode_fails_the_contract():
     with pytest.raises(ValueError, match="analytics"):
         C.parse_contracts({"contracts": {"x.find": {
-            "identity": [{"email": "str"}], "output": {"email": {"type": "str", "analytics": "raw"}}}}})
+            "identity": [{"email": "string"}], "output": {"email": {"type": "string", "analytics": "raw"}}}}})
     with pytest.raises(ValueError, match="analytics"):
         C.parse_contracts({"contracts": {"x.find": {
-            "identity": [{"email": "str"}], "filters": {"q": {"type": "str", "analytics": "key"}},
-            "output": {"email": {"type": "str"}}}}})
+            "identity": [{"email": "string"}], "filters": {"q": {"type": "string", "analytics": "key"}},
+            "output": {"email": {"type": "string"}}}}})
 
 
 def test_the_shipped_catalog_uses_only_known_modes_and_keeps_its_routes():

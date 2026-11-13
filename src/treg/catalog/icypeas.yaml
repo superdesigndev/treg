@@ -195,7 +195,7 @@ endpoints:
         file: {type: string, required: true, note: "the file id returned by icypeas.bulk.search — returns that job's rows in input order", example: "L3mhHKAB9iupLhv96W-F"}
         limit: {type: integer, required: false, min: 1, max: 100, note: "rows per page, default 10, MAX 100", example: 10}
         next: {type: boolean, required: false, note: "true = next page, false = previous page, used with `sorts`"}
-        sorts: {type: "array", required: false, note: "the pagination cursor echoed by the previous response — pass it back to page further"}
+        sorts: {type: "array", items: {type: [boolean, number, string]}, required: false, note: "the pagination cursor echoed by the previous response — pass it back to page further"}
       note: "Free. Watch icypeas.search.files.read for `finished`, then page through the rows here. Rate limited to 30 calls/min"
     test_request:
       body: {mode: "bulk", file: "L3mhHKAB9iupLhv96W-F", limit: 1}
@@ -220,7 +220,7 @@ endpoints:
       body:
         name: {type: string, required: true, note: "your label for the job — how you find it later", example: "Q3 prospect list"}
         task: {type: string, required: true, note: "one of email-search | email-verification | domain-search", example: "email-search"}
-        data: {type: "array[array[string]]", required: true, note: "one array per row. email-search rows are [firstname, lastname, domainOrCompany] (one of the two names may be empty); email-verification and domain-search rows hold a single value. MAX 5,000 rows", example: [["Patrick", "Collison", "stripe.com"]]}
+        data: {type: array, items: {type: array, items: {type: string}}, required: true, note: "one array per row. email-search rows are [firstname, lastname, domainOrCompany] (one of the two names may be empty); email-verification and domain-search rows hold a single value. MAX 5,000 rows", example: [["Patrick", "Collison", "stripe.com"]]}
         custom: {type: object, required: false, note: "{webhookUrlItem, webhookUrlBulkDone, externalIds, includeResultsInWebhook} — per-row and end-of-job callbacks, your own row ids, and whether results ride in the final webhook"}
       note: "Returns {file, status: 'in_progress'} immediately. Track it with icypeas.search.files.read and collect rows with icypeas.bulk.results.read using that file id. Rate limited to 1 call/sec"
     test_request:
@@ -308,7 +308,7 @@ endpoints:
     summary: "Reverse up to 50 professional email addresses to their profile URLs in one call"
     input:
       body:
-        data: {type: "array[string]", required: true, note: "professional email addresses — MINIMUM 2, MAXIMUM 50 per request", example: ["collison@stripe.com", "patrick@stripe.com"]}
+        data: {type: array, items: {type: string}, required: true, note: "professional email addresses — MINIMUM 2, MAXIMUM 50 per request", example: ["collison@stripe.com", "patrick@stripe.com"]}
       note: "SYNCHRONOUS — results come back in `data`, one entry per input address, in order. Same 10-credit-per-hit rate as the single route, so a full 50-address call can cost 500 credits: check the addresses are worth it first"
     test_request:
       body: {data: ["collison@stripe.com", "patrick@stripe.com"]}
@@ -517,7 +517,7 @@ endpoints:
     input:
       body:
         type: {type: string, required: true, note: "'profile' for people or 'company' for companies — this one field decides which shape `data` takes", example: "company"}
-        data: {type: "array[object]", required: true, note: "MAX 50 rows. With type=profile each row is {firstname, lastname, companyOrDomain|jobTitle}; with type=company each row is {companyOrDomain}", example: [{"companyOrDomain": "anthropic.com"}]}
+        data: {type: array, items: {type: object}, required: true, note: "MAX 50 rows. With type=profile each row is {firstname, lastname, companyOrDomain|jobTitle}; with type=company each row is {companyOrDomain}", example: [{"companyOrDomain": "anthropic.com"}]}
       note: "SYNCHRONOUS — `data` comes back one entry per input row, in order. Serves BOTH people and companies (hence the single entry); the per-URL price is the same either way"
     test_request:
       body: {type: "company", data: [{companyOrDomain: "anthropic.com"}]}
@@ -611,7 +611,7 @@ endpoints:
     input:
       body:
         type: {type: string, required: true, note: "'profile' for people or 'company' for companies", example: "company"}
-        data: {type: "array[string]", required: true, note: "profile URLs matching `type`. MAX 50 per request", example: ["https://www.linkedin.com/company/anthropicresearch"]}
+        data: {type: array, items: {type: string}, required: true, note: "profile URLs matching `type`. MAX 50 per request", example: ["https://www.linkedin.com/company/anthropicresearch"]}
       note: "SYNCHRONOUS — `data` comes back one entry per URL, in order, each with the same record shape as the single routes. Serves BOTH people and companies; the price follows the type (1.5 credits per profile, 0.5 per company)"
     test_request:
       body: {type: "company", data: ["https://www.linkedin.com/company/anthropicresearch"]}

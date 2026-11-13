@@ -748,8 +748,7 @@ TEXT: dict[str, dict] = {
     },
 }
 TYPES = {"string": "string", "integer": "integer", "int": "integer", "number": "number", "float": "number",
-         "boolean": "boolean", "bool": "boolean", "list": "array[string]",
-         "array": "array[string]", "object": "object"}
+         "boolean": "boolean", "bool": "boolean", "list": "array", "array": "array", "object": "object"}
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"\+\d[\d ()-]{7,}\d")
 # In a comment or review sample the people who wrote them are private individuals: their names,
@@ -805,6 +804,8 @@ def endpoint(r: dict, text: dict, cap: str, today: str, captured: dict | None) -
     body = {}
     for name, spec in inputs.items():
         field = {"type": TYPES.get(str(spec.get("type")), "string"), "required": bool(spec.get("required"))}
+        if field["type"] == "array":
+            field["items"] = {"type": "string"}
         note = (text.get("input") or {}).get(name) or spec.get("about") or spec.get("description") or spec.get("note")
         default = spec.get("default")
         if default is not None and default != "":

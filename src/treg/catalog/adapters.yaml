@@ -2339,7 +2339,8 @@ adapters:
   tikhub.x.douyin-douplus-fetch-user-posts:
     accepts: [[sec_uid]]
     in:  {sec_uid: body.sec_uid}
-    in_expr: {body.count: limit, body.cursor: "0"}
+    in_expr: {body.count: limit}
+    const: {body.cursor: "0"}
     out: {videos: data.data.itemInfoList, next_cursor: data.data.cursor, has_more: data.data.hasMore}
 
   justoneapi.x.xiaohongshu-get-note-comment-v2:

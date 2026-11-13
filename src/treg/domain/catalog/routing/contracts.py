@@ -14,6 +14,7 @@ from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from ... import plugins
 from .. import outcome
+from ..params import takes_list
 from ..schema.v2 import is_v2
 from . import paths as P
 from .segments import SEGMENTERS
@@ -43,7 +44,7 @@ class Contract:
     capability: str
     summary: str
     identity: tuple[tuple[str, ...], ...]      # variants, each a sorted tuple of key names
-    identity_types: dict[str, str]
+    identity_specs: dict[str, dict]            # identity key → its parameter spec
     derive: dict[str, str]                     # field → expression over the identity
     filters: dict[str, Any]
     output: dict[str, dict]                    # core field → {type, required?, note?}
@@ -183,7 +184,7 @@ class Contract:
             return None
         limit = given.get("limit")
         if self.fill_limit_when and not isinstance(limit, bool) and isinstance(limit, int) and limit >= 2:
-            sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
+            sent = {k for k, v in given.items() if k in self.identity_specs and _sent(v)}
             if any(sent == set(keys) for keys in self.fill_limit_when):
                 return limit
         return self.fill_rows or None
@@ -250,8 +251,8 @@ class Adapter:
     row_map: dict[str, str] = field(default_factory=dict)
     _row_of: str = ""
     _row_needs: tuple[str, ...] = ()
-    _row_urls: tuple[str, ...] = ()           # row fields of type `url`: never cut, set at load
-    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `max` chars, set at load
+    _row_urls: tuple[str, ...] = ()           # row fields of `format: url`: never cut, set at load
+    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `maxLength`, set at load
     _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
 
     def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
@@ -418,6 +419,24 @@ def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
     return raw
 
 
+# The type words contracts used before the one vocabulary. CI loads the base branch's catalog with
+# a pull request's code (`scripts/catalog_dump.py`), so a base written in them must still parse.
+_EARLIER = {"str": "string", "text": "string", "int": "integer", "float": "number", "bool": "boolean",
+            "dict": "object", "any": "object", "list": "array", "url": "string"}
+
+
+def _field_spec(raw: object) -> dict:
+    """A contract field written as a type word (`string`) or as a spec mapping, as a spec."""
+    spec = dict(raw) if isinstance(raw, dict) else {"type": str(raw)}
+    if isinstance(spec.get("type"), str) and spec["type"] in _EARLIER:
+        if spec["type"] == "url":
+            spec["format"] = "url"
+        spec["type"] = _EARLIER[spec["type"]]
+    if "max" in spec and spec.get("type") == "string":
+        spec["maxLength"] = spec.pop("max")
+    return spec
+
+
 def _expressions(what: str, *exprs: object) -> None:
     for expr in exprs:
         try:
@@ -430,6 +449,10 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
         _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        c = {**c, **{section: {k: _field_spec(v) for k, v in c[section].items()}
+                     for section in ("filters", "output") if isinstance(c.get(section), dict)}}
+        if isinstance(c.get("row"), dict) and isinstance(c["row"].get("fields"), dict):
+            c["row"] = {**c["row"], "fields": {k: _field_spec(v) for k, v in c["row"]["fields"].items()}}
         _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
                      *([c["miss"]] if c.get("miss") else []),
                      *([c["question_miss"]] if c.get("question_miss") else []),
@@ -437,7 +460,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
         types = {}
         for v in c.get("identity") or []:
             if isinstance(v, dict):
-                types.update({k: str(t) for k, t in v.items()})
+                types.update({k: _field_spec(t) for k, t in v.items()})
         if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
             raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
         scoping = c.get("scoping") or []
@@ -455,15 +478,15 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                      f"(filters: value or skip), got {mode!r}")
         for k, spec in (c.get("filters") or {}).items():
             if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
-                    spec.get("type") != "int" or type(spec.get("min")) is not int or spec["min"] < 1
+                    spec.get("type") != "integer" or type(spec.get("min")) is not int or spec["min"] < 1
                     or ("max" in spec and (type(spec["max"]) is not int or spec["max"] < spec["min"]))):
-                raise ValueError(f"contract {cap}: filters.{k} range needs type int, a whole min of at least 1 "
+                raise ValueError(f"contract {cap}: filters.{k} range needs type integer, a whole min of at least 1 "
                                  f"and, when declared, a whole max of at least min, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
-            identity_types=types, derive=dict(c.get("derive") or {}),
-            filters={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("filters") or {}).items()},
-            output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
+            identity_specs=types, derive=dict(c.get("derive") or {}),
+            filters=dict(c.get("filters") or {}),
+            output=dict(c.get("output") or {}),
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             question_miss=str(c.get("question_miss") or ""),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
@@ -561,7 +584,7 @@ def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
 def _parse_fill_rows(cap: str, raw, c: dict) -> int:
     if raw is None:
         return 0
-    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "array" and v.get("required")]
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 2 or not lists:
         raise ValueError(f"contract {cap}: fill_rows is a row count of 2 or more on a contract with a list output, got {raw!r}")
     return raw
@@ -570,7 +593,7 @@ def _parse_fill_rows(cap: str, raw, c: dict) -> int:
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:
     if raw is None:
         return ()
-    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "array" and v.get("required")]
     if (not isinstance(raw, list) or not raw or "limit" not in (c.get("filters") or {}) or not lists
             or any(not isinstance(keys, list) or not keys or any(not isinstance(k, str) or k.strip() not in types
                                                                  for k in keys) for keys in raw)):
@@ -626,12 +649,12 @@ def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
     if not raw:
         return {}
     of, fields = raw.get("of") if isinstance(raw, dict) else None, (raw or {}).get("fields") if isinstance(raw, dict) else None
-    if of not in output or (output[of] or {}).get("type") != "list" or not isinstance(fields, dict) or not fields:
+    if of not in output or (output[of] or {}).get("type") != "array" or not isinstance(fields, dict) or not fields:
         raise ValueError(f"contract {cap}: row needs `of` (a list field of its output) and `fields`")
     needs = tuple(str(k) for k in raw.get("needs") or ())
     if not needs or any(k not in fields for k in needs):
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
-    row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
+    row_fields = {str(k): _field_spec(v) for k, v in fields.items()}
     rank = raw.get("rank_by_role") or {}
     if rank and (not isinstance(rank, dict) or set(rank) != {"asked", "now", "since", "past", "ended", "flag"}
                  or rank["asked"] not in types
@@ -640,10 +663,13 @@ def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
         raise ValueError(f"contract {cap}: row rank_by_role maps asked (an identity key) and now, since, past, ended, "
                          f"flag (row fields), got {rank!r}")
     for k, spec in row_fields.items():
-        if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)
-                              or spec["max"] < 1 or spec.get("type") != "str"):
-            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row.
-            raise ValueError(f"contract {cap}: row field {k} `max` is a positive whole number on a str field")
+        if "maxLength" in spec and (isinstance(spec["maxLength"], bool) or not isinstance(spec["maxLength"], int)
+                                    or spec["maxLength"] < 1 or spec.get("type") != "string"
+                                    or spec.get("format") == "url"):
+            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row;
+            # a URL is never cut.
+            raise ValueError(f"contract {cap}: row field {k} `maxLength` is a positive whole number on a "
+                             "string field that is not a URL")
     return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs,
             "row_rank": {str(k): str(v) for k, v in rank.items()}}
 
@@ -818,9 +844,10 @@ def _as_url(v: Any) -> str | None:
     return candidate
 
 
-# `text`: a string and nothing else. A list in a key that providers join into free text is skipped
-# by the join, so the provider would answer the rest of the request alone.
-_TYPE_NORMALISERS = {"url": _as_url, "text": lambda v: v if isinstance(v, str) else None}
+def _normaliser(spec: dict):
+    """How an identity value of this spec is normalised before matching: a `format: url` value is
+    read as a URL; any other value is used as sent."""
+    return _as_url if (spec or {}).get("format") == "url" else None
 
 
 def _sent(v: Any) -> bool:
@@ -828,20 +855,27 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's identity fields, and bool filters, that are present but not of their declared
-    type. A bool filter is checked before planning: `"false"` or `0` would otherwise read as asked
-    for. A bool identity key keeps its own rule (a blank value is not sent)."""
+    """The caller's identity fields, and boolean filters, that are present but unreadable: a
+    `format: url` field that reads as no URL (`N/A`, a bare word), a stand-in key (text the
+    contract can write itself) that is not a string, a boolean filter that is not true or false
+    (`"false"` or `0` would otherwise read as asked for). Every other declared rule is the
+    parameter check's (`catalog.params`)."""
     bad = []
-    flags = [(k, "bool", True) for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool"]
-    for k, t, flag in [*((k, t, False) for k, t in contract.identity_types.items()), *flags]:
+    flags = [(k, "bool") for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "boolean"]
+    for k, kind in [*((k, None) for k in contract.identity_specs), *flags]:
         v = given.get(k)
-        if flag:
+        spec = contract.identity_specs.get(k) or {}
+        if kind == "bool":
             wrong = v is not None and not isinstance(v, bool)
+        elif not _sent(v):
+            wrong = False
+        elif (norm := _normaliser(spec)) is not None:
+            kind, wrong = spec["format"], norm(v) is None
         else:
-            wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None
+            kind, wrong = "text", k in contract.stand_in and not isinstance(v, str)
         if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
-            bad.append({"field": k, "type": t,
+            bad.append({"field": k, "type": kind,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
 
@@ -851,19 +885,19 @@ def flags_off(contract: Contract, identity: dict[str, Any]) -> dict[str, Any]:
     nothing, so it is no part of the question: a provider sample keyed on it would move every
     request that never sent the flag."""
     off = {k for k, spec in (contract.filters or {}).items()
-           if (spec or {}).get("type") == "bool" and identity.get(k) is not True}
+           if (spec or {}).get("type") == "boolean" and identity.get(k) is not True}
     return {k: v for k, v in identity.items() if k not in off} if off else identity
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
-    ident = {k: v for k, v in given.items() if k in contract.identity_types and _sent(v)}
+    ident = {k: v for k, v in given.items() if k in contract.identity_specs and _sent(v)}
     supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
     if supplied is None:
         return ident, None
-    for k, t in contract.identity_types.items():
-        if k in ident and (norm := _TYPE_NORMALISERS.get(t)):
+    for k, spec in contract.identity_specs.items():
+        if k in ident and (norm := _normaliser(spec)):
             ident[k] = norm(ident[k]) or ident[k]
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
@@ -919,7 +953,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
            "pathParams": tr.get("pathParams") or {}}
     for field_name, target in adapter.in_map.items():
         v = P.get_path(doc, target)
-        if isinstance(v, list) and len(v) == 1 and contract.identity_types.get(field_name, "str") != "list":
+        if isinstance(v, list) and len(v) == 1 and not takes_list(contract.identity_specs.get(field_name)):
             v = v[0]  # `domains: ["stripe.com"]` in the fixture is the scalar `company_domain`
         if v not in (None, ""):
             ident[field_name] = v
@@ -940,7 +974,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     for k, v in tr_body.items():
         # `in_expr` targets count only when they are built from the identity (a URL from a handle);
         # filter expressions carry defaults the fixture need not share.
-        ident_names = set(contract.identity_types)
+        ident_names = set(contract.identity_specs)
         expr_targets = [t for t, e in (adapter.in_expr or {}).items()
                         if any(re.search(rf"\b{re.escape(n)}\b", e) for n in ident_names)]
         mapped = {t.split(".", 1)[1].split(".")[0] for t in list(adapter.in_map.values()) + expr_targets if t.startswith("body.")}
@@ -977,8 +1011,8 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
         if contract is not None:
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
                             "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
-                            "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("type") == "url"),
-                            "_row_max": {k: spec["max"] for k, spec in contract.row_fields.items() if "max" in spec},
+                            "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("format") == "url"),
+                            "_row_max": {k: spec["maxLength"] for k, spec in contract.row_fields.items() if "maxLength" in spec},
                             "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)

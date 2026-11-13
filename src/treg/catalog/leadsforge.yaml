@@ -55,7 +55,7 @@ endpoints:
         companyIndustries: {type: object, required: false, note: "{include/exclude}; EXACT values from leadsforge.people.search.filters.industries", example: {include: ["software development"]}}
         companyTypes: {type: object, required: false, note: "{include/exclude}; ids from leadsforge.people.search.filters.company_types", example: {include: ["PRIVATELY_HELD"]}}
         companyFundingRounds: {type: object, required: false, note: "{include/exclude}; ids from leadsforge.people.search.filters.funding_types", example: {include: ["SERIES_B"]}}
-        companyRevenueRanges: {type: array, required: false, note: "values from leadsforge.people.search.filters.revenue_ranges", example: ["small_upper"]}
+        companyRevenueRanges: {type: array, items: {type: string}, required: false, note: "values from leadsforge.people.search.filters.revenue_ranges", example: ["small_upper"]}
         companyEmployeeNumberRange: {type: object, required: false, note: "{min, max}", example: {min: 50, max: 500}}
         companyFoundedYearRange: {type: object, required: false, note: "{min, max}", example: {min: 2010, max: 2024}}
         companyYearsInBusinessRange: {type: object, required: false, note: "{min, max}"}
@@ -73,9 +73,9 @@ endpoints:
         leadIDs: {type: object, required: false, note: "{include/exclude} LeadsForge person ids"}
         limit: {type: integer, required: false, note: "page size", example: 2}
         maxContactsPerCompany: {type: integer, required: false, note: "cap results per company so one big employer cannot fill the page", example: 3}
-        excludeEmails: {type: array, required: false, note: "suppression list — emails you already own (documented in the route description, not in the schema)"}
-        excludeDomains: {type: array, required: false, note: "suppression list — company domains to skip"}
-        excludeLinkedInURLs: {type: array, required: false, note: "suppression list — LinkedIn profile URLs to skip"}
+        excludeEmails: {type: array, items: {type: string}, required: false, note: "suppression list — emails you already own (documented in the route description, not in the schema)"}
+        excludeDomains: {type: array, items: {type: string}, required: false, note: "suppression list — company domains to skip"}
+        excludeLinkedInURLs: {type: array, items: {type: string}, required: false, note: "suppression list — LinkedIn profile URLs to skip"}
       note: "returns person ids plus name, job title, location and firmographics — NOT email or phone. Feed the returned `id` into the enrichment routes as `personID` to reveal a contact channel."
     test_request:
       body: {companyDomains: {include: ["stripe.com"]}, leadSeniorities: {include: ["c_suite"]}, limit: 2}
@@ -217,8 +217,8 @@ endpoints:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original job instead of charging again", example: "treg-emails-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search; externalID is NOT supported in this mode", example: ["p_abc123", "p_def456"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search; externalID is NOT supported in this mode", example: ["p_abc123", "p_def456"]}
         clientRequestID: {type: string, required: false, note: "your own correlation id — also the filter key on the jobs list", example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "POSTed on completion/failure, retried up to 10 times with exponential backoff", example: "https://example.com/webhook"}
         saveToList: {type: boolean, required: false, note: "also persist the results as a list in the LeadsForge app"}
@@ -257,8 +257,8 @@ endpoints:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe; the original job is returned without re-charging", example: "treg-phones-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "completion callback"}
         saveToList: {type: boolean, required: false}
@@ -297,8 +297,8 @@ endpoints:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe", example: "treg-li-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false}
         saveToList: {type: boolean, required: false}
@@ -438,11 +438,11 @@ endpoints:
     summary: "Free, uncharged preview of companies similar to the provided domains."
     input:
       body:
-        domains: {type: array, required: true, note: "seed company domains", example: ["stripe.com"]}
-        employeeRanges: {type: array, required: false, note: "values from leadsforge.companies.lookalike.filters.employee_ranges", example: ["201-500"]}
-        categories: {type: array, required: false, note: "industry categories"}
-        fundingStages: {type: array, required: false, note: "funding stage filter"}
-        locations: {type: array, required: false, note: "country ISO 3166-1 alpha-2 codes or region ids from leadsforge.companies.lookalike.filters.locations", example: [{id: "US", type: "country"}]}
+        domains: {type: array, items: {type: string}, required: true, note: "seed company domains", example: ["stripe.com"]}
+        employeeRanges: {type: array, items: {type: string}, required: false, note: "values from leadsforge.companies.lookalike.filters.employee_ranges", example: ["201-500"]}
+        categories: {type: array, items: {type: string}, required: false, note: "industry categories"}
+        fundingStages: {type: array, items: {type: string}, required: false, note: "funding stage filter"}
+        locations: {type: array, items: {type: object}, required: false, note: "country ISO 3166-1 alpha-2 codes or region ids from leadsforge.companies.lookalike.filters.locations", example: [{id: "US", type: "country"}]}
       note: "returns company metadata only — no people, no credits. Use it to shape the filter set before paying for the same query on the search route."
     test_request:
       body: {domains: ["stripe.com"], employeeRanges: ["201-500"]}
@@ -474,11 +474,11 @@ endpoints:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original result without charging credits again", example: "treg-lookalike-2026-08-20-1"}
       body:
-        domains: {type: array, required: true, note: "seed company domains", example: ["stripe.com"]}
-        employeeRanges: {type: array, required: false, example: ["201-500"]}
-        categories: {type: array, required: false}
-        fundingStages: {type: array, required: false}
-        locations: {type: array, required: false, note: "ids from leadsforge.companies.lookalike.filters.locations"}
+        domains: {type: array, items: {type: string}, required: true, note: "seed company domains", example: ["stripe.com"]}
+        employeeRanges: {type: array, items: {type: string}, required: false, example: ["201-500"]}
+        categories: {type: array, items: {type: string}, required: false}
+        fundingStages: {type: array, items: {type: string}, required: false}
+        locations: {type: array, items: {type: object}, required: false, note: "ids from leadsforge.companies.lookalike.filters.locations"}
         page: {type: integer, required: false, note: "1-based, max 100", example: 1}
         pageSize: {type: integer, required: false, note: "max 100 — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
       note: "credits are reserved before the search and charged against actual results. Feed a returned domain into leadsforge.people.search companyDomains.include to turn a company into enrichable people."
@@ -519,11 +519,11 @@ endpoints:
       body:
         linkedinUrl: {type: string, required: true, note: "the company PAGE url", example: "https://www.linkedin.com/company/stripe"}
         limit: {type: integer, required: true, note: "how many followers to pull, capped at 50000 — THIS IS THE PRICE DIAL: 1 credit per follower returned", example: 1}
-        countries: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.countries", example: ["United States", "Germany"]}
-        states: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.states", example: ["California"]}
-        departments: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.departments", example: ["Engineering"]}
-        jobTitles: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.job_titles", example: ["Software Engineer"]}
-        levels: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.levels", example: ["Director"]}
+        countries: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.countries", example: ["United States", "Germany"]}
+        states: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.states", example: ["California"]}
+        departments: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.departments", example: ["Engineering"]}
+        jobTitles: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.job_titles", example: ["Software Engineer"]}
+        levels: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.levels", example: ["Director"]}
         clientRequestID: {type: string, required: false, example: "req_12345"}
         webhookURL: {type: string, required: false, note: "POSTed with {jobID, status, linkedinUrl, companyName, followerCount, total, processed, error} on completion/failure; retried up to 10 times"}
       note: "202 with a jobID; the 202 body already tells you the page's total followerCount, which is a free audience-size read before you commit to a limit. Poll the job — a limit of 1 took roughly a minute to complete."

@@ -119,7 +119,7 @@ endpoints:
     input:
       queryParams:
         query: {type: string, required: true, note: "Keyword to search for", example: "ai"}
-        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Requested publish window forwarded upstream. Not reliably enforced — responses can include create_time outside the window (or match an unscoped call). When recency matters, filter create_time locally.", example: "all-time"}
+        date_posted: {type: string, required: false, note: "Requested publish window forwarded upstream. Not reliably enforced — responses can include create_time outside the window (or match an unscoped call). When recency matters, filter create_time locally.", example: "all-time"}
         sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Requested order forwarded upstream. Not reliably enforced — most-liked / date-posted may leave digg_count or create_time unsorted. When order matters, sort locally.", example: "relevance"}
         region: {type: string, required: false, note: "Does NOT filter results to that region only — it places the proxy there (use for geo-restricted posts). 2-letter codes like US, GB, FR"}
         cursor: {type: number, required: false, note: "Pagination cursor from previous response cursor field", example: 10}

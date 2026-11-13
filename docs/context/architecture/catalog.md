@@ -456,15 +456,18 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
-- **`pathParams` with an `enum`** is enforced on treg's key (the value names what the shared
-  credential is spent on, such as a model); own-key calls relay any path.
-- **`platform_request`** pins exact body, header or query values needed only on the shared
-  credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
-  means the parameter must be absent (it need not be declared), so a run mode the row does not
-  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
-  provider-specific request guards in `resolve` only after selecting the platform offer and before
-  reserve; a team's own credential keeps the upstream contract.
+- **`platform_request`** pins exact body, header, query or path values needed only on the shared
+  credential. Each pin is a value its field declares, written as the declared type: a value only
+  treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
+  path or query pin may list the values allowed: `pathParams.model: [a, b]` names the models a row
+  prices (a stable model and its alias), so treg's key runs no other model at that row's rates, while
+  the declaration lets a team's own key name any. A `queryParams.*` pin must appear exactly once and
+  is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
+  A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
+  run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  Resolution applies these and the provider-specific request guards in `resolve` only after
+  selecting the platform offer and before reserve; a team's own credential keeps the upstream
+  contract.
 
 ### Provenance - `confidence` is a claim about the PRICE, not about the route
 
@@ -985,13 +988,13 @@ returned and never documented as stable. An output field may say where it lands 
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
 - Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
   a 422 before anything is held.
-- A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
-  (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
-  the range, and the routed call refuses a sent value that is not a whole number in it, read as a
-  count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
-  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held. Without a
-  `max`, every whole number from `min` up passes. This is the routed path's own check
-  (`route.py::_require_ranges`), not `_enforce_catalog_body`. `web.map` and `people.search` declare
+- A filter typed `integer` may declare a range: `min` (required, a whole number of at least 1) and
+  `max` (optional, a whole number of at least `min`); anything else fails the load. The routed row
+  shows the range, and the routed call refuses a sent value that is not a whole number in it, read as
+  a count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
+  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held, whatever
+  the parameter check's mode. Without a `max`, every whole number from `min` up passes. This is the
+  routed path's own check (`route.py::_require_ranges`). `web.map` and `people.search` declare
   `limit` with `min: 1` and no upper bound.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
@@ -1025,8 +1028,8 @@ returned and never documented as stable. An output field may say where it lands 
   `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
   page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
-  A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
-  left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
+  A boolean filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off
+  is left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
   before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
@@ -1062,8 +1065,9 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  field of `format: url` is kept whole, since a cut link points at another resource. A `string` field
+  may set its own `maxLength` where an agent needs more to judge the row (`people.search`'s
+  `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
@@ -1093,8 +1097,13 @@ whole number from 1 to that child's max: otherwise the routed call is refused (4
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
 before any candidate is held. A filter with its own range is checked against it first; where the
 child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
-is not reached. `verified` is filled only from an explicit mailbox deliverability
-verdict, never a lookup-success flag.
+is not reached. A child whose request, as its adapter builds it for this identity, breaks the
+child's own declarations (the parameter check it runs before a hold) is, in refuse mode, dropped
+from the plan as `needs <child parameter>: <rule>`, never the value, rather than answer a 400 the
+router reads as the caller's fault; with none left the routed call answers 422
+`route_no_candidate`. In log mode the plan keeps the child and the route logs the drop it would have
+made ([proxy model](proxy-model.md#catalog-request-checks)). `verified` is filled only from an
+explicit mailbox deliverability verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that
@@ -1164,10 +1173,14 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
-  - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
-    complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
-    a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
-    value.
+  - Before planning, each identity field is read (`invalid_identity`, 422, even when another
+    complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
+    no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A
+    derived `linkedin_url` is built only from a handle-shaped value. Then every identity and filter
+    field sent is held to its spec by the parameter check
+    ([catalog schema](catalog-schema.md#parameter-types)): in refuse mode a 400
+    `catalog_parameter_invalid` naming the field before any child is planned or held, in log mode a
+    `catalog_parameter_would_refuse` line ([proxy model](proxy-model.md#catalog-request-checks)).
   - A 2xx lacking a REQUIRED core field is a MISS. The waterfall is on by default;
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
@@ -1241,8 +1254,8 @@ an invalid extra never disables the primary.
   into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
   said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
-  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
-  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, a
+  `string` (anything else is refused 422 `invalid_identity`, as a stand-in key): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
   dropped; icypeas answers `{q, title}` through `{title}` and stays.

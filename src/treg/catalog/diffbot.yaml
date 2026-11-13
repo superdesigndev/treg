@@ -209,7 +209,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        "": {type: "array[object]", required: true, note: "the body IS a bare JSON array of Enhance query objects — each carrying the same fields as the /enhance query params, e.g. [{\"type\":\"Organization\",\"url\":\"diffbot.com\"}]", example: [{"type": "Organization", "url": "diffbot.com"}]}
+        "": {type: array, items: {type: object}, required: true, note: "the body IS a bare JSON array of Enhance query objects — each carrying the same fields as the /enhance query params, e.g. [{\"type\":\"Organization\",\"url\":\"diffbot.com\"}]", example: [{"type": "Organization", "url": "diffbot.com"}]}
       queryParams:
         name: {type: string, required: false, note: "a label for the bulk job", example: "treg-batch-1"}
         size: {type: integer, required: false, note: "applies to every query in the job"}

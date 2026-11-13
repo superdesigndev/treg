@@ -80,10 +80,9 @@ treg call fishaudio.voices.discover --query self=false --query licensed=false --
 treg resources list --provider fishaudio --kind voice
 ```
 
-With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
-account boundary.
+With your own Fish key, requests are an unmetered upstream relay and Fish owns the account boundary.
 
-Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared parameter within its declared type, allowed values and range, each single-valued one once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged. Undeclared fields are forwarded as sent.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.

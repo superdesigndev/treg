@@ -45,12 +45,12 @@ endpoints:
       queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "TinyFish API documentation"}
-        domain_type: {type: string, required: true, default: web, enum: [web], example: web}
+        domain_type: {type: string, required: true, default: web, example: web}
         purpose: {type: string, required: false, note: "Describe what the results will be used for."}
         location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
-        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
+        include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: array, items: {type: string}, required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD; only results after this date.", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD; only results before this date.", example: "2024-12-31"}
         recency_minutes: {type: integer, required: false, min: 1}
@@ -83,8 +83,8 @@ endpoints:
         purpose: {type: string, required: false}
         location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
-        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
+        include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: array, items: {type: string}, required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-12-31"}
         recency_minutes: {type: integer, required: false, min: 1}
@@ -113,11 +113,11 @@ endpoints:
       queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "browser agent benchmark"}
-        domain_type: {type: string, required: true, default: research_paper, enum: [research_paper], example: research_paper}
+        domain_type: {type: string, required: true, default: research_paper, example: research_paper}
         purpose: {type: string, required: false}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
-        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
+        include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: array, items: {type: string}, required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-12-31"}
         pub_year_min: {type: integer, required: false, min: 1900}
@@ -147,9 +147,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, example: ["https://example.com"]}
         purpose: {type: string, required: false}
-        format: {type: string, required: false, default: markdown, enum: [html, markdown, json], note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
+        format: {type: string, required: false, default: markdown, note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
         links: {type: boolean, required: false, default: false}
         image_links: {type: boolean, required: false, default: false}
         page_metadata: {type: boolean, required: false, default: false}
@@ -158,8 +158,8 @@ endpoints:
         if_none_match: {type: string, required: false}
         if_modified_since: {type: string, required: false}
         include_etag_and_last_modified: {type: boolean, required: false, default: false}
-        include_selectors: {type: "array[string]", required: false}
-        exclude_selectors: {type: "array[string]", required: false}
+        include_selectors: {type: array, items: {type: string}, required: false}
+        exclude_selectors: {type: array, items: {type: string}, required: false}
     test_request: {body: {urls: ["https://example.com"], format: markdown, links: true, ttl: 0}}
     cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Fetch at $0.00 per URL; a live fetch left the wallet unchanged."}
     verified: '2026-09-23'

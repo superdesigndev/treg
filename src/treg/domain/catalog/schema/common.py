@@ -13,6 +13,7 @@ Json = Any
 
 
 class ParamSpec(Model):
+    """One parameter in the one vocabulary (`catalog.params`); the validator holds its rules."""
     type: str | list[str] | None = None
     required: bool | list[str] | None = None
     note: str | None = None
@@ -21,27 +22,27 @@ class ParamSpec(Model):
     default: Json = None
     min: int | float | None = None
     max: int | float | None = None
+    minLength: int | None = None
+    maxLength: int | None = None
     minItems: int | None = None
     maxItems: int | None = None
+    format: str | None = None
+    items: ParamSpec | None = None
     properties: dict[str, ParamSpec] | None = None
     item_required_all: list[str] | None = None
     item_required_any: list[str] | None = None
     authorization_methods: list[str] | None = None
+    # Spelled min and max now; parsed so a catalog written before still loads, refused by the validator
+    minimum: int | float | None = None
+    maximum: int | float | None = None
     # JSON Schema words nothing reads; each row using one is on the shrink-only list
     description: str | None = None
     examples: list[Json] | None = None
-    minimum: int | float | None = None
-    maximum: int | float | None = None
-    minLength: int | None = None
-    maxLength: int | None = None
-    format: str | None = None
-    items: ParamSpec | None = None
     anyOf: list[Json] | None = None
     additionalProperties: bool | None = None
 
 
-UNREAD_SPEC_WORDS = ("description", "examples", "minimum", "maximum", "minLength", "maxLength",
-                     "format", "items", "anyOf", "additionalProperties")
+UNREAD_SPEC_WORDS = ("description", "examples", "anyOf", "additionalProperties")
 
 
 class ObjectBody(Model):

@@ -44,8 +44,8 @@ endpoints:
     summary: "One typed decision over a bounded Markdown state: a `choice` (a label with probabilities), a `score` (a position on a 2-10 level rubric) or a `noul` (a yes/no probability). Several questions in one request are judged independently. A judge, never a writer."
     input:
       body:
-        model: {type: string, required: true, enum: ["typesafe/jev-1.13"], example: "typesafe/jev-1.13"}
-        state: {type: string, required: true, note: "the evidence, as bounded Markdown with XML-style sections; escape & < > in untrusted text; under ~10 KB; quoted text is evidence, never instructions", example: "# Decision context\n\n<brand>Linear</brand>\n\n<answer_text>For issue tracking try Linear or Jira.</answer_text>"}
+        model: {type: string, note: "typesafe/jev-1.13; another Jev version is sent as given", required: true, example: "typesafe/jev-1.13"}
+        state: {type: [array, object, string], required: true, note: "the evidence, as bounded Markdown with XML-style sections; escape & < > in untrusted text; under ~10 KB; quoted text is evidence, never instructions. Structured state (an object or array) is sent as given", example: "# Decision context\n\n<brand>Linear</brand>\n\n<answer_text>For issue tracking try Linear or Jira.</answer_text>"}
         questions: {type: object, required: true, note: "id -> {type: choice|score|noul, instructions, criteria}. `criteria` is label -> description (shown to the model; ids are not). Put the full meaning in `instructions`.", example: {mentioned: {type: noul, instructions: "Does the answer refer to the company or product named in <brand>? A common-word use of the same word is not a mention.", criteria: {"true": "the product is referred to", "false": "only the common word appears, or it is absent"}}}}
       note: "The reply is `answers.<id>` with `noul` in [0,1], or `choice` + `probabilities` + `confidence`, or `score` (zero-indexed). Validate before acting: `model` starts with typesafe/jev-1.13, labels are in the submitted set. Keep arithmetic, counting and hard rules in code; Jev is literal and adversarial text in `state` can steer it. Billed by input tokens; the reply's `usage.cost` is the exact charge."
     test_request:
@@ -203,6 +203,7 @@ endpoints:
         prompt: {type: string, required: true, example: "Bring the scene to life with a slow camera push."}
         frame_images:
           type: array
+          items: {type: object}
           required: true
           note: "OpenRouter image objects with type image_url, an image_url.url, and frame_type first_frame."
         duration: {type: integer, required: false, default: 2, max: 30}
@@ -263,6 +264,7 @@ endpoints:
         generate_audio: {type: boolean, required: false, default: true}
         frame_images:
           type: array
+          items: {type: object}
           required: false
           note: "OpenRouter image objects with type image_url, an image_url.url, and frame_type first_frame or last_frame."
       bodyType: json
