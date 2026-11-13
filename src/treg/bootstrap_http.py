@@ -238,6 +238,8 @@ class _GzipResponseMiddleware:
                 headers = MutableHeaders(scope=begin)
                 headers["content-encoding"] = "gzip"
                 headers.add_vary_header("Accept-Encoding")
+                if headers.get("etag", "").startswith('"'):
+                    headers["etag"] = "W/" + headers["etag"]
                 if more:
                     del headers["content-length"]
                 else:
