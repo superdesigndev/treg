@@ -171,6 +171,7 @@ jobs:
           tests/test_workbench_table_schema.py
           tests/test_redundant_index_migration.py
           tests/test_callrecord_call_ref_index_migration.py
+          tests/test_callrecord_id_references_bigint.py
           tests/test_enrich_arena.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py

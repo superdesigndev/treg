@@ -32,6 +32,7 @@ sources:
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
+  - src/treg/alembic/versions/0102_callrecord_id_references_bigint.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
@@ -255,6 +256,14 @@ recount: audit is lossy by design. A report reads folded rows and the rows after
 statement, so both halves share a snapshot. With no cursor row (the worker never ran, as on a small
 self-hosted registry) reports aggregate `callrecord` live; with a cursor still catching up they say
 so (`ready: false`) instead of guessing. Team deletion clears a team's rollup rows.
+
+**Id width.** `callrecord.id` is still a Postgres `integer`, capped at 2,147,483,647; moving the
+table to `bigint` is an online copy, not an `ALTER`, because a type change rewrites the table under
+an exclusive lock for hours. Revision 0102 lifts every other cap first: `callrecord_id_seq` and each
+column that stores a `callrecord.id` (the rollup, shadow, Arena and Web Arena cursors,
+`ShadowPair.call_id`) are `BIGINT`. `ArenaObservation.id` is the exception: it is a large table's
+primary key, so it moves with the online migration. A new column that stores a `callrecord.id`
+is `BIGINT` from its first revision.
 
 **Columns that carry contracts:**
 
