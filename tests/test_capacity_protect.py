@@ -446,3 +446,66 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
         assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
     finally:
         get_settings.cache_clear()
+
+
+async def test_quota_signal_with_body_reset_uses_provider_timestamp(clients: AsyncClient, platform_on, monkeypatch):
+    """A quota signal with a body-parsed reset time (like BlitzAPI's fair-use) should use the
+    provider's actual reset timestamp, not a computed heuristic. This tests the mechanism using
+    tikhub since it's already set up, but the BlitzAPI signature is tested in test_capacity_signatures.py."""
+    from treg.domain.capacity import signatures as capacity_signatures
+
+    original_table = list(capacity_signatures._TABLE)
+    capacity_signatures._TABLE.insert(0, capacity_signatures.Signature(
+        "tikhub", 402,
+        r"fair.?use.{1,30}(?:limit|reached)|\"records_remaining\"\s*:\s*0",
+        "quota", body_resets="blitzapi_fair_usage", tripwire=True
+    ))
+    try:
+        fair_use_body = b'{"error": "Fair Use limit reached", "records_remaining": 0, "next_reset_at": "2099-06-15T12:00:00Z"}'
+        monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+        monkeypatch.setattr(call_service, "relay", _relay(402, fair_use_body))
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert r.status_code == 402, "first 402 relays"
+        lock = await _lock(EP) or await _lock("tikhub")
+        assert lock is not None and lock.strikes == 1
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert r.status_code == 402, "second 402 relays"
+        lock = await _lock(EP) or await _lock("tikhub")
+        assert lock is not None and lock.is_active(), "two strikes lock"
+        assert "quota" in lock.note.lower(), "note mentions quota"
+        assert lock.until is not None
+        from datetime import datetime
+        expected_reset = datetime(2099, 6, 15, 12, 0, 0)
+        actual_until = lock.until
+        assert actual_until <= expected_reset, \
+            f"lock until ({actual_until}) should be at or before provider's reset ({expected_reset})"
+    finally:
+        capacity_signatures._TABLE[:] = original_table
+
+
+async def test_far_future_reset_does_not_suggest_quick_retry(clients: AsyncClient, platform_on):
+    """When the reset is more than 24 hours away (like a monthly quota), the error message
+    should not suggest a quick retry and should prominently show when the reset happens."""
+    await _publish("tikhub", exhausted=True, hours=21 * 24)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503
+    body = r.json()["detail"]
+    assert body["error"] == "provider_capacity_unavailable"
+    msg = body["message"]
+    assert "once a minute" not in msg, "far-future reset should not suggest quick retry"
+    assert "retry later may succeed" not in msg, "far-future reset should not suggest retry"
+    assert "connect your own key" in msg, "should suggest BYOK"
+    assert "own keys are never affected" in msg, "should explain BYOK immunity"
+    assert "resets" in msg.lower(), "should mention when it resets"
+
+
+async def test_short_term_reset_suggests_retry(clients: AsyncClient, platform_on):
+    """When the reset is within 24 hours (like a rate limit), the error message
+    should suggest that a retry later may succeed."""
+    await _publish("tikhub", exhausted=True, hours=1)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503
+    msg = r.json()["detail"]["message"]
+    assert "connect your own key" in msg, "should suggest BYOK"
+    assert "once a minute" in msg or "retry later may succeed" in msg, \
+        "short-term reset should suggest retry"

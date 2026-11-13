@@ -2448,18 +2448,30 @@ def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
                                    probing: bool = False) -> ResolutionFailed:
     """The typed floor (plan §4.5): no charge, `resets_at` when known, and the same-capability
     alternatives — treg names them and leaves the choice to the caller."""
+    from ...timeutil import utcnow_naive
     # Say what treg is doing about it before what the caller could do: an agent quotes the first
     # imperative line back to its user, and "use your own key" reads as "your plan lost access".
     # Nothing about the caller's plan or balance changed.
+    #
+    # When the reset is far in the future (more than 24 hours), say so prominently and do not
+    # suggest a quick retry - a monthly quota that resets in 3 weeks cannot be retried away.
+    far_reset = resets and (resets - utcnow_naive()).total_seconds() > 86400
+    if far_reset:
+        reset_desc = f"resets {resets:%Y-%m-%d %H:%M} UTC"
+    elif resets:
+        reset_desc = f"until about {resets:%Y-%m-%d %H:%M} UTC"
+    else:
+        reset_desc = ""
     lines = [f"treg's own {service} account is out of capacity right now — {ep['id']} can't be "
-             f"served on treg's key" + (f" until about {resets:%Y-%m-%d %H:%M} UTC" if resets else "")
+             f"served on treg's key" + (f" ({reset_desc})" if reset_desc else "")
              + "; nothing about your plan or balance changed and nothing was charged"]
-    if probing:
+    if probing and not far_reset:
         lines.append("  treg retries the vendor about once a minute and lifts this as soon as it "
                      "answers, so a retry later may succeed")
+    lines.append(f"  connect your own key to continue now: treg secret add {service} --env-var "
+                 f"{service.upper().replace('-', '_')}_API_KEY  (own keys are never affected by "
+                 f"platform capacity)")
     lines.extend(_capability_alternatives(ep))
-    lines.append(f"  or use your own key: treg secret add {service} --env-var "
-                 f"{service.upper().replace('-', '_')}_API_KEY  (own keys are never affected)")
     return ResolutionFailed("provider_capacity", status_code=503, detail={
         "error": "provider_capacity_unavailable", "provider": service, "endpoint_id": ep["id"],
         "resets_at": resets.isoformat() + "Z" if resets else None,

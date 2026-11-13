@@ -19,11 +19,13 @@ one thing everywhere. Pure functions over (provider, status, headers, body).
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from typing import Callable
 
 from ...timeutil import utcnow_naive
 
@@ -34,25 +36,68 @@ _RESETS = {
 }
 
 
+def _parse_iso_reset(text: str) -> datetime | None:
+    """Parse an ISO 8601 datetime string to a naive UTC datetime."""
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def _blitzapi_body_reset(body: str) -> datetime | None:
+    """Parse BlitzAPI's next_reset_at from the response body (fair_usage or top-level)."""
+    try:
+        doc = json.loads(body) if body else None
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    reset_str = None
+    fair_usage = doc.get("fair_usage")
+    if isinstance(fair_usage, dict):
+        reset_str = fair_usage.get("next_reset_at")
+    if reset_str is None:
+        reset_str = doc.get("next_reset_at")
+    return _parse_iso_reset(reset_str) if isinstance(reset_str, str) else None
+
+
+_BODY_RESETS: dict[str, Callable[[str], datetime | None]] = {
+    "blitzapi_fair_usage": _blitzapi_body_reset,
+}
+
+
 @dataclass(frozen=True)
 class Signature:
     """`provider` "*" matches any provider; `body_regex` is searched case-insensitively. First
     match wins. `resets` names when a quota with no wait header serves again; None leaves it to
-    the sweep's account call. `tripwire` marks a plain capacity phrase that arms the `unrecorded`
-    tripwire for every other vendor."""
+    the sweep's account call. `body_resets` names a function to parse reset time from the body.
+    `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every other vendor."""
     provider: str
     status: int
     body_regex: str
     kind: str
     resets: str | None = None
+    body_resets: str | None = None
     tripwire: bool = False
 
     def __post_init__(self):
         if self.resets is not None and self.resets not in _RESETS:
             raise ValueError(f"unknown resets {self.resets!r}")
+        if self.body_resets is not None and self.body_resets not in _BODY_RESETS:
+            raise ValueError(f"unknown body_resets {self.body_resets!r}")
 
 
 _TABLE: list[Signature] = [
+    # BlitzAPI: monthly fair-use exhaustion is a 402 with "Fair Use limit reached" or
+    # "records_remaining": 0. The body carries next_reset_at with the provider's actual reset time.
+    # Not a tripwire (complex regex, and "fair use" is not a generic capacity phrase).
+    Signature("blitzapi", 402, r"fair.?use.{1,30}(?:limit|reached)|\"records_remaining\"\s*:\s*0",
+              "quota", body_resets="blitzapi_fair_usage"),
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("filtrat-finder", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
@@ -270,7 +315,7 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
             continue
         if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
             continue
-        return Signal(sig.kind, _quota_reset(sig, headers, now),
+        return Signal(sig.kind, _quota_reset(sig, headers, text, now),
                       _retry_after(headers, now) if sig.kind == "burst" else None, detail=text[:120])
     if status == 429:
         wait = _retry_after(headers, now)
@@ -287,12 +332,16 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     return None
 
 
-def _quota_reset(sig: Signature, headers, now: datetime) -> datetime | None:
+def _quota_reset(sig: Signature, headers, body: str, now: datetime) -> datetime | None:
     if sig.kind != "quota":
         return None
     wait = _retry_after(headers, now)
     if wait is not None:
         return now + timedelta(seconds=wait)
+    if sig.body_resets is not None:
+        parsed = _BODY_RESETS[sig.body_resets](body)
+        if parsed is not None:
+            return parsed
     if sig.resets is not None:
         return _RESETS[sig.resets](now)
     return None

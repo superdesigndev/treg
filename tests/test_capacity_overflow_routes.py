@@ -422,7 +422,6 @@ _UNRECORDED_SIGNATURE = {
     "octen",  # PAYG balance remains; no provider-specific empty-balance response was forced
     "parallel",  # funded balance remains; documented 402 insufficient credit was not forced
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
-    "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
 
