@@ -1200,9 +1200,13 @@ an invalid extra never disables the primary.
     (`health.child_timeout_s`; 0 turns it off). On expiry the child's own cancellation path
     releases its hold (a conditional claim, so once), any deferred hold it left is marked
     unbillable, and the attempt is an `error` with status 504; the waterfall moves on. An `async`
-    child has no bound: once the provider accepts a submission, its task row and hold belong to
-    that task (202 pending, the worker settles), and cancelling it would release a hold a live task
-    owns. `ROUTED_ASYNC_WAIT_SECONDS` bounds its wait instead.
+    child is never cancelled by this deadline: once the provider accepts a submission, its task row
+    and hold belong to that task (202 pending, the worker settles), and cancelling it would release
+    a hold a live task owns. Nothing else caps such a child's whole time: its submission and each
+    poll run under the relay's `call_timeout_s`, and `ROUTED_ASYNC_WAIT_SECONDS` is the bridge's
+    polling budget, which neither includes the submission nor interrupts a poll in flight. Its
+    health still counts it slow past half the same bound (`_child_bound_s`), so routing can ask it
+    after the healthy ones; only the cancellation is waived.
     *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
     anonymous child that reached its provider (never an archive hit, never a local refusal) counts
     as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or

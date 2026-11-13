@@ -812,7 +812,7 @@ async def _apply_health(cands: list[Candidate], dropped: list[dict], *, probe: b
 
 
 class _ChildTimedOut(Exception):
-    """A routed child ran past its time bound (`_child_timeout_s`)."""
+    """A routed child ran past its cancellation deadline (`_child_timeout_s`)."""
 
 
 async def _bounded(deadline: float | None, awaitable):
@@ -829,14 +829,18 @@ async def _bounded(deadline: float | None, awaitable):
         raise
 
 
-def _child_timeout_s(cand: Candidate) -> float | None:
-    """None for an async child: once the provider accepts a submission its task row and hold belong
-    to that task (202 pending, the worker settles), so the child must never be cancelled after it.
-    The async bridge's own wait bounds those."""
-    if cand.endpoint.get("async"):
-        return None
+def _child_bound_s(cand: Candidate) -> float | None:
+    """The child's time bound: what its health counts as slow (past half of it) and, for a
+    synchronous child, when it is cancelled (`_child_timeout_s`). None when the bound is off."""
     s = get_settings()
     return health_rules.child_timeout_s(s.route_child_timeout_s, s.call_timeout_s, cand.p95_ms)
+
+
+def _child_timeout_s(cand: Candidate) -> float | None:
+    """When the child is cancelled; None for an async child, which still counts slow by its bound.
+    Once the provider accepts a submission its task row and hold belong to that task (202 pending,
+    the worker settles), so the child must never be cancelled after it."""
+    return None if cand.endpoint.get("async") else _child_bound_s(cand)
 
 
 def _refund_errors(errored: list, pending: list, spent: int) -> int:
@@ -1152,10 +1156,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             meta=parent.meta, deferred_settles=pending,
                             quota_admissions=parent.quota_admissions,
                             quota_pending=parent.quota_pending)
-        bound_s = _child_timeout_s(cand)
+        bound_s, cancel_s = _child_bound_s(cand), _child_timeout_s(cand)
         loop = asyncio.get_running_loop()
         started = loop.time()
-        deadline = started + bound_s if bound_s is not None else None
+        deadline = started + cancel_s if cancel_s is not None else None
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
             _note_call(parent, plan, cand, child, tried)
@@ -1167,7 +1171,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             _note_health(cand, child, failed=True, slow=False)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", 504, 0,
-                                 f"no answer within {bound_s:g} s; moved on"))
+                                 f"no answer within {cancel_s:g} s; moved on"))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
                 break
             continue
@@ -1232,7 +1236,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             _note_health(cand, child, failed=True, slow=False)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", 504, 0,
-                                 f"answer not finished within {bound_s:g} s; moved on"))
+                                 f"answer not finished within {cancel_s:g} s; moved on"))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
                 break
             continue
