@@ -78,10 +78,15 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   (legacy, left empty for new memberships). A signed Default token carries the row's team-local
   generation; rotation increments it, invalidating the prior token without touching other teams.
   After membership removal the detached, revoked Default row keeps the old token unauthorized.
-- **`Invite`** is attached to an email: redeem the one-time code, or prove that email through any
-  identity door and accept code-free. `email_token_hash` is the inbox-only second secret in the
-  emailed link and may sign the invitee in (`/auth/invite-signin`, one-time); the admin-visible code
-  never can. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+- **`Invite`** is attached to an email. Both accept doors require the caller to be signed in as that
+  email (`require_identity`): `POST /invites/accept` finds the invite by its one-time code,
+  `POST /invites/{id}/accept` by id; both run `_join_invited_team`. The code is returned to the
+  admin who created the invite, so it only names the invite: it never signs anyone in, never
+  creates a `User`, and never yields a token for an account the caller has not proven.
+  `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
+  to the invitee's address and redirects to the login with it prefilled, never a session, because
+  an emailed secret is only as private as every system the mail passes through and any team admin
+  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one
@@ -117,6 +122,8 @@ dependency commits; it never extends the auth transaction.
 - **Roles.** Admin and owner manage any resource in the org; a member only what it created
   (`resource.owner == caller.email`). Another org's resource is 404, a failed role gate 403. A viewer
   may call and list only (`_require_can_register`).
+- **The roster is admin-only** (`list_members`); any member may read the team's human owners and
+  admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
   NULL-means-everything, and the owner is exempt from both. An all-selected list collapses back to
   NULL so the member keeps getting new tools; a customized list is an explicit allow-list that does
@@ -149,10 +156,9 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
 
 - `application.signup.find_or_create_user` is the shared registration choke point for every identity
   door; it creates the user only, so a new user has zero teams and must create one. `create_org`
-  therefore uses `require_identity`, not `require_member`. `register_user` (`POST /users`, legacy,
-  used by tests) still creates user, team and owner membership, and like `create_org` stamps ad
-  attribution ([ads-conversions](ads-conversions.md)). `accept_invite` joins a new invitee to the
-  invited team only.
+  therefore uses `require_identity`, not `require_member`. `create_org` stamps ad attribution
+  ([ads-conversions](ads-conversions.md)). A new invitee signs in first (zero teams), then
+  `accept_invite` joins them to the invited team only.
 - `find_or_create_user` reports ids it actually inserted, so `signup_completed` fires only for new
   accounts and only after the door's commit.
 - **Email-domain blocklist.** `TREG_BLOCKED_EMAIL_DOMAINS` is the only list (unset blocks nothing) so a
@@ -161,15 +167,17 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   `<random>.<listed>` bypasses it; drop dotless entries so a typed `com` cannot refuse the world;
   refuse at sign-in as well as sign-up. `signup.blocked_email(email, door)` decides, logs
   `event=signup_blocked_domain` (the only detection, since the refusal reveals nothing) and fails open
-  on a classifier error. Doors: `start_email_login`, `find_or_create_user`, `register_user`,
-  `create_org`, and `POST /invites/accept` (which builds a `User` directly). Every refusal is the same
+  on a classifier error. Doors: `start_email_login`, `find_or_create_user` and `create_org`; invite acceptance creates no `User`, so sign-in guards it. Every refusal is the same
   403 as a machine identity, so the caller learns nothing about the list. Live sessions keep working
   until suspension.
 - **Client address.** Every per-IP limit keys on `client_ip.of(request)`: `TREG_CLIENT_IP_HEADER`
   when set and valid, else the `X-Forwarded-For` entry `TREG_TRUSTED_PROXY_HOPS` from the right, else
   the socket peer. Never the first `X-Forwarded-For` entry, which is the client's own claim. MCP tools
   call the API in process and forward the resolved address (`client_ip.forwarding_headers`) so MCP
-  callers keep their own buckets.
+  callers keep their own buckets. Every per-IP window is built with `ratestore.ip_limit`, which
+  drops the address entry for an address `TREG_RATE_LIMIT_EXEMPT_IPS` names (`client_ip.exempt`);
+  the per-email, per-user and deployment-wide entries beside it still decide, and no money cap is
+  touched. The list is parsed at startup, so a malformed entry refuses to boot.
 - **Turnstile on email start**, the only door minting an inbox proof from a bare HTTP call. Off unless
   site key and secret are set. Every page posting to `/auth/email/start` loads `/captcha.js` and sends
   `captcha_token` (a test enforces it); a script that cannot get a token sends `!blocked`, `!pending`
@@ -181,6 +189,19 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   created after a non-`pass` gets `signup_promo_available=false`. Captcha refusals carry
   `X-Treg-Captcha: required` so `treg login --email` falls back to the browser handshake.
   `TREG_FIXED_LOGIN_CODES` accounts skip the check.
+- **Turnstile on social sign-in**, because a provider proves an identity, not a person, and fresh
+  GitHub or Google accounts are cheap. The check runs where credit is decided: after the provider
+  callback, and only for an address no verified user holds yet. The callback parks the proven login
+  (encrypted, `HANDSHAKE_TTL`) under a nonce in the `treg_social_check` cookie and sends the browser
+  to `GET /auth/social/check`, which runs `social_start` and posts its token back. `POST` takes the
+  login once, classifies the token under a per-IP window (over it the token is not sent), and signs
+  in. Nothing is refused: in `enforce` a check that is not `pass` creates the user without credit,
+  or, for an unverified user this proof verifies first (an invitation-code member), withdraws its claim
+  (`find_or_create_user`, shared with the email door's outage case). Verified users sign in
+  without the check. Each first social proof logs `event=social_signup` with the outcome and, for
+  GitHub, the account age in days. `TREG_TURNSTILE_SOCIAL=false` skips the check on both social doors
+  (a new address signs in at once with credit, its log line reads `captcha=-`) while the email door
+  keeps its own.
 
 ## Membership and team lifecycle
 
@@ -209,8 +230,7 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   is reserved.
 - **Reserved names:** `teams.reserved_reason` refuses a name or slug that reads as treg, "official",
   or a catalog provider or platform (a hub tool id is `<team slug>.<name>`), matching how text reads
-  (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org`, `register_user`
-  and `rename_org`; a superadmin may bypass.
+  (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org` and `rename_org`; a superadmin may bypass.
 - **Uniqueness races** on membership or slug return 409, never 500.
 
 ## Enterprise SSO

@@ -7,6 +7,7 @@ sources:
   - src/treg/bootstrap_http.py
   - src/treg/worker.py
   - src/treg/infra/money_trace_runner.py
+  - src/treg/infra/loop_stall.py
   - src/treg/infra/money_admission_reporting.py
   - src/treg/call_surface.py
   - src/treg/application/connect.py
@@ -45,7 +46,7 @@ intentional.
 
 `app.state.role_manifest` lists each role's routes, background tasks and startup checks;
 `tests/test_app_roles.py` pins them. `dataplane` serves the calling surfaces (`/call/`,
-`/catalog/call/`, [`/table/`](table.md)) and MCP; `control` serves everything else, including OAuth
+`/catalog/call/`, [`/table/`](table.md), [`/tasks/`](tasks.md)) and MCP; `control` serves everything else, including OAuth
 issuance; `all` serves both. Every `api.router` route belongs to exactly one of
 `_CONTROL_ROUTE_KEYS` or `_DATAPLANE_ROUTE_KEYS`, and app creation fails on an unclassified, stale,
 duplicate or doubly owned key, so a new route cannot silently widen the dataplane.
@@ -72,6 +73,15 @@ operator serving the raw ASGI app must run the upgrade command on every release.
 - `infra.money_trace_runner` runs on every role regardless of analytics settings; it stops after
   money-producing background work drains. Its records are defined in
   [data-model](data-model.md#product-analytics-writer-analyticspy).
+- `infra.loop_stall` runs in every web worker's lifespan. The loop only stamps a heartbeat and,
+  when a beat comes `STALL_SECONDS` after the last, queues that gap: every such gap is one
+  `loop_stall_end`, measured on the loop's own clock (the stall plus at most one heartbeat), even
+  when nothing saw it in progress. A daemon thread writes `loop_stall` with the loop thread's stack
+  once the stamp is `STALL_SECONDS` old. Lines go straight to the stderr descriptor, not through
+  `logging`, so a full pipe blocks only that thread and holds no lock that request logs or
+  interpreter shutdown need. It does not use the process-wide faulthandler timer. A watcher that
+  woke late (C code held the GIL) marks its stack `stack_reliable: false`. It never raises into
+  startup or shutdown.
 
 ## HTTP middleware
 
@@ -99,4 +109,6 @@ spellings must reach the V2 transport and OAuth audience.
 Each `create_app` call must produce an independent app whose dependency overrides belong to it.
 `_include_routes` shallow-clones every `APIRoute`, points its override provider at the new app and
 rebuilds its handler. FastAPI's `include_router()` is avoided because its `_IncludedRouter` wrapper
-would change route inspection and the surface snapshot.
+would change route inspection and the surface snapshot. A route with a server-rendered view gets
+its ASGI app wrapped there too (`routers.view.wrap`, [api](../interface/api.md) "Views"); the route
+object, and so the snapshot, is unchanged.

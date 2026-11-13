@@ -75,12 +75,24 @@ def test_a_routed_people_list_maps_common_names_first():
     t = to_table({"output": {"people": people}, "_treg": {"served_by": "apollo.people.search"}},
                  contract_output=["people", "total"], list_field="people")
     assert t["shape"] == "list"
-    assert t["columns"][:6] == ["first_name", "last_name", "title", "company", "linkedin_url", "location"]
+    assert t["columns"][:7] == ["name", "first_name", "last_name", "title", "company", "linkedin_url", "location"]
     row = dict(zip(t["columns"], t["rows"][0]))
     assert row["first_name"] == people[0]["first_name"]
     assert row["last_name"] == people[0]["last_name_obfuscated"]              # a mapped provider name
     assert row["company"] == people[0]["organization"]["name"]                # a mapped dotted path
     assert "last_name_obfuscated" not in t["columns"]                          # used once, not twice
+
+
+def test_a_routed_people_list_in_the_row_shape_fills_the_fixed_columns():
+    rows = [{"name": "Ada Lovelace", "title": "Engineer", "company": "Acme", "location": "London, United Kingdom",
+             "profile_url": "https://www.linkedin.com/in/ada", "email": "ada@acme.test", "email_status": "valid"}]
+    t = to_table({"output": {"people": rows}, "_treg": {"served_by": "exa.people.search"}},
+                 contract_output=["people"], list_field="people")
+    row = dict(zip(t["columns"], t["rows"][0]))
+    assert row["name"] == "Ada Lovelace" and row["linkedin_url"] == "https://www.linkedin.com/in/ada"
+    assert row["title"] == "Engineer" and row["company"] == "Acme" and row["location"] == "London, United Kingdom"
+    assert row["email"] == "ada@acme.test" and row["email_status"] == "valid"
+    assert "profile_url" not in t["columns"]                                   # used once, not twice
 
 
 def test_a_hub_tool_is_its_manifest_fields_in_order():
@@ -228,8 +240,8 @@ async def test_the_preview_shows_the_columns_for_free_and_leaves_no_trace(client
     assert 0 < coverage["score"]["filled_by"] < len(kids)                              # only some
     people = (await clients.get("/table-columns/treg.people.search")).json()
     assert people["shape"] == "list" and people["column_source"] == "contract"
-    assert people["columns"][:6] == ["first_name", "last_name", "title", "company", "linkedin_url", "location"]
-    assert len(people["columns"]) > 6                               # + a saved example's own fields
+    assert people["columns"][:7] == ["name", "first_name", "last_name", "title", "company", "linkedin_url", "location"]
+    assert len(people["columns"]) > 7                               # + the row shape's other fields
     assert set(people["coverage"]) == {"people"}                   # a list job: the list field only
     nested = (await clients.get("/table-columns/seranking.web.backlinks.summary")).json()
     assert nested["shape"] == "nested" and nested["column_source"] == "generated"
@@ -263,14 +275,15 @@ async def test_the_preview_of_a_hub_tool_is_its_manifest_fields(clients: AsyncCl
     # the provider's own field names, mapped to the fixed columns (decision F)
     ("quickenrich.people.search.domain", {"linkedin_url": "employee_linkedin", "company": "company_name"}),
     ("aiark.people.search", {"first_name": "profile.first_name", "title": "profile.title",
-                             "company": "company.name", "linkedin_url": "link.linkedin"}),
+                             "company": "company.summary.name", "linkedin_url": "link.linkedin",
+                             "name": "profile.full_name", "location": "location.default"}),
     ("lusha.people.search", {"title": "jobTitle.title", "company": "company.name",
                              "linkedin_url": "socialLinks.linkedin", "location": "location.city"}),
     ("wiza.people.search", {"title": "job_title", "company": "job_company_name", "location": "location_name"}),
     ("crustdata.people.search", {"title": "basic_profile.current_title",
                                  "location": "basic_profile.location.full_location"}),
     ("icypeas.people.search", {"title": "lastJobTitle", "company": "lastCompanyName"}),
-    ("dropleads.people.search", {"company": "organization_name", "location": "city"}),
+    ("dropleads.people.search", {"name": "fullName", "company": "companyName", "linkedin_url": "linkedinUrl"}),
     ("aviato.people.search", {"linkedin_url": "URLs.linkedin"}),
 ])
 def test_each_people_provider_fills_the_fixed_columns(provider, expect):
@@ -283,7 +296,7 @@ def test_each_people_provider_fills_the_fixed_columns(provider, expect):
     for column, path in expect.items():
         assert row[column] == source[path], (provider, column, path)
         assert path not in t["columns"], (provider, path)              # used once, not twice
-    for column in ("first_name", "last_name", "title", "company", "linkedin_url", "location"):
+    for column in ("name", "first_name", "last_name", "title", "company", "linkedin_url", "location"):
         assert not (isinstance(row[column], str) and row[column].startswith("{")), (provider, column)
 
 

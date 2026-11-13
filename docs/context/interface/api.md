@@ -4,6 +4,8 @@ status: shipped
 sources:
   - src/treg/application/key_spend.py
   - src/treg/routers/media.py
+  - src/treg/page_media.py
+  - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
@@ -45,6 +47,8 @@ sources:
   - src/treg/routers/resources.py
   - src/treg/routers/referrals.py
   - src/treg/routers/signup_cookies.py
+  - src/treg/routers/view.py
+  - src/treg/application/view_context.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/api_keys.py
@@ -92,7 +96,8 @@ explained in [seo](seo.md).
 `require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
 `X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
 and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
-`POST /users`, `POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
+`GET /oauth/callback` (protected by `state`). `POST /invites/accept` requires the invitee's own
+identity: the code names the invite and the signed-in email must match it. Identity and
 session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
 org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 
@@ -115,13 +120,14 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   a generation. MCP's internal exchange token is the deliberate 120-second identity exception.
   `token_version` revokes permanent keys (missing `tv` means zero). See
   [auth-secrets](../architecture/auth-secrets.md).
-- Every identity door (GitHub, Google, email OTP, inbox-only invite link) reuses one first-proof
+- Every identity door (GitHub, Google, email OTP) reuses one first-proof
   provisioning command and creates no automatic org. Suspended users and addresses on
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
-  account); limits are unchanged. The invite code is join-only; the separate `email_token`
-  authenticates once and never appears in a JSON response.
+  account); limits are unchanged. The invite code is join-only and needs the invitee signed
+  in; the separate `email_token` in the emailed link only prefills the login (it authenticates no
+  one) and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
   before any login or team mutation.
 
@@ -161,6 +167,12 @@ existence query scoped to the live key, never a history scan; an old key's histo
 a new key. Revoking an agent sweeps its deny rules and idempotent replay cache before deleting the
 membership.
 
+`GET /orgs/{id}/first-call` (any member, `no-store`) answers Getting started's progress:
+`connected` (any audited row for the team, or the caller's Default key used by a CLI or agent) and
+`first_call` (`{tool, at}` of the team's earliest successful call, read only once
+`Org.first_call_at` is set; `tool` is null when that audit row was shed). Each answer reads at most
+one indexed row.
+
 ## Teams and governance
 
 - `POST /orgs` refuses when the caller already owns `teams.MAX_OWNED_TEAMS`.
@@ -175,9 +187,10 @@ membership.
   at the top of `grant_local_run`. It takes the slot with one conditional UPDATE
   (`take_daily_slot`): the WHERE is the check and the SET is the count, so the cap is exact under
   concurrency and refused events are not counted. `-1` skips it; a database error fails open (a
-  courtesy limit, not a money gate). `used_today` reads the journal, and `set_member_cap` copies
-  that count onto the counter when a member goes from unlimited to capped. Never put the journal
-  count back in the gate: it scans the member's whole day.
+  courtesy limit, not a money gate). `used_today` (the members list and `/usage/me`) reads the
+  usage rollup and the rows after its cursor; `set_member_cap` copies the journal count
+  (`count_today`) onto the counter when a member goes from unlimited to capped. Never put the
+  journal count in the gate or on a page: it scans the member's whole day.
 - Dashboard reports (`/usage`, `/usage/by-tag`, `/agents/observed`) run on the gated report
   session and answer `429 {"report_busy": ...}` with `Retry-After: 2`, never `treg_saturated`
   ([deploy](../ops/deploy.md#dashboard-reports)).
@@ -252,7 +265,7 @@ the provider.
 | `X-Treg-Call-Id` | On every relayed response and every refusal treg raises before the relay, including the saturation 503 (`_stamp_call_exit`); the audit row's join key. An unexpected fault is Starlette's bare 500 with no id, but the row and `tool_called` are still recorded. |
 | `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)) and for owned free polls. Absent on own-key and own-tool calls. |
 | `X-Treg-Error: 1` | treg's own refusal on `/call/`, `/catalog/call/`, `/table/`, so a caller can tell treg's 404 from the vendor's. Status and body untouched. |
-| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; provider bytes are not read. |
+| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
 | `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
@@ -269,6 +282,8 @@ the provider.
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
+| 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (no platform sets it today) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
+| 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
 | 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch. |
@@ -289,6 +304,24 @@ X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 it is the `idempotency_key` argument and a replay carries `replayed: true`. Storage rules:
 [money](../architecture/money.md).
 
+### `X-Treg-Keep-Reported-Charge` on `/call/`
+
+```
+TREG_STRIP_REPORTED_CHARGE=true          deploy switch, off by default
+X-Treg-Keep-Reported-Charge: true        this call keeps the provider's charge (1, yes, on also)
+```
+
+With the switch on, a metered 2xx answer, live or an archive hit, reaches the caller without the
+member its row's settlement reads the provider's own charge from (`settle.reported.path`, or
+`cost.reported_charge.path` in today's spelling). Everything else is byte for byte as the provider
+sent it; error bodies, non-JSON answers, rows with no such path or a header-reported charge, own-key
+calls, streamed free fetches and spooled answers are relayed as before. The bill, the outcome and
+`X-Treg-Upstream-Failed` are decided first, on the provider's bytes; the archive keeps those bytes.
+An idempotent replay hands back what the first call received, whatever the retry sends. A routed
+child is an ordinary call (it inherits the header), so `raw` carries its answer as received.
+`GET /calls/{id}/result` returns a metered answer by the same rule, read from the request's own
+header. Mechanism: [proxy-model](../architecture/proxy-model.md), "The provider's reported charge".
+
 ### Caller tags, budgets and isolation
 
 `X-Treg-Meta: customer=cust_8123, feature=email-finder` is set from the builder's backend, never
@@ -303,8 +336,8 @@ are advisory; the balance is the hard limit. `usage/by-tag` reconciles:
 `attributed_micro + unattributed_micro == total_micro`.
 
 A token minted with `--pin customer=cust_A` beats the header (mismatch is 403), and call history,
-archived results, call references, runs and shared-provider async ownership require every pinned
-tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
+archived results, call references, runs, async tasks and shared-provider async ownership require
+every pinned tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
 [multi-tenancy](../architecture/multi-tenancy.md).
 
 ### Call inspection
@@ -314,6 +347,16 @@ invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` de
 with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
 `async_task_app.views_for`. `GET /calls/{id}/result` is described in
 [archive](../architecture/archive.md).
+
+### Async tasks
+
+`POST /tasks/{call_id}` (body: the async call's answer as received) and `GET /tasks/{call_id}`
+follow the provider task an async call started, for the team and pin that made it: the first
+reads the submission without a provider call, the second makes one ordinary poll on the call
+road. Both answer one stable JSON shape (`state` pending, succeeded, failed or error, the
+terminal response, result or fetch command, resume line) with `Retry-After` from the
+descriptor's interval. Unknown and other teams' ids are 404 `task_not_found` with
+`X-Treg-Error: 1`. Mechanism and fields: [tasks](../architecture/tasks.md).
 
 ## Request transport
 
@@ -339,22 +382,57 @@ stricter CSP wins. An oversized all-digit id is a 404, not a 500; malformed URLs
 `auth_logout` rejects a cross-site `Origin`; `_same_origin` is the shared CSRF check for every
 cookie-authenticated mutation.
 
+**Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
+included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
+([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
+
+## Views
+
+A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
+`{"data": <its own body, byte for byte>, "text": <what the CLI prints>}`, its own status and
+headers, plus `X-Treg-View: 1`. Without the header, for a HEAD, for a non-JSON answer or on a
+route without a view, the answer is untouched. `bootstrap._include_routes` wraps each route's ASGI
+app (`view.wrap`), which captures the whole answer first, so a refusal raised before the handler
+runs (a rejected token) or by an exception handler is rendered too. Routes with views: `/home`,
+`/catalog/platforms`, `/catalog/platforms/{slug}`, `/catalog/search`, `/catalog/endpoints/{id}`,
+`POST /tool-requests`, `/orgs/{id}/balance`, `/feedback/{id}`.
+
+- The text comes from `routers/views/`, which the Python CLI also prints from. Open catalog routes
+  render for whoever the request names (`view.optional_caller`; an unresolvable token renders as
+  anonymous): `own_key` from the caller's connections, `access` from the endpoint access use case,
+  and a capability pin hides the providers it refuses in `catalog get`. Each is best-effort
+  (`view.quietly`), as the extra requests the CLI made for them were.
+- What the CLI asked for in a second request, a view asks the router for in process (`view.get`:
+  same headers, no view). `catalog get <job>` 404s as an endpoint; with the header it answers 200,
+  as the job's routed endpoint (that route's body is `data`) or as every provider of the job
+  (`data` is that view's JSON). `limit` on `/catalog/endpoints/{id}` is read only by its view.
+- `/home`'s text leaves out the client's own lines: `treg:` (version and path) and `registry:`.
+  `/feedback/{id}`'s refusal text never repeats the refusal body.
+
 ## Public pages and agent files
 
 - `/llms.txt`, `/skill.md`, `/quickstart.md`, `/tutorial.md`, `/vendor-listing` and
   `/install.sh` are templated with `{BASE}` from the serving host, so a self-hosted registry
   advertises itself. `/.well-known/skills/index.json` reads its `description` from the skill's
   frontmatter at request time, never a second copy ([skill](skill.md)).
+- `/install.sh?channel=beta` and `/install.ps1` install the binary CLI; `/cli/latest` names its
+  release per channel and platform, `/cli/latest/<os>-<arch>` redirects to that archive, and `/cli/events` relays its anonymous usage events
+  ([cli-binary](cli-binary.md)).
 - `/privacy` is the URL given to OAuth providers at app verification; never rename it.
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from
   `marketing/landing/*.md`; never hand-edit it. `/resources` is the only page linking them.
-- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images,
-  video and fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable.
+- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images and
+  fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable. Page videos
+  are not in Git: `web/media-videos.json` maps each `/media/` path to a content-addressed copy
+  under `site/` in the public media bucket (`ugc/tutorial.<digest>.mp4`, cached immutable), and
+  the path answers a 302 (`max-age=300`) to that copy's public URL (the pictures' base, or
+  `/media-files/`). `scripts/publish_page_media.py` uploads a new or edited video and records it;
+  a test fails when a page names a video the manifest lacks.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
-- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read by both signup doors;
+- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
   `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
   advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
 - Feedback, media hosting, pictures and the showcase are owned by their fragments:
@@ -374,6 +452,21 @@ Approval at `/oauth/authorize` is a POST, never a GET.
 (`User.referral_code`); the reward lands in the oldest org they own, so nothing here is scoped by
 `X-Treg-Org`.
 
+`GET /referrals` reports `cap.affiliate`, the configured `cap.standard_limit`, and an effective
+`cap.limit` of `null` for an affiliate. Credit amounts, funding threshold and hold stay unchanged.
+
+The existing `require_superadmin` gate protects `GET /admin/referrals/users?email=...` (exact email,
+normalized with trim/lowercase), `GET /admin/referrals/users/{user_id}`, and
+`PUT /admin/referrals/users/{user_id}/affiliate`. Reads have no payout or code-minting side effects and
+return identity, current flag/version, cap usage and at most the latest twenty operation events.
+The PUT requires a strict boolean `affiliate`, `expected_version`, nonblank bounded `reason` and
+UUID `operation_id`; unknown fields, including caller-supplied actor, are rejected. Stale versions
+or an operation id reused for another payload/principal return 409. A matching retry returns current
+state and the original `event` with `replayed: true`, without applying again. A new no-op operation
+is audited and advances the version. Authentication determines the event principal: a signed-in
+superadmin's email or `env-admin` for the shared credential. The shared credential cannot prove
+which individual approved an operation; the reason is context, not authenticated identity.
+
 **`GET /referrals` returns the referred person's full email**, so it is scoped in the query itself
 (`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test. `privacy.html`
 discloses this.
@@ -383,10 +476,10 @@ query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as par
 code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
 attacker-supplied and reaches a query.
 
-Redemption happens at first team creation in both org-creating doors, right after the signup
-credit grant and with the same swallow-and-log posture: a referral must never be why someone cannot
-make a team. A failed grant rolls the session back, expiring every tracked object, so both doors
-read their response fields before granting and redemption refreshes `user`/`org` first.
+Redemption happens at team creation, right after the signup credit grant and with the same
+swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant
+rolls the session back, expiring every tracked object, so team creation reads its response fields
+before granting and redemption refreshes `user`/`org` first.
 
 ## Billing
 

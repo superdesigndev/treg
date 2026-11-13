@@ -59,8 +59,15 @@ export default {
               <button :class="{active:orgTab==='danger'}" @click="orgTab='danger'; resetRenameForm()">Team settings</button>
             </div>
             <p v-if="!canAdmin && !['keys','danger','sso'].includes(orgTab)" class="sub" style="margin-bottom:12px">Members, projects and policy are visible to admins.</p>
+            <div v-if="memberFunds && !canAdmin" class="tut-notice" role="status" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+              <span>If your team is out of credit, ask an admin to add funds<template v-if="teamAdmins && teamAdmins.length">: <b>{{teamAdmins.map(a=>a.email).join(', ')}}</b></template>. Only admins can see Billing.</span>
+              <button class="btn sm ico" @click="memberFunds=false" aria-label="Dismiss">✕</button>
+            </div>
             <p v-if="myUsage && myUsage.cap>=0" class="sub" style="margin:-6px 0 12px">Your usage today: <b>{{myUsage.used_today}} / {{myUsage.cap}}</b> calls.</p>
             <div v-if="orgErr" class="banner">{{orgErr}}</div>
+            <div v-if="billingNote && canAdmin" class="tut-notice" role="status" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+              <span>{{billingNote}}</span><button class="btn sm ico" @click="billingNote=''" aria-label="Dismiss">✕</button>
+            </div>
             <div v-if="orgMsg" class="tut-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
               <span>{{orgMsg}}</span><button class="btn sm ico" @click="orgMsg=''" aria-label="Dismiss">✕</button>
             </div>
@@ -369,6 +376,9 @@ export default {
                     <p v-if="billing.autotopup.disabled_reason==='no_card'" class="sub" style="margin:14px 0 0">
                       Auto top-up is set up and will switch on as soon as a top-up saves a card. Until then, calls stop when the balance runs out.
                     </p>
+                    <p v-else-if="billing.autotopup.disabled_reason==='payment_refunded'" class="sub" style="margin:14px 0 0">
+                      Auto top-up is off because a top-up was refunded and its unspent credit removed. Switch it back on below when you want refills to resume.
+                    </p>
                     <div v-else-if="billing.autotopup.disabled_reason" class="banner"
                          :class="{'auth-warning':billing.autotopup.disabled_reason==='authentication_required'}"
                          style="margin:14px 0 0">
@@ -399,9 +409,13 @@ export default {
                         </span>
                       </label>
                       <p class="sub" style="margin:8px 0 0">
-                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}} whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
+                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}}<span v-if="tierBonus(billing.autotopup.amount_micro/1e6)" style="color:var(--green)"> + {{money(tierBonus(billing.autotopup.amount_micro/1e6))}} bonus</span> whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
                           <a href="#" @click.prevent="autoOpen=!autoOpen;autoConsent=false">{{autoOpen?'Cancel':'Edit'}}</a></template>
-                        <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.</template>
+                        <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.<template v-if="maxBonusPct"> Bigger refills earn bonus credit, up to +{{maxBonusPct}}% on every refill.</template></template>
+                      </p>
+                      <p v-if="billing.autotopup.enabled&&!autoOpen&&nextBonusTier(billing.autotopup.amount_micro/1e6)" class="sub" style="margin:4px 0 0">
+                        Refill <b>${{nextBonusTier(billing.autotopup.amount_micro/1e6).usd}}</b> or more to earn <span style="color:var(--green)">+{{nextBonusTier(billing.autotopup.amount_micro/1e6).pct}}% bonus</span> on every refill.
+                        <a href="#" @click.prevent="autoOpen=true;autoConsent=false">Change amount</a>
                       </p>
                       <!-- The same panel edits a running policy (Edit link above) and arms a new one:
                            either way the numbers change, so the mandate is re-agreed and re-stamped. -->
@@ -415,6 +429,10 @@ export default {
                           <input class="msel" style="width:56px" type="number" min="1" max="60" v-model.number="autoPerHour"/>
                           <span class="sub" style="margin:0">times per hour</span>
                         </div>
+                        <p class="sub" style="margin:8px 0 0">
+                          <template v-if="tierBonus(autoAmount)">Each refill adds <b>{{money(autoAmount*1e6+tierBonus(autoAmount))}}</b> ({{money(autoAmount*1e6)}} + <span style="color:var(--green)">{{money(tierBonus(autoAmount))}} bonus</span>).</template>
+                          <template v-if="nextBonusTier(autoAmount)"> Refill <a href="#" @click.prevent="autoAmount=nextBonusTier(autoAmount).usd;autoConsent=false">${{nextBonusTier(autoAmount).usd}}</a> or more for <span style="color:var(--green)">+{{nextBonusTier(autoAmount).pct}}% bonus</span> on every refill.</template>
+                        </p>
                         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer">
                           <input type="checkbox" v-model="autoConsent" style="margin-top:3px"/>
                           <!-- The mandate text. Not decoration: an off-session charge with no recorded
@@ -454,9 +472,11 @@ export default {
                             <td style="padding:8px 10px 8px 0;font-family:var(--mono);white-space:nowrap">{{money(i.amount_micro)}}</td>
                             <td style="padding:8px 10px 8px 0;white-space:nowrap" class="sub">
                               {{i.kind==='subscription'?'SSO subscription':i.kind==='auto'?'Auto top-up':'Manual top-up'}} ·
-                              <span :style="i.status==='paid'?'color:var(--green)':''">{{i.status==='paid'?'Paid':i.status==='open'?'Payment due':i.status||'Pending'}}</span>
+                              <span v-if="i.refunded_micro&&i.refunded_micro>=i.amount_micro">Refunded</span>
+                              <span v-else :style="i.status==='paid'?'color:var(--green)':''">{{i.status==='paid'?'Paid':i.status==='open'?'Payment due':i.status||'Pending'}}</span>
                               <span v-if="i.kind==='subscription'&&i.number" class="muted"> · {{i.number}}</span>
-                              <span v-if="i.bonus_micro" style="color:var(--green)"> +{{money(i.bonus_micro)}} bonus</span>
+                              <span v-if="i.bonus_micro&&!(i.refunded_micro>=i.amount_micro)" style="color:var(--green)"> +{{money(i.bonus_micro)}} bonus</span>
+                              <span v-if="i.refunded_micro&&i.refunded_micro<i.amount_micro"> · Refunded {{money(i.refunded_micro)}}</span>
                             </td>
                             <td style="padding:8px 0;text-align:right;white-space:nowrap">
                               <a v-if="i.invoice_pdf||i.hosted_invoice_url" :href="i.invoice_pdf||i.hosted_invoice_url" target="_blank" rel="noopener">Invoice</a>

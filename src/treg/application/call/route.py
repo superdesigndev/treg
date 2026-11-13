@@ -27,6 +27,9 @@ When the caller sent a domain and the hit carries an email, `_treg.domain_match`
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
 
+When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
+and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
+
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
 price. The first provider's answer is returned either way, reported in `_treg.confirmation`; when
@@ -60,25 +63,33 @@ from urllib.parse import urlencode
 import httpx
 
 from ... import audit, jsontext
+from .. import call_events
 from ...config import get_settings
 from ...infra.db import session_maker
 from ...domain import asynctasks as asynctasks_rules
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
-from ...domain.capacity.signatures import classify as classify_capacity
+from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
+from ...domain import plugins
+from ...domain import money as ledger
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
-from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
-                                                 invalid_identity, miss_status)
+from ...domain.catalog.schema.v2 import is_v2
+from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
+                                                 flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
+    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
+    sampled_provider_allowed, unscoped,
 )
 from .. import asynctasks as async_task_app
-from . import async_bridge, keyslots
+from . import admission, async_bridge, keyslots
+from . import route_rules as route_rules_app
+from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -155,13 +166,26 @@ _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned",
                                        "org_endpoint_quota_exceeded"})
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
-_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+_GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_video",
+                              "tag_spend_cap_reached", "platform_daily_cap_reached",
+                              "daily_cap_reached"})
+# treg's own transient refusals for the whole team (or tag), answered before any hold: every
+# candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
+_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
 
 
+MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or budget read is busy
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
+
+
+def _over_ceiling(held: int | None, remaining: int) -> str:
+    """The skip note for a child its own reserve refused: the hold that did not fit (the adapted
+    request's price with margin) and the ceiling left, so a caller can size the ceiling."""
+    if not isinstance(held, int):
+        return "would exceed max cost"
+    return f"would exceed max cost: would hold ${ledger.usd(held):g}, ${ledger.usd(max(0, remaining)):g} left"
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -274,13 +298,17 @@ class ChildOutcome:
 
 
 def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
-                  tier: str) -> ChildOutcome:
+                  tier: str, identity: dict | None = None) -> ChildOutcome:
     """Classify one routed child's answer. Pure: reads only this checkout's catalog."""
     if _declared_miss(endpoint, status, raw):
         return ChildOutcome("declared_miss")
     if declared_not_found(endpoint, status, raw):
         return ChildOutcome("not_found")
     capacity_signal = classify_capacity(endpoint["provider"], status, body=raw)
+    if tier == "platform" and is_exhausting(capacity_signal):
+        # treg's own account is out of money or out of its period allowance: nothing about the
+        # question, so the attempt is skipped like a rate-limited one, never the route's error.
+        return ChildOutcome("account_exhausted", detail=capacity_signal.kind)
     temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
     platform_auth_failure = tier == "platform" and status in (401, 403)
     # 405 and 410 Gone say the PROVIDER cannot serve this route (a discontinued endpoint answers
@@ -309,10 +337,24 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     # The provider's own `expect` success rule (a DataForSEO task status other than 20000 under
     # a 20000 envelope) says this request failed: not an answer, whatever the remains read as.
     upstream_failed = catalog_results.fails_expect(endpoint["id"], raw)
-    if doc is None or is_miss or empty_core or upstream_failed:
+    provider_error = False
+    if is_v2(endpoint):
+        judged = catalog_outcome.judge(endpoint, status, doc,
+                                       answer=plugins.Answer(status=status, headers={}, raw=raw, body=doc))
+        provider_error = judged.cause == "error"
+        is_miss = is_miss or judged.cause == "no_content"
+    off_question = False
+    rule = getattr(contract, "question_miss", "")
+    if rule and identity and doc is not None and not (is_miss or empty_core):
+        try:
+            off_question = bool(P.evaluate(rule, {**identity, **core}))
+        except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
+            log.debug("question_miss failed on %s: %s", endpoint.get("id"), exc)
+    if doc is None or is_miss or empty_core or upstream_failed or provider_error or off_question:
         why = tuple(name for name, on in (
             ("non_json", doc is None), ("adapter_miss", is_miss), ("empty_core", empty_core),
-            ("expect_failed", bool(upstream_failed))) if on)
+            ("expect_failed", bool(upstream_failed)), ("provider_error", provider_error),
+            ("question_miss", off_question)) if on)
         return ChildOutcome(
             "miss", why=why, doc=doc,
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
@@ -320,6 +362,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
 
 
+CURSOR_MAX = 512  # chars of a provider cursor `output.next_cursor` carries; longer stays in `raw`
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
 
 
@@ -399,6 +442,65 @@ class Attempt:
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
+def _above(value: object, cap: int) -> bool:
+    """A filter value above a provider's cap: a number, or a string of ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        return len(digits) > len(str(cap)) or int(digits or "0") > cap
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > cap
+
+
+def _require_ranges(ep: dict, filters: dict, given: dict) -> None:
+    """A routed call's own filter that declares a range is, when the caller sends it, a whole number
+    in that range read as a count is read (a JSON integer, or ASCII digits), or the routed call is
+    refused before anything is planned or held."""
+    for name, spec in (filters or {}).items():
+        if "min" not in (spec or {}):
+            continue
+        value = (given or {}).get(name)
+        if value not in (None, "") and not call_cost._whole(value, spec.get("max"), spec["min"]):
+            bound = f"from {spec['min']} to {spec['max']}" if "max" in spec else f"of at least {spec['min']}"
+            raise call_cost._invalid(ep, f"body.{name}", f"{ep['id']} needs {name}: a whole number {bound}")
+
+
+def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> None:
+    """A routed call's own filter that a v2 candidate maps into its `reserve.rows` count is a whole
+    number from 1 to that row's max when the caller sends it, or the routed call is refused before
+    any candidate is held. Neither the child nor the value is named."""
+    for e, ad, _v in candidates:
+        rule = (e.get("reserve") or {}).get("rows") or {}
+        if not is_v2(e) or not rule.get("param"):
+            continue
+        param = rule["param"]
+        target = "queryParams." + param.removeprefix("query.") if param.startswith("query.") else param
+        names = {k for k, t in ad.in_map.items() if t == target} | {
+            n for t, expr in (ad.in_expr or {}).items() if t == target for n in re.findall(r"[A-Za-z_]\w*", expr)}
+        for name in sorted(names & set(filters or {})):
+            value = (given or {}).get(name)
+            if value not in (None, "") and not call_cost._whole(value, int(rule["max"])):
+                raise call_cost._invalid(ep, name, f"{ep['id']} needs {name}: a whole number from 1 to {rule['max']}")
+
+
+def _empty_output(contract) -> dict:
+    """The contract's output shape for a miss / pending / no-core answer.
+
+    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    and callers (and the miss rule `results == []`) treat null as a broken response rather than an
+    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
+    """
+    out = {}
+    for k, spec in contract.output.items():
+        t = (spec or {}).get("type")
+        if t == "list":
+            out[k] = []
+        elif t == "int" and k == "count":
+            out[k] = 0
+        else:
+            out[k] = None
+    return out
+
+
 def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
@@ -435,10 +537,43 @@ def _row_key(row) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(name).lower()) if name else ""
 
 
-def _merge_rows(field: str, answers: list[tuple], limit: int | None):
+def _adapter_uses_limit(adapter) -> bool:
+    """True when the adapter forwards `limit` (directly or through an expression). A child that
+    never sees limit answers at its own page size; that is disclosed after the fact, not ranked."""
+    used = set(adapter.in_map) | {
+        n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)
+    }
+    return "limit" in used
+
+
+def _long_cursor(output: dict | None, adapter, merged: bool) -> tuple[dict | None, dict | None]:
+    """A `next_cursor` longer than CURSOR_MAX leaves `output` and is named on `_treg` instead.
+    A routed endpoint takes no cursor, so the token only serves a direct call to the provider,
+    and that call reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice)."""
+    cursor = (output or {}).get("next_cursor")
+    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX:
+        return output, None
+    path = (adapter.out_map.get("next_cursor") if adapter is not None and not merged else None)
+    return {**output, "next_cursor": None}, {"chars": len(cursor), **({"in_raw": path} if path else {})}
+
+
+def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
+    """Honest disclosure when a routed answer carries more rows than the caller asked for."""
+    if merged:
+        why = "merged answers exceeded the asked limit"
+    elif adapter is not None and not _adapter_uses_limit(adapter):
+        why = f"{served_by} does not accept limit"
+    else:
+        why = f"{served_by} returned more rows than asked"
+    return {"asked": asked, "returned": returned, "why": why}
+
+
+def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     """Union in ATTEMPT order — the ranking of the provider that answered first leads, later
     providers append what they add. The caller already paid for every one of these rows
-    (`spent` sums every attempt), so discarding them is pure waste."""
+    (`spent` sums every attempt), so discarding them is pure waste. `limit` is accepted for
+    call-site clarity but never applied: excess is disclosed on `_treg.limit_exceeded` instead."""
+    del limit  # kept in the signature so call sites stay readable; never trim paid rows
     seen, out = set(), []
     for _cand, _doc, core, _raw in answers:
         for r in (core.get(field) or []):
@@ -448,7 +583,7 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None):
             if k:
                 seen.add(k)
             out.append(r)
-    return out[:limit] if limit else out
+    return out
 
 
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions) -> Plan:
@@ -459,6 +594,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if contract is None:
         raise ResolutionFailed("target_not_found", status_code=404, detail=f"{ep['id']} has no contract")
     identity, variant = canonical_identity(contract, identity_given)
+    sample_percentages = get_settings().route_provider_sample_percentages
     if variant is None:
         raise ResolutionFailed("route_no_candidate", status_code=422, detail={
             "error": "identity_incomplete", "endpoint_id": ep["id"],
@@ -471,12 +607,13 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     capped = []
     for e, ad, v in raw:
         over = [f"{k} <= {m}" for k, m in (getattr(ad, "filter_max", None) or {}).items()
-                if isinstance(identity.get(k), (int, float)) and not isinstance(identity.get(k), bool) and identity[k] > m]
+                if _above(identity.get(k), m)]
         if over:
             dropped.append({"endpoint_id": e["id"], "why": "needs " + ", ".join(over)})
         else:
             capped.append((e, ad, v))
     raw = capped
+    _require_counts(ep, raw, contract.filters, identity_given)
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -511,7 +648,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                     continue
                 if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
                     own.add(service)
-    given = {k for k, v in (identity_given or {}).items() if v not in (None, "")}
+    # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
+    given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}
@@ -530,14 +668,19 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                 and not getattr(caller.org, "platform_overflow_disabled", False)):
             overflow_route = next(iter(overflow_routes_view.for_endpoint(e["id"])), None)
         price = 0 if tier != "platform" else cost_at(cv, identity, ad)
+        miss = 0 if tier != "platform" else miss_charge_micro(cv, identity, ad, price)
         if overflow_route is not None:
+            # The aggregator settles on its own envelope or its reserve, not on the direct row's
+            # count: one priced per call bills an empty answer too, one priced per result
+            # reports no rows and charges nothing for it.
             price = overflow_route.agg_price_micro
+            miss = price if getattr(overflow_route, "agg_unit", "call") == "call" else 0
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
                       exhausted=direct_exhausted and overflow_route is None,
                       note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
                             if overflow_route is not None else ""),
-                      ignored=ignored_filters(ad, contract, identity, given))
+                      ignored=ignored_filters(ad, contract, identity, given), miss_micro=miss)
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
             continue
@@ -548,6 +691,11 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # priceable, but this deployment holds no key for the provider: the child would answer
             # "no credential" (a 404 the router must not treat as the caller's fault).
             dropped.append({"endpoint_id": e["id"], "why": f"no {e['provider']} key on this deployment and no own key"})
+            continue
+        if tier == "platform" and not sampled_provider_allowed(
+                e["provider"], sample_percentages, org_id=caller.org_id,
+                capability=ep["capability"], identity=flags_off(contract, identity)):
+            dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
             continue
         if c.exhausted:
             dropped.append({"endpoint_id": e["id"], "why": "treg's account for this provider is exhausted right now"})
@@ -565,12 +713,42 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    ranked = rank(cands, prefer=options.prefer or list(contract.prefer), exclude=options.exclude,
-                  given=given, derive=contract.derive, one_subject=contract.one_subject)
-    if options.complete:  # stable: price order within each group
-        ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \
-                 [c for c in ranked if not _can_answer_fully(contract, c.adapter)]
-    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped)
+    decision = None
+    if route_rules_app.enabled():
+        input_type, meta, _ = call_events.segment(contract, identity_given)
+        decision = route_rules_app.decide(contract.capability, {**meta, "input_type": input_type})
+    rule = decision.rule if decision else None
+    route_rule: dict[str, str] = {}
+    if decision is not None:
+        route_rule["route_rules_version"] = str(decision.version)
+    if rule is not None:
+        route_rule["route_rule"] = rule.id
+
+    def ordered(prefer):
+        out = rank(cands, prefer=prefer, exclude=options.exclude,
+                   given=given, derive=contract.derive, one_subject=contract.one_subject)
+        if options.complete:  # stable: price order within each group
+            out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
+                  [c for c in out if not _can_answer_fully(contract, c.adapter)]
+        return out
+
+    orders: dict[str, list[str]] = {}
+    if options.prefer:
+        ranked = ordered(options.prefer)
+    else:
+        default = default_prefer(contract, identity, given, caller.org_id)
+        ranked = ordered(default)
+        orders["default"] = _endpoints(ranked)
+        if rule is not None:
+            ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
+            orders["rule"] = _endpoints(ruled)
+            ranked = ruled
+    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
+                route_rule=route_rule, orders=orders)
+
+
+def _endpoints(cands) -> list[str]:
+    return [c.endpoint["id"] for c in cands]
 
 
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
@@ -607,6 +785,22 @@ def _finished_on_submission(descriptor: dict, raw: bytes) -> bool:
         return asynctasks_rules.finished_on_submission(descriptor, json.loads(raw))
     except (ValueError, UnicodeDecodeError):
         return False
+
+
+async def _remember_pending_task(parent: CallContext, endpoint_id: str, descriptor: dict,
+                                 task_id: str, kickoff: bytes) -> None:
+    """Name the child's task under the parent's call id: the id a routed caller holds."""
+    try:
+        poll_url = asynctasks_rules.extract_submission(descriptor, json.loads(kickoff)).poll_url
+    except ValueError:
+        poll_url = None
+    try:
+        await async_task_app.remember_routed_task(
+            parent.call_ref, parent.input.caller.org_id, endpoint_id, descriptor,
+            task_id, poll_url, parent.meta.tags)
+    except Exception:
+        log.warning("could not record the pending task of routed call %s", parent.call_ref,
+                    exc_info=True)
 
 
 async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) -> int:
@@ -673,6 +867,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
+    if (contract and options.waterfall and not get_header(MIN_RESULTS_HEADER) and not get_header(MERGE_HEADER)
+            and (target := contract.fill_target(given))):
+        # `fill_limit_when`: the caller's `limit` is how many rows it wants, so a shorter answer
+        # goes on to the next provider and the rows add up, within MAX_WEAK_FALLBACKS and the cost cap.
+        options.min_results, options.merge = target, True
     if options.verify and (contract is None or contract.check is None):
         # Refused before anything is planned or held: an agent must not believe a check ran.
         checked = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.check)
@@ -710,19 +909,30 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
             "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
+    if contract:
+        _require_ranges(ep, contract.filters, given)
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
+    _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
-        # caller's own choice and answers 422 (nothing was charged either way)
-        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith("needs ") for d in plan.dropped)
+        # caller's own choice, and a provider that cannot send a key the caller gave never will,
+        # so both answer 422 (nothing was charged either way)
+        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
+                            for d in plan.dropped)
         strict_drop = [d for d in plan.dropped if d.get("strict")]
+        scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
         raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422, detail={
             "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
             "dropped": plan.dropped,
-            "message": (f"no provider can serve {ep['id']} for this identity right now" if not strict_drop or capacity_drop else
+            "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
+                        f"no provider for {ep['id']} can send every key you sent together"
+                        + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
+                           if options.exclude else "; send fewer keys")
+                        if scope_drop and not strict_drop else
+                        f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
                         f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
@@ -746,6 +956,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
+    admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
+    team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -805,10 +1017,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             quota_pending=parent.quota_pending)
         try:
             response = await execute_child(child, upstream_client)
+            _note_call(parent, plan, cand, child, tried)
         except CallFailure as exc:
+            _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
+                held = (exc.detail or {}).get("estimated_cost_micro") if isinstance(exc.detail, dict) else None
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
-                                     "would exceed max cost"))
+                                     _over_ceiling(held, (options.max_cost_micro or 0) - spent)))
                 cost_capped = True
                 continue
             if exc.kind == "org_endpoint_quota_exceeded":
@@ -824,10 +1039,31 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      exc.status_code, 0, "treg's account is at its rate limit"))
                 rate_waits.append(exc.retry_after_s or 1)
                 continue
-            if exc.kind in _GLOBAL_REFUSALS or (
-                exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
-            ):
-                raise  # the same refusal everywhere; nothing to fall back to
+            if exc.kind == "admission_denied":
+                # Decided for this candidate's way of paying, not for the job: a later candidate on
+                # the team's own key may still serve it, so this spends no error allowance.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's money is not available to this team here"))
+                admission_refusals.append(exc)
+                continue
+            if exc.kind in _GLOBAL_REFUSALS or exc.kind in _TEAM_BUSY:
+                if unconfirmed or undecided or best is not None:
+                    # An answer is already paid for: keep it, and say the next ask was refused.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                         exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                    break
+                if exc.kind in _GLOBAL_REFUSALS:
+                    raise  # the same refusal everywhere; nothing to fall back to
+                # Transient and the team's own: the next candidate may find it clear, but nothing
+                # here is a provider's failure, so it spends no error allowance.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"refused by treg: {exc.kind}"))
+                team_busy.append(exc)
+                if len(team_busy) >= MAX_TEAM_BUSY_TRIES:
+                    break
+                continue
+            if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
+                raise
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -883,7 +1119,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     "status": descriptor.get("status") or {},
                 }
                 body_out = {
-                    "output": {k: None for k in plan.contract.output},
+                    "output": _empty_output(plan.contract),
                     "raw": json.loads(kickoff_raw),
                     "_treg": {
                         "served_by": cand.endpoint["id"], "provider": cand.endpoint["provider"],
@@ -893,6 +1129,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         **({"dropped": plan.dropped} if plan.dropped else {}),
                     },
                 }
+                if ":" not in parent.call_ref:
+                    await _remember_pending_task(parent, cand.endpoint["id"], descriptor,
+                                                 waited.task_id, kickoff_raw)
                 _summarize(parent, served_by=cand.endpoint["id"], tried_count=len(tried))
                 _audit_parent(parent, ep, 202, spent, audit_client)
                 return _json(body_out, 202, {
@@ -922,7 +1161,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
-                                tier=cand.tier)
+                                tier=cand.tier, identity=plan.identity)
         if outcome.kind == "declared_miss":
             # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
             # on the endpoint - aviato/hunter/leadmagic/... 404 a person they have no record of),
@@ -977,6 +1216,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "message": f"{cand.endpoint['id']} rejected the request ({response.status}); "
                            + ("not retried elsewhere" if len(rejected_by) == 1 else "every free-on-failure provider rejected it too"),
                 "provider_response": raw[:600].decode("utf-8", "replace")})
+        if outcome.kind == "account_exhausted":
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", response.status, charged,
+                                 f"treg's account is used up ({outcome.detail})"))
+            continue
         if outcome.kind == "error":
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged, raw[:120].decode("utf-8", "replace")))
@@ -1005,7 +1248,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up.
         n_rows = outcome.rows
-        weak = options.waterfall and n_rows < options.min_results
+        # Under a merge the distinct rows of every answer so far are what the caller gets, so
+        # they, not this answer alone, decide whether to keep looking.
+        have = (len(_merge_rows(lf, [*answers, (cand, doc, core, raw)]))
+                if options.merge and (lf := _list_field(plan.contract)) else n_rows)
+        weak = options.waterfall and have < options.min_results
         # `X-Treg-Route-Complete`: an answer carrying under half the contract's output fields is
         # weak like a short list (the fullest one wins if nothing better turns up), and an answer
         # whose subject identifier differs from the one asked waits for another provider to report
@@ -1017,7 +1264,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 n_rows = _filled(plan.contract, core)   # the fullest weak answer wins
             else:
                 other = _other_subject(plan.contract, plan.identity, core)
-        detail = (f"{n_rows} < min_results {options.min_results}" if weak else f"thin answer: {thin}" if thin
+        detail = (f"{have} < min_results {options.min_results}" if weak else f"thin answer: {thin}" if thin
                   else "reports another subject; needs a second provider" if other else "")
         tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak" if weak or thin or other else "hit",
                              response.status, charged, detail, ignored=ignored))
@@ -1086,6 +1333,17 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
+        if team_busy and all(t.outcome == "skipped" for t in tried):
+            # Only treg's own busy refusals stopped the call: answer that, with its Retry-After,
+            # rather than a route_failed that blames the providers.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, team_busy[-1].status_code, 0, audit_client)
+            raise team_busy[-1]
+        if admission_refusals and all(t.outcome == "skipped" for t in tried):
+            # Nothing ran: the refusal names a remedy, unlike a cost ceiling the caller may never have set.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, 403, 0, audit_client)
+            raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
@@ -1096,12 +1354,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
                    and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
         if outcome == "miss":
-            body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
+            body_out = {"output": _empty_output(plan.contract), "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                                   **({"verification": _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
                                   **({"dropped": plan.dropped} if plan.dropped else {})}}
-            _summarize(parent, hit=False, tried_count=len(tried))
+            # The event reads the empty answer the caller got, so its counts say 0 rather than
+            # nothing (`rows: 0` on a people search that found no one).
+            _summarize(parent, hit=False, tried_count=len(tried), output=body_out["output"])
             _audit_parent(parent, ep, 200, spent, audit_client)
             headers = {"X-Treg-Providers-Tried": ",".join(t.provider for t in tried), "X-Treg-Route-Outcome": "miss",
                        **({"X-Treg-Route-Capped": "true"} if cost_capped else {})}
@@ -1134,10 +1394,23 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         field = _list_field(plan.contract)
         if field:
             rows = _merge_rows(field, answers, plan.identity.get("limit"))
-            if len(rows) > len(output.get(field) or []):
+            contributed = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
+            # The deduped union in attempt order whenever two providers contributed: an earlier
+            # provider's row for the same person (with its details) leads, and a later provider's
+            # own repeats count once, however many rows it returned.
+            if len(contributed) > 1:
                 output = {**output, field: rows}
-                merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
+                if "count" in plan.contract.output:
+                    output["count"] = len(rows)
+                merged_from = contributed
                 served = merged_from[0]
+    # Holders of the asked role now first, past holders last (`row.rank_by_role`), merged or not.
+    if plan.contract.row_rank and output and isinstance(output.get(plan.contract.row_of), list):
+        output = {**output, plan.contract.row_of: plan.contract.rank_rows(plan.identity, output[plan.contract.row_of])}
+    # Every provider whose rows are in the answer: a merged row from one that ignored a filter
+    # answers the looser question too.
+    ignored = list(dict.fromkeys(k for c, _, core_i, _ in answers
+                                 if c.endpoint["id"] in merged_from for k in c.ignored)) if merged_from else list(cand.ignored)
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
     # filter. It is on the attempt, but no caller reads `tried[]` — say it where the answer is, and
     # on a header, or the agent post-filters nothing and never knows why the geography is wrong.
@@ -1179,9 +1452,28 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
                  "ordered_by": "quality" if ordered_on and quality else "price"}
                 if options.decisive and winner_outcome in ("hit", "weak") else None)
-    body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
+    # A child (or a merge) that answers more rows than the caller's sent `limit` still returns
+    # every billed row: routed endpoints wrap the child's answer and never alter it. Disclose the
+    # excess on `_treg` (and a header) instead of trimming. Only a limit the caller SENT counts —
+    # a contract default is not a question anyone asked.
+    limit_exceeded = None
+    asked_limit = plan.identity.get("limit")
+    if (isinstance(given, dict) and "limit" in given
+            and isinstance(asked_limit, (int, float)) and not isinstance(asked_limit, bool)):
+        list_field = _list_field(plan.contract)
+        returned_n = len((output or {}).get(list_field) or []) if list_field else 0
+        asked_n = int(asked_limit)
+        if list_field and returned_n > asked_n:
+            limit_exceeded = _limit_exceeded_note(
+                asked=asked_n, returned=returned_n, served_by=served,
+                merged=bool(merged_from), adapter=cand.adapter)
+
+    output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
+
+    body_out = {"output": output or _empty_output(plan.contract), "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
+                          **({"next_cursor": long_cursor} if long_cursor else {}),
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
@@ -1191,16 +1483,20 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"upgrade": upgrade} if upgrade is not None else {}),
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
-                          **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
+                          **({"ignored_filters": ignored} if ignored else {}),
+                          **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
-    _summarize(parent, served_by=served, tried_count=len(tried), output=output,
+    _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
-                                 **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Ignored-Filters": ",".join(ignored)} if ignored else {}),
+                                 **({"X-Treg-Limit-Exceeded":
+                                     f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
+                                    if limit_exceeded else {}),
                                  **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),
@@ -1212,7 +1508,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 _CHECK_REASONS = {"route_max_cost": "over_cost_limit", "route_no_candidate": "no_checker",
                   **{k: "spend_limit" for k in _GLOBAL_REFUSALS},
                   **{k: "not_allowed" for k in _CANDIDATE_LOCAL_FAILURES},
-                  "org_endpoint_quota_exceeded": "quota_exceeded"}
+                  "org_endpoint_quota_exceeded": "quota_exceeded", "admission_denied": "not_allowed"}
 
 
 def _unchecked(reason: str) -> dict:
@@ -1332,6 +1628,33 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
                                         doc.get("raw"), meta.get("served_by")), cost
+
+
+def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
+    """Which order each provider actually reached came from. `route_order` names the first's;
+    `route_retry_order` the first later one the contract's own order would not have reached next.
+    A child counts only when its request left for the provider or its archived answer was served
+    (`reached_provider`), never when a local gate refused it. Each order is read from its first
+    candidate not yet passed over, and every earlier attempt is passed over, reached or not."""
+    if not child.reached_provider:
+        return
+    route = dict((parent.route_summary or {}).get("route_rule") or {})
+    passed = {t.endpoint_id for t in tried}
+    called = cand.endpoint["id"]
+
+    def next_in(order: str) -> str | None:
+        return next((e for e in plan.orders.get(order, ()) if e not in passed), None)
+    if not plan.orders:
+        source = "header"  # the caller's own X-Treg-Route-Prefer order
+    else:
+        source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
+    if "route_order" not in route:
+        route["route_order"] = source
+    elif source not in ("default", "header") and "route_retry_order" not in route:
+        route["route_retry_order"] = source
+    else:
+        return
+    _summarize(parent, route_rule=route)
 
 
 def _summarize(parent: CallContext, **outcome) -> None:

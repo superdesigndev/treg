@@ -1,4 +1,4 @@
-# Filtrat: email verification (with optional catch-all resolution) and email finding. Every call is
+# Filtrat: email verification (with optional catch-all resolution); the finder is filtrat-finder.yaml. Every call is
 # synchronous; each answer reports its own charge in credits_used, which settles the call. A repeat
 # of a check the account already made is free (is_cached: true, credits_used 0); credits_list
 # carries the price the same answer has when checked anew. Bulk jobs, LinkedIn lookups, lists,
@@ -9,7 +9,7 @@ source:
   openapi: https://filtrat.io/openapi.json
   curated: '2026-10-29'
 pricing_url: https://filtrat.io/v1/credits/rate-card
-limits: "Per key: 600 verifications and 200 finder searches a minute on treg's partner account (other keys: 200 a minute each), answered with 429 and Retry-After: 60 above that; at most 10 verifications and 15 finder searches in progress (503 SERVER_BUSY with Retry-After: 5 past that). A finder search on treg's key answers within 30 seconds (not found and free if it takes longer); a verification within 175 seconds."
+limits: "Per key: 600 verifications a minute on treg's partner account (other keys: 200 a minute), answered with 429 and Retry-After: 60 above that; at most 10 verifications in progress (503 SERVER_BUSY with Retry-After: 5 past that). A verification answers within 175 seconds."
 cache: forbidden
 endpoints:
   - id: filtrat.people.email.verify
@@ -89,6 +89,9 @@ endpoints:
     docs_url: https://filtrat.io/v1/docs
 
   - id: filtrat.people.email.find
+    status: retired
+    status_note: "Filtrat's finder moved to its own account and key: use filtrat-finder.people.email.find. filtrat.people.email.verify still works."
+    superseded_by: filtrat-finder.people.email.find
     added: '2026-10-29'
     domain: people
     capability: people.email.find
@@ -131,6 +134,9 @@ endpoints:
     docs_url: https://filtrat.io/v1/docs
 
   - id: filtrat.people.email.find.resolve_catchall
+    status: retired
+    status_note: "Filtrat's finder moved to its own account and key: use filtrat-finder.people.email.find. filtrat.people.email.verify still works."
+    superseded_by: filtrat-finder.people.email.find
     added: '2026-10-29'
     domain: people
     capability: people.email.find

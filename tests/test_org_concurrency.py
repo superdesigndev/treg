@@ -1,6 +1,7 @@
 """Published root admission, transport lifetime and fail-open behavior; no live services."""
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -99,6 +100,7 @@ def gate(monkeypatch):
     monkeypatch.setattr(flow, "_reader", flow.Reader())
     store = Slots()
     monkeypatch.setattr(flow, "_clock", lambda: store.clock)
+    monkeypatch.setattr(guard, "time", SimpleNamespace(monotonic=lambda: store.clock))
     monkeypatch.setattr(kv, "store", lambda: store)
     return settings, store
 
@@ -319,7 +321,7 @@ async def test_unconfirmed_acquisition_allows_after_cleaning_ambiguous_token(gat
     async def ambiguous(*args):
         await original(*args)
         if reply == "late":
-            await asyncio.sleep(0.15)
+            store.clock += 0.15
             return "acquired"
         return "unavailable"
 
@@ -753,6 +755,13 @@ async def test_funded_cancellation_keeps_cleanup_inside_slot(
         await original_cleanup(*args, **kwargs)
 
     monkeypatch.setattr(service, "_finish_cancelled_call", cleanup)
+    original_execute = routes.execute_call
+
+    async def gc_pause_then_execute(*args, **kwargs):
+        time.sleep(0.2)
+        return await original_execute(*args, **kwargs)
+
+    monkeypatch.setattr(routes, "execute_call", gc_pause_then_execute)
     async with httpx.AsyncClient(transport=_BlockingProviderTransport(stream)) as http:
         monkeypatch.setattr(app.state, "http", http)
         task = asyncio.create_task(clients.get("/call/tikhub.tiktok.video.comments?aweme_id=test"))

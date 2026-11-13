@@ -23,6 +23,12 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
     billing
   - every tool row carries `added:`, the UTC day it reached main, as YYYY-MM-DD and not in the
     future (scripts/catalog_added.py writes it; its `--base` mode guards existing dates in CI)
+  - WARN on a summary or note over its token limit and on every match of the reflection word list
+    (scripts/catalog_text_reflect.txt) in a row's summary and notes, on every row, or with
+    `--base REF` on the rows added or changed against REF (catalog-schema.md, "Summary and note")
+  - with `--base REF`, a row keeps the spelling (today's `cost` or v2) it has on REF, unless
+    `--allow-respelling`; catalog-added.yml runs `--base` on every pull request and passes
+    `--allow-respelling` when the pull request carries the `catalog-migration` label
   - a `verified` endpoint must have an existing example_response file, and every example file
     parses and stays under EXAMPLE_MAX_BYTES
   - an extended endpoint a verification run has touched claims exactly one non-empty state
@@ -46,15 +52,22 @@ never what a claim on it is worth.
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import json
 import math
 import re
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
+
+try:  # Running as a script puts `scripts/` on sys.path; importing in tests puts the repo root there.
+    from catalog_added import base_texts  # type: ignore[import-not-found]
+except ModuleNotFoundError:
+    from scripts.catalog_added import base_texts
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -72,6 +85,8 @@ from treg.domain.catalog.routing import paths as _paths  # noqa: E402
 from treg.domain import plugins  # noqa: E402
 from treg.domain.catalog import schema  # noqa: E402
 from treg.domain.catalog.schema import violations  # noqa: E402
+from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
+from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
 COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
@@ -197,6 +212,111 @@ def check_added(ep: dict, where: str, errors: list[str]) -> None:
         fail(errors, where, f"`added: {added}` is in the future; it is the UTC day the tool reached main")
 
 
+# No tokenizer is a dependency: a token is a run of letters and digits or one CJK character;
+# punctuation is not counted.
+SUMMARY_TOKENS = 50
+NOTE_TOKENS = 75
+_CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"
+TOKEN = re.compile(rf"[{_CJK}]|[^\W_{_CJK}]+")
+REFLECT_FILE = ROOT / "scripts" / "catalog_text_reflect.txt"
+
+
+def tokens(text: str) -> int:
+    return len(TOKEN.findall(text))
+
+
+def reflect_entries(path: Path = REFLECT_FILE) -> list[tuple[str, re.Pattern, str]]:
+    """(entry, pattern, reason) for every line of the reflection word list."""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        entry, _, reason = line.partition("  # ")
+        entry = entry.strip()
+        if entry.startswith("re:"):
+            pattern = re.compile(entry[3:], re.I)
+        else:
+            words = r"\s+".join(map(re.escape, entry.split()))
+            pattern = re.compile(rf"(?<!\w){words}(?!\w)", re.I)
+        out.append((entry, pattern, reason.strip()))
+    return out
+
+
+def _param_notes(input_schema: object) -> list[tuple[str, str]]:
+    """(where, text) of every note in a row's `input`: its own, a location's, every parameter's."""
+    if not isinstance(input_schema, dict):
+        return []
+    out = [("input.note", input_schema["note"])] if isinstance(input_schema.get("note"), str) else []
+    def walk(specs: object, prefix: str) -> None:
+        for name, spec in (specs or {}).items() if isinstance(specs, dict) else ():
+            if isinstance(spec, dict):
+                if isinstance(spec.get("note"), str):
+                    out.append((f"{prefix}.{name}.note", spec["note"]))
+                walk(spec.get("properties"), f"{prefix}.{name}")
+    for location in ("pathParams", "queryParams", "headers", "body"):
+        block = input_schema.get(location)
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("note"), str):
+            out.append((f"input.{location}.note", block["note"]))
+        if isinstance(block.get("properties"), dict):
+            walk(block["properties"], f"input.{location}")
+        elif not isinstance(block.get("type"), str):
+            walk(block, f"input.{location}")
+    return out
+
+
+def _charge_notes(ep: dict) -> list[tuple[str, str]]:
+    out = []
+    for key in ("cost", "price"):
+        block = ep.get(key)
+        if isinstance(block, dict):
+            if isinstance(block.get("note"), str):
+                out.append((f"{key}.note", block["note"]))
+            fallback = block.get("fallback")
+            if isinstance(fallback, dict) and isinstance(fallback.get("note"), str):
+                out.append((f"{key}.fallback.note", fallback["note"]))
+    return out
+
+
+def check_row_text(ep: dict, where: str, warnings: list[str],
+                   reflect: list[tuple[str, re.Pattern, str]]) -> None:
+    """Warn on a summary or note over its token limit and on every reflection-list match in the
+    row's caller-facing text (catalog-schema.md "Summary and note")."""
+    prose = [(key, ep[key]) for key in ("summary", "note") if isinstance(ep.get(key), str)]
+    for key, limit in (("summary", SUMMARY_TOKENS), ("note", NOTE_TOKENS)):
+        if isinstance(ep.get(key), str) and (n := tokens(ep[key])) > limit:
+            fail(warnings, where, f"{key} is {n} tokens, over {limit}")
+    for field, text in [*prose, *_param_notes(ep.get("input")), *_charge_notes(ep)]:
+        for entry, pattern, reason in reflect:
+            if m := pattern.search(text):
+                fail(warnings, where, f"{field} says {m.group(0)!r} ({entry}){': ' + reason if reason else ''}")
+
+
+def _catalog_rows(texts) -> dict[str, tuple[dict, str]]:
+    """id -> (row as written, its spelling with its provider's `defaults:` applied)."""
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    docs = [d for d in (yaml.load(text, Loader=loader) for text in texts) if isinstance(d, dict)]
+    defaults = {d.get("provider"): d["defaults"] for d in docs if isinstance(d.get("defaults"), dict)}
+    out = {}
+    for doc in docs:
+        for ep in doc.get("endpoints") or []:
+            if isinstance(ep, dict) and ep.get("id"):
+                out[str(ep["id"])] = (ep, schema.spelling(schema.merge(ep, defaults.get(doc.get("provider")))))
+    return out
+
+
+def compare_with_base(base: str) -> tuple[set[str], list[str]]:
+    """The ids of the rows added or changed against `base`, wherever in the catalog they moved, and
+    one line per row whose spelling (today's `cost` or v2) differs from its spelling on `base`."""
+    before = _catalog_rows(base_texts(base, CATALOG).values())
+    after = _catalog_rows(p.read_text() for p in sorted(CATALOG.glob("*.yaml")))
+    changed = {eid for eid, (ep, _) in after.items() if eid not in before or before[eid][0] != ep}
+    respelt = [f"{eid}: written in the {before[eid][1]} spelling on {base}, now {spelt}"
+               for eid, (_, spelt) in sorted(after.items()) if eid in before and before[eid][1] != spelt]
+    return changed, respelt
+
+
 def _input_fields(input_schema: object) -> dict[str, dict]:
     """Flatten request fields to location-qualified dotted paths used by price tables."""
     if not isinstance(input_schema, dict):
@@ -310,6 +430,10 @@ def check_platform_request(rule: object, input_schema: object, where: str,
         return
     fields = _input_fields(input_schema)
     for path, value in rule.items():
+        if value is None:
+            if not isinstance(path, str) or not path.startswith("queryParams.") or path == "queryParams.":
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter only")
+            continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
                 or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
@@ -370,7 +494,6 @@ def check_cost_quantity(cost: dict, input_schema: object, where: str, errors: li
 
 RESERVE_DEFAULT_SOURCES = {"docs", "observed"}
 UNDECLARED_RESERVE = frozenset({
-    "dataforseo.x.on-page-page-screenshot",
     "findymail.intellimatch.search",
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
@@ -417,30 +540,6 @@ def check_cost_settle_count(cost: dict, example: object, where: str, errors: lis
         fail(errors, where, "cost.settle.count requires per: 1")
     if example is not None and not isinstance(json_path(example, count["path"]), list):
         fail(errors, where, f"cost.settle.count.path '{count['path']}' is not a list in the example_response")
-
-
-TAVILY_RATE_KEYS = {
-    "tavily.web.search": {"basic", "fast", "ultra_fast", "advanced"},
-    "tavily.web.extract": {"basic", "advanced"},
-    "tavily.web.map": {"regular", "instructions"},
-    "tavily.web.crawl": {
-        "basic", "basic_instructions", "advanced", "advanced_instructions",
-    },
-}
-
-
-def check_tavily_rates(endpoint_id: str, cost: dict, where: str,
-                        errors: list[str]) -> None:
-    """Tavily's provider-specific formulas require a complete positive finite mode table."""
-    expected = TAVILY_RATE_KEYS.get(endpoint_id)
-    if expected is None:
-        return
-    rates = cost.get("tavily_rates")
-    if not isinstance(rates, dict) or set(rates) != expected:
-        fail(errors, where, "cost.tavily_rates must contain exactly " + ", ".join(sorted(expected)))
-        return
-    if any(not _finite_number(value) or value <= 0 for value in rates.values()):
-        fail(errors, where, "cost.tavily_rates values must be positive finite numbers")
 
 
 OCTEN_RATE_KEYS = {
@@ -502,6 +601,15 @@ def check_enrichlayer_rule(cost: dict, input_schema: dict, where: str,
         fail(errors, where, "cost.enrichlayer.extra_per_result needs declared options with positive credit rates")
 
 
+def _v2_price_is_free(price: object) -> bool:
+    if not isinstance(price, dict) or price.get("value") is None:
+        return False
+    try:
+        return Decimal(str(price["value"])) == 0
+    except InvalidOperation:
+        return False
+
+
 def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
     """Anonymous platform fallback is intentionally narrow: proven public GETs that cost zero."""
     mode = ep.get("platform_auth")
@@ -512,9 +620,9 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
         return
     if ep.get("method") != "GET":
         fail(errors, where, "platform_auth anonymous requires GET")
-    cost = ep.get("cost")
-    if not isinstance(cost, dict) or cost.get("type") != "free":
-        fail(errors, where, "platform_auth anonymous requires cost.type free")
+    cost, price = ep.get("cost"), ep.get("price")
+    if not (isinstance(cost, dict) and cost.get("type") == "free") and not _v2_price_is_free(price):
+        fail(errors, where, "platform_auth anonymous requires cost.type free (in v2, price.value '0')")
     if not ep.get("verified"):
         fail(errors, where, "platform_auth anonymous requires live verification")
     if ep.get("scope", "any_account") != "any_account" or ep.get("kind") == "account":
@@ -527,8 +635,10 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
 
 
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
-                     provider: str | None = None) -> None:
-    """Validate a first-match AIGC price table and its explicit reserve upper bound."""
+                     provider: str | None = None, *, needs_default: bool = True) -> None:
+    """Validate a first-match AIGC price table and its explicit reserve upper bound. A v2 table
+    (`needs_default=False`) may compare an optional field without a default: an equality on an
+    absent field does not hold, so a later row or the fallback prices that request."""
     table = cost.get("table")
     if not isinstance(table, list) or not table:
         fail(errors, where, "cost.table must be a non-empty list")
@@ -557,7 +667,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
                 spec = fields.get(str(field))
                 if spec is None:
                     fail(errors, rwhere, f"when field '{field}' is not declared in input")
-                elif spec.get("required") is not True and "default" not in spec:
+                elif needs_default and spec.get("required") is not True and "default" not in spec:
                     fail(errors, rwhere, f"when field '{field}' must be required or declare a default")
                 elif isinstance(expected, (dict, list)) or expected is None:
                     fail(errors, rwhere, f"when field '{field}' must compare a scalar value")
@@ -678,7 +788,9 @@ def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
 def check_async_descriptor(descriptor: object, where: str, provider: str,
                            endpoint_index: dict[str, dict], cost: object,
                            errors: list[str]) -> None:
-    """Validate the effective (provider defaults + endpoint overrides) async descriptor."""
+    """Validate the effective (provider defaults + endpoint overrides) async descriptor. `cost` is
+    a row's cost in today's spelling; a v2 row passes None, since its terminal answer settles by
+    any `settle` form."""
     if not isinstance(descriptor, dict):
         fail(errors, where, "async must be a mapping")
         return
@@ -816,12 +928,12 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
     if "terminal_on_submission" in descriptor and descriptor["terminal_on_submission"] is not True:
         fail(errors, where, "async.terminal_on_submission must be true when present")
     # per_call: the provider bills every finished answer, so treg settles one on each.
-    if not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call"):
+    if cost is not None and (not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call")):
         fail(errors, where, "an endpoint with async must have cost.type per_success or per_call")
 
 
 def check_spooled_response(ep: dict, effective_async: object, where: str,
-                           errors: list[str]) -> None:
+                           errors: list[str], *, v2: bool = False) -> None:
     """`spooled_response: true` - a synchronous metered answer too large to buffer (inline media),
     read to disk and settled from what the row declares it reads: its usage meters (`settle:
     usage`) or, for a fixed price, its `expect` success rule. Nothing else may need the body: no
@@ -832,7 +944,11 @@ def check_spooled_response(ep: dict, effective_async: object, where: str,
     if effective_async is not None or ep.get("resource_ownership") or ep.get("managed_resource"):
         fail(errors, where, "spooled_response cannot be combined with async, resource_ownership "
                             "or managed_resource: those read the whole body")
-    if (ep.get("cost") or {}).get("settle") != "usage" and not (ep.get("expect") or {}).get("json_path"):
+    if v2:
+        usage, expect = (ep.get("settle") or {}).get("usage"), ep.get("expect")
+    else:
+        usage, expect = (ep.get("cost") or {}).get("settle") == "usage", (ep.get("expect") or {}).get("json_path")
+    if not usage and not expect:
         fail(errors, where, "spooled_response keeps only the evidence the row declares: it needs "
                             "settle: usage or an expect success rule")
 
@@ -996,10 +1112,17 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     """
     if cost.get("type") not in COST_TYPES:
         fail(errors, where, f"cost.type missing or not one of {sorted(COST_TYPES)}")
-    # `bills_miss` marks a per-success price whose provider still charges for some misses (a
-    # routed row counts it among the children that bill a miss); other types already say so.
-    if "bills_miss" in cost and (cost["bills_miss"] is not True or cost.get("type") != "per_success"):
-        fail(errors, where, "cost.bills_miss must be true, and only on a per_success price")
+    # `bills_miss` marks a per-success or per-result price whose provider still charges for some
+    # misses (routing.plan.bills_miss: ranking prices those misses and a routed row counts the
+    # child among those that bill one); every other priced type already bills each call.
+    if "bills_miss" in cost and (cost["bills_miss"] is not True
+                                 or cost.get("type") not in ("per_success", "per_result")):
+        fail(errors, where, "cost.bills_miss must be true, and only on a per_success or per_result price")
+    # `miss_units`: how many rows a per-result miss bills (a minimum charge on an empty page);
+    # without it a billed miss costs the whole request.
+    if "miss_units" in cost and (type(cost["miss_units"]) is not int or cost["miss_units"] < 1
+                                 or cost.get("bills_miss") is not True or cost.get("type") != "per_result"):
+        fail(errors, where, "cost.miss_units must be a positive integer, beside bills_miss on a per_result price")
     value, conf = cost.get("value"), cost.get("confidence")
     if conf is not None and conf not in CONFIDENCES:
         fail(errors, where, f"cost.confidence '{conf}' not one of {sorted(CONFIDENCES)}")
@@ -1194,8 +1317,13 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                             "distinct from `verified`, which is the date the ROUTE was called)")
     elif (day := _as_date(checked)) is None:
         fail(errors, where, f"cost.checked '{checked}' is not an ISO date (YYYY-MM-DD)")
-    elif (age := (dt.date.today() - day).days) > STALE_DAYS:
-        warnings.append(f"{where}: cost.checked is {age} days old (> {STALE_DAYS}) — re-check the price")
+    else:
+        check_fresh(day, "cost.checked", where, warnings)
+
+
+def check_fresh(day: dt.date, key: str, where: str, warnings: list[str]) -> None:
+    if (age := (dt.date.today() - day).days) > STALE_DAYS:
+        warnings.append(f"{where}: {key} is {age} days old (> {STALE_DAYS}) — re-check the price")
 
 
 SHARED_PLAN_KIND = "treg_shared_plan"
@@ -1347,9 +1475,19 @@ def check_proposed_capabilities(taxonomy: dict[str, str], docs: list[tuple[str, 
 PLUGIN_TESTS = ROOT / "tests" / "plugins"
 
 
-def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None:
-    """A v2 row's plugins import from its own provider's module, each function has a unit test
+def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
+                 errors: list[str]) -> None:
+    """A core v2 row is priced, its miss lives on the row (its adapter only maps fields), its
+    plugins import from its own provider's module, each function has a unit test
     (`tests/plugins/test_<module>.py` names it), and the row has an example response."""
+    if tier == "core" and ep.get("price") is None:
+        fail(errors, where, "a core row needs a price")
+    if ep.get("ceiling_param") is not None:
+        fail(errors, where, "ceiling_param is read from the file header until the row key replaces "
+                            "it there (non-negotiable 4); declare it in the header")
+    if (adapters.get(ep.get("id")) or {}).get("miss"):
+        fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
+                            "from adapters.yaml")
     names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
@@ -1364,6 +1502,66 @@ def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None
             fail(errors, where, f"plugin {name} has no unit test in tests/plugins/test_{module}.py")
     if names and not (ep.get("example_response") and (CATALOG / str(ep["example_response"])).is_file()):
         fail(errors, where, "a row that names a plugin needs an example_response")
+
+
+def _v2_rated(provider: str, currency: str, unit: object = None, *, unknown: bool = False) -> bool:
+    """A v2 money unit resolves to a USD rate: usd itself, the provider's credit, its meter `unit`,
+    or a currency's fx rate. With `unknown`, a credit or meter rate declared `usd: null` (no
+    published price, so the row stays native and treg's key never serves it) also counts."""
+    if currency in ("usd", "USD"):
+        return True
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    if currency in ("credit", "unit"):
+        entries = (fx.get("credit_rates_usd") if currency == "credit"
+                   else (fx.get("unit_rates_usd") or {}).get(provider)) or {}
+        key = provider if currency == "credit" else str(unit or "")
+        rate = _credit_rate(provider) if currency == "credit" else _unit_rate(provider, unit)
+        return _finite_number(rate) or (unknown and key in entries and rate is None)
+    return _finite_number((fx.get("rates_to_usd") or {}).get(currency))
+
+
+def _v2_field(path: str, input_schema: object) -> str:
+    """A v2 request path (`body.x`, `query.x`) as the declared input field it names."""
+    return _legacy_location(path, input_schema if isinstance(input_schema, dict) else {})
+
+
+def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors: list[str]) -> None:
+    """What the strict model cannot see alone: every money unit resolves to a rate, and every
+    request path a price or a hold reads names a declared input field of the right kind."""
+    inp = ep.get("input") or {}
+    fields = _input_fields(inp)
+    price, settle, reserve = row.price, row.settle, row.reserve
+    if price is not None and not _v2_rated(provider, price.currency, price.unit, unknown=True):
+        fail(errors, where, f"price.currency {price.currency}"
+                            f"{f' (unit {price.unit})' if price.currency == 'unit' else ''} has no "
+                            f"fx.yaml rate for '{provider}'")
+    for name, rule in (("settle.reported", settle and settle.reported), ("settle.usage", settle and settle.usage)):
+        if rule is not None and not _v2_rated(provider, rule.unit if rule.unit in ("usd", "credit") else "unit",
+                                              rule.unit):
+            fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
+                                f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.usage is not None and settle.usage.terms and settle.usage.unit != "usd":
+        fail(errors, where, "settle.usage.terms rates are USD per unit; its unit must be usd")
+    if reserve is not None and reserve.rows is not None and reserve.rows.param is not None:
+        spec = fields.get(_v2_field(reserve.rows.param, inp))
+        if spec is None or spec.get("type") != "integer":
+            fail(errors, where, f"reserve.rows.param '{reserve.rows.param}' must name a declared integer input field")
+    if reserve is not None and reserve.entities is not None:
+        sources = reserve.entities.from_ if isinstance(reserve.entities.from_, list) else [reserve.entities.from_]
+        for path in sources:
+            if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
+                fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if price is None or price.table is None:
+        return
+    view = schema.served(row, inp)["cost"]
+    if "table" in view:
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider,
+                         needs_default=False)
+        return
+    for index, entry in enumerate(price.table):
+        for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):
+            if fields.get(_v2_field(path, inp)) is None:
+                fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
 
 
 def check_routing(errors: list[str]) -> None:
@@ -1392,8 +1590,24 @@ def check_manifests(errors: list[str]) -> None:
 
 
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Validate the endpoint catalog.")
+    parser.add_argument("services", nargs="*", help="only these providers (both tiers)")
+    parser.add_argument("--base", metavar="REF",
+                        help="judge the text of only the rows added or changed against REF, and fail a "
+                             "row whose spelling differs from REF's")
+    parser.add_argument("--allow-respelling", action="store_true",
+                        help="with --base: report spelling changes but pass (the catalog-migration label)")
+    args = parser.parse_args(argv)
     errors: list[str] = []
     warnings: list[str] = []
+    changed, respelt = compare_with_base(args.base) if args.base else (set(), [])
+    reflect = reflect_entries()
+    for line in respelt:
+        if args.allow_respelling:
+            warnings.append(f"{line} (catalog-migration)")
+        else:
+            errors.append(f"{line}; keep the row's spelling, or label a migration batch "
+                          "`catalog-migration`")
     check_fx(errors)
     check_aliases(errors, warnings)
     tax = schema.read_yaml(CATALOG / "capabilities.yaml")
@@ -1403,7 +1617,7 @@ def main(argv: list[str]) -> int:
 
     from treg.oauth_providers import REGISTRY
 
-    only = set(argv)
+    only = set(args.services)
     all_files = sorted(p for p in CATALOG.glob("*.yaml")
                        if p.name not in ("capabilities.yaml", "fx.yaml", "aliases.yaml", "contracts.yaml", "adapters.yaml"))
     # Successors can appear later in the same file or in another provider. Build the reference map
@@ -1434,6 +1648,8 @@ def main(argv: list[str]) -> int:
                 endpoint_index[endpoint_id] = {**schema.merge(ep, defaults.get(doc.provider)),
                                                "provider": doc.provider}
     check_proposed_capabilities(taxonomy, docs, errors, warnings)
+    adapter_rows = ((schema.read_yaml(CATALOG / "adapters.yaml") or {}).get("adapters") or {}
+                    if (CATALOG / "adapters.yaml").is_file() else {})
     files = [p for p in all_files if p in parsed]
     uses: list[violations.Use] = []
     # "tikhub" selects tikhub.yaml AND tikhub.extended.yaml — a service is both its tiers
@@ -1488,11 +1704,12 @@ def main(argv: list[str]) -> int:
                 continue
             uses.append(violations.Use(str(eid), str(service), ep))
             legacy = not isinstance(row, schema.V2Row)
-            if not legacy:
-                fail(errors, where, "the v2 spelling is loaded but not yet billed or judged by the call "
-                                    "runtime; it ships with the v2 settlement order")
-                check_v2_row(ep, service, where, errors)
             tier = ep.get("tier", "extended" if extended_file else "core")
+            if not legacy:
+                check_v2_row(ep, service, tier, adapter_rows, where, errors)
+                check_v2_cost(row, ep, service, where, errors)
+                if row.provenance is not None and (day := _as_date(row.provenance.checked)) is not None:
+                    check_fresh(day, "provenance.checked", where, warnings)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
@@ -1501,6 +1718,8 @@ def main(argv: list[str]) -> int:
                 if not ep.get(f):
                     fail(errors, where, f"missing required field '{f}'")
             check_added(ep, where, errors)
+            if args.base is None or eid in changed:
+                check_row_text(ep, where, warnings, reflect)
             miss = ep.get("miss") if legacy else None
             if isinstance(miss, dict) and miss.get("when") is not None:
                 # The router evaluates `when` against the provider body; a misspelt path parses
@@ -1590,8 +1809,6 @@ def main(argv: list[str]) -> int:
                     elif ("reserve" not in cost and eid not in UNDECLARED_RESERVE
                           and cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS):
                         fail(errors, where, "a per_result price in an entity unit needs cost.reserve")
-                    if service == "tavily":
-                        check_tavily_rates(eid, cost, where, errors)
                     if service == "octen":
                         check_octen_rates(eid, cost, where, errors)
                     if service == "enrichlayer":
@@ -1599,10 +1816,9 @@ def main(argv: list[str]) -> int:
             effective_async = effective_async_descriptor(data.get("async"), ep.get("async"))
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
-                # verification observed (a DataForSEO extended row carries `observed_cost` only).
-                if legacy:
-                    check_async_descriptor(effective_async, where, str(service), endpoint_index,
-                                           _effective_cost(ep), errors)
+                # verification observed (a row in today's spelling may carry `observed_cost` only).
+                check_async_descriptor(effective_async, where, str(service), endpoint_index,
+                                       _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
                     body_fields = inp.get("body") or {}
                     bounded = any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
@@ -1624,8 +1840,8 @@ def main(argv: list[str]) -> int:
                 check_resource_ownership(ep["resource_ownership"], where, inp, errors)
             if ep.get("managed_resource") is not None:
                 check_managed_resource(ep["managed_resource"], where, inp, errors)
-            if legacy and "spooled_response" in ep:
-                check_spooled_response(ep, effective_async, where, errors)
+            if "spooled_response" in ep:
+                check_spooled_response(ep, effective_async, where, errors, v2=not legacy)
             if ep.get("example_response"):
                 check_example_file(CATALOG / str(ep["example_response"]), where, errors)
             if ep.get("verified"):

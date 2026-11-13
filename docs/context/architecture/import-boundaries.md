@@ -70,6 +70,10 @@ domain edges. This fragment records only what the contracts and tests cannot say
 - `treg.domain.asynctasks` is a stdlib-only leaf shared with the light CLI (`cli.await_async_task`
   uses its terminal classification) so the CLI awaiter and the settlement worker cannot disagree
   about what "done" means. It is on the lightness list as well as under its contract.
+- `treg.routers.views` is response shape the server renders and the light CLI prints: stdlib and
+  `toon_format` only, so it is on the lightweight contract, and so is `treg.routers` itself, whose
+  `__init__` the CLI imports on the way. The server glue that runs those views is
+  `treg.routers.view`, outside the contract.
 - The R2 SDK (`obstore`) ships only in `[server]`; `infra.object_store.open_r2` loads it lazily.
 
 ## Why some contracts look stricter than needed
@@ -82,7 +86,9 @@ domain edges. This fragment records only what the contracts and tests cannot say
   `bootstrap.configure_provider_labels` instead.
 - `treg.domain.plugins` holds a provider's pure functions that catalog rows name
   ([catalog-schema](catalog-schema.md)). Replay runs them, so its contract forbids every I/O path:
-  models, infra, config and the network, database and storage clients.
+  models, infra, config and the network, database and storage clients. The catalog domain calls
+  them when a row's outcome rule names one (`domain.catalog.outcome`), the one sanctioned edge into
+  this domain.
 - Domain contracts exist only for packages that exist; do not add placeholder domains to make a
   future boundary look active.
 

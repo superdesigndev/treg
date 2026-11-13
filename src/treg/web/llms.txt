@@ -33,10 +33,9 @@ holds those accounts and bills a fraction of a cent per call.
   choose which team pays. Then stop.
 - **Local coding agent** (Claude Code, Cursor, Codex, opencode on the human's machine): the human
   has authorized the whole flow. If your runtime asks permission for shell commands, ask for `treg`
-  once and work straight through. The installer puts in the CLI and the treg skill for every agent it
-  detects. It lists treg's other skills without installing them: tell the human in one sentence
-  each what they do, ask which they want, then run `treg skill bootstrap --skills <name>,<name>`
-  (or `--skills all`).
+  once and work straight through: install, sign in, make the first call, report the doorway. The
+  installer puts in the CLI and the treg skill for every agent it detects, and names treg's other
+  skills in one line without installing them; do not stop to ask about them here.
 
       curl -fsSL {BASE}/install.sh | sh
       treg login    # browser sign-in: GitHub, Google or an emailed code
@@ -62,7 +61,10 @@ the repo and the conversation first); take the rest from: today's trending TikTo
 real monthly search volume and related keywords for their product; the work email of someone
 relevant to their work; a LinkedIn profile they would recognize. Mention mechanics only when the
 human must act on them, one line each, after the proposals. Once the first call returns real data,
-ask whether they would like to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
+mention treg's other skills (the ones the installer named; each is described in
+`{BASE}/.well-known/skills/index.json`) in one sentence each, and install the ones they pick with
+`treg skill bootstrap --skills <name>,<name>` (or `--skills all`). Then ask whether they would like
+to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
 or open https://github.com/superdesigndev/treg.
 
 **The loop: search, read, call.**
@@ -149,6 +151,8 @@ catalog search. Over MCP: `hub_create`. The skill below has the whole guide.
 <!--hosted-->
 - [GTM engineering playbook]({BASE}/gtm-engineering.md): from ICP to rollout, each chapter with a
   prompt and a rule.
+- [Comparisons]({BASE}/compare): treg beside other tool gateways, app connectors and data
+  platforms, each read from that product's own pages and dated.
 <!--/hosted-->
 - [README](https://github.com/superdesigndev/treg/blob/main/README.md): overview and architecture.
 - [CLI reference](https://github.com/superdesigndev/treg/blob/main/USAGE.md): every command, with

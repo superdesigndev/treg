@@ -26,8 +26,8 @@ probes unpredictably. `treg host <file>` gives it one.
 
 - `POST /media` (member+, raw body, `Content-Type` names the media type) stores the bytes (see
   below) with a metadata row in the `media` table and answers
-  `{url, token, content_type, size, expires_at}`. The URL is `<public_url>/m/<token>`.
-- `GET /m/{token}` is unauthenticated on purpose: the vendor's fetcher holds no treg token. The
+  `{url, token, content_type, size, expires_at}`. The URL is `<public_url>/m/<token>.<ext>`, where `<ext>` comes from the stored content-type (for example `.mp4`, `.mp3`, `.png`). Vendors that validate references by path extension need that suffix; the token itself stays extensionless in storage.
+- `GET /m/{token}` (and `GET /m/{token}.<ext>`) is unauthenticated on purpose: the vendor's fetcher holds no treg token. The
   token is 192 random bits and the URL names nothing about the team, so the URL is the only
   capability. Served inline with the stored type, `Content-Security-Policy: sandbox` and
   `nosniff` (user bytes on treg's origin must stay inert), `Cache-Control: public, max-age=3600`
@@ -42,7 +42,7 @@ probes unpredictably. `treg host <file>` gives it one.
 - The daily quota is exact under concurrency: the new row is inserted and the team's 24 h sum
   (which includes it) is read in one transaction, serialized per team by a Postgres advisory lock
   (SQLite serializes the insert's write lock), and an upload past the quota rolls back.
-- Not metered. Hosting is a courtesy like polling, so money's five entries stay untouched and the
+- Not metered. Hosting is a courtesy like polling, so money's entries stay untouched and the
   call runtime never touches this table.
 
 ## Where the bytes live

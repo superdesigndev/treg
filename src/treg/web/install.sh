@@ -15,6 +15,8 @@ BASE="{BASE}"
 #   curl -fsSL {BASE}/install.sh | sh -s -- --skills lead-signals,recruit      (or: --skills all)
 TOKEN="${TREG_TOKEN:-}"
 SKILLS=""
+# The code when fetched as {BASE}/i/<code>; empty on the plain URL.
+AD_LINK="{AD_LINK}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --token) TOKEN="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
@@ -41,11 +43,108 @@ SRC="tools-registry[proxy]"
 # (or downloading) a compatible Python. With the constraint, uv fetches one if none is installed.
 PYREQ=">=3.12,<3.14"
 
+# Anonymous install telemetry, the CLI's own rules (docs/context/interface/cli.md): only a registry
+# that sets a PostHog key sends, TREG_TELEMETRY=0|false|off or DO_NOT_TRACK=1 turn it off, and a
+# failed send never changes the install. The id is the CLI's `analytics-id`, written here when it is
+# missing, so a later command joins the install that produced it.
+PH_KEY="{POSTHOG_KEY}"
+PH_HOST="{POSTHOG_HOST}"
+case "$(printf '%s' "${TREG_TELEMETRY:-}" | tr '[:upper:]' '[:lower:]')" in 0|false|off) PH_KEY="" ;; esac
+[ "${DO_NOT_TRACK:-}" = "1" ] && PH_KEY=""
+BINARY_PERCENT="{BINARY_PERCENT}"
+BINARY_TRIED=""
+METHOD=""
+VERSION=""
+ON_PATH=false
+clean() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._+-' | cut -c1-40; }
+treg_version() { clean "$(treg --version 2>/dev/null | awk '{print $2}')"; }
+new_uuid() {
+  if [ -r /proc/sys/kernel/random/uuid ]; then
+    cat /proc/sys/kernel/random/uuid
+  elif command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr 'A-F' 'a-f'
+  else
+    od -An -N16 -tx1 /dev/urandom | tr -d ' \n' |
+      sed -E 's/^(.{8})(.{4})(.{4})(.{4})(.{12})$/\1-\2-\3-\4-\5/'
+  fi
+}
+install_id() {
+  # shellcheck disable=SC2088 # a literal ~/ in TREG_CONFIG, which the CLI expands itself
+  case "${TREG_CONFIG:-}" in
+    "") dir="$HOME/.treg" ;;
+    "~/"*) dir=$(dirname "$HOME/${TREG_CONFIG#"~/"}") ;;
+    *) dir=$(dirname "$TREG_CONFIG") ;;
+  esac
+  file="$dir/analytics-id"
+  if [ ! -s "$file" ]; then
+    mkdir -p "$dir" 2>/dev/null || return 0
+    (umask 077; set -C; new_uuid > "$file") 2>/dev/null || true
+  fi
+  id=$(tr -d ' \n' < "$file" 2>/dev/null) || return 0
+  printf '%s' "$id" | grep -qiE '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' && printf '%s' "$id"
+}
+report() {  # report <step> [reason]
+  [ -n "$PH_KEY" ] && [ -n "$INSTALL_ID" ] && command -v curl >/dev/null 2>&1 || return 0
+  props="\"install_step\":\"$1\",\"reason\":\"${2:-}\",\"method\":\"$METHOD\",\"prior_version\":\"$PRIOR_VERSION\""
+  props="$props,\"version\":\"$VERSION\",\"on_path\":$ON_PATH,\"os\":\"$OS\",\"arch\":\"$ARCH\""
+  props="$props,\"ad_link\":$AD,\"with_token\":$TOK,\"arm\":\"$ARM\",\"\$process_person_profile\":false,\"\$geoip_disable\":true"
+  curl -fsS --connect-timeout 2 --max-time 3 -H 'Content-Type: application/json' \
+    -d "{\"api_key\":\"$PH_KEY\",\"event\":\"cli_install_step\",\"distinct_id\":\"$INSTALL_ID\",\"properties\":{$props}}" \
+    "$PH_HOST/i/v0/e/" >/dev/null 2>&1 || true
+}
+leave_ad_link() {
+  if [ -n "$AD_LINK" ]; then
+    mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
+  fi
+}
+install_binary() {  # install_binary [note]: the binary CLI's installer on its stable channel
+  note="${1:-}"
+  BINARY_TRIED=1
+  script=$(curl -fsSL "$BASE/install.sh?channel=beta" 2>/dev/null) || return 1
+  case "$script" in "#!/bin/sh"*) ;; *) return 1 ;; esac
+  [ -z "$note" ] || printf '\n%s\n\n' "$note"
+  leave_ad_link
+  set -- --channel stable
+  if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
+  if [ -n "$SKILLS" ]; then set -- "$@" --skills "$SKILLS"; fi
+  sh -c "$script" install-bin "$@"
+}
+fail() {  # fail <reason>
+  report failed "$1"
+  [ -z "$PRIOR_VERSION" ] && [ -z "$BINARY_TRIED" ] || exit 1
+  install_binary "Installing the treg binary instead, which needs no Python…"
+  exit $?
+}
+INSTALL_ID=""
+[ -n "$PH_KEY" ] && INSTALL_ID=$(install_id || true)
+OS=$(clean "$(uname -s 2>/dev/null)")
+ARCH=$(clean "$(uname -m 2>/dev/null)")
+PRIOR_VERSION=$(treg_version || true)
+AD=false; [ -n "$AD_LINK" ] && AD=true
+TOK=false; [ -n "$TOKEN" ] && TOK=true
+ARM=python
+if [ -z "$PRIOR_VERSION" ] && [ "$BINARY_PERCENT" -gt 0 ] 2>/dev/null; then
+  if [ -n "$INSTALL_ID" ]; then
+    slot=$(printf '%s' "$INSTALL_ID" | cksum | cut -d' ' -f1)
+  else
+    slot=$(od -An -N4 -tu4 /dev/urandom | tr -d ' \n')
+  fi
+  if [ $((slot % 100)) -lt "$BINARY_PERCENT" ]; then ARM=binary; fi
+fi
+report started
+
 printf '\n\033[38;5;173m▚ tools-registry\033[0m - installing the treg CLI…\n\n'
 
+if [ "$ARM" = binary ]; then
+  install_binary && exit 0
+  printf '\nInstalling the Python CLI instead…\n\n'
+fi
+
 if command -v uv >/dev/null 2>&1; then
-  uv tool install --force --python "$PYREQ" "$SRC"
+  METHOD=uv
+  uv tool install --force --python "$PYREQ" "$SRC" || fail install_command
 elif command -v pipx >/dev/null 2>&1; then
+  METHOD=pipx
   # pipx needs a concrete interpreter, not a range — probe for one inside PYREQ before falling
   # back to pipx's default (which is pipx's own Python and may be outside the range).
   PIPX_PY=""
@@ -53,34 +152,38 @@ elif command -v pipx >/dev/null 2>&1; then
     if command -v "$py" >/dev/null 2>&1; then PIPX_PY="$py"; break; fi
   done
   if [ -n "$PIPX_PY" ]; then
-    pipx install --force --python "$PIPX_PY" "$SRC"
+    pipx install --force --python "$PIPX_PY" "$SRC" || fail install_command
   else
-    pipx install --force "$SRC"
+    pipx install --force "$SRC" || fail install_command
   fi
 elif command -v pip3 >/dev/null 2>&1; then
+  METHOD=pip3
   # pip can only install into the interpreter it belongs to. Outside PYREQ it prints a wall of
   # "Ignored the following versions" and dies — say what is wrong and how to fix it instead.
   if ! pip3 --version 2>/dev/null | grep -qE '\(python 3\.1[23]\)'; then
     echo "pip3 belongs to $(pip3 --version 2>/dev/null | sed -n 's/.*(python \([0-9.]*\)).*/Python \1/p'), but treg needs Python 3.12 or 3.13." >&2
     echo "Easiest fix — install uv (it fetches a matching Python by itself), then rerun this command:" >&2
     echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-    exit 1
+    fail python_version
   fi
-  pip3 install --user --upgrade "$SRC"
+  pip3 install --user --upgrade "$SRC" || fail install_command
 else
   echo "Need Python 3.12 or 3.13 and one of: uv (recommended), pipx, or pip3." >&2
   echo "Install uv:  https://docs.astral.sh/uv/getting-started/installation/" >&2
-  exit 1
+  fail no_installer
 fi
+
+if command -v treg >/dev/null 2>&1; then
+  ON_PATH=true
+  VERSION=$(treg_version || true)
+fi
+report installed
 
 # point the CLI at this server (falls back silently on older CLIs)
 treg config --base-url "$BASE" >/dev/null 2>&1 || true
 
-# Fetched as {BASE}/i/<code>: leave the code for the next `treg login`. Empty on the plain URL.
-AD_LINK="{AD_LINK}"
-if [ -n "$AD_LINK" ]; then
-  mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
-fi
+# Fetched as {BASE}/i/<code>: leave the code for the next `treg login`.
+leave_ad_link
 
 # install the official treg skill into every detected agent so it knows how to use treg.
 # `treg skill bootstrap` fans out across all supported agents (Claude Code, Cursor, Codex, Gemini,

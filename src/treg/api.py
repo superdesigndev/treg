@@ -29,6 +29,7 @@ from sqlmodel import select
 
 from . import archive, crypto, localrun, oauth_providers, ratestore
 from .application import asynctasks as async_task_app
+from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
 from .domain.catalog import store as catalog_store
@@ -56,6 +57,7 @@ from .routers import api_keys as api_key_routes
 from .routers import arena as arena_routes
 from .routers import web_arena as web_arena_routes
 from .routers import rankings as rankings_routes
+from .routers import compare as compare_routes
 from .routers import showcase as showcase_routes
 from .routers import images as images_routes
 from .routers import auth as auth_routes
@@ -64,6 +66,7 @@ from .routers import call as call_routes
 from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
 from .routers import enterprise_sso as enterprise_sso_routes
+from .routers import cli_client as cli_client_routes
 from .routers import feedback as feedback_routes
 from .routers import hub as hub_routes
 from .routers import media as media_routes
@@ -73,6 +76,8 @@ from .routers import provider_resources as provider_resource_routes
 from .routers import referrals as referral_routes
 from .routers import resources as resources_routes
 from .routers import table as table_routes
+from .routers import tasks as task_routes
+from .routers import view as view_routes
 from .routers import web as web_routes
 from .routers.auth import _client_ip
 from .routers.auth_helpers import _same_origin
@@ -268,7 +273,8 @@ async def create_tool_request(
     `_same_origin` gate on the cookie path only."""
     await ratestore.sweep(db, TOOLREQ_HIT_NS)
     if not await ratestore.rate_check(db, TOOLREQ_HIT_NS,
-                                      [(_client_ip(request), TOOLREQ_RATE_MAX)], TOOLREQ_RATE_WINDOW_S):
+                                      ratestore.ip_limit(_client_ip(request), TOOLREQ_RATE_MAX),
+                                      TOOLREQ_RATE_WINDOW_S):
         await db.commit()  # persist the sweep even on reject
         raise HTTPException(status_code=429, detail="too many tool requests from here — try again later")
     capability = body.capability.strip()
@@ -312,7 +318,10 @@ async def create_tool_request(
             "note": "logged — requests steer which provider gets keyed next"}
 
 
+view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)
+
 router.routes.extend(feedback_routes.app.routes)
+router.routes.extend(cli_client_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
@@ -702,7 +711,8 @@ _ROUTED_CHILD_WINDOW = timedelta(hours=1)
 
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
-    call_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+    call_id: str, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What one of this team's calls asked and what came back — the archive's copy.
 
@@ -711,7 +721,9 @@ async def get_call_result(
 
     A 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered
     platform call, or an own-key call whose answer fit the size cap while recording was on. The
-    audit row keeps the identities of the exact bytes the caller received. Own-tool calls are
+    audit row keeps the identities of the provider's bytes; a metered answer is returned as its
+    caller received it: where treg removes the provider's reported charge, without it unless this
+    request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
     relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
     with a `note` saying which. A routed call's answer is its children's: its row lists them in
     `children`, each readable here by its call ref. The request shape is the vendor-facing one
@@ -768,6 +780,11 @@ async def get_call_result(
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
+    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
+          and (text := (found.get("response") or {}).get("body_text")) is not None):
+        # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
+        out["response"]["body_text"] = call_service.answer_for_caller(
+            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
     return out
 
 
@@ -883,11 +900,13 @@ router.routes.extend(admin_routes.reports_router.routes)
 
 router.routes.extend(call_routes.router.routes)
 router.routes.extend(table_routes.router.routes)
+router.routes.extend(task_routes.router.routes)
 router.routes.extend(activity_routes.app.routes)
 router.routes.extend(arena_routes.router.routes)
 router.routes.extend(web_arena_routes.router.routes)
 router.routes.extend(showcase_routes.router.routes)
 router.routes.extend(rankings_routes.router.routes)
+router.routes.extend(compare_routes.router.routes)
 router.routes.extend(images_routes.router.routes)
 
 

@@ -13,7 +13,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, adtrack.js, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets - injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
-| [Call events - one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | shipped | call_events.py, call_events.py, contracts.yaml, test_call_events.py |
+| [Call events - one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | shipped | call_events.py, call_events.py, segments.py, contracts.yaml, … |
 | [Catalog schema - the strict models every catalog reader shares, in today's spelling and v2](architecture/catalog-schema.md) | building | __init__.py, base.py, paths.py, common.py, … |
 | [Endpoint catalog - what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | __init__.py, store.py, stats.py, results.py, … |
 | [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, worker.py, … |
@@ -32,26 +32,29 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
 | [Org admission - published pause, rate and concurrency limits](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
-| [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, promotions.py, … |
+| [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, admission.py, … |
 | [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, jsontext.py, ssrf.py, api.py, … |
 | [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | shipped | __init__.py, __main__.py, records.py, engine.py, … |
+| [Route rules - a published provider order per segment of a routed capability](architecture/route-rules.md) | building | rules.py, route_rules.py, route.py, call_events.py, … |
 | [Shadow provider - a candidate asked the same question as served calls, after the fact, and compared](architecture/shadow.md) | building | shadow.py, shadow.py, 0086_shadow_pairs.py, test_shadow.py |
 | [Showcase leaderboard and pictures - applications, review, votes, avatars](architecture/showcase.md) | shipped | __init__.py, showcase.py, showcase.py, __init__.py, … |
 | [Super-admin - cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer - one call, answered as rows and columns (`/table/`)](architecture/table.md) | shipped | __init__.py, table.py, table.py, call.py, … |
+| [Async tasks - `/tasks/{call_id}` follows the task an async call started](architecture/tasks.md) | building | tasks.py, tasks.py, asynctasks.py, 0098_call_task.py, … |
 | [Workbench table storage](architecture/workbench-storage.md) | foundational | models.py, 0077_workbench_table_metadata.py, teams.py, test_workbench_table_schema.py, … |
 
 ## Interfaces (API · CLI · skill)
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, sitetrack.js, api.py, … |
-| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, cli_view.py, home.py, test_released_cli_compat.py, … |
+| [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, page_media.py, media-videos.json, … |
+| [The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events](interface/cli-binary.md) | building | .goreleaser.yaml, main.go, agents.go, mcp.go, … |
+| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, __init__.py, toon.py, catalog.py, … |
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |
 | [Onboarding - first run in the dashboard and `treg onboard`](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, first_run.py, … |
-| [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, robots.txt, … |
+| [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, compare_pages.py, … |
 | [Shell mode (treg shell) - transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |
 | [The shippable treg skill and its distribution doors](interface/skill.md) | shipped | skill.md, integrate.md, install.sh, SKILL.md, … |
 | [Web Arena - private comparisons and live provider observations](interface/web-arena.md) | gated | web_arena.py, web_arena_scores.py, web_arena.py, web_arena_quality.py, … |

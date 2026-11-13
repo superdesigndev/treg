@@ -5,7 +5,7 @@ public URLs their fetcher downloads. An agent on a laptop has no host, and every
 failed a vendor probe at least once (catbox unreachable from fal, tmpfiles answering HTML, uguu
 timing out). This keeps the bytes in treg and serves them from an opaque token.
 
-Deliberately not metered: hosting is a courtesy like polling, so money's five entries stay untouched.
+Deliberately not metered: hosting is a courtesy like polling, so money's entries stay untouched.
 Bounded instead: a size cap per file, a daily byte quota per org, a TTL, and a media-only type list.
 
 Bytes go to the archive's bucket under a random `hosted-media/v1/<hex>` key when `media_body_write`
@@ -35,6 +35,45 @@ ALLOWED_PREFIXES = ("image/", "audio/", "video/")
 # SVG is an image type that carries script. Served inline on the treg.to origin it would run with a
 # logged-in viewer's session, and no vendor takes an SVG reference anyway.
 DENIED_TYPES = frozenset({"image/svg+xml", "image/svg"})
+
+# Vendors (PiAPI Seedance among them) validate reference URLs by the path extension, not by
+# Content-Type. Tokens are urlsafe (no dots), so an optional ".ext" suffix on the public URL is
+# decorative for lookup and required for those probes. Map only the types we host; unknown types
+# keep an extensionless URL rather than guess wrong.
+_EXTENSION_FOR_TYPE = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+    "image/x-icon": ".ico",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+    "video/x-msvideo": ".avi",
+}
+
+
+def extension_for(content_type: str) -> str:
+    """Suffix for a hosted URL (".mp4"), or "" when the type has no known extension."""
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+    return _EXTENSION_FOR_TYPE.get(ctype, "")
+
+
+def token_from_path(raw: str) -> str:
+    """Strip an optional ".ext" suffix. Tokens never contain dots (token_urlsafe)."""
+    return raw.split(".", 1)[0]
 
 
 KEY_PREFIX = "hosted-media/v1/"

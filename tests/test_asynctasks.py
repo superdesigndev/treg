@@ -702,20 +702,29 @@ async def test_pending_row_write_failure_releases_the_hold_and_alerts(
     assert entry.meta.get("reason") == "async_task_not_recorded"
 
 
+async def _fund_purchased(clients: AsyncClient) -> None:
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, 50_000_000, "pi_asynctasks_video")
+        await db.commit()
+
+
 @pytest.fixture
-def minimax_platform(monkeypatch):
+async def minimax_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 
 
 @pytest.fixture
-def openrouter_platform(monkeypatch):
+async def openrouter_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_OPENROUTER", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "openrouter")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 
@@ -821,7 +830,7 @@ async def test_platform_task_status_requires_same_org_submission(
         params=[("id", "prediction-owned"), ("id", "prediction-unknown")])
     assert ambiguous.status_code == 400 and relayed == [True]
 
-    other = await clients.post("/users", json={"email": "task-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "task-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     denied = await clients.get(
         "/call/replicate.predictions.get?id=prediction-owned", headers=stranger)
@@ -909,7 +918,7 @@ async def test_legacy_platform_async_resources_are_recorded_and_authorized(
     for url in owned_calls:
         assert (await clients.get(url)).status_code == 200
 
-    other = await clients.post("/users", json={"email": "legacy-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "legacy-stranger@example.com"})
     denied = await clients.get(owned_calls[0], headers={"X-Treg-Token": other.json()["token"]})
     assert denied.status_code == 403
 
@@ -963,7 +972,7 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
                            ("icypeas.search.results.read", {"id": "someone-elses"})]:
         response = await clients.post(f"/call/{endpoint}", json=body)
         assert response.status_code in (400, 403), (endpoint, body, response.status_code)
-    other = await clients.post("/users", json={"email": "icypeas-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "search-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     for endpoint, body in owned:
         assert (await clients.post(f"/call/{endpoint}", json=body, headers=stranger)).status_code == 403
@@ -1032,7 +1041,7 @@ async def test_owned_terminal_poll_teaches_result_id_before_fetch(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned")
     assert fetched.status_code == 200 and len(relay_calls) == 2
 
-    other = await clients.post("/users", json={"email": "file-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "file-stranger@example.com"})
     denied = await clients.get(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned",
         headers={"X-Treg-Token": other.json()["token"]})
@@ -1610,7 +1619,7 @@ async def test_another_org_cannot_read_a_task_by_its_call_ref(
     assert (await task_app.settle_due()).settled == 1
     assert call_id in await task_app.views_for(1, [call_id])
     assert await task_app.views_for(2, [call_id]) == {}
-    other = await clients.post("/users", json={"email": "someone-else@example.com"})
+    other = await verified_signup(clients, json={"email": "someone-else@example.com"})
     assert other.status_code == 200
     stranger = {"X-Treg-Token": other.json()["token"]}
     assert (await clients.get(f"/calls/{call_id}", headers=stranger)).status_code == 404

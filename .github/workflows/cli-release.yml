@@ -1,0 +1,52 @@
+name: CLI release
+
+# One binary CLI release per tag: `v1.2.3` on the stable channel, `v1.3.0-beta.1` (a GitHub
+# pre-release) on the beta channel. cli/.goreleaser.yaml builds every platform's archive, signs
+# SHA256SUMS with the release key and checks it against the key the binaries carry before it
+# publishes. Publishing moves no registry: /cli/latest answers what TREG_CLI_STABLE_VERSION /
+# TREG_CLI_BETA_VERSION name, so a registry operator decides when a release reaches users. The
+# repository's 0.x tags are the registry's own releases and never run this.
+on:
+  push:
+    tags: ["v[1-9]*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Holds MINISIGN_SECRET_KEY (an unencrypted `minisign -G -W` key) behind required reviewers.
+    environment: cli-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Test
+        working-directory: cli
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Release key
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "v2.20.0"
+          workdir: cli
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TREG_UPDATE_KEY: ${{ vars.TREG_UPDATE_KEY }}
+          MINISIGN_KEY_FILE: ${{ runner.temp }}/minisign.key
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/minisign.key"

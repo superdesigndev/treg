@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-11-10T15:43:04.993Z",
+    "input": {
+      "url": "https://www.ebay.com/itm/388177617931"
+    },
+    "error": "The navigation resulted in a dead page (404 status code)",
+    "error_code": "dead_page"
+  }
+]

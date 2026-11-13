@@ -13,6 +13,16 @@ source:
 # this file `confidence: verified`.
 pricing_url: https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info
 
+# Both tiers. TikHub bills every 2xx, a miss or an embedded error envelope included; a 4xx or 5xx is
+# free by the status gate.
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info
+    checked: '2026-07-28'
+    confidence: verified
+
 endpoints:
   # --- TikTok -----------------------------------------------------------------------------------
   - id: tikhub.tiktok.user.profile
@@ -30,7 +40,9 @@ endpoints:
       note: "one of uniqueId | secUid; uniqueId preferred"
     test_request:
       queryParams: {uniqueId: "tiktok"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified, note: charged on 2xx only}
+    price: {value: '0.001', currency: USD, per: 1, unit: call, note: charged on 2xx only}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.userInfo.user.uniqueId, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.user.profile.json
@@ -53,7 +65,10 @@ endpoints:
         post_item_list_request_type: {type: integer, required: false, note: "sort type (default 0)"}
     test_request:
       queryParams: {secUid: "MS4wLjABAAAAv7iSuuXDJGDvJkmH_vz1qkDZYo1apxgzaxdBSeIuPiM", count: 5}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss:
+      when: {any: [{path: response.data.itemList, op: absent}, {path: response.data.itemList, op: empty}]}
     verified: 2026-10-04
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.user.videos.json
@@ -73,7 +88,9 @@ endpoints:
         region: {type: string, required: false, note: "region code affecting content region; default US", example: "US"}
     test_request:
       queryParams: {itemId: "7606449212716305678"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.itemInfo.itemStruct, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.video.detail.json
@@ -95,7 +112,9 @@ endpoints:
         current_region: {type: string, required: false}
     test_request:
       queryParams: {aweme_id: "7606449212716305678", count: 5}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.comments, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.video.comments.json
@@ -121,7 +140,9 @@ endpoints:
         region: {type: string, required: false, note: "region code; default US"}
     test_request:
       queryParams: {keyword: "coffee", count: 5}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.search_item_list, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.search.videos.json
@@ -140,7 +161,7 @@ endpoints:
         tag_name: {type: string, required: true, note: "hashtag without the '#'", example: "coffee"}
     test_request:
       queryParams: {tag_name: "coffee"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.hashtag.detail.json
@@ -161,7 +182,7 @@ endpoints:
         cursor: {type: integer, required: false, example: 0}
     test_request:
       queryParams: {challengeID: "14104", count: 5}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.tiktok.hashtag.videos.json
@@ -188,7 +209,14 @@ endpoints:
         username: {type: string, required: true, note: "handle without the '@'", example: "instagram"}
     test_request:
       queryParams: {username: "instagram"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified, note: the v3 equivalent (/instagram/v3/get_user_profile) costs 0.008}
+    price:
+      value: '0.001'
+      currency: USD
+      per: 1
+      unit: call
+      note: the v3 equivalent (/instagram/v3/get_user_profile) costs 0.008
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.data.user, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.instagram.user.profile.json
@@ -215,7 +243,9 @@ endpoints:
         max_id: {type: string, required: false, note: "pagination cursor"}
     test_request:
       queryParams: {user_id: "25025320", count: 5}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.items, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.instagram.user.posts.json
@@ -240,7 +270,7 @@ endpoints:
         video_id: {type: string, required: true, note: "the v= parameter of the watch URL", example: "dQw4w9WgXcQ"}
     test_request:
       queryParams: {video_id: "dQw4w9WgXcQ"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.youtube.video.detail.json
@@ -270,7 +300,9 @@ endpoints:
         need_format: {type: boolean, required: false}
     test_request:
       queryParams: {video_id: "dQw4w9WgXcQ", language_code: "en-US"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.comments, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.youtube.video.comments.json
@@ -301,7 +333,9 @@ endpoints:
         sort_by: {type: string, required: false, note: "relevance | upload_date | view_count | rating"}
     test_request:
       queryParams: {keyword: "coffee", type: "video"}
-    cost: {type: per_success, value: 0.002, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.002', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.videos, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.youtube.search.videos.json
@@ -330,7 +364,9 @@ endpoints:
         need_format: {type: boolean, required: false}
     test_request:
       queryParams: {channel_id: "UCX6OQ3DkcsbYNE6H8uQQuVA", language_code: "en-US"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.videos, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.youtube.channel.videos.json
@@ -358,7 +394,9 @@ endpoints:
       note: "one of screen_name | rest_id"
     test_request:
       queryParams: {screen_name: "elonmusk"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.profile, op: absent}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.x.user.profile.json
@@ -386,7 +424,9 @@ endpoints:
       note: "one of screen_name | rest_id"
     test_request:
       queryParams: {screen_name: "elonmusk"}
-    cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.data.timeline, op: empty}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.x.user.posts.json

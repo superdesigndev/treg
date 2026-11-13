@@ -35,6 +35,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
+from . import cost as call_cost
 from . import keyslots
 from .resolve import MarketplaceCall, _openmart_credits, _usd_to_micro
 from .types import GatewayFailed, UpstreamResponse
@@ -99,48 +100,6 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
 
 
 _PLATFORM_BODY_MAX = 8 * 1024 * 1024  # complete response evidence ceiling; free final downloads stream
-def _brightdata_record_count(body: bytes) -> int | None:
-    """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
-    estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
-    response body is the only bill we will ever see.
-
-    Shapes, per docs + live traffic:
-      - sync /scrape and /snapshot downloads, format=json → a JSON ARRAY, one element per record;
-      - the >60s sync fallback and /trigger → a JSON OBJECT carrying `snapshot_id` — zero records
-        HERE; the job's records bill when the snapshot is downloaded (its catalog entry is priced
-        per_result for exactly that reason);
-      - format=ndjson → one JSON object per line; format=csv → header line + one line per record.
-    A body that STARTS like JSON but does not parse is invalid or incomplete evidence:
-    return None and settle at the estimate, never a line-count guess over a partial payload. Any other unrecognised shape → None for the same
-    reason: when we cannot count, the estimate is the honest number."""
-    if body[:2] == b"\x1f\x8b":  # compress=true gzips the download — we can't count, estimate wins
-        return None
-    text = body.decode("utf-8", "replace").strip()
-    if not text:
-        return 0
-    try:
-        doc = json.loads(text)
-    except ValueError:
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-        try:  # ndjson: every line is its own record — EVERY line must parse, or it isn't ndjson
-            for ln in lines:
-                json.loads(ln)
-            return len(lines)
-        except ValueError:
-            pass
-        if text[0] in "[{":  # Invalid JSON must never be guessed as CSV
-            return None
-        return len(lines) - 1 if len(lines) > 1 else None  # csv: header + rows
-    if isinstance(doc, list):
-        return len(doc)
-    if isinstance(doc, dict):
-        # Zero records delivered, whatever the object says: the async handoff (`snapshot_id` — the
-        # records bill at the snapshot download), an early download's {"status": "running"}, or any
-        # other envelope. Pay-per-success means an answer with no records costs nothing.
-        return 0
-    return None
-
-
 def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
     """Count only the response containers verified for Openmart's synchronous data reads."""
     if endpoint_id in (
@@ -164,31 +123,16 @@ def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
     return None
 
 
-def _tavily_result_count(endpoint_id: str, doc: object) -> int | None:
-    """Count only Tavily's documented successful result shapes."""
-    if not isinstance(doc, dict) or not isinstance(doc.get("results"), list):
-        return None
-    results = doc["results"]
-    if endpoint_id == "tavily.web.map":
-        return len(results) if all(isinstance(item, str) and item.strip() for item in results) else None
-    if endpoint_id in ("tavily.web.extract", "tavily.web.crawl"):
-        valid = all(
-            isinstance(item, dict)
-            and isinstance(item.get("url"), str)
-            and bool(item["url"].strip())
-            for item in results
-        )
-        return len(results) if valid else None
-    return None
-
-
 def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
-    """People returned by CompanyEnrich's search, floored at one: a person is 2 credits, and an
-    empty page still costs the 2-credit minimum (catalog note, verified live). The reserve is the
-    requested `pageSize`, so without counting an empty `{"items": []}` settled a whole page."""
+    """Rows returned by a CompanyEnrich search, floored at one. The provider bills each person or
+    company returned at the row's credits (2 a person, 1 a company, 5 a lookalike) and an empty
+    page at one row (catalog notes, verified live). The reserve is the requested `pageSize`, so
+    without counting an empty `{"items": []}` settled a whole page."""
     if endpoint_id not in (
         "companyenrich.people.search",
         "companyenrich.people.search.scroll",
+        "companyenrich.companies.search",
+        "companyenrich.companies.similar",
     ):
         return None
     if not isinstance(doc, dict):
@@ -196,7 +140,7 @@ def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
     items = doc.get("items")
     if not isinstance(items, list):
         return None
-    # 2 credits per person, minimum 1 unit charged (the 2-credit minimum on empty)
+    # An empty page still bills one row's credits.
     return max(len(items), 1)
 
 
@@ -278,43 +222,6 @@ def _rows_billed_micro(mk: MarketplaceCall, ep: dict | None, rows: int | None,
         except (InvalidOperation, ValueError):
             return None
     return min(rows * per_row, mk.estimate_micro)
-
-
-def _tavily_requested_result_limit(mk: MarketplaceCall) -> int:
-    """The request-bound maximum frozen before relay; malformed evidence keeps the 20-page cap."""
-    request = mk.request_data.get("body") if isinstance(mk.request_data, dict) else None
-    request = request if isinstance(request, dict) else {}
-    if mk.endpoint_id == "tavily.web.extract":
-        urls = request.get("urls")
-        if isinstance(urls, list) and urls:
-            return min(len(urls), 20)
-    elif mk.endpoint_id in ("tavily.web.map", "tavily.web.crawl"):
-        limit = request.get("limit")
-        if type(limit) is int and 1 <= limit <= 20:
-            return limit
-    return 20
-
-
-def _tavily_cost_micro(mk: MarketplaceCall, doc: object) -> int | None:
-    """Settle Search from per-request usage and other Tavily tools from returned successes."""
-    if not isinstance(doc, dict) or mk.unit_micro <= 0:
-        return None
-    if mk.endpoint_id == "tavily.web.search":
-        usage = doc.get("usage")
-        amount = usage.get("credits") if isinstance(usage, dict) else None
-        if isinstance(amount, (int, float)) and not isinstance(amount, bool):
-            try:
-                credits = Decimal(str(amount))
-                if credits.is_finite() and credits >= 0:
-                    return int((credits * mk.unit_micro).quantize(
-                        Decimal("1"), rounding=ROUND_HALF_UP))
-            except (InvalidOperation, ValueError, OverflowError):
-                pass
-        return None
-    count = _tavily_result_count(mk.endpoint_id, doc)
-    if count is None:
-        return None
-    return min(count, _tavily_requested_result_limit(mk)) * mk.unit_micro
 
 
 def _quickenrich_present(value) -> bool:
@@ -437,18 +344,15 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     the reserved estimate's row assumption only implicitly (a bigger-than-asked response charges
     more, which `ledger.settle` handles as an overrun).
 
-    Three providers volunteer the number, in two different denominations:
-      - dataforseo: a top-level `cost` in USD — including 0 when it decided not to charge (a free
-        route, or a request it rejected before metering). That zero is real information and settles the
-        call at zero, which is why the test is `>= 0` and not truthiness.
-      - scrapecreators (`credits_charged`), akta and leadmagic (`credits_consumed`): provider
-        credits, converted through the provider's credit rate (fx.yaml) — the same conversion
-        `cost_view` uses, so a settle can't disagree with the catalog's price. Akta is the one that
-        NEEDS this: its enrich route is priced per SECTION requested and its news route adds a
-        per-article rider, so the catalog's single estimate can only be an upper bound — the actual
-        charge lives here. LeadMagic answers a miss with 2xx and `credits_consumed: 0` (observed at
-        verify time), so honouring the field is what keeps a free miss from billing the estimate;
-        it also reports fractions (email verify is 0.25).
+    Providers that volunteer the number, in two different denominations:
+      - akta and leadmagic (`credits_consumed`): provider credits, converted through the
+        provider's credit rate (fx.yaml) — the same conversion `cost_view` uses, so a settle can't
+        disagree with the catalog's price. Akta is the one that NEEDS this: its enrich route is
+        priced per SECTION requested and its news route adds a per-article rider, so the catalog's
+        single estimate can only be an upper bound — the actual charge lives here. LeadMagic
+        answers a miss with 2xx and `credits_consumed: 0` (observed at verify time), so honouring
+        the field is what keeps a free miss from billing the estimate; it also reports fractions
+        (email verify is 0.25).
       - Dropleads: REPORTED in provider credits through `credits_charged` for finder/verifier,
         `credits_consumed` for people enrichment, or `credits.creditsDeducted` for company calls.
         Each field uses the same Dropleads credit rate from fx.yaml.
@@ -459,23 +363,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         bare `{}` on enrich, an empty `organizations` page on search) and charges nothing for it, so
         status-based billing alone would bill the caller for a response Apollo gave away. The body
         says whether the charged thing came back; when it didn't, the call settles at 0.
-      - hunter (domain search): DERIVED too, and for the opposite reason — its price is not
-        per row but one whole SEARCH credit per 10 emails returned, rounded up, with an empty
-        domain free. `data.emails` is the only place that number exists.
-      - hunter (email finder): DERIVED, the flat case — one whole SEARCH credit when an email is
-        found, nothing on a miss ("a miss is free", per Hunter's own pricing), yet a miss still
-        answers HTTP 200, so the estimate billed the full credit for a name Hunter had nothing on.
-      - tikhub: REPORTED in prose rather than a number. Every envelope says whether the call is
-        billed; only the explicit no-charge phrasing settles at zero, because TikHub really does
-        charge for a 2xx whose payload is an embedded error.
 
       - crustdata / cloro / aiark: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`),
         the only place the charge exists. AI Ark reports debits as negative `X-Credit` values; its
         explicit -1 multiplier converts that convention to a nonnegative charge. cloro's
         ChatGPT/Google routes price their include flags and US state targeting per request, so the
         catalog value is an upper bound and the header is the bill.
-      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
-        dataforseo's `cost`) — the only place the per-result and per-content riders exist.
+      - exa: REPORTED in dollars, `costDollars.total` on every 2xx body — the only place the
+        per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
@@ -484,8 +379,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
-    Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
-    harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
+    Everyone else settles at the estimate. A v2 row reads its own `settle.reported` instead."""
+    if mk.cost_terms is not None:
+        return call_cost.reported(mk.cost_terms, call_cost.document(body), headers)
     provider = mk.provider
     catalog = catalog_store.load()
     ep = catalog.by_id.get(mk.endpoint_id)
@@ -520,11 +416,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             charged_credits = -1
         if math.isfinite(charged_credits) and charged_credits >= 0 and rate:
             return _usd_to_micro(charged_credits * rate)
-    if provider == "brightdata" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # DERIVED by counting records — Bright Data's bill is per record delivered and the body is
-        # the only place that number exists (see _brightdata_record_count for the shapes).
-        n = _brightdata_record_count(body)
-        return None if n is None else n * mk.unit_micro
     if not body:
         return 0 if provider == "contactout" else None
     try:
@@ -569,10 +460,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if provider == "openmart" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         records = _openmart_record_count(mk.endpoint_id, doc)
         return None if records is None else _openmart_credits(records) * mk.unit_micro
-    if provider == "tavily":
-        # Extract, Map and Crawl intentionally ignore account-grouped usage.credits. Their unit
-        # was frozen from the caller's request mode and only this response's valid results count.
-        return _tavily_cost_micro(mk, doc)
     if provider == "octen":
         from . import octen
         rates = mk.settlement_basis.get("octen_rates_micro")
@@ -728,11 +615,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
-    if provider == "dataforseo":
-        cost = doc.get("cost")
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
-            return int(cost * 1_000_000 + 0.5)
-        return None
     if provider == "contactout" and cost:
         from . import contactout
         return contactout.observed(cost, mk.request_data, doc)
@@ -754,8 +636,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(total, (int, float)) and not isinstance(total, bool) and total >= 0:
             return int(total * 1_000_000 + 0.5)
         return None
-    if provider in ("scrapecreators", "akta", "leadmagic"):
-        credits = doc.get("credits_charged" if provider == "scrapecreators" else "credits_consumed")
+    if provider in ("akta", "leadmagic"):
+        credits = doc.get("credits_consumed")
         rate = catalog_store.load().credit_rates.get(provider)
         if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
             return int(credits * rate * 1_000_000 + 0.5)
@@ -793,40 +675,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             size = meta.get("pageSize") if isinstance(meta, dict) else None
             if type(size) is int and size > 0 and mk.unit_micro > 0:
                 return ((size + 9) // 10) * mk.unit_micro
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.companies.emails":
-        # DERIVED, like apollo. Hunter's domain search does not bill per row at all: it takes ONE
-        # whole search credit per 10 emails RETURNED, rounded up, and a domain it knows nobody at is
-        # free. Neither half survives being flattened into the catalog's per-row price, so settling
-        # at the estimate is wrong in both directions. The returned list is the bill.
-        data = doc.get("data")
-        emails = data.get("emails") if isinstance(data, dict) else None
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(emails, list) and rate:
-            credits = -(-len(emails) // 10)  # whole credits, rounded up; no emails = no charge
-            return int(credits * rate * 1_000_000 + 0.5)
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.people.email.find":
-        # DERIVED, the flat case of the same family: the finder takes ONE whole search credit when
-        # it finds an email and nothing when it doesn't, yet a miss still answers HTTP 200 with
-        # `email: null`. A body without the `email` key (an error shape) still falls back to the
-        # estimate.
-        data = doc.get("data")
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(data, dict) and "email" in data and rate:
-            return int(rate * 1_000_000 + 0.5) if data["email"] else 0
-        return None
-    if provider == "tikhub":
-        # REPORTED in prose rather than a number: every TikHub envelope states whether the call is
-        # billed. A 2xx whose payload is an embedded error still says "This request will incur a
-        # charge." and TikHub really does charge us for it, so a dead page settling at the estimate
-        # is faithful, not an over-charge. Only the explicit no-charge phrasing settles at zero;
-        # anything else stays at the estimate.
-        msg = doc.get("message")
-        if isinstance(msg, str):
-            low = msg.lower()
-            if "won't be charged" in low or "will not be charged" in low or "not incur" in low:
-                return 0
         return None
     if provider == "apollo":
         # Only the shapes whose billing rule is documented and body-decidable: company enrichment
@@ -1160,6 +1008,67 @@ def decide_settle(
 ) -> SettleDecision:
     """The decision half of `_platform_settle`: charge or release, and how much. Pure: no session,
     no network; reads the catalog and settings of this checkout."""
+    if mk.cost_terms is not None:
+        billable, reason, observed, actual = _decide_v2(mk, status_code, body, headers, reason,
+                                                        observed_override)
+    else:
+        billable, reason, observed, actual = _decide_legacy(mk, status_code, body, headers, reason,
+                                                            observed_override)
+    repeat_percent = get_settings().archive_hit_repeat_price_percent
+    if billable and cached_repeat and actual is not None:
+        # The repeat price: the team already paid full price for this question once (live or
+        # hit); this stored answer costs the configured share. Applied to the RAW amount so the
+        # margin rule stays the ledger's alone. Floor division, never rounding up a discount.
+        actual = actual * repeat_percent // 100
+    if mk.deferred is not None and billable and actual == 0:
+        # A routed child the provider reported free (a miss on a per-success rate card): there is
+        # nothing for the parent to decide, so it is released below like any unbilled child.
+        billable, reason = False, reason or "free_answer"
+    charged = (ledger.with_margin(actual) if actual is not None
+               else ledger.with_margin(mk.estimate_micro)) if billable else 0
+    return SettleDecision(billable=billable, reason=reason, observed_micro=observed,
+                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent)
+
+
+def _capacity_release(mk: MarketplaceCall, status_code: int, headers, body: bytes) -> str:
+    """`capacity_<kind>` when a platform answer is OUR account running dry, else ""."""
+    if mk.tier != "platform":
+        return ""
+    signal = capacity_signatures.classify(mk.provider, status_code, headers, body[:4096])
+    return f"capacity_{signal.kind}" if capacity_signatures.is_exhausting(signal) else ""
+
+
+def _decide_v2(mk: MarketplaceCall, status_code: int | None, body: bytes, headers, reason: str,
+               observed_override: int | None) -> tuple[bool, str, int | None, int | None]:
+    """The v2 settlement order (`call.cost`): no answer and a 3xx or 5xx release; a 4xx releases
+    unless it reports a charge and is the caller's fault; a 2xx is billed by `free_when`, the
+    reported charge, the outcome and `bill`, then the `settle` form; and an answer that would be
+    billed is released when it carries a capacity signature."""
+    if status_code is None or not (200 <= status_code < 300 or 400 <= status_code < 500):
+        return False, reason, None, None
+    doc = call_cost.document(body)
+    if 400 <= status_code < 500:
+        figure = (observed_override if observed_override is not None
+                  else call_cost.reported(mk.cost_terms, doc, headers))
+        billable = bool(figure) and status_code not in _NOT_THE_CALLERS_FAULT
+        observed = actual = figure if billable else None
+        if not billable and _platform_billable(status_code, mk.cost_type):
+            return False, (_capacity_release(mk, status_code, headers, body)
+                           or f"rejected_unbilled_{status_code}"), None, None
+    elif observed_override is not None:
+        billable, observed, actual = True, observed_override, observed_override
+    else:
+        billable = True
+        observed, actual = call_cost.charge(
+            mk.cost_terms, mk.settlement_basis, mk.estimate_micro, status_code, doc, raw=body,
+            headers=headers, request_data=mk.request_data)
+    if billable and (capacity := _capacity_release(mk, status_code, headers, body)):
+        return False, capacity, None, None
+    return billable, reason, observed, actual
+
+
+def _decide_legacy(mk: MarketplaceCall, status_code: int | None, body: bytes, headers, reason: str,
+                   observed_override: int | None) -> tuple[bool, str, int | None, int | None]:
     billable = status_code is not None and _platform_billable(status_code, mk.cost_type)
     if billable and mk.tier == "platform":
         # A 4xx the status set calls the caller's fault, or even a 2xx (Icypeas' 200 "insufficient
@@ -1194,20 +1103,7 @@ def decide_settle(
         terminal = _usage_document(body)
     actual = ((0 if observed == 0 else settlement_basis.settle(
         mk.settlement_basis, {"observed_micro": observed, "terminal": terminal})) if billable else None)
-    repeat_percent = get_settings().archive_hit_repeat_price_percent
-    if billable and cached_repeat and actual is not None:
-        # The repeat price: the team already paid full price for this question once (live or
-        # hit); this stored answer costs the configured share. Applied to the RAW amount so the
-        # margin rule stays the ledger's alone. Floor division, never rounding up a discount.
-        actual = actual * repeat_percent // 100
-    if mk.deferred is not None and billable and actual == 0:
-        # A routed child the provider reported free (a miss on a per-success rate card): there is
-        # nothing for the parent to decide, so it is released below like any unbilled child.
-        billable, reason = False, reason or "free_answer"
-    charged = (ledger.with_margin(actual) if actual is not None
-               else ledger.with_margin(mk.estimate_micro)) if billable else 0
-    return SettleDecision(billable=billable, reason=reason, observed_micro=observed,
-                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent)
+    return billable, reason, observed, actual
 
 
 async def _platform_settle(
@@ -1234,6 +1130,16 @@ async def _platform_settle(
     turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
     releases it, which errs in the org's favour. Runs on its OWN session because the request's session
     may be mid-rollback from the very error we are releasing for."""
+    if mk.metered and mk.holdless:
+        decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                                 observed_override=observed_override, cached_repeat=cached_repeat)
+        if decision.charged_micro:
+            logging.getLogger("treg.ledger").error(
+                "holdless call on %s computed a charge of %s micro; nothing was held, treg absorbs it",
+                mk.endpoint_id, decision.charged_micro)
+        if finalized is not None:
+            finalized()
+        return 0, decision.observed_micro
     if not mk.metered or not mk.call_id:
         return 0, None
     decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
@@ -1444,11 +1350,18 @@ async def _finish_cancelled_call(
             except (Exception, asyncio.CancelledError):
                 logging.getLogger("treg.proxy").error(
                     "upstream close failed for cancelled call %s", call_ref, exc_info=True)
+        # A holdless parent never had a hold; only a started overflow child may have one.
+        hold_ids = ([] if mk is None or not mk.metered else
+                    [hold_id for hold_id, possible in (
+                        (call_ref, not mk.holdless),
+                        (f"{call_ref}:overflow", not mk.holdless or mk.overflow_hold_possible),
+                    ) if possible])
         if mk is not None and mk.metered:
+            mk.call_id = None
+        if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
             # conditionally claims it: committed means refund, rolled back means a safe no-op.
-            mk.call_id = None
             try:
                 # A parent reserve already stored mk.payer_org_id. Overflow cancel passes
                 # the authenticated caller instead, including skip-direct, where the parent
@@ -1471,7 +1384,7 @@ async def _finish_cancelled_call(
                                     if charge_hold and hold_id == call_ref else "call_cancelled"),
                             meta={"provider": mk.provider, "cost_type": mk.cost_type,
                                   "status_code": None})
-                        for hold_id in (call_ref, f"{call_ref}:overflow")
+                        for hold_id in hold_ids
                     ])
                     await cleanup_db.commit()
             except (Exception, asyncio.CancelledError):

@@ -8,9 +8,7 @@ endpoint_keys:
   authorization_method: {provider: instagram}
   authorization_methods: {provider: instagram}
   authorization_paths: {provider: instagram}
-  call_note: {provider: scrapecreators}
   caller_email: {provider: crawl4ai}
-  observed_cost: {provider: dataforseo}
   observed_from: {provider: crawl4ai}
   platform_auth: {provider: financialdatasets}
   required_resource: {provider: instagram}
@@ -20,16 +18,13 @@ endpoint_keys:
   team_label: {provider: crawl4ai}
   token_type: {provider: instagram}
 cost_keys:
-  bills_miss: {provider: lusha}
   call_fee: {provider: apify}
   call_fee_per: {provider: apify}
   contactout: {provider: contactout}
   enrichlayer: {provider: enrichlayer}
   octen_rates: {provider: octen}
   quantity: {provider: crawl4ai}
-  rate_card: {provider: openrouter}
   sumble: {provider: sumble}
-  tavily_rates: {provider: tavily}
 
 # Rows (or a file header's queryParams) whose parameter specs use JSON Schema words nothing
 # reads, until the provider's batch rewrites them.

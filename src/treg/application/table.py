@@ -210,6 +210,11 @@ async def preview(tool_ref: str, *, org_id: int, org_slug: str, email: str) -> d
             for child in cat.by_id[tool_ref].get("routed_children") or []:
                 child_ep = cat.by_id.get(child)
                 sample = table_domain.sample_items(_example_body(child_ep)) if child_ep else []
+                # the preview shows what a live answer carries: the contract's row shape, when
+                # the child's adapter maps its rows into it
+                adapter = cat.adapters.get(child)
+                if sample and adapter is not None and adapter.row_map:
+                    sample = adapter.rows(sample)
                 if sample:
                     break
         body = {"output": {list_field: sample} if list_field else {}, "_treg": {}}

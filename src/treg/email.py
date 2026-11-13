@@ -78,9 +78,8 @@ async def send_invite(email: str, inviter: str, org_name: str, role: str, code: 
     # The link should open on the SAME deployment the inviter was using. The request origin
     # (link_base) captures that; public_url is the fallback for callers without a request.
     base = (link_base or s.public_url).rstrip("/")
-    # The link carries `email_token`, NOT `code`: the token exists only in this email, so clicking
-    # proves inbox access and /auth/invite-signin may sign the invitee in (POST-confirm, one-time).
-    # The visible code below stays the out-of-band credential the admin also holds — join-only.
+    # The link carries `email_token`, NOT `code`; /auth/invite-signin resolves it to the invitee's
+    # address and prefills the login. Neither secret signs anyone in.
     url = f"{base}/auth/invite-signin?t={quote(email_token)}"
     exp = f" It expires on {expires_at[:10]}." if expires_at else ""
     headline = (f'<b style="color:#f2efe8">{_esc(inviter)}</b> shared {_esc(shared)} with you — join <b style="color:#f2efe8">{_esc(org_name)}</b> to use it'
@@ -116,7 +115,7 @@ async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balan
     # explains a balance that went up $110 on a $100 card charge, which otherwise reads as a mistake.
     bonus = f' <span style="color:#19D0E8">+ {_money(bonus_micro)} bonus</span>' if bonus_micro else ""
     lead = (f'Your balance dropped below your auto top-up threshold, so we charged your saved card '
-            f'<b style="color:#f2efe8">{added}</b>.' if auto
+            f'<b style="color:#f2efe8">{added}</b>{bonus}.' if auto
             else f'Thanks — <b style="color:#f2efe8">{added}</b>{bonus} has been added to your balance.')
     body = (
         f'<p style="margin:0 0 6px;color:#f2efe8;font-size:16px;font-weight:600">{how} confirmed</p>'
@@ -145,6 +144,7 @@ async def send_autotopup_disabled(email: str, org_name: str, reason: str,
         "max_attempts": "the card was declined too many times in a row",
         "stripe_unconfirmed": "we could not confirm whether Stripe collected the payment",
         "no_card": "Stripe can no longer charge the saved card",
+        "payment_refunded": "a top-up payment was refunded and its unspent credit removed",
     }.get(reason.split(":")[0], f"of a payment problem ({_esc(reason)})")
     if reason == "authentication_required" and not recovery_pi:
         fix = ("The attempted auto top-up was cancelled. Make a manual top-up in the dashboard "
@@ -154,6 +154,9 @@ async def send_autotopup_disabled(email: str, org_name: str, reason: str,
                "verification for future charges.")
     elif reason == "stripe_unconfirmed":
         fix = "Check billing history and contact support before switching auto top-up back on."
+    elif reason == "payment_refunded":
+        fix = ("Nothing else was charged. Switch auto top-up back on in the dashboard when you want "
+               "refills to resume.")
     elif reason == "no_card":
         fix = ("Nothing was charged. Make a top-up in the dashboard to save a card; auto top-up "
                "turns back on once it is saved.")
