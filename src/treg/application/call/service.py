@@ -197,18 +197,21 @@ def _log_unaudited_child(request: _ApplicationRequest, status: int, *,
     """A root's unaudited failure is logged by the HTTP router's fallback; a child (a routed
     candidate, check, upgrade or poll, a hub step) never reaches it, and its parent may still
     answer."""
-    context = request.context
-    if request.state.call_audited or not call_event_app.ref_parts(context.call_ref)[1]:
-        return
-    mk = context.marketplace
-    call_errors.emit(
-        status, org_id=context.input.caller.org_id, call_ref=context.call_ref,
-        road="catalog" if mk is not None else "unresolved",
-        endpoint_id=mk.endpoint_id if mk is not None else None,
-        provider=mk.provider if mk is not None else None,
-        tier=mk.tier if mk is not None else None,
-        refused_by=_refusal_kind(status) if failure is not None else None,
-        failure=failure, kind=kind, answered=False)
+    try:
+        context = request.context
+        if request.state.call_audited or not call_event_app.ref_parts(context.call_ref)[1]:
+            return
+        mk = context.marketplace
+        call_errors.emit(
+            status, org_id=context.input.caller.org_id, call_ref=context.call_ref,
+            road="catalog" if mk is not None else "unresolved",
+            endpoint_id=mk.endpoint_id if mk is not None else None,
+            provider=mk.provider if mk is not None else None,
+            tier=mk.tier if mk is not None else None,
+            refused_by=_refusal_kind(status) if failure is not None else None,
+            failure=failure, kind=kind, answered=False)
+    except Exception:  # noqa: BLE001 - runs inside execute_call's handler: never replace its failure
+        pass
 
 
 def create_call_context(call_input: CallInput) -> CallContext:

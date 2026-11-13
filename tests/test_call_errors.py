@@ -322,12 +322,8 @@ async def test_a_pin_mismatch_is_the_callers_input_not_a_policy_refusal(clients:
         "metadata_pin_mismatch", "caller_input", False)
 
 
-@pytest.mark.parametrize(("raised", "status", "kind", "cls"), [
-    (RuntimeError("boom"), 500, "unexpected_exception", "treg_error"),
-    (__import__("sqlalchemy.exc").exc.TimeoutError("pool"), 503, "db_pool", "treg_capacity"),
-])
-async def test_a_child_that_crashes_before_its_audit_logs_its_line(
-        monkeypatch, call_error_lines, raised, status, kind, cls):
+def _crashing_child(monkeypatch, raised: Exception):
+    """`execute_call` with its body raising `raised`, and a context for a call ref."""
     from types import SimpleNamespace
     from treg.application.call import service as call_service
 
@@ -336,17 +332,33 @@ async def test_a_child_that_crashes_before_its_audit_logs_its_line(
 
     monkeypatch.setattr(call_service, "_execute_call", crash)
 
-    def context(ref):
+    def context(ref, with_caller=True):
         body = SimpleNamespace(read=None, stream=None)
         call_input = SimpleNamespace(method="GET", raw_rest="", raw_query="", raw_headers=(),
-                                     query_items=(), body=body, caller=SimpleNamespace(org_id=7),
-                                     client_ip="")
+                                     query_items=(), body=body, client_ip="",
+                                     caller=SimpleNamespace(org_id=7) if with_caller else None)
         return SimpleNamespace(input=call_input, call_ref=ref, marketplace=None, idempotency=None,
                                audited=False, cost_micro=None)
 
+    return call_service.execute_call, context
+
+
+@pytest.mark.parametrize(("raised", "status", "kind", "cls"), [
+    (RuntimeError("boom"), 500, "unexpected_exception", "treg_error"),
+    (__import__("sqlalchemy.exc").exc.TimeoutError("pool"), 503, "db_pool", "treg_capacity"),
+])
+async def test_a_child_that_crashes_before_its_audit_logs_its_line(
+        monkeypatch, call_error_lines, raised, status, kind, cls):
+    execute_call, context = _crashing_child(monkeypatch, raised)
     for ref in ("root", "root:v"):
         with pytest.raises(type(raised)):
-            await call_service.execute_call(context(ref), None)
+            await execute_call(context(ref), None)
     (line,) = call_error_lines()
     assert (line["step"], line["status"], line["kind"], line["error_class"], line["by"]) == (
         "v", status, kind, cls, "treg")
+
+
+async def test_a_child_whose_line_cannot_be_built_still_raises_its_own_failure(monkeypatch):
+    execute_call, context = _crashing_child(monkeypatch, RuntimeError("boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        await execute_call(context("root:v", with_caller=False), None)
