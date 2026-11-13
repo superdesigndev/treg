@@ -8,6 +8,17 @@ pricing_url: https://renolabshq.com/vigil/api
 # Every Vigil answer is a metered, per-call sale: never store or replay it.
 cache: forbidden
 
+# Vigil bills every HTTP 200 at the row's full rate, a zero-row 200 included; every error status
+# (404 period_outside_coverage and 503 data_not_ready included) is free by the status gate.
+# Prices re-checked against the unkeyed rate card GET https://vigil-api.renolabshq.com/v1/pricing.
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance:
+    source: docs
+    source_url: https://renolabshq.com/vigil/api
+    checked: '2026-11-12'
+    confidence: documented
+
 # BYOK and treg's platform key expose the same paths and the same X-Vigil-Key auth.
 # A team's own key is unmetered by treg; on treg's key the documented USD rates below
 # settle after success. stocks.insider-trades.list is REUSED from Financial Datasets
@@ -48,7 +59,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {ticker: NVDA, limit: 1}}
-    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    price: {value: '0.02', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.stocks.insider-trades
@@ -70,7 +81,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {ticker: NVDA, side: sell, limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.stocks.insider-intent
@@ -92,7 +103,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {ticker: NVDA, limit: 1}}
-    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Per successful request, not per notice row. Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    price: {value: '0.02', currency: USD, per: 1, unit: call, note: "Per successful request, not per notice row. Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.stocks.reference.ticker-cik
@@ -110,7 +121,7 @@ endpoints:
         q: {type: string, required: true, note: "ticker, CIK or case-insensitive issuer-name prefix; 1-100 characters", example: NVDA}
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
     test_request: {queryParams: {q: NVDA}}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Free and unbilled, but still keyed: a successful call consumes the calling key's monthly cap like a dataset call."}
+    price: {value: '0', currency: USD, unit: call, note: "Free and unbilled, but still keyed: a successful call consumes the calling key's monthly cap like a dataset call."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.search
@@ -133,7 +144,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {q: BERKSHIRE, limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.profile
@@ -151,7 +162,7 @@ endpoints:
       queryParams:
         cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
     test_request: {queryParams: {cik: "1067983"}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.filings
@@ -172,7 +183,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {cik: "1067983", limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.holdings
@@ -194,7 +205,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {cik: "1067983", limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.changes
@@ -217,7 +228,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {cik: "1067983", limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.stocks.institutional-holders
@@ -239,7 +250,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {ticker: NVDA, limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-27', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.position-history
@@ -262,7 +273,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {cik: "1067983", ticker: NVDA, limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.new-positions
@@ -283,7 +294,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.funds.compare-filings
@@ -307,5 +318,5 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {cik: "1067983", current_accession: "0001193125-26-352200", baseline_accession: "0001193125-26-226661", limit: 1}}
-    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
     docs_url: https://renolabshq.com/vigil/api
