@@ -376,3 +376,14 @@ def test_a_title_list_is_a_complete_request_and_records_its_categories():
 def test_a_request_read_back_into_no_variant_records_no_request_categories():
     _, meta, _ = ev.segment(_contract(), {"limit": 5})
     assert meta == {}
+
+
+def test_web_search_records_contents_so_a_route_rule_can_ask_exa_for_passages():
+    contracts = catalog_store.load().contracts
+    web = contracts["web.search"]
+    assert ev.segment(web, {"q": "best crm", "contents": True})[1] == {"contents": "true"}
+    assert ev.segment(web, {"q": "best crm", "contents": False})[1] == {"contents": "false"}
+    assert ev.segment(web, {"q": "best crm"})[1] == {}
+    rule = {"id": "web-search-contents", "capability": "web.search", "match": {"contents": "true"},
+            "order": ["exa"]}
+    R.check_against(R.parse(_envelope(rule)), contracts, reader_app._servers_of, ev.segment_checks)
