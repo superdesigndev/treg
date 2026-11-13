@@ -32,7 +32,8 @@ retries on the primary. Whole-window aggregates over `callrecord` and the ledger
 at a time per process (a second is refused at once), each statement capped by a server-side
 timeout, refusals and timeouts answered as a 429 `report_busy`. The timeout is the only thing that
 stops such a query; a browser or proxy giving up does not, and an uncapped one outlives the
-instance that started it. The archive panel polls only after its previous poll has returned.
+instance that started it. The archive panel polls only after its previous poll has returned; a
+429 shows it as busy and keeps polling, and only a 401 or 403 sends it back to the token gate.
 No admin path uses the API pool (`ops/deploy.md`).
 
 `require_member` returns 403 for a suspended user or org; super-admin routes are unaffected.

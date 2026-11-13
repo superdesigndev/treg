@@ -201,6 +201,7 @@
     <span class="wordmark">treg · <em>Archive</em></span>
     <span class="chip" data-tip="The panel re-reads the server every 5 seconds. Nothing on this page is ever older than that.">live · refreshes every 5s</span>
     <div class="mode"><span class="dot"></span><span data-tip="The archive's master switch on the server. off = feature dormant. shadow = watch and learn, serve nothing. serve = answer repeats from the store.">mode</span>&nbsp;<b id="h-mode">…</b>&nbsp;<span id="h-worker" style="color:var(--faint)"></span></div>
+    <span id="h-busy" style="color:var(--warn)" data-tip="The server runs one archive report at a time. Another one is running, so this refresh was refused; the panel keeps retrying."></span>
   </div>
 </header>
 
@@ -265,6 +266,7 @@
   async function api(path) {
     const r = await fetch(path, { headers: { "X-Treg-Token": token } });
     if (r.status === 401 || r.status === 403) throw new Error("auth");
+    if (r.status === 429) throw new Error("busy");
     if (!r.ok) throw new Error("http " + r.status);
     return r.json();
   }
@@ -395,6 +397,7 @@
   async function tick() {
     try {
       const d = await api("/admin/archive");
+      $("h-busy").textContent = "";
       renderReport(d);
       // Learned-TTL cells fill ONLY for the endpoint you click (from the inspector's own load).
       // The old behavior fired one keys request per row — 50 near-simultaneous heavy calls per
@@ -406,6 +409,7 @@
       if (selected) select(selected);
     } catch (e) {
       if (e.message === "auth") { stop(); openGate("That token was refused. Paste the current TREG_ADMIN_TOKEN."); }
+      else if (e.message === "busy") $("h-busy").textContent = "report busy · retrying";
     }
   }
   let polling = false;
@@ -421,10 +425,12 @@
     token = $("tok").value.trim();
     if (!token) { $("gate-err").textContent = "The token is empty."; return; }
     try { await api("/admin/archive"); localStorage.setItem(TOK_KEY, token); start(); }
-    catch (e) { $("gate-err").textContent = e.message === "auth" ? "The server refused this token." : "Could not reach the server: " + e.message; }
+    catch (e) {
+      if (e.message === "busy") { localStorage.setItem(TOK_KEY, token); start(); return; }
+      $("gate-err").textContent = e.message === "auth" ? "The server refused this token." : "Could not reach the server: " + e.message; }
   });
   $("tok").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 
-  if (token) { api("/admin/archive").then(() => start()).catch(() => openGate()); }
+  if (token) { api("/admin/archive").then(() => start()).catch(e => e.message === "busy" ? start() : openGate()); }
 })();
 </script>
