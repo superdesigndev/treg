@@ -75,6 +75,9 @@ domain edges. This fragment records only what the contracts and tests cannot say
   `__init__` the CLI imports on the way. The server glue that runs those views is
   `treg.routers.view`, outside the contract.
 - The R2 SDK (`obstore`) ships only in `[server]`; `infra.object_store.open_r2` loads it lazily.
+- The payment protocol SDK (`mpp` from `pympp`) ships only in `[server]` and may be imported only by
+  `treg.infra.agent_payments.tempo` and `treg.infra.agent_payments.x402`; bootstrap builds the
+  concrete rails ([agent payments](agent-payments.md)).
 
 ## Why some contracts look stricter than needed
 
