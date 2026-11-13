@@ -15,6 +15,8 @@ sources:
   - src/treg/routers/billing.py
   - src/treg/infra/slack.py
   - tests/test_topup_reconcile.py
+  - tests/test_member_spend_cap.py
+  - src/treg/alembic/versions/0102_member_daily_spend_cap.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -654,6 +656,38 @@ today. The first movement of a new UTC day resets it (`_spent_today_values`). A 
 cannot replace it: a busy org's rows touch most heap pages of the day, so no index makes the
 aggregate cheaper than reading the day. `spent_today_from_ledger` computes the same number for
 reconciliation, and `tests/test_daily_spend_counter.py` asserts they agree.
+
+### A daily spend limit per member
+
+`_enforce_member_spend_cap` limits what one member or agent may commit on treg's keys per UTC day.
+`budget_policy.member_daily_spend_cap` picks the figure: the member's own
+`Membership.daily_spend_cap_micro` (-1 = no limit), else the team default
+`Org.member_daily_spend_cap_micro`, which never applies to an owner or admin. NULL everywhere means
+no limit and no extra work on the call.
+
+When a limit applies, `_platform_reserve` passes `member_id` to `ledger.reserve_in_transaction`, which
+writes one `MemberSpend` row in the balance transaction. The row follows its hold like `TagSpend`:
+estimate in flight, consumed figure at settle (restamped to settle time), deleted on release. The
+check reads `ledger.member_spent_since` (one indexed aggregate) and compares it with the charged
+estimate. The refusal carries `resets_at` (the next 00:00 UTC) and a matching `Retry-After`, so an
+agent waits instead of retrying. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
+calls can overshoot by their estimates, and the org balance and platform daily cap stay the hard
+gates. An unlimited member writes no rows, so spend made before a limit applied does not count
+against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
+the hub's own steps are. A crashed call's expired hold still counts until it is reaped, and the
+reserve reaps only after this gate, so a refusal reaps the team's stale holds first and reads again.
+
+The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
+this limit refuses the call, or cannot be checked, the call service gives that slot back
+(`usage.return_daily_slot`), on the direct path and on an overflow-only call alike, so a member stopped by dollars, or retrying an unavailable check, does
+not also lose calls. The slot goes back only to the UTC day it was taken on: a refusal after
+midnight never takes a slot from the new day. `memberspend` has no foreign keys; team deletion clears it with the team. The first limit reached stops the member.
+
+The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
+clears it). Setting it means "this, for all": `budget_policy.reset_member_spend_caps` clears every
+member's and agent's own figure in the same transaction; owners and admins keep theirs. One
+member's figure is set with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
+mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
 
 ## Checking the work (`reconcile.py`)
 

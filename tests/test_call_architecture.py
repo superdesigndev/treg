@@ -57,6 +57,8 @@ _DATAPLANE_DERIVED_WRITES = {
     "lazy_stale_hold_reap": (
         (money.reserve_in_transaction, "reap_stale_holds"),
         (money.reap_stale_holds, "release"),
+        # A member spend refusal reaps first, so a crashed call's expired hold cannot block them.
+        (reserve._enforce_member_spend_cap, "ledger.reap_stale_holds"),
     ),
     # Plan §4.1 / refactor plan §1.6 "platform-account capacity marks": a confirmed balance/quota
     # signature on treg's own key marks the provider exhausted in ratestore (the shared Ephemeral
@@ -115,6 +117,15 @@ _DATAPLANE_DERIVED_WRITES = {
     "member_daily_cap_slot": (
         (authorize.authorize_call, "usage_policy.enforce_daily_cap"),
         (usage_policy.enforce_daily_cap, "take_daily_slot"),
+        # A call the member's spend limit refuses gives the slot back, on the direct and the
+        # overflow-only path alike.
+        (service._execute_call, "return_daily_slot"),
+        (authorize.return_daily_slot, "usage_policy.return_daily_slot"),
+    ),
+    # A hold on a member with a daily spend limit is attributed to them in the SAME transaction
+    # (revision 0102); settle and release move or drop that row with the hold.
+    "member_spend_attribution": (
+        (money.reserve_in_transaction, "MemberSpend"),
     ),
     # A platform call holds a renewed lease on the provider account's shared concurrency places
     # (Redis, after the DB phase ended) until its answer is read; expiry frees a crashed holder's.
@@ -153,6 +164,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "call_task_record",
     "provider_resource_ownership",
     "member_daily_cap_slot",
+    "member_spend_attribution",
     "provider_concurrency_lease",
     "provider_rate_window",
 })
@@ -164,10 +176,12 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "billing.py": {"loop.create_task"},
     _SRC / "application" / "call" / "authorize.py": {
         "publicdemo_policy.enforce_public_demo_ip_cap", "usage_policy.enforce_daily_cap",
+        "usage_policy.return_daily_slot",
     },
     _SRC / "domain" / "governance" / "usage.py": {"take_daily_slot"},
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
+        "ledger.reap_stale_holds",
     },
     _SRC / "application" / "call" / "settle.py": {
         "money_admission.admit", "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
@@ -198,13 +212,14 @@ _DERIVED_WRITE_FILES = {
         "provider_resources.register",
         "provider_resources.rename",
         "provider_resources.tombstone",
+        "return_daily_slot",
     },
     _SRC / "application" / "call" / "route.py": {"async_task_app.remember_routed_task"},
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
     _SRC / "domain" / "governance" / "publicdemo.py": {
         "ratestore.sweep", "ratestore.rate_check",
     },
-    _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release"},
+    _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release", "MemberSpend"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_admit_org_endpoint", "org_endpoint_quota.admit"),
@@ -228,6 +243,10 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "publicdemo_policy.enforce_public_demo_ip_cap"),
     ("application/call/authorize.py", "authorize_call", "usage_policy.enforce_daily_cap"),
     ("domain/governance/usage.py", "enforce_daily_cap", "take_daily_slot"),
+    ("application/call/service.py", "_execute_call", "return_daily_slot"),
+    ("application/call/service.py", "_serve_overflow_instead", "return_daily_slot"),
+    ("application/call/authorize.py", "return_daily_slot", "usage_policy.return_daily_slot"),
+    ("domain/money/__init__.py", "reserve_in_transaction", "MemberSpend"),
     ("application/call/reserve.py", "_platform_reserve",
      "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_record_first_call", "adsconv.queue"),
@@ -280,6 +299,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("domain/governance/publicdemo.py", "enforce_public_demo_ip_cap", "ratestore.sweep"),
     ("domain/money/__init__.py", "reap_stale_holds", "release"),
     ("domain/money/__init__.py", "reserve_in_transaction", "reap_stale_holds"),
+    ("application/call/reserve.py", "_enforce_member_spend_cap", "ledger.reap_stale_holds"),
 }
 
 

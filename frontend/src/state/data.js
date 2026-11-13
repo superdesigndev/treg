@@ -47,6 +47,7 @@ export default function data(){
       billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
       topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
       capCfg:null, capUsd:0, capBusy:false, capErr:'',
+      memberCapUsd:'', memberCapBusy:false, memberCapErr:'', memberCapOpen:false,
       archiveBusy:false, archiveErr:'',
       renameName:'', renameSlug:'', renameBusy:false, renameErr:'',
       budgets:[], budDims:[], budDim:'', budVal:'', budDaily:'', budBusy:false, budErr:'',

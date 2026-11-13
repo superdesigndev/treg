@@ -73,8 +73,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
 - **`Org.public_demo`** marks a team whose member token is published: non-admin members are locked to
   `/call` plus reads and may never act as a user (`require_member` / `require_identity`).
 - **`ApiKey`** resolves a credential to a membership; the membership stays the only source of role,
-  tool and project access, local-run permission, daily cap and billing identity, so more keys never
-  mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
+  tool and project access, local-run permission, daily call cap, daily spend limit and billing
+  identity, so more keys never mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
   (legacy, left empty for new memberships). A signed Default token carries the row's team-local
   generation; rotation increments it, invalidating the prior token without touching other teams.
   After membership removal the detached, revoked Default row keeps the old token unauthorized.
