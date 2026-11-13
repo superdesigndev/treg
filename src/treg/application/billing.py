@@ -69,6 +69,9 @@ MICRO_PER_USD = 1_000_000
 # and "$5000" is one keystroke, and a card that big is likelier a mistake or a stolen number than a
 # customer. Raise it deliberately when someone asks.
 TOPUP_MAX_USD = 2_000
+# The monthly cap limits total automatic top-ups per calendar month. It can be much higher than a
+# single top-up because it accumulates many refills; $100k covers heavy enterprise usage.
+AUTOTOPUP_MONTHLY_CAP_MAX_USD = 100_000
 # Tags Checkout sessions in the Stripe dashboard so this flow's conversion can be compared against
 # any other we add later (required suffix is 8 letters — see Stripe's integration_identifier docs).
 INTEGRATION_ID = "tregtopup-qwkmzhrb"
@@ -216,6 +219,29 @@ def validate_topup_usd(amount_usd) -> int:
         raise TopupRejected(f"the minimum top-up is ${s.topup_min_usd} (card fees eat a smaller one)")
     if value > TOPUP_MAX_USD:
         raise TopupRejected(f"the maximum single top-up is ${TOPUP_MAX_USD}")
+    return value
+
+
+def validate_monthly_cap_usd(amount_usd) -> int:
+    """Validate the auto top-up monthly cap. Returns whole dollars; raises `TopupRejected` on error.
+
+    Accepts 0 (resets to default), rejects negative or non-finite values. The ceiling is much higher
+    than a single top-up because the cap accumulates many refills over a month.
+    """
+    import math
+    try:
+        value = float(amount_usd)
+    except (TypeError, ValueError) as exc:
+        raise TopupRejected("monthly cap must be a number of US dollars") from exc
+    if not math.isfinite(value):
+        raise TopupRejected("monthly cap must be a finite number")
+    if value < 0:
+        raise TopupRejected("monthly cap cannot be negative")
+    if value != int(value):
+        raise TopupRejected("monthly cap is whole dollars (e.g. 5000, not 5000.50)")
+    value = int(value)
+    if value > AUTOTOPUP_MONTHLY_CAP_MAX_USD:
+        raise TopupRejected(f"the maximum monthly cap is ${AUTOTOPUP_MONTHLY_CAP_MAX_USD:,}")
     return value
 
 
@@ -1951,9 +1977,9 @@ async def set_autotopup(
     if amount_usd is not None:
         org.autotopup_amount_micro = usd_to_micro(validate_topup_usd(amount_usd))
     if monthly_cap_usd is not None:
-        # 0 clears a chosen cap back to the default (`autotopup_prefs`).
-        org.autotopup_monthly_cap_micro = (
-            0 if monthly_cap_usd == 0 else usd_to_micro(validate_topup_usd(monthly_cap_usd)))
+        # 0 clears a chosen cap back to the default (`autotopup_prefs`); validate_monthly_cap_usd
+        # accepts 0 and has its own higher ceiling (AUTOTOPUP_MONTHLY_CAP_MAX_USD).
+        org.autotopup_monthly_cap_micro = usd_to_micro(validate_monthly_cap_usd(monthly_cap_usd))
     if per_hour is not None:
         org.autotopup_max_per_hour = validate_per_hour(per_hour)
     prefs = autotopup_prefs(org)

@@ -138,6 +138,58 @@ def test_amount_validation_accepts_the_minimum_and_above(amount):
     assert billing.validate_topup_usd(amount) == amount
 
 
+# ---- monthly cap validation ---------------------------------------------------------------------
+@pytest.mark.parametrize("amount", [-10, -1, float("inf"), float("-inf"), float("nan"), "abc", None, 10.5, 100001])
+def test_monthly_cap_validation_rejects_invalid_values(amount):
+    """Monthly cap rejects negative, non-finite, fractional, non-numeric, or above-ceiling values."""
+    with pytest.raises(billing.TopupRejected):
+        billing.validate_monthly_cap_usd(amount)
+
+
+@pytest.mark.parametrize("amount,expected", [
+    (0, 0),  # 0 resets to default
+    (2000, 2000),
+    (5000, 5000),
+    (50000, 50000),  # above single top-up limit, valid for monthly cap
+    (100000, 100000),  # maximum monthly cap
+])
+def test_monthly_cap_validation_accepts_valid_values(amount, expected):
+    """Monthly cap accepts 0 (reset) and whole dollars up to the ceiling."""
+    assert billing.validate_monthly_cap_usd(amount) == expected
+
+
+async def test_monthly_cap_above_single_topup_limit_is_accepted(c: AsyncClient, monkeypatch):
+    """The monthly cap can be set higher than the single top-up limit ($2,000)."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
+    # $50,000 is way above the $2,000 single top-up limit, but valid for monthly cap
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 50000})
+    assert r.status_code == 200, r.text
+    assert r.json()["autotopup"]["monthly_cap_usd"] == 50000
+
+
+async def test_monthly_cap_above_new_ceiling_is_rejected(c: AsyncClient, monkeypatch):
+    """A monthly cap above AUTOTOPUP_MONTHLY_CAP_MAX_USD is rejected."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 100001})
+    assert r.status_code == 422, r.text
+    assert "maximum monthly cap" in r.text
+
+
+async def test_single_topup_amount_still_capped_at_2000(c: AsyncClient, monkeypatch):
+    """The per-top-up amount is still capped at TOPUP_MAX_USD ($2,000)."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    base = {"enabled": True, "consent": True, "threshold_usd": 5, "monthly_cap_usd": 50000, "setup_url": False}
+    # amount_usd above $2,000 should still be rejected
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "amount_usd": 2001})
+    assert r.status_code == 422, r.text
+    assert "maximum single top-up" in r.text
+
+
 # ---- endpoint auth ------------------------------------------------------------------------------
 async def test_billing_endpoints_require_admin_of_this_org(c: AsyncClient, monkeypatch):
     """A card and an invoice archive are the org's money, not a member's business."""

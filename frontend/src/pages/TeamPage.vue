@@ -639,6 +639,11 @@ export default {
                           <input class="msel" style="width:56px" type="number" min="1" max="60" v-model.number="autoPerHour"/>
                           <span class="sub" style="margin:0">times per hour</span>
                         </div>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+                          <span class="sub" style="margin:0">Monthly limit: $</span>
+                          <input class="msel" style="width:90px" type="number" min="0" max="100000" v-model.number="autoMonthlyCap" placeholder="2000"/>
+                          <span class="sub" style="margin:0;color:var(--muted)">(0 = default ${{billing.topup.max_usd}})</span>
+                        </div>
                         <p class="sub" style="margin:8px 0 0">
                           <template v-if="tierBonus(autoAmount)">Each refill adds <b>{{money(autoAmount*1e6+tierBonus(autoAmount))}}</b> ({{money(autoAmount*1e6)}} + <span style="color:var(--green)">{{money(tierBonus(autoAmount))}} bonus</span>).</template>
                           <template v-if="nextBonusTier(autoAmount)"> Refill <a href="#" @click.prevent="autoAmount=nextBonusTier(autoAmount).usd;autoConsent=false">${{nextBonusTier(autoAmount).usd}}</a> or more for <span style="color:var(--green)">+{{nextBonusTier(autoAmount).pct}}% bonus</span> on every refill.</template>
