@@ -29,7 +29,6 @@ from ..domain.identity import session as sess
 from ..domain.identity.access import require_identity, require_person
 from ..models import User
 from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
-from .web import _esc_html
 
 app = APIRouter()
 email_router = app
@@ -770,86 +769,36 @@ _live_invite_by_email_token = auth_use_cases._live_invite_by_email_token
 
 
 @app.get("/auth/invite-signin")
-async def auth_invite_signin(
-    request: Request, code: str = "", t: str = "",
-    treg_session: str = Cookie(default=""),
-):
-    """Landing for an invite email link. Two secrets, two very different trust levels:
-
-    `t` (email_token) exists ONLY in the emailed link — possession proves inbox access, the same bar
-    as the emailed OTP — so it may sign the invitee in. But not on this GET: corporate mail scanners
-    (Outlook SafeLinks etc.) prefetch GET links and would consume a one-time credential before the
-    human ever clicks. So the GET only renders a confirm page whose button POSTs the token back;
-    the POST below mints the session.
-
-    `code` (legacy + out-of-band) is also returned to the admin who created the invite, so it can
-    NEVER be an authentication factor — holding it lets you JOIN (POST /invites/accept), not log in.
-    Links carrying ?code= (emails sent before the split, or relayed by an admin) keep their old
-    behavior: validate and bounce to the SPA login with the email prefilled; the invitee proves the
-    email through a real door (OTP / GitHub / Google) and the invite auto-appears via /invites/mine.
-    An invalid/expired secret of either kind just lands on the site."""
-    from urllib.parse import quote
-    try:
-        landing = await auth_use_cases.invite_signin_landing(t, code, treg_session)
-    except auth_use_cases.InviteSigninError as exc:
-        if exc.kind != "expired":
-            raise
-        return RedirectResponse("/?invite_expired=1", status_code=303)
-    if isinstance(landing, auth_use_cases.InviteEmailConfirmation):
-        # Already signed in as someone ELSE? Warn — continuing replaces that browser session.
-        switch_note = ""
-        if landing.switch_email is not None:
-            switch_note = (f"<p>You're currently signed in as <b>{_esc_html(landing.switch_email)}</b> — "
-                           f"continuing switches this browser to <b>{_esc_html(landing.email)}</b>.</p>")
-        return HTMLResponse(
-            f'{_AUTH_HEAD}<body><div class="wrap"><div class="card">'
-            f'<div class="logo">▚ tools-registry</div><div class="mark">👋</div>'
-            f'<h1>Join {_esc_html(landing.org_name)}</h1>'
-            f'<p><b>{_esc_html(landing.invited_by)}</b> invited '
-            f'<b>{_esc_html(landing.email)}</b> as {_esc_html(landing.role)}.</p>{switch_note}'
-            f'<form method="post" action="/auth/invite-signin" style="margin-top:18px">'
-            f'<input type="hidden" name="t" value="{_esc_html(t.strip())}">'
-            f'<button type="submit" class="pbtn">'
-            f'Continue as {_esc_html(landing.email)} →</button></form>'
-            f"</div></div></body></html>"
-        )
-    # Code path: same redirect whether or not the email already has an account — the code is a
-    # convenience that prefills the sign-in email, never an authentication factor. A suspended
-    # account is caught at the real login door, the only place the code path can mint a session.
-    return RedirectResponse(f"/?invite={quote(landing.email)}", status_code=303)
+async def auth_invite_signin(code: str = "", t: str = ""):
+    """Landing for an invite email link. Neither secret signs anyone in: the emailed `t` and the
+    admin-visible `code` only prefill the invitee's address on the SPA login, where they prove it
+    through a real door (OTP / GitHub / Google) and the invite appears via /invites/mine. An
+    invalid/expired secret lands on the site with the expired banner."""
+    return await _invite_link_redirect(t, code)
 
 
 @app.post("/auth/invite-signin")
 async def auth_invite_signin_confirm(request: Request):
-    """The confirm page's POST: the emailed one-time token signs the invitee in. Mirrors the OTP
-    door (auth_email_verify) — find-or-create the user, refuse the suspended, set the session
-    cookie — because the trust source is identical: only the inbox saw this secret. The token is
-    consumed here (one-time) so a link floating in a forwarded thread can't be replayed; the invite
-    itself stays PENDING — acceptance happens in the dashboard, where a multi-team invitee can
-    accept several at once. Body is parsed by hand (urlencoded form) to avoid the python-multipart
-    dependency FastAPI's Form() would pull in."""
+    """The confirm button of invite pages rendered before links stopped signing in. Treated like
+    the GET: prefill, never a session. Body is parsed by hand (urlencoded form) to avoid the
+    python-multipart dependency FastAPI's Form() would pull in."""
     from urllib.parse import parse_qs
     try:
         form = parse_qs((await request.body()).decode("utf-8", "replace"))
     except Exception:  # noqa: BLE001 — any junk body = no token
         form = {}
-    t = (form.get("t", [""])[0] or "").strip()
+    return await _invite_link_redirect((form.get("t", [""])[0] or "").strip(), "")
+
+
+async def _invite_link_redirect(t: str, code: str) -> RedirectResponse:
+    from urllib.parse import quote
     try:
-        proof = await auth_use_cases.confirm_invite_signin(t)
+        landing = await auth_use_cases.invite_signin_landing(t, code)
     except auth_use_cases.InviteSigninError as exc:
-        if exc.kind == "expired":
-            return RedirectResponse("/?invite_expired=1", status_code=303)
-        if exc.kind == "machine_identity":
-            raise HTTPException(status_code=403, detail="this address cannot be used to sign in") from exc
-        if exc.kind == "suspended":
-            return _auth_page("Account suspended", "This account has been suspended.", ok=False, status=403)
-        if exc.kind == "blocked_domain":
-            return _auth_page("Sign-in refused", "This address cannot be used to sign in.", ok=False, status=403)
-        raise
-    resp = RedirectResponse(proof.destination, status_code=303)
-    resp.set_cookie(sess.COOKIE, proof.session_cookie, httponly=True,
-                    samesite="lax", secure=_is_https(request), max_age=sess.TTL_SECONDS)
-    return resp
+        if exc.kind != "expired":
+            raise
+        return RedirectResponse("/?invite_expired=1", status_code=303)
+    return RedirectResponse(f"/?invite={quote(landing.email)}", status_code=303)
 
 
 app = APIRouter()

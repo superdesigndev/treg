@@ -78,9 +78,8 @@ async def send_invite(email: str, inviter: str, org_name: str, role: str, code: 
     # The link should open on the SAME deployment the inviter was using. The request origin
     # (link_base) captures that; public_url is the fallback for callers without a request.
     base = (link_base or s.public_url).rstrip("/")
-    # The link carries `email_token`, NOT `code`: the token exists only in this email, so clicking
-    # proves inbox access and /auth/invite-signin may sign the invitee in (POST-confirm, one-time).
-    # The visible code below stays the out-of-band credential the admin also holds — join-only.
+    # The link carries `email_token`, NOT `code`; /auth/invite-signin resolves it to the invitee's
+    # address and prefills the login. Neither secret signs anyone in.
     url = f"{base}/auth/invite-signin?t={quote(email_token)}"
     exp = f" It expires on {expires_at[:10]}." if expires_at else ""
     headline = (f'<b style="color:#f2efe8">{_esc(inviter)}</b> shared {_esc(shared)} with you — join <b style="color:#f2efe8">{_esc(org_name)}</b> to use it'
