@@ -1016,7 +1016,9 @@ returned and never documented as stable. An output field may say where it lands 
 - `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
-  first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+  first for a free-text `{q}`, and ranks company and name lookups, which they cannot scope, by
+  cost per hit. A rule may name no provider (`prefer: []`): it still matches first, so later,
+  broader rules do not reorder that request, and the order is left to cost per hit.
   A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
   stable sha256 bucket of capability and team id; a call with no team is never in it), and the
   other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
