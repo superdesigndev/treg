@@ -367,7 +367,6 @@ contracts:
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
-    prefer: [crawl4ai]
 
   people.search:
     summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
@@ -426,9 +425,8 @@ contracts:
       rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
     miss: "people == []"
     idempotent: true
-    # The default order. Orders per kind of request (a free-text `q`, a role at a company, a
-    # country) are published route rules, not contract fields: `prefer_when` is retired.
-    prefer: [crawl4ai]
+    # No contract order: routed providers rank by cost per hit. Orders per kind of request (a
+    # free-text `q`, a role at a company, a country) are published route rules; `prefer_when` is retired.
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
@@ -468,7 +466,6 @@ contracts:
       linkedin_url: {type: str}
     miss: "name == null"
     idempotent: true
-    prefer: [crawl4ai]
 
   companies.similar:
     summary: "Find companies similar to a seed domain"
@@ -511,7 +508,6 @@ contracts:
       count: {type: int}
     miss: "places == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   tiktok.user.videos:
     summary: "List a TikTok user's recent videos by secUid — provider-native video objects in `videos`"
@@ -1063,7 +1059,6 @@ contracts:
     # except a per_call one, which bills it.
     miss: "ads == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   google.ads.transparency:
     summary: "The ads Google Ads Transparency Center shows for one company domain — provider-native ad rows in `ads`"
@@ -1109,7 +1104,6 @@ contracts:
       next_cursor: {type: str}
     miss: "reviews == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   facebook.user.profile:
     summary: "A public Facebook profile or page by URL or profile id — treg picks the provider and names the one that served"
@@ -1424,7 +1418,6 @@ contracts:
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     # Asked for passages (`contents: true`), a published route rule asks exa first.
-    prefer: [crawl4ai]
 
   web.search.news:
     summary: "Search recent news — provider-native article rows in `results`"
@@ -1449,7 +1442,6 @@ contracts:
     miss: "pages == []"
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
-    prefer: [crawl4ai]
 
   web.extract.structured:
     summary: "Extract typed JSON from one web page, described by a JSON schema and/or a plain-English instruction — the extracted data in `data`"
@@ -1463,7 +1455,6 @@ contracts:
       data: {type: any, required: true, note: "the extracted records, in the shape the schema asked for; raw is the provider's whole body"}
     miss: "data == null"
     idempotent: true
-    prefer: [crawl4ai]
 
   web.map:
     summary: "Discover the URLs on a website — provider-native map rows in `results`"
