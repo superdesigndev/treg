@@ -151,7 +151,7 @@ so it records none rather than "none sent". The same function serves the event a
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 
-`people_search` (version 1), each key always present unless noted:
+`people_search` (version 2, which added `company_given`), each key always present unless noted:
 
 | Key | Vocabulary | From |
 | --- | --- | --- |
@@ -169,6 +169,7 @@ import them instead of keeping its own copy.
 | `q_words` | `1-3`, `4-8`, `9+`, `none` | |
 | `q_has_place` | `true`, `false`, `none` | a country, region or major city named in `q` |
 | `name_given` | `true`, `false` | `full_name` present after derivation |
+| `company_given` | `true`, `false` | `company_domain` present after derivation; tells `{q, title}` from `{q, title, company_domain}`, both recorded as `input_type: q` |
 | `has_keywords` | `true`, `false` | |
 
 A set may also count how an answer's rows fit the question; `people_search` writes these to

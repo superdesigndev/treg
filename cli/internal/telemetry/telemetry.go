@@ -132,37 +132,34 @@ func record(e Event) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-// Claim takes the queued events now, before this command records its own, and returns the send
-// that delivers them to the registry's relay. Claiming renames the queue, so two CLIs never send one
-// event twice; whatever the send cannot deliver goes back into the queue, and a claim left by a
-// process that died mid-send is picked up once it is a minute old.
-func Claim() func(ctx context.Context, registry string, transport http.RoundTripper) {
+// Flush sends the queued events to the registry's relay. It claims the queue by renaming it, so
+// two CLIs never send one event twice; whatever it cannot send goes back into the queue, and a
+// claim left by a process that died mid-send is picked up once it is a minute old.
+func Flush(ctx context.Context, registry string, transport http.RoundTripper) {
 	if !Enabled() {
-		return func(context.Context, string, http.RoundTripper) {}
+		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, sendBudget)
+	defer cancel()
 	dir := filepath.Dir(config.Path())
 	claims := orphans(dir)
 	if claim := claimQueue(dir); claim != "" {
 		claims = append(claims, claim)
 	}
-	return func(ctx context.Context, registry string, transport http.RoundTripper) {
-		ctx, cancel := context.WithTimeout(ctx, sendBudget)
-		defer cancel()
-		for _, claim := range claims {
-			events := readLines(claim)
-			var unsent [][]byte
-			for start := 0; start < len(events); start += batchSize {
-				end := min(start+batchSize, len(events))
-				if !send(ctx, registry, transport, events[start:end]) {
-					unsent = append(unsent, events[start:]...)
-					break
-				}
+	for _, claim := range claims {
+		events := readLines(claim)
+		var unsent [][]byte
+		for start := 0; start < len(events); start += batchSize {
+			end := min(start+batchSize, len(events))
+			if !send(ctx, registry, transport, events[start:end]) {
+				unsent = append(unsent, events[start:]...)
+				break
 			}
-			if len(unsent) > 0 {
-				requeue(dir, unsent)
-			}
-			_ = os.Remove(claim)
 		}
+		if len(unsent) > 0 {
+			requeue(dir, unsent)
+		}
+		_ = os.Remove(claim)
 	}
 }
 

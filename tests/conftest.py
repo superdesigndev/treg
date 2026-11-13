@@ -648,6 +648,10 @@ def _reset_call_path_caches():
         # with every reset_db(), so a counter left over would ration the NEXT test's team.
         from treg.infra import kv
         kv._store = None
+        # Routed children's short-window health: a test that relays 5xx would otherwise skip that
+        # child in the NEXT test's routed call.
+        from treg.application.call import route_health
+        route_health.reset()
         # Who a key is, for the hub's lists: remembered a minute, and keys repeat across resets.
         from treg.routers import hub_gate
         hub_gate._readers.clear()

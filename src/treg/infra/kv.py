@@ -269,6 +269,14 @@ class Store(Protocol):
     async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
         """Admit one member into a sliding window of `limit`, or say how long until one expires."""
 
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        """Count one routed child's answer in its time bucket. Best-effort: a fault loses it."""
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        """Per endpoint, (calls, failed, slow) summed over `buckets`; None when the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -277,6 +285,7 @@ class LocalStore:
 
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+        self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -317,6 +326,34 @@ class LocalStore:
 
     async def aclose(self) -> None:
         self._windows.clear()
+        self._health.clear()
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        now = time.monotonic()
+        key = (endpoint_id, bucket)
+        if key not in self._health and len(self._health) >= _LOCAL_MAX_KEYS:
+            self._health = {k: v for k, v in self._health.items() if v[0] > now}
+            if len(self._health) >= _LOCAL_MAX_KEYS:
+                self._health.clear()
+        expires, counts = self._health.get(key, (now + ttl_s, [0, 0, 0]))
+        counts[0] += 1
+        counts[1] += int(failed)
+        counts[2] += int(slow)
+        self._health[key] = (expires, counts)
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        now = time.monotonic()
+        out = {}
+        for endpoint_id in endpoint_ids:
+            total = [0, 0, 0]
+            for bucket in buckets:
+                expires, counts = self._health.get((endpoint_id, bucket), (0.0, [0, 0, 0]))
+                if expires > now:
+                    total = [a + b for a, b in zip(total, counts)]
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def acquire_slot(self, key: str, token: str, ttl_ms: int, limit: int) -> AcquireResult:
         return "unavailable"
@@ -436,6 +473,45 @@ class RedisStore:
         except Exception:  # noqa: BLE001 - any Redis fault reads as an unknown window
             return RateWindowResult("unavailable")
         return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        key = _route_health_key(endpoint_id, bucket)
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    pipe.hincrby(key, "n", 1)
+                    if failed:
+                        pipe.hincrby(key, "f", 1)
+                    if slow:
+                        pipe.hincrby(key, "s", 1)
+                    pipe.expire(key, ttl_s, nx=True)
+                    await pipe.execute()
+        except Exception:  # noqa: BLE001 - health is advisory; a lost count only delays a verdict
+            return
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    for endpoint_id in endpoint_ids:
+                        for bucket in buckets:
+                            pipe.hmget(_route_health_key(endpoint_id, bucket), "n", "f", "s")
+                    rows = await pipe.execute()
+        except Exception:  # noqa: BLE001 - an unreadable store reads as no evidence
+            return None
+        out = {}
+        for i, endpoint_id in enumerate(endpoint_ids):
+            total = [0, 0, 0]
+            for row in rows[i * len(buckets):(i + 1) * len(buckets)]:
+                for j, value in enumerate(row or ()):
+                    try:
+                        total[j] += max(0, int(value or 0))
+                    except (TypeError, ValueError):
+                        continue
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def ping(self) -> bool:
         try:
@@ -626,6 +702,10 @@ def drain_lease_errors() -> list[dict]:
         rows = list(_lease_errors.values())
         _lease_errors.clear()
     return rows
+
+
+def _route_health_key(endpoint_id: str, bucket: int) -> str:
+    return f"treg:route-health:v1:{endpoint_id}:{bucket}"
 
 
 def _note_fault(exc: BaseException) -> None:

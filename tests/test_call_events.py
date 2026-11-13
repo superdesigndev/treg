@@ -571,7 +571,7 @@ async def test_a_routed_miss_records_the_empty_answer_it_returned(clients: Async
     assert parent["hit"] is False
     assert parent["answer_values"] == {
         "rows": "0", "rows_with_profile_url": "0", "rows_dup": "0", "rows_company_match": "0",
-        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "1"}
+        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "2"}
 
 
 async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,
