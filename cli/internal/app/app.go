@@ -38,7 +38,7 @@ func Main(argv []string, stderr io.Writer) int {
 	env := commands.NewEnv(cfg, json, org)
 	background := len(argv) > 0 && strings.HasPrefix(argv[0], "__")
 	if !background {
-		go telemetry.Flush(context.Background(), api.RegistryURL(cfg), api.Transport())
+		go telemetry.Send(context.Background(), api.RegistryURL(cfg), api.Transport(), telemetry.Claim())
 		if exe, err := update.Executable(); err == nil {
 			update.RemoveLeftover(exe)
 			if len(argv) == 0 || argv[0] != "update" {
@@ -102,6 +102,7 @@ var (
 	optionName     = regexp.MustCompile(`(?:^|[\s'"])(--[A-Za-z][\w-]{0,40}|-[A-Za-z])`)
 	unknownCommand = regexp.MustCompile(`^unknown command "([^"]+)" for "[^"]+"`)
 	invalidChoice  = regexp.MustCompile(`^argument <subcommand>: invalid choice: "([^"]+)"`)
+	commandWord    = regexp.MustCompile(`^[a-z][a-z-]{0,23}$`)
 )
 
 // pythonOnly maps the Python CLI commands this binary lacks, and the programs `treg <program>`
@@ -125,17 +126,27 @@ var pythonOnly = map[string]string{
 	"skill scaffold": "skill_scaffold",
 }
 
-// missingCommand is the Python-only command a usage error asked for, or "".
-func missingCommand(ran *cobra.Command, err error) string {
+// rejectedCommand reads a usage error that refused a word as a subcommand of ran: the Python-only
+// command it asked for, or else the word itself when it has a command's shape. A leaf refuses an
+// extra argument with the same message, so only a command with subcommands is read.
+func rejectedCommand(ran *cobra.Command, err error) (missing, unknown string) {
+	if ran == nil || !ran.HasSubCommands() {
+		return "", ""
+	}
 	m := unknownCommand.FindStringSubmatch(err.Error())
 	if m == nil {
 		m = invalidChoice.FindStringSubmatch(err.Error())
 	}
-	if m == nil || ran == nil {
-		return ""
+	if m == nil {
+		return "", ""
 	}
-	path := strings.TrimPrefix(strings.TrimPrefix(ran.CommandPath(), "treg"), " ")
-	return pythonOnly[strings.TrimSpace(path+" "+m[1])]
+	if name, ok := pythonOnly[strings.TrimSpace(strings.TrimPrefix(ran.CommandPath(), "treg")+" "+m[1])]; ok {
+		return name, ""
+	}
+	if commandWord.MatchString(m[1]) {
+		return "", m[1]
+	}
+	return "", ""
 }
 
 func record(env *commands.Env, ran *cobra.Command, err error, code int, took time.Duration) {
@@ -162,8 +173,12 @@ func record(env *commands.Env, ran *cobra.Command, err error, code int, took tim
 			if ran != nil && ran.HasParent() {
 				notes["in_command"] = in
 			}
-			if missing := missingCommand(ran, err); missing != "" {
+			missing, unknown := rejectedCommand(ran, err)
+			if missing != "" {
 				notes["missing_command"] = missing
+			}
+			if unknown != "" {
+				notes["unknown_command"] = unknown
 			}
 		}
 	}

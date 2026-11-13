@@ -132,20 +132,30 @@ func record(e Event) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-// Flush sends the queued events to the registry's relay. It claims the queue by renaming it, so
-// two CLIs never send one event twice; whatever it cannot send goes back into the queue, and a
-// claim left by a process that died mid-send is picked up once it is a minute old.
-func Flush(ctx context.Context, registry string, transport http.RoundTripper) {
+// Claim takes the queued events for one Send by renaming the queue, so two CLIs never send one
+// event twice, along with a claim left by a process that died mid-send once it is a minute old.
+// A command claims before it runs, so the event it writes waits for a later command.
+func Claim() []string {
 	if !Enabled() {
-		return
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, sendBudget)
-	defer cancel()
 	dir := filepath.Dir(config.Path())
 	claims := orphans(dir)
 	if claim := claimQueue(dir); claim != "" {
 		claims = append(claims, claim)
 	}
+	return claims
+}
+
+// Send sends claimed events to the registry's relay; whatever it cannot send goes back into the
+// queue.
+func Send(ctx context.Context, registry string, transport http.RoundTripper, claims []string) {
+	if len(claims) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, sendBudget)
+	defer cancel()
+	dir := filepath.Dir(config.Path())
 	for _, claim := range claims {
 		events := readLines(claim)
 		var unsent [][]byte

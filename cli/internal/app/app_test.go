@@ -43,33 +43,40 @@ func lastEvent(t *testing.T, argv ...string) map[string]any {
 	return event.Properties
 }
 
-func TestAUsageErrorNamesOnlyKnownCommands(t *testing.T) {
+func TestAUsageErrorNamesOnlyCommandWords(t *testing.T) {
 	for _, c := range []struct {
-		argv        []string
-		in, missing string
-		options     string
+		argv                 []string
+		in, missing, unknown string
+		options              string
 	}{
-		{[]string{"with", "--", "ls"}, "", "with", ""},
-		{[]string{"claude"}, "", "with", ""},
-		{[]string{"hub", "ls"}, "", "hub", ""},
-		{[]string{"frobnicate"}, "", "", ""},
-		{[]string{"org", "budgets"}, "org", "org_budgets", ""},
-		{[]string{"org", "frobnicate"}, "org", "", ""},
-		{[]string{"org", "ls", "--bogus"}, "org_ls", "", "--bogus"},
-		{[]string{"org", "join"}, "org_join", "", ""},
+		{[]string{"with", "--", "ls"}, "", "with", "", ""},
+		{[]string{"claude"}, "", "with", "", ""},
+		{[]string{"hub", "ls"}, "", "hub", "", ""},
+		{[]string{"frobnicate"}, "", "", "frobnicate", ""},
+		{[]string{"org", "budgets"}, "org", "org_budgets", "", ""},
+		{[]string{"org", "frobnicate"}, "org", "", "frobnicate", ""},
+		{[]string{"skill", "frob"}, "skill", "", "frob", ""},
+		{[]string{"org", "ls", "--bogus"}, "org_ls", "", "", "--bogus"},
+		{[]string{"org", "join"}, "org_join", "", "", ""},
+		{[]string{"whoami", "acme-corp"}, "whoami", "", "", ""},
+		{[]string{"sk-live-4f9a"}, "", "", "", ""},
+		{[]string{"Search"}, "", "", "", ""},
+		{[]string{"/tmp/notes"}, "", "", "", ""},
+		{[]string{"abcdefghijklmnopqrstuvwxy"}, "", "", "", ""},
 	} {
 		p := lastEvent(t, c.argv...)
 		in, _ := p["in_command"].(string)
 		missing, _ := p["missing_command"].(string)
+		unknown, _ := p["unknown_command"].(string)
 		var options []string
 		if list, ok := p["options"].([]any); ok {
 			for _, o := range list {
 				options = append(options, o.(string))
 			}
 		}
-		if in != c.in || missing != c.missing || strings.Join(options, ",") != c.options {
-			t.Errorf("%v: in_command %q missing_command %q options %v, want %q %q %q",
-				c.argv, in, missing, options, c.in, c.missing, c.options)
+		if in != c.in || missing != c.missing || unknown != c.unknown || strings.Join(options, ",") != c.options {
+			t.Errorf("%v: in_command %q missing_command %q unknown_command %q options %v, want %q %q %q %q",
+				c.argv, in, missing, unknown, options, c.in, c.missing, c.unknown, c.options)
 		}
 	}
 }

@@ -36,8 +36,9 @@ async def test_events_keep_only_the_vocabulary(clients, relay_on):
         _event(command="call", exit_code=0, success=True, duration_ms=12, session="abc", agent="claude-code",
                cli_version="1.0.0", os="Darwin", arch="arm64", tool="tikhub.tiktok.user.profile",
                status_class="2xx", options=["--bogus", "not an option"], email="a@b.c", argv=["call", "x"],
-               tool_url="https://x", in_command="org", missing_command="org_budgets"),
-        _event(command="Bad Name!", exit_code="0", missing_command="treg claude --resume"),
+               tool_url="https://x", in_command="org", missing_command="org_budgets", unknown_command="frob-it"),
+        _event(command="Bad Name!", exit_code="0", missing_command="treg claude --resume",
+               unknown_command="sk-live-4f9a"),
         {"event": "something_else", "distinct_id": INSTALL_ID, "properties": {}},
         {"event": "cli_command_completed", "distinct_id": "not-a-uuid", "properties": {}},
     ]})
@@ -47,7 +48,7 @@ async def test_events_keep_only_the_vocabulary(clients, relay_on):
     assert first == {"command": "call", "exit_code": 0, "success": True, "duration_ms": 12, "session": "abc",
                      "agent": "claude-code", "cli_version": "1.0.0", "os": "Darwin", "arch": "arm64",
                      "tool": "tikhub.tiktok.user.profile", "status_class": "2xx", "options": ["--bogus"],
-                     "in_command": "org", "missing_command": "org_budgets",
+                     "in_command": "org", "missing_command": "org_budgets", "unknown_command": "frob-it",
                      "$process_person_profile": False, "$geoip_disable": True, "$lib": "treg-cli"}
     assert second == {"$process_person_profile": False, "$geoip_disable": True, "$lib": "treg-cli"}
     assert relay_on[0]["uuid"] == "11111111-2222-4333-8444-555555555555"
