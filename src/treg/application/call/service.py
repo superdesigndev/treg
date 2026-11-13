@@ -306,12 +306,13 @@ _CHILD_FAILURE_STATUSES = frozenset({401, 402, 403, 418, 429})
 
 
 def _log_failed_child(*, org_id: int | None, call_ref: str, mk: MarketplaceCall, status: int,
-                      refused_by: str | None, upstream_ms: int | None,
+                      reached_provider: bool, refused_by: str | None, upstream_ms: int | None,
                       duration_ms: int | None) -> None:
     """A child attempt has no root request line, so one the vendor failed gets a `call_child`
-    line of its own. treg's refusals never reached the vendor and are left out."""
+    line of its own. A failure before the request left (a refusal, an SSRF block, a failed
+    injection) is treg's, not the vendor's, and is left out; a timeout after sending is kept."""
     parent_ref, step, _position = call_event_app.ref_parts(call_ref)
-    if parent_ref is None or refused_by is not None:
+    if parent_ref is None or not reached_provider or refused_by is not None:
         return
     if status < 500 and status not in _CHILD_FAILURE_STATUSES:
         return
@@ -1205,6 +1206,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 duration_ms=duration_ms, served_by=mk.endpoint_id,
                 archive_key_hash=archive_key_hash, archive_content_hash=archive_content_hash)
             _log_failed_child(org_id=audit_org_id, call_ref=call_ref, mk=mk, status=status_code,
+                              reached_provider=request.context.reached_provider,
                               refused_by=refused_by, upstream_ms=upstream_ms,
                               duration_ms=duration_ms)
         props = _tool_called_props(

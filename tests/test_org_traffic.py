@@ -531,6 +531,48 @@ async def test_failed_routed_child_logs_one_child_line(clients, counter, enrichm
     assert row["requests"] == row["completed"] == 1
 
 
+@pytest.mark.parametrize("sent,logged", [(False, 0), (True, 1)])
+async def test_child_failure_is_logged_only_once_the_request_left(
+        clients, counter, enrichment_on, monkeypatch, caplog, sent, logged):
+    """A failure before sending (an SSRF block, a failed injection) is treg's own; a timeout after
+    sending is the vendor's."""
+    import httpx
+    from treg.application.call import service
+    from treg.infra.upstream import relay as relay_module
+    from test_routing import _relay_by_provider, ROUTED
+
+    others = _relay_by_provider({"*": [(404, {})] * 20}, [])
+    tried = []
+
+    async def relay(request, upstream_url, *args, **kwargs):
+        if "tomba" not in upstream_url:
+            return await others(request, upstream_url, *args, **kwargs)
+        tried.append(upstream_url)
+        if sent:
+            relay_module.ON_SEND.get()()
+            raise httpx.ReadTimeout("vendor did not answer")
+        raise httpx.ConnectError("refused before sending")
+
+    monkeypatch.setattr(service, "relay", relay)
+    await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert tried
+    children = logs(caplog, "call_child")
+    assert len(children) == logged
+    assert all(child["provider"] == "tomba" and child["status"] >= 500 for child in children)
+
+
+def test_for_each_hub_item_is_a_child(caplog):
+    from types import SimpleNamespace
+    from treg.application.call import service
+
+    mk = SimpleNamespace(endpoint_id="tomba.email.find", provider="tomba", tier="platform")
+    service._log_failed_child(org_id=1, call_ref="run:s1.3", mk=mk, status=500,
+                              reached_provider=True, refused_by=None, upstream_ms=5,
+                              duration_ms=6)
+    [child] = logs(caplog, "call_child")
+    assert child["parent_ref"] == "run" and child["step"] == "s1.3"
+
+
 @pytest.mark.parametrize("path,tool,args", [
     ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}),
     ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}),

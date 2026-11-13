@@ -381,6 +381,8 @@ def test_ref_parts():
     assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
     assert ev.ref_parts("abc:v") == ("abc", "v", None)
     assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
+    assert ev.ref_parts("abc:s2") == ("abc", "s2", None)
+    assert ev.ref_parts("abc:s2.7") == ("abc", "s2.7", None)
 
 
 def test_an_unknown_analytics_mode_fails_the_contract():
