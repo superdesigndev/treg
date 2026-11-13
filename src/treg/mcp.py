@@ -46,7 +46,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, TypedDict
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
 from mcp.server import MCPServer
@@ -62,7 +62,7 @@ from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
-from .capacity_notice import account_out_notice, is_balance_refusal
+from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
@@ -107,6 +107,13 @@ class _SurfacePolicy:
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
+    # Whether catalog_get shows the row's `note`. The directory surface returns what it was
+    # submitted with until the next resubmission.
+    endpoint_note: bool = True
+    # The hint on a balance refusal. Neither surface carries a purchase link (see `_call_impl`); the
+    # directory surface keeps the words it was submitted with.
+    balance_hint: str = ("the team's prepaid balance is not enough for this call. A team admin can "
+                         "add funds in the treg dashboard under Team → Billing.")
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -128,6 +135,8 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+    endpoint_note=False,
+    balance_hint="the team's prepaid balance is not enough for this call",
 )
 
 
@@ -340,7 +349,7 @@ mcp = MCPServer(
 # NULLABLE as well: the SDK dumps every ABSENT key as `null` in `structuredContent`.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
-    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
+    kind: str | None             # "hub" for a listed hub tool; absent otherwise
     name: str | None
     provider: str | None
     routed: str | None           # a routed row: what treg picks among, and where the rest are
@@ -702,6 +711,47 @@ async def _api(token: str, *, client_name: str = "mcp"):
         yield client
 
 
+_UNSAFE_SEGMENTS = frozenset({".", ".."})
+
+
+def _leaves_route(endpoint_id: str) -> bool:
+    """Whether a `.` or `..` segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses those before the in-process request, and the caller's credential rides it.
+
+    Empty segments (a mid-path `//`, or `%2F` that only becomes empty after decoding) stay under the
+    route and must pass: own-tool paths carry percent-encoded URLs in a single segment (e.g. a GSC
+    `feedpath` of `https%3A%2F%2F…`), and refusing the empty that appears only after `unquote` blocked
+    them. An empty `endpoint_id` is still refused.
+    """
+    path = endpoint_id.partition("?")[0].partition("#")[0]
+    if path == "":
+        return True
+    for _ in range(4):
+        segments = path.split("/")
+        # A trailing slash is a real upstream path (`tool/items/`), not a way out.
+        if segments[-1] == "" and len(segments) > 1:
+            segments = segments[:-1]
+        if any(s in _UNSAFE_SEGMENTS for s in segments):
+            return True
+        decoded = unquote(path)
+        if decoded == path:
+            return False
+        path = decoded
+    return True
+
+
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain a '.' or '..' path segment",
+                    "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
+
+
+def _call_url(route: str, endpoint_id: str) -> str:
+    url = f"{route}/{endpoint_id}"
+    path = httpx.URL(_INTERNAL_BASE + url).path
+    if _leaves_route(endpoint_id) or not path.startswith(route + "/"):
+        raise httpx.InvalidURL(f"{endpoint_id!r} does not stay under {route}/")
+    return url
+
+
 def _body(r: httpx.Response) -> Any:
     try:
         body = r.json()
@@ -711,6 +761,30 @@ def _body(r: httpx.Response) -> Any:
     # agent gets "Error serializing to JSON" with no body, call_id or cost for a call it paid for.
     # pydantic cannot write the escape, so the surrogate becomes U+FFFD (treg/jsontext.py).
     return jsontext.scrub_surrogates(body) if jsontext.may_hold_surrogates(r.content) else body
+
+
+def _dead_mcp_key_problem() -> dict:
+    """The saved MCP bearer is dead - CLI login does not refresh it. Name the cause and the repair.
+
+    A static Authorization header written by `treg mcp install` survives `treg login` and session-
+    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere.
+    Point them at `treg mcp install --oauth`, which rewrites every managed client to URL-only so the
+    client can authorize itself (Claude Code `/mcp`, Codex `codex mcp login`, Cursor/opencode OAuth).
+    A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written entry) is out of the installer's
+    reach, so the hint also says to replace it. This hint is the one place the repair is documented.
+    """
+    return {
+        "error": "not signed in, or this token is invalid or expired",
+        "hint": (
+            "This MCP server holds its own saved key, separate from the CLI login, and that key is "
+            "no longer valid. Run `treg update`, then `treg mcp install --oauth` (needs no login), "
+            "restart the agent, then authorize treg in the client (Claude Code: `/mcp`, then "
+            "Authenticate; Codex: `codex mcp login treg`; Cursor/opencode: follow the client's "
+            "sign-in prompt). If you set this key yourself (for example the `TREG_TOKEN` "
+            f"environment variable), replace it with a current team key from "
+            f"{get_settings().public_url.rstrip('/')} and restart the agent."
+        ),
+    }
 
 
 async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | None, dict | None]:
@@ -733,6 +807,10 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     pinned = client.headers.get("X-Treg-Org")
     if pinned:
         r = await client.get("/orgs")
+        if r.status_code == 401:
+            # Dead team-pinned key (revoke-tokens / Default-key rotation / bad signature still
+            # carrying an org claim). The old answer said the TEAM was gone; the key is what died.
+            return None, None, _dead_mcp_key_problem()
         for o in (_body(r) or []) if r.status_code == 200 else []:
             if o.get("slug") == pinned:
                 return int(o["org_id"]), pinned, None
@@ -745,10 +823,7 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
 
     r = await client.get("/orgs")
     if r.status_code == 401 or me.status_code == 401:
-        return None, None, {"error": "not signed in, or this token is invalid or expired",
-                            "hint": ("sign in again with `treg login`, then run `treg mcp install` to "
-                                     "update this server's token, or configure a current key from "
-                                     f"{get_settings().public_url.rstrip('/')}")}
+        return None, None, _dead_mcp_key_problem()
     if r.status_code != 200:
         return None, None, {"error": "could not read the teams for this token"}
     orgs = _body(r) or []
@@ -1244,6 +1319,8 @@ async def _catalog_get_impl(
     # Lifted onto the result so the schema advertises it: the direct price is not the only price
     # a "free" endpoint can bill.
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict) and not surface.endpoint_note:
+        ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.
@@ -1348,6 +1425,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     token = _bearer(ctx) if ctx else ""
     if not token:
         return _need_token()
+    if _leaves_route(endpoint_id):
+        return _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
 
     # BOTH halves answer here, exactly as `treg call` does: `/call/{rest}` resolves a team's own tool
     # first and falls back to a catalog id, so an org tool always wins over the catalog. Refusing
@@ -1531,7 +1610,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                 parts.append((name, (filename, data, mime)))
             kw["files"] = parts
         route = "/catalog/call" if catalog_only else "/call"
-        r = await client.request(method, f"{route}/{endpoint_id}", **kw)
+        r = await client.request(method, _call_url(route, endpoint_id), **kw)
 
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
     if retry_after := r.headers.get("Retry-After"):
@@ -1585,6 +1664,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+    admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
     if notice := account_out_notice(r.headers):
         # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
         # provider's words would name its wallet and top-up page, so they are left out; the call id
@@ -1592,18 +1672,21 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out.pop("body", None)
         out["whose_error"] = "treg"
         out["hint"] = notice
-    elif r.status_code == 402:
+    elif r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
-        # nothing on this path points a user at a payment page.
+        # nothing on this path points a user at a payment page. A 403 admission refusal names the
+        # same remedy and gets the same treatment.
         #
         # ChatGPT's submission policy supports linking users out to purchase PHYSICAL goods only;
         # prepaid API credit is a digital good.
         #
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
+        if admitted_no:
+            out["hint"] = "treg won't pay for this call on this team; the body names the way around it"
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
-            out["hint"] = "the team's prepaid balance is not enough for this call"
+            out["hint"] = surface.balance_hint
     return out
 
 
@@ -1617,6 +1700,12 @@ async def _call_media_impl(
     token = _bearer(ctx)
     if not token:
         problem = _need_token()
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(problem))],
+            structuredContent=problem, isError=True,
+        )
+    if _leaves_route(endpoint_id):
+        problem = _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
         return CallToolResult(
             content=[TextContent(type="text", text=json.dumps(problem))],
             structuredContent=problem, isError=True,
@@ -1646,7 +1735,7 @@ async def _call_media_impl(
         else:
             kw["json"] = body
         route = "/catalog/call" if catalog_only else "/call"
-        response = await client.post(f"{route}/{endpoint_id}", **kw)
+        response = await client.post(_call_url(route, endpoint_id), **kw)
     metadata: dict[str, Any] = {"status": response.status_code, "endpoint_id": endpoint_id}
     if retry_after := response.headers.get("Retry-After"):
         metadata["retry_after"] = retry_after
@@ -1667,6 +1756,9 @@ async def _call_media_impl(
             structuredContent=metadata,
         )
     metadata["body"] = _body(response)
+    if response.status_code == 402 or (
+            response.status_code == 403 and is_admission_refusal(response.headers, metadata["body"])):
+        metadata["body"] = _without_purchase_pointers(metadata["body"])  # as `call` does: no payment link
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, default=str))],
         structuredContent=metadata, isError=response.status_code >= 400,

@@ -106,3 +106,12 @@ node_modules
 # Global Vue runtime copied from the npm lockfile during the frontend build.
 /src/treg/web/vendor/*.js
 /src/treg/web/vendor/LICENSE
+
+# Go CLI build output
+/cli/dist/
+
+# Page videos live in the public media bucket (scripts/publish_page_media.py); only their
+# manifest, src/treg/web/media-videos.json, is committed.
+src/treg/web/media/**/*.mp4
+src/treg/web/media/**/*.webm
+src/treg/web/media/**/*.mov

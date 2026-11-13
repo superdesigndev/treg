@@ -379,15 +379,28 @@ async def get_admin_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+_ADMIN_READ_STATEMENT_TIMEOUT_MS = 3_000
+
+
 async def get_admin_read_session() -> AsyncIterator[AsyncSession]:
     """Opt-in admin reports: configured reader, otherwise the original admin primary pool.
 
     Never use the general reader's unconfigured API-pool fallback, or retry a failed replica on
     the primary. Authorization must finish on `get_admin_session` before this dependency runs.
+    Each statement is capped at `_ADMIN_READ_STATEMENT_TIMEOUT_MS`, answered as `ReportBusy`, so a
+    polled admin report cannot hold the read pool the dashboard reports share.
     """
     maker = read_session_maker if _read_db_url else admin_session_maker
     async with maker() as session:
-        yield session
+        if session.get_bind().dialect.name == "postgresql":
+            await session.execute(text(
+                f"SET LOCAL statement_timeout = {_ADMIN_READ_STATEMENT_TIMEOUT_MS}"))
+        try:
+            yield session
+        except DBAPIError as exc:
+            if _canceled_by_timeout(exc):
+                raise ReportBusy("timeout") from exc
+            raise
 
 
 _REPORT_SLOTS = 2
@@ -412,6 +425,48 @@ def _report_slots() -> asyncio.Semaphore:
     if _report_gate is None or _report_gate[0] is not loop:
         _report_gate = (loop, asyncio.Semaphore(_REPORT_SLOTS))
     return _report_gate[1]
+
+
+_ADMIN_REPORT_SLOTS = 1
+_ADMIN_REPORT_WAIT_S = 1.0
+_ADMIN_REPORT_STATEMENT_TIMEOUT_MS = 60_000
+_admin_report_gate: tuple[object, asyncio.Semaphore] | None = None
+
+
+def _admin_report_slots() -> asyncio.Semaphore:
+    global _admin_report_gate
+    loop = asyncio.get_running_loop()
+    if _admin_report_gate is None or _admin_report_gate[0] is not loop:
+        _admin_report_gate = (loop, asyncio.Semaphore(_ADMIN_REPORT_SLOTS))
+    return _admin_report_gate[1]
+
+
+async def get_admin_report_session() -> AsyncIterator[AsyncSession]:
+    """Whole-window admin aggregates (archive read-out, reconcile): the configured reader,
+    otherwise the admin pool, one at a time per process, each statement capped at
+    `_ADMIN_REPORT_STATEMENT_TIMEOUT_MS`. A taken slot or a timeout raises `ReportBusy`. The
+    statement timeout is what stops the query: a client that gives up does not cancel it.
+    Authorization must finish on `get_admin_session` first."""
+    slots = _admin_report_slots()
+    try:
+        async with asyncio.timeout(_ADMIN_REPORT_WAIT_S):
+            await slots.acquire()
+    except TimeoutError as exc:
+        raise ReportBusy("busy") from exc
+    try:
+        maker = read_session_maker if _read_db_url else admin_session_maker
+        async with maker() as session:
+            if session.get_bind().dialect.name == "postgresql":
+                await session.execute(text(
+                    f"SET LOCAL statement_timeout = {_ADMIN_REPORT_STATEMENT_TIMEOUT_MS}"))
+            try:
+                yield session
+            except DBAPIError as exc:
+                if _canceled_by_timeout(exc):
+                    raise ReportBusy("timeout") from exc
+                raise
+    finally:
+        slots.release()
 
 
 def _canceled_by_timeout(exc: BaseException) -> bool:

@@ -27,11 +27,44 @@ def test_missing_snapshot_fails(ingest, monkeypatch, tmp_path):
         ingest._anyapi_measured()
 
 
-def test_supplied_snapshot_preserves_prices_and_window(ingest, monkeypatch, tmp_path):
+def test_supplied_snapshot_preserves_prices(ingest, monkeypatch, tmp_path):
     monkeypatch.setenv("TREG_CATALOG_EVIDENCE_DIR", str(tmp_path))
     prices = {"example.search": {"calls": 8, "p90_usd": 0.04}}
     (tmp_path / "anyapi_measured_charges.json").write_text(json.dumps({
         "skus": prices, "as_of": "2025-01-01", "window_days": 30,
     }))
     assert ingest._anyapi_measured() == prices
-    assert ingest._anyapi_measured_window() == ("2025-01-01", 30)
+
+
+def test_a_reingest_writes_the_generated_price_note_over_the_carried_price(ingest, monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    row = {"id": "anyapi.web.x", "method": "POST", "path": "/v1/run/web.x", "added": "2026-09-19"}
+    old_price = {"value": "0.0036", "currency": "USD", "unit": "call", "note": ingest.anyapi_cost_note(2, 0.036)}
+    provenance = {"source": "observed", "source_url": "https://api.getanyapi.com/v1/apis/web.x",
+                  "checked": "2026-09-11", "confidence": "verified"}
+    miss = {"when": {"path": "response.output.found", "op": "equals", "value": False}}
+    (tmp_path / "anyapi.extended.yaml").write_text(json.dumps({"provider": "anyapi", "endpoints": [
+        row | {"price": old_price, "provenance": provenance, "miss": miss, "verified": "2026-09-19"}]}))
+    monkeypatch.setattr(ingest, "_anyapi_measured", lambda: {})
+    fresh = row | ingest._anyapi_price({"id": "web.x", "lanes": [{}], "pricing": {
+        "from": {"maxUsd": 0.0012, "model": "flat"}, "failoverMaxUsd": 0.0012}})
+    ingest.carry_verification("anyapi", [fresh], fresh_price_note=True)
+    assert fresh["price"] == {**old_price, "note": "One source serves this, at up to $0.0012 a call. The charge "
+                              "follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost "
+                              "to refuse any source dearer than your ceiling."}
+    assert fresh["provenance"] == provenance and fresh["miss"] == miss and "cost" not in fresh
+
+
+def test_a_reingest_keeps_a_carried_price_note_without_the_opt_in(ingest, monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    row = {"id": "openrouter.x.video", "method": "POST", "path": "/videos", "added": "2026-09-04"}
+    byok = {"value": None, "note": "The live rate card has a dimension no times field bounds; this row remains BYOK-only."}
+    provenance = {"source": "rate_card_api", "source_url": "https://openrouter.ai/api/v1/videos/models",
+                  "checked": "2026-09-02", "confidence": "unknown"}
+    (tmp_path / "openrouter.extended.yaml").write_text(json.dumps({"provider": "openrouter", "endpoints": [
+        row | {"price": byok, "provenance": provenance, "settle": None}]}))
+    fresh = row | {"price": {"value": "0.5", "currency": "USD", "unit": "call",
+                             "note": "Table rows quote the live rate card."},
+                   "provenance": {**provenance, "checked": "2026-11-11", "confidence": "verified"}}
+    ingest.carry_verification("openrouter", [fresh])
+    assert fresh["price"] == byok and fresh["provenance"] == provenance and fresh["settle"] is None

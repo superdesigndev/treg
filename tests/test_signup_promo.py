@@ -9,7 +9,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlmodel import select
 
-from conftest import verified_identity
+from conftest import unproven_member, verified_identity
 from treg.config import get_settings
 from treg.domain import money
 from treg.infra.db import session_maker
@@ -35,15 +35,13 @@ async def _funding(ids):
     return sum(o.balance_micro for o in orgs), entries
 
 
-async def test_legacy_registration_cannot_mint_credit(clients):
-    r = await clients.post('/users', json={'email': 'unverified@example.org'})
-    assert r.status_code == 200
-    created = r.json()
-    teams = [created]
+async def test_an_unproven_identity_cannot_mint_credit(clients):
+    created = await unproven_member(clients, 'unverified@example.org')
+    teams = []
     for index in range(3):
         teams.append(await _team(clients, created['token'], f'unverified-{index}'))
     assert await _funding([t['org_id'] for t in teams]) == (0, [])
-    # A legacy token never becomes proof. A real inbox proof funds ONE team, once.
+    # An invite-code token never becomes proof. A real inbox proof funds ONE team, once.
     token = await verified_identity(clients, 'unverified@example.org')
     teams.append(await _team(clients, token, 'after-proof'))
     teams.append(await _team(clients, created['token'], 'old-token-after-proof'))
@@ -54,15 +52,14 @@ async def test_legacy_registration_cannot_mint_credit(clients):
 
 
 async def test_verifying_after_making_a_team_funds_that_team(clients):
-    """The legacy door makes a team before any inbox proof; proving the inbox later funds it."""
-    r = await clients.post('/users', json={'email': 'later@example.org'})
-    assert r.status_code == 200, r.text
-    registered = r.json()
+    """An invite-code member can make a team before any inbox proof; proving the inbox later funds it."""
+    member = await unproven_member(clients, 'later@example.org')
+    registered = await _team(clients, member['token'], 'later-first')
     assert await _funding([registered['org_id']]) == (0, [])
     token = await verified_identity(clients, 'later@example.org')
     balance, entries = await _funding([registered['org_id']])
     assert balance == get_settings().promo_grant_micro
-    assert [(e.meta['source'], e.meta['user_id']) for e in entries] == [('signup', registered['id'])]
+    assert [e.meta['source'] for e in entries] == ['signup']
     # The claim is spent: a second sign-in and a new team add nothing.
     await verified_identity(clients, 'later@example.org')
     second = await _team(clients, token, 'later-second')
@@ -123,18 +120,6 @@ async def test_deleting_funded_team_does_not_restore_claim(clients):
     assert deleted.status_code == 200, deleted.text
     recreated = await _team(clients, token, 'delete-me')
     assert await _funding([recreated['org_id']]) == (0, [])
-
-
-async def test_invite_code_is_not_an_email_proof(clients):
-    org = (await clients.get('/orgs')).json()[0]
-    invite = await clients.post(f"/orgs/{org['org_id']}/invites",
-        json={'email': 'invite-code@example.org', 'role': 'member'})
-    assert invite.status_code == 200
-    accepted = await clients.post('/invites/accept', json={
-        'email': 'invite-code@example.org', 'code': invite.json()['code']})
-    assert accepted.status_code == 200
-    team = await _team(clients, accepted.json()['token'], 'invite-code-team')
-    assert await _funding([team['org_id']]) == (0, [])
 
 
 async def test_legacy_user_remains_ineligible_after_verification(clients):

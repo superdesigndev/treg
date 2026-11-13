@@ -18,5 +18,4 @@ cost-ordered ladder: company enrichment for identity first, then the cheapest pr
 review reason fired (density over 60% or 100% of headcount, providers disagree, no canonical URL),
 `none` without an estimate. `review_reasons` and `provider_attempts` show why.
 
-Priced `per_call`: $0.15 to the maker per successful run, on top of the provider fees (CrustData
-about $0.60 a match; PDL company enrich $0.10 once per run).
+Priced in the script: $0.15 to the maker a run, on top of the provider fees.

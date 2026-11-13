@@ -657,6 +657,8 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                             method=poll_ep["method"], raw_rest=poll_ep["id"], raw_headers=poll_headers,
                             query_items=((name, task_id),), raw_query=urlencode({name: task_id}),
                             body=route._Bytes(b""), caller=current, client_ip=client_ip))
+                        poll_context.quota_admissions = context.quota_admissions | {
+                            (current.org_id, poll_ep["id"])}
                         poll_response = await service.execute_call(poll_context, client)
                         return poll_response, await route._read(poll_response)
 

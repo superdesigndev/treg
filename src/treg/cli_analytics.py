@@ -9,6 +9,8 @@ import uuid
 from importlib.metadata import version
 from pathlib import Path
 
+from . import cli_session
+
 # Public ingestion token, also published by https://treg.to/meta (not a personal API key).
 POSTHOG_KEY = "phc_sAgf5A7TPRRA6faCzuqGVUo8pyb3x5Nq7TJYfn6ZVif9"
 POSTHOG_HOST = "https://eu.i.posthog.com"
@@ -49,22 +51,28 @@ def _send(key: str, host: str, config_path: Path, properties: dict) -> None:
         pass  # Analytics must never change command output or its exit status.
 
 
+def enabled() -> bool:
+    return (os.environ.get("TREG_TELEMETRY", "").lower() not in {"0", "false", "off"}
+            and os.environ.get("DO_NOT_TRACK") != "1")
+
+
 def track_command(*, command: str, exit_code: int, duration_ms: int,
-                  base_url: str, config_path: Path) -> None:
-    """Accept only fixed command names and coarse execution metadata, never argv/config."""
+                  base_url: str, config_path: Path, detail: dict | None = None) -> None:
+    """Accept only fixed command names and coarse execution metadata, never argv/config.
+    `detail` carries the caller's fixed-vocabulary fields (error code, status class, tool id)."""
     try:
-        if os.environ.get("TREG_TELEMETRY", "").lower() in {"0", "false", "off"}:
-            return
-        if os.environ.get("DO_NOT_TRACK") == "1":
+        if not enabled():
             return
         hosted = base_url.rstrip("/") in {"https://treg.to", "https://treg.superdesign.dev"}
         key = os.environ.get("TREG_CLI_POSTHOG_KEY", POSTHOG_KEY if hosted else "")
         if not key:
             return
         host = os.environ.get("TREG_CLI_POSTHOG_HOST", POSTHOG_HOST)
+        session = cli_session.current(config_path)
         worker = threading.Thread(target=_send, args=(key, host, config_path, {
-            "command": command, "exit_code": exit_code, "success": exit_code == 0,
-            "duration_ms": duration_ms,
+            **(detail or {}), "command": command, "exit_code": exit_code,
+            "success": exit_code == 0, "duration_ms": duration_ms,
+            "session": session.id, "agent": session.agent,
         }), daemon=True)
         worker.start()
         worker.join(EXIT_WAIT_SECONDS)

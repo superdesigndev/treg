@@ -5,18 +5,19 @@ from urllib.parse import urlsplit
 
 from httpx import AsyncClient
 
+from treg import page_media
 
-async def test_gpt6_bundled_assets_and_seekable_film(clients: AsyncClient):
+
+async def test_gpt6_bundled_assets_and_film(clients: AsyncClient):
     page = (await clients.get("/gpt6")).text
     urls = set(re.findall(r'(?:src|poster|href)="((?:media|logos)/[^"#]+)"', page))
     for url in urls:
         response = await clients.get("/" + urlsplit(url).path)
         assert response.status_code == 200, url
-    # The film must support a browser seeking within it.
-    video = await clients.get("/media/astra/launch.mp4", headers={"Range": "bytes=0-127"})
-    assert video.status_code == 206
-    assert len(video.content) == 128
-    assert video.headers["content-type"] == "video/mp4"
+    # The film is served from its published copy, which a browser can seek within.
+    video = await clients.get("/media/astra/launch.mp4", follow_redirects=False)
+    assert video.status_code == 302
+    assert video.headers["location"].endswith(page_media.manifest()["astra/launch.mp4"])
 
 
 async def test_astra_redirect_preserves_campaign_query(clients: AsyncClient):

@@ -39,6 +39,10 @@ async def test_start_copy_keeps_the_public_promises(clients: AsyncClient):
     # visitor with no account; connector agents get the dashboard's doors; the nav Start free (and the
     # "no agent yet" button the script adds) are the sign-in fallbacks.
     assert "https://treg.to/install.sh | sh && treg login" in html and "https://treg.to/llms.txt" in html
+    # With an ad click in the cookie the page swaps in a short install link bound to that click, so
+    # a sign-in finished in an agent's own browser still attributes (tests/test_ad_link.py).
+    assert "fetch('/i', { method: 'POST'" in html
+    assert "'curl -fsSL https://treg.to/i/' + code + ' | sh && treg login'" in html
     assert "modal=add-custom-connector" in html and "x.ai/bot/plugin/55647425" in html
     assert "chatgpt.com/plugins/plugin_asdk_app_6ac4c2df9c548191b83ea0c156bd9b6a" in html and "Developer mode" not in html
     # The general prompt is in the HTML itself, so a visitor without JavaScript still has something to copy.

@@ -33,8 +33,9 @@ holds those accounts and bills a fraction of a cent per call.
   choose which team pays. Then stop.
 - **Local coding agent** (Claude Code, Cursor, Codex, opencode on the human's machine): the human
   has authorized the whole flow. If your runtime asks permission for shell commands, ask for `treg`
-  once and work straight through. The installer puts in the CLI and the treg skill for every agent it
-  detects.
+  once and work straight through: install, sign in, make the first call, report the doorway. The
+  installer puts in the CLI and the treg skill for every agent it detects, and names treg's other
+  skills in one line without installing them; do not stop to ask about them here.
 
       curl -fsSL {BASE}/install.sh | sh
       treg login    # browser sign-in: GitHub, Google or an emailed code
@@ -60,7 +61,10 @@ the repo and the conversation first); take the rest from: today's trending TikTo
 real monthly search volume and related keywords for their product; the work email of someone
 relevant to their work; a LinkedIn profile they would recognize. Mention mechanics only when the
 human must act on them, one line each, after the proposals. Once the first call returns real data,
-ask whether they would like to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
+mention treg's other skills (the ones the installer named; each is described in
+`{BASE}/.well-known/skills/index.json`) in one sentence each, and install the ones they pick with
+`treg skill bootstrap --skills <name>,<name>` (or `--skills all`). Then ask whether they would like
+to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
 or open https://github.com/superdesigndev/treg.
 
 **The loop: search, read, call.**
@@ -98,7 +102,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   returns. Name a provider only when you need fields only it has.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
-  reliability, then price. `treg catalog get <id>` lists every provider of the job with all three.
+  reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest
+  providers with all three, and its `help` names the command that lists them all.
 - Call at the listed price without asking, then report what the call cost: the `X-Treg-Cost-Micro`
   response header, or `cost_usd` over MCP (on a generation task, the amount reserved until the task
   finishes). Before a generation task or a loop over many inputs, tell the human the expected
@@ -108,7 +113,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   another provider. After a 429 or a 5xx, try the next provider of the job and say which one you
   switched to. treg's own refusals say in their body what to do.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
-  anyone sends to it.
+  anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
+  a LinkedIn-only provider often returns a former employer.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.
@@ -145,6 +151,8 @@ catalog search. Over MCP: `hub_create`. The skill below has the whole guide.
 <!--hosted-->
 - [GTM engineering playbook]({BASE}/gtm-engineering.md): from ICP to rollout, each chapter with a
   prompt and a rule.
+- [Comparisons]({BASE}/compare): treg beside other tool gateways, app connectors and data
+  platforms, each read from that product's own pages and dated.
 <!--/hosted-->
 - [README](https://github.com/superdesigndev/treg/blob/main/README.md): overview and architecture.
 - [CLI reference](https://github.com/superdesigndev/treg/blob/main/USAGE.md): every command, with

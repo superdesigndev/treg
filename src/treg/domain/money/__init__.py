@@ -1,5 +1,5 @@
 """The ONE code path that moves money. Nothing else may write creditblock/ledgerentry/hold or
-`org.balance_micro` — every mutation goes through the five operations below.
+`org.balance_micro` - every mutation goes through the six operations below.
 
 Units: **integer micro-USD** (1e-6 USD) everywhere. Never floats, never cents. A catalog call costs
 ~600 micro ($0.0006), so cents cannot represent one call and floats cannot be summed for a year
@@ -12,6 +12,7 @@ Shape:
   reserve → balance down by the estimate, Hold opened    (the hot-path spend gate)
   settle  → blocks down by the observed cost, Hold closed, balance refunded the difference
   release → Hold closed, balance refunded in full        (upstream failure — not billable)
+  revoke  → a refunded payment's blocks down, balance down by the same, never below zero
 
 Invariant: `org.balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)`.
 It is a materialized column, not a query, because `reserve` has to be a single conditional UPDATE
@@ -47,14 +48,14 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, update
+from sqlalchemy import case, delete, func, literal_column, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagSpend
+from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, MemberSpend, Org, TagSpend
 
 # Block consumption order: promotional credit burns first, then the oldest purchased block. Promo is
 # a marketing expense and never refundable, so spending it first keeps the refundable (and disputable)
@@ -67,7 +68,7 @@ from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagS
 # kind must be added here or it silently gets the most expensive treatment available.
 # `bonus` (the tiered extra on a manual top-up, `billing.bonus_for_topup`) is the same kind of thing:
 # marketing spend keyed to a payment, never refundable, so it burns first too.
-# `earned`: a hub seller's credit (docs/HUB-DECISIONS.md) - spent after the free kinds and
+# `earned`: a hub seller's credit - spent after the free kinds and
 # before purchased money, so a maker's own dollars are used last.
 _KIND_ORDER = {"promotional": 0, "referral": 0, "bonus": 0, "earned": 1, "purchased": 2}
 
@@ -83,6 +84,17 @@ class InsufficientBalance(Exception):
             f"org {org_id}: balance {balance_micro} micro-USD is short of the {required_micro} "
             f"micro-USD this call reserves"
         )
+
+
+class PurchasedCreditShort(InsufficientBalance):
+    """A `purchased_only` reserve: the purchased blocks, less this org's open purchased-only holds,
+    cannot cover it. `balance_micro` is the whole balance; `purchased_micro` what purchased-only
+    calls can still draw."""
+
+    def __init__(self, org_id: int, balance_micro: int, purchased_micro: int,
+                 required_micro: int) -> None:
+        super().__init__(org_id, balance_micro, required_micro)
+        self.purchased_micro = purchased_micro
 
 
 def _now() -> datetime:
@@ -254,9 +266,96 @@ async def _block_for_payment(db: AsyncSession, payment_ref: str) -> CreditBlock 
         )).scalars().first()
 
 
+class RevokeTarget(NamedTuple):
+    """How much of one block a refund has withdrawn in total so far: cumulative, never a delta."""
+
+    block_id: str
+    target_micro: int
+
+
+class Revoked(NamedTuple):
+    block_id: str
+    revoked_micro: int    # taken by this call
+    shortfall_micro: int  # still owed to the target after it, spent or held
+    held_micro: int       # the part of the shortfall still on the block, held by calls in flight
+    refund_rose: bool     # the target is above every earlier one: a refund not seen before
+    recorded: bool        # this call wrote an entry
+
+
+async def block_for_payment(db: AsyncSession, payment_ref: str) -> CreditBlock | None:
+    """The purchased block a payment funded, keyed as `topup` keys it."""
+    return await _block_for_payment(db, payment_ref)
+
+
+async def revoke_in_transaction(
+    db: AsyncSession, org_id: int, targets: Sequence[RevokeTarget], *, meta: dict | None = None,
+) -> list[Revoked]:
+    """Withdraw unspent credit from the named blocks of a payment that was refunded. Stages only.
+
+    Each target is cumulative: what has been revoked from that block is read from its own `revoke`
+    entries under the block lock, so a redelivered or out-of-order refund event takes nothing twice.
+    A take is bounded by the block's remaining credit and by the org's unheld balance, so neither
+    ever goes negative; what cannot be taken is reported as a shortfall, and `held_micro` says how
+    much of it a later run can still take once calls in flight let go of it.
+    """
+    mark_money(db, "revoke", org_id=org_id)
+    wanted = {t.block_id: max(0, int(t.target_micro)) for t in targets}
+    if not wanted:
+        return []
+    with money_stage(db, "lock_blocks"):
+        blocks = {b.id: b for b in (await db.execute(
+            select(CreditBlock).where(CreditBlock.org_id == org_id, CreditBlock.id.in_(wanted))
+            .order_by(CreditBlock.org_id, CreditBlock.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )).scalars().all()}
+    # Org after the blocks: the order settlement takes them in.
+    with money_stage(db, "lock_balance"):
+        balance = int((await db.execute(
+            select(Org.balance_micro).where(Org.id == org_id).with_for_update(key_share=True)
+        )).scalar() or 0)
+    with money_stage(db, "revoke_history"):
+        history = (await db.execute(
+            select(LedgerEntry.block_id, LedgerEntry.amount_micro, LedgerEntry.meta)
+            .where(LedgerEntry.kind == "revoke", LedgerEntry.block_id.in_(list(blocks)))
+        )).all()
+    taken: dict[str, int] = {}
+    last_target: dict[str, int] = {}
+    for block_id, amount, entry_meta in history:
+        taken[block_id] = taken.get(block_id, 0) - int(amount)
+        target = int((entry_meta or {}).get("target_micro") or 0)
+        last_target[block_id] = max(last_target.get(block_id, 0), target)
+    out: list[Revoked] = []
+    total = 0
+    for block_id, target in wanted.items():
+        block = blocks.get(block_id)
+        if block is None:
+            continue
+        target = min(target, int(block.amount_micro))
+        owed = max(0, target - taken.get(block_id, 0))
+        on_block = min(owed, int(block.remaining_micro))
+        take = min(on_block, max(0, balance - total))
+        rose = target > last_target.get(block_id, 0)
+        recorded = take > 0 or rose
+        if recorded:
+            block.remaining_micro -= take
+            db.add(block)
+            total += take
+            await _entry(db, org_id=org_id, kind="revoke", amount_micro=-take, block_id=block_id,
+                         meta={**(meta or {}), "block_kind": block.kind, "target_micro": target,
+                               "shortfall_micro": owed - take})
+        if recorded or owed:
+            out.append(Revoked(block_id, take, owed - take, on_block - take, rose, recorded))
+    if total:
+        with money_stage(db, "revoke_balance"):
+            await db.execute(update(Org).where(Org.id == org_id)
+                             .values(balance_micro=Org.balance_micro - total))
+    return out
+
+
 async def reserve(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
-    tags: dict[str, str] | None = None, call_id: str | None = None,
+    tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
+    member_id: int | None = None,
 ) -> str:
     """Withhold the estimated cost of one call and return its `call_id`. Commits.
 
@@ -275,7 +374,8 @@ async def reserve(
     """
     try:
         call_id = await reserve_in_transaction(
-            db, org_id, endpoint_id, est_micro, meta=meta, tags=tags, call_id=call_id)
+            db, org_id, endpoint_id, est_micro, meta=meta, tags=tags, call_id=call_id,
+            purchased_only=purchased_only, member_id=member_id)
     except InsufficientBalance:
         await db.rollback()
         raise
@@ -285,12 +385,19 @@ async def reserve(
 
 async def reserve_in_transaction(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
-    tags: dict[str, str] | None = None, call_id: str | None = None,
+    tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
+    member_id: int | None = None,
 ) -> str:
     """Stage one call reservation in the caller-owned transaction.
 
     Lazy stale-hold releases still commit independently before the balance gate. The caller must
     commit a successful reservation or roll back an insufficient one.
+
+    `purchased_only` adds a second gate before the balance one: the org's purchased blocks, less
+    its open purchased-only holds, must cover the charge, and the hold settles from purchased
+    blocks alone (`PurchasedCreditShort` otherwise, a subclass of `InsufficientBalance`).
+
+    `member_id` attributes the hold to a member whose daily spend limit applies (`MemberSpend`).
     """
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
     with money_stage(db, "reap_stale_holds"):
@@ -300,6 +407,8 @@ async def reserve_in_transaction(
     # ledger entries, the audit row and the X-Treg-Call-Id the caller gets back.
     call_id = call_id or _id()
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
+    if purchased_only and charged > 0:
+        await _purchased_gate(db, org_id, charged)
     with money_stage(db, "reserve_balance"):
         result = await db.execute(
             # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
@@ -312,17 +421,39 @@ async def reserve_in_transaction(
         with money_stage(db, "read_balance"):
             balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
         raise InsufficientBalance(org_id, int(balance), charged)
-    db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged))
+    db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
+                purchased_only=purchased_only))
     await _entry(db, org_id=org_id, kind="reserve", amount_micro=-charged, call_id=call_id,
                  endpoint_id=endpoint_id,
                  meta={**(meta or {}),
                        "estimated_micro": int(est_micro), "charged_micro": charged,
+                       "purchased_only": purchased_only,
                        "margin": get_settings().platform_margin, "tags": dict(tags or {})})
     # One row per caller tag, at the estimate, in THIS transaction. A builder's budget and invoice are
     # read from these; writing them anywhere else (or later) would make both lossy.
     for dim, val in (tags or {}).items():
         db.add(TagSpend(org_id=org_id, dim=dim, val=val, hold_id=call_id, amount_micro=charged))
+    if member_id is not None:
+        db.add(MemberSpend(org_id=org_id, membership_id=member_id, hold_id=call_id,
+                           amount_micro=charged))
     return call_id
+
+
+async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:
+    # Locking the purchased blocks serializes purchased-only reserves of one org, in the same
+    # primary-key order `_lock_blocks` uses, before the Org row (settle's order too).
+    with money_stage(db, "purchased_gate"):
+        purchased = sum((await db.execute(
+            select(CreditBlock.remaining_micro).where(
+                CreditBlock.org_id == org_id, CreditBlock.kind == "purchased",
+                CreditBlock.remaining_micro > 0)
+            .order_by(CreditBlock.id).with_for_update())).scalars().all())
+        held = (await db.execute(select(func.coalesce(func.sum(Hold.amount_micro), 0)).where(
+            Hold.org_id == org_id, Hold.purchased_only.is_(True)))).scalar_one()
+    available = max(0, int(purchased) - int(held))
+    if available < charged:
+        balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+        raise PurchasedCreditShort(org_id, int(balance), available, charged)
 
 
 class _ClaimedHold(NamedTuple):
@@ -338,6 +469,7 @@ class _ClaimedHold(NamedTuple):
     org_id: int
     endpoint_id: str
     created_at: datetime
+    purchased_only: bool = False
 
 
 async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
@@ -357,7 +489,8 @@ async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
         hold = await db.get(Hold, call_id)
         if hold is None:
             return None
-        claimed = _ClaimedHold(hold.amount_micro, hold.org_id, hold.endpoint_id, hold.created_at)
+        claimed = _ClaimedHold(hold.amount_micro, hold.org_id, hold.endpoint_id, hold.created_at,
+                               bool(hold.purchased_only))
         mark_money(db, org_id=claimed.org_id, call_id=call_id)
         result = await db.execute(delete(Hold).where(Hold.id == call_id))
     if result.rowcount != 1:
@@ -416,7 +549,8 @@ async def _settle_claimed(
     settled_at = _now()
     settled = reserved if actual_micro is None else max(0, with_margin(int(actual_micro)))
     consumed, shortfall = await _consume_blocks(
-        db, hold.org_id, settled, call_id, hold.endpoint_id, blocks=blocks)
+        db, hold.org_id, settled, call_id, hold.endpoint_id, blocks=blocks,
+        purchased_only=hold.purchased_only)
     # The hold came out of the balance at reserve time; give back whatever the call didn't use. If the
     # observed cost overran the estimate the delta is negative, which correctly takes MORE balance —
     # the next reserve is the gate that stops an overrun from compounding.
@@ -447,6 +581,8 @@ async def _settle_claimed(
     with money_stage(db, "update_tag_spend"):
         await db.execute(update(TagSpend).where(TagSpend.hold_id == call_id)
                          .values(amount_micro=consumed, settled=True, created_at=settled_at))
+        await db.execute(update(MemberSpend).where(MemberSpend.hold_id == call_id)
+                         .values(amount_micro=consumed, settled=True, created_at=settled_at))
     return consumed
 
 
@@ -455,8 +591,8 @@ async def settle_to_in_transaction(
     meta: dict | None = None,
 ) -> int:
     """Close a hold and credit the settled amount to `payee_org_id` as an `earned` block — a hub
-    seller's price (docs/HUB-DECISIONS.md). `actual_micro` is the real price for a
-    variable-price tool (per_unit or cost_plus, docs/hub-pricing-decisions.md): that much
+    seller's price. `actual_micro` is the real price for a
+    variable-price tool (the sum of a script's ctx.charge lines): that much
     is settled, and the rest of the reserved hold is refunded to the payer. `None` settles the FULL
     reserved hold (a flat price). One transaction, two ledger entries: a `settle` on the payer (meta
     names the payee) and a `grant` on the payee (block kind `earned`, meta names the payer's run).
@@ -472,7 +608,8 @@ async def settle_to_in_transaction(
     amount = hold.amount_micro
     pay = amount if actual_micro is None else min(amount, max(0, int(actual_micro)))
     settled_at = _now()
-    consumed, shortfall = await _consume_blocks(db, hold.org_id, pay, call_id, hold.endpoint_id)
+    consumed, shortfall = await _consume_blocks(db, hold.org_id, pay, call_id, hold.endpoint_id,
+                                                purchased_only=hold.purchased_only)
     spent_delta = consumed - (amount if hold.created_at >= _day_start() else 0)
     # A refund and a seller credit update two existing balances. Acquire those locks in the same
     # order as multi-org batches, AFTER consuming blocks. Exact-cost payments only update the
@@ -491,6 +628,8 @@ async def settle_to_in_transaction(
               "margin": 0.0, "block_shortfall_micro": shortfall})
     with money_stage(db, "update_tag_spend"):
         await db.execute(update(TagSpend).where(TagSpend.hold_id == call_id)
+                         .values(amount_micro=consumed, settled=True, created_at=settled_at))
+        await db.execute(update(MemberSpend).where(MemberSpend.hold_id == call_id)
                          .values(amount_micro=consumed, settled=True, created_at=settled_at))
     if consumed > 0:
         block = CreditBlock(id=_id(), org_id=payee_org_id, kind="earned",
@@ -545,6 +684,7 @@ async def _release_claimed(
     # would bill a builder's user for a call the provider never completed.
     with money_stage(db, "delete_tag_spend"):
         await db.execute(delete(TagSpend).where(TagSpend.hold_id == call_id))
+        await db.execute(delete(MemberSpend).where(MemberSpend.hold_id == call_id))
     return amount
 
 
@@ -616,10 +756,12 @@ async def _lock_blocks(db: AsyncSession, org_ids: set[int]) -> list[CreditBlock]
 
 async def _consume_blocks(
     db: AsyncSession, org_id: int, amount_micro: int, call_id: str, endpoint_id: str,
-    *, blocks: list[CreditBlock] | None = None,
+    *, blocks: list[CreditBlock] | None = None, purchased_only: bool = False,
 ) -> tuple[int, int]:
     """Draw `amount_micro` from the org's blocks, promotional-first then oldest-purchased-first.
     Returns (consumed, shortfall). Does NOT commit — the caller's transaction owns it.
+    `purchased_only` draws from purchased blocks alone; a shortfall there is not taken from free
+    credit.
 
     Consumption is capped by what the blocks actually hold: a shortfall is reported, never invented
     as negative `remaining_micro`.
@@ -636,6 +778,8 @@ async def _consume_blocks(
     blocks.sort(key=lambda b: (_KIND_ORDER.get(b.kind, 99), b.created_at or _now(), b.id))
     left, consumed = amount_micro, 0
     for block in blocks:
+        if purchased_only and block.kind != "purchased":
+            continue
         if left <= 0:
             break
         take = min(block.remaining_micro, left)
@@ -710,6 +854,27 @@ async def spent_today_from_ledger(db: AsyncSession, org_id: int) -> int:
     return int(-settled) + int(held)  # settle entries are negative (money leaving); holds are positive
 
 
+async def member_spent_since(db: AsyncSession, membership_id: int, since: datetime) -> int:
+    """What one member has committed since `since`: settled spend plus money still held, the
+    figure their daily spend limit is checked against. One indexed aggregate. Rows exist only while
+    a limit applies to the member, so spend made before it applied is not counted."""
+    total = (await db.execute(
+        select(func.coalesce(func.sum(MemberSpend.amount_micro), 0)).where(
+            MemberSpend.membership_id == membership_id, MemberSpend.created_at >= since)
+    )).scalar() or 0
+    return int(total)
+
+
+async def members_spent_since(db: AsyncSession, org_id: int, since: datetime) -> dict[int, int]:
+    """`member_spent_since` for every member of one team, grouped in SQL."""
+    rows = (await db.execute(
+        select(MemberSpend.membership_id, func.coalesce(func.sum(MemberSpend.amount_micro), 0))
+        .where(MemberSpend.org_id == org_id, MemberSpend.created_at >= since)
+        .group_by(MemberSpend.membership_id)
+    )).all()
+    return {int(member): int(total) for member, total in rows}
+
+
 async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
     """How many billable calls one tag has made since `since`.
 
@@ -737,6 +902,21 @@ async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime)
         .group_by(TagSpend.val)
     )).all()
     return {val: int(n) for val, n in rows}
+
+
+async def tag_dims(db: AsyncSession, org_id: int) -> list[str]:
+    """Every tag key this team has sent, in key order, one index probe per key.
+
+    A plain DISTINCT reads every tag row the team ever wrote (Postgres before 18 cannot skip
+    through an index), so the walk asks for the next key after the last one found instead."""
+    seen = select(func.min(TagSpend.dim).label("dim")).where(
+        TagSpend.org_id == org_id).cte("seen", recursive=True)
+    later = TagSpend.__table__.alias("later")
+    following = select(func.min(later.c.dim)).where(
+        later.c.org_id == org_id, later.c.dim > seen.c.dim).scalar_subquery()
+    seen = seen.union_all(select(following).where(seen.c.dim.is_not(None)))
+    rows = await db.execute(select(seen.c.dim).where(seen.c.dim.is_not(None)))
+    return [dim for (dim,) in rows.all()]
 
 
 async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
@@ -787,9 +967,12 @@ async def spend_since(db: AsyncSession, org_id: int, since: datetime) -> dict:
     """What this org has actually SPENT on platform keys since `since`: total micro-USD and how many
     calls it took. One aggregate over the settle entries — the ledger, not the audit table, is the
     authority on money (audit rows are allowed to be lost; ledger rows are not)."""
+    # Postgres uses the partial settle index only when the predicate is a constant in the
+    # statement; a bound `kind` would let a cached generic plan fall back to the heap walk.
     row = (await db.execute(
         select(func.coalesce(func.sum(LedgerEntry.amount_micro), 0), func.count()).where(
-            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle", LedgerEntry.created_at >= since)
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == literal_column("'settle'"),
+            LedgerEntry.created_at >= since)
     )).first()
     total, calls = (row[0] or 0, row[1] or 0) if row else (0, 0)
     return {"spend_micro": int(-total), "spend_usd": usd(int(-total)), "billed_calls": int(calls)}

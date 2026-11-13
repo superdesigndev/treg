@@ -57,6 +57,8 @@ class Upstream:
         self.seen: list[str] = []
 
     async def __call__(self, request, upstream_url, tool, secrets, client, **kwargs):
+        if before_outbound := kwargs.get("before_outbound"):
+            await before_outbound()
         if "bounceban" not in upstream_url:
             self.seen.append("other")
             return _upstream(200, {"data": {"status": "valid", "score": 90}})
@@ -343,3 +345,30 @@ def test_only_a_per_call_async_price_waits_for_the_finished_answer(cost_type, te
         terminal=terminal, response_estimate_micro=4000)
     assert basis["when"] == when
     assert settlement.settle(basis, {"terminal": {"status": "success"}}) == 4000
+
+
+async def test_a_slow_async_child_counts_as_slow_though_it_is_never_cancelled(clients, monkeypatch, bounceban_on):
+    """An async child is exempt from cancellation, not from the slow-answer count: one that answers
+    past half its bound is recorded slow, so routing can still ask it after the healthy ones."""
+    import asyncio
+
+    from treg.application.call import route_health
+
+    monkeypatch.setenv("TREG_ROUTE_CHILD_TIMEOUT_S", "0.6")
+    get_settings.cache_clear()
+    upstream = Upstream(_finished("deliverable"))
+
+    from treg.infra.upstream import relay as relay_module
+
+    async def slow(*args, **kwargs):
+        if (on_send := relay_module.ON_SEND.get()) is not None:
+            on_send()   # as the real relay does once its local checks pass
+        await asyncio.sleep(0.35)
+        return await upstream(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", slow)
+    result = await clients.post("/call/treg.people.email.verify",
+                                headers={"X-Treg-Route-Prefer": "bounceban"}, json={"email": EMAIL})
+    assert result.status_code == 200, result.text
+    assert result.json()["_treg"]["served_by"] == VERIFY
+    tally = (await route_health.read([VERIFY]))[VERIFY]
+    assert (tally.calls, tally.failed, tally.slow) == (1, 0, 1)

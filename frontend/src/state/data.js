@@ -24,7 +24,7 @@ export default function data(){
       emailInput:'', codeInput:'', emailStage:false, devCode:'', pendingInvites:[], invitePrefill:'', inviteChoice:false, inviteBusy:false,
       inviteSel:{}, inviteLinkOrg:null, inviteErr:'',  // multi-select accept: checked ids, the org_id the clicked email link was for, partial-failure note
       tut:{i:0, panel:null}, tutCopied:false, tourI:0, helpMode:null, xtut:{i:0},
-      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'',
+      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'', memberFunds:false, teamAdmins:null,
       orgMembers:[], orgMembersLoaded:false, orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
       editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
       // agents (machine identities), projects (sub-scope) and deny rules (policy)
@@ -44,9 +44,10 @@ export default function data(){
   // usage-metering: rollups + the member's own used/cap
       // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
       // false = this deployment sells no balance, so the whole block stays hidden.
-      billing:null, billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
+      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
       topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
       capCfg:null, capUsd:0, capBusy:false, capErr:'',
+      memberCapUsd:'', memberCapBusy:false, memberCapErr:'', memberCapOpen:false,
       archiveBusy:false, archiveErr:'',
       renameName:'', renameSlug:'', renameBusy:false, renameErr:'',
       budgets:[], budDims:[], budDim:'', budVal:'', budDaily:'', budBusy:false, budErr:'',
@@ -58,7 +59,7 @@ export default function data(){
       refTab:'friend',  // 'friend' | 'partner' — the fork at the top of the Referrals view
       ref:{loading:false,loaded:false,eligible:false,code:'',link:'',credit_org:null,referrals:[],
            terms:{referrer_micro:0,referred_micro:0,min_topup_micro:0,hold_days:0},
-           totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0}},
+           totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0,standard_limit:0,affiliate:false}},
       refCopied:false,
       confirmDel:'', confirmLeave:false, confirmRemove:null,
       showJoin:false, joinCode:'', joinBusy:false, joinErr:'',
@@ -111,7 +112,7 @@ export default function data(){
       skillFiles:[], detected:null, skillSel:{}, skillVals:{}, skillResults:null,
       sessionMode:false, activeSlug: storageGet('treg-active')||null, meta:{github:false, public_url:location.origin},
       view:'tools', q:'', err:'', loading:false, toolTab:'all', bundles:[], confirmDelBundle:null, installCopied:null,
-      copyRecipe:null, recipeTab:'cURL', viewRecipe:null, recipeSaved:false,
+      copyRecipe:null, recipeTab:'CLI', viewRecipe:null, recipeSaved:false,
       // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
       detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
       shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)
@@ -128,8 +129,8 @@ export default function data(){
       proxy: location.origin, copyTool:null, snippetTab:'cURL', snippetTabs:['cURL','CLI','Claude Code','Python','Node'], copied:false,
       exPath:'<PATH>', exMethod:'GET',
       tryTool:null, tryMethod:'GET', tryPath:'', tryBody:'', trying:false, tryResp:null, tryStatus:0, tryMs:0,
-      useMode:'call', runArgsStr:'', running:false, runOut:null,
-      startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
+      useMode:'call',
+      startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, startProgress:null, startWatching:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
       vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},

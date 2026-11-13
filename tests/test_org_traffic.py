@@ -504,6 +504,74 @@ async def test_routed_children_count_one_root(clients, counter, enrichment_on, m
     assert logged["method"] == "POST" and logged["replay_of"] is None
     [row] = counter.snapshot()["top"]
     assert row["requests"] == row["completed"] == 1
+    assert logs(caplog, "call_child") == []
+
+
+async def test_failed_routed_child_logs_one_child_line(clients, counter, enrichment_on, monkeypatch,
+                                                       caplog):
+    from treg.application.call import service
+    from test_routing import _relay_by_provider, ROUTED
+
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"tomba": [(500, {"error": "upstream down"})], "*": [(404, {})] * 20}, seen))
+    response = await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert any(provider == "tomba" for provider, *_ in seen)
+    root_ref = response.headers["X-Treg-Call-Id"]
+    [root] = logs(caplog)
+    assert root["call_ref"] == root_ref and root["endpoint_id"] == ROUTED
+    [child] = logs(caplog, "call_child")
+    assert child["provider"] == "tomba" and child["status"] == 500
+    assert child["parent_ref"] == root_ref and child["call_ref"].startswith(root_ref + ":r")
+    assert child["step"].startswith("r") and child["credential_tier"] == "platform"
+    assert child["endpoint_id"].startswith("tomba.")
+    assert set(child) == {"worker_pid", "org_id", "call_ref", "parent_ref", "step", "endpoint_id",
+                          "provider", "credential_tier", "status", "upstream_ms", "duration_ms"}
+    [row] = counter.snapshot()["top"]
+    assert row["requests"] == row["completed"] == 1
+
+
+@pytest.mark.parametrize("on_send,error,logged", [
+    (False, "ConnectError", 0),  # refused before the send hook (an SSRF block, a failed injection)
+    (True, "PoolTimeout", 0),    # the hook fired, but no pool slot: the request never left
+    (True, "ReadTimeout", 1),    # sent; the vendor did not answer
+])
+async def test_child_failure_is_logged_only_once_the_request_left(
+        clients, counter, enrichment_on, monkeypatch, caplog, on_send, error, logged):
+    import httpx
+    from treg.application.call import service
+    from treg.infra.upstream import relay as relay_module
+    from test_routing import _relay_by_provider, ROUTED
+
+    others = _relay_by_provider({"*": [(404, {})] * 20}, [])
+    tried = []
+
+    async def relay(request, upstream_url, *args, **kwargs):
+        if "tomba" not in upstream_url:
+            return await others(request, upstream_url, *args, **kwargs)
+        tried.append(upstream_url)
+        if on_send:
+            relay_module.ON_SEND.get()()
+        raise getattr(httpx, error)("tomba attempt failed")
+
+    monkeypatch.setattr(service, "relay", relay)
+    await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert tried
+    children = logs(caplog, "call_child")
+    assert len(children) == logged
+    assert all(child["provider"] == "tomba" and child["status"] >= 500 for child in children)
+
+
+def test_for_each_hub_item_is_a_child(caplog):
+    from types import SimpleNamespace
+    from treg.application.call import service
+
+    mk = SimpleNamespace(endpoint_id="tomba.email.find", provider="tomba", tier="platform")
+    service._log_failed_child(org_id=1, call_ref="run:s1.3", mk=mk, status=500,
+                              reached_provider=True, refused_by=None, upstream_ms=5,
+                              duration_ms=6)
+    [child] = logs(caplog, "call_child")
+    assert child["parent_ref"] == "run" and child["step"] == "s1.3"
 
 
 @pytest.mark.parametrize("path,tool,args", [

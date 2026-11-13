@@ -33,6 +33,7 @@ _LEASE_ATTEMPT_TIMEOUT_S = 1.5
 _LEASE_RETRY_BUDGET_S = 2.5
 _LOCAL_MAX_KEYS = 10_000
 _FLOW_CONTROL_MAX_BYTES = 32768
+ROUTE_RULES_KEY = "treg:route-rules:v1"
 _READ_ORG_FLOW_CONTROL = """
 local kind = redis.call('TYPE', KEYS[1]).ok
 if kind == 'none' then return false end
@@ -60,6 +61,12 @@ _LEASE_BUCKETS = (10, 50, 100, 200)
 AcquireResult = Literal["acquired", "busy", "unavailable"]
 RenewResult = Literal["renewed", "lost", "unavailable", "deadline_expired"]
 ReleaseResult = Literal["released", "lost", "not_owned", "unavailable"]
+
+
+@dataclass(frozen=True)
+class RateWindowResult:
+    outcome: Literal["admit", "over", "unavailable"]
+    retry_after_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -108,6 +115,16 @@ _RENEW_SLOT = _SLOT_CLOCK + """
 if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
 """ + _SLOT_EXTEND
 _RELEASE_SLOT = "return redis.call('ZREM', KEYS[1], ARGV[1])"
+_RATE_WINDOW = _SLOT_CLOCK + """
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
+    local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+    return {0, math.max(0, math.ceil(tonumber(first[2]) - now))}
+end
+redis.call('ZADD', KEYS[1], now + tonumber(ARGV[2]), ARGV[1])
+local last = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
+redis.call('PEXPIREAT', KEYS[1], math.ceil(tonumber(last[2])))
+return {1, 0}
+"""
 
 # One persistent bucket identity across published versions. Rate and optional slot admission
 # happen together: refusals may refill/update bucket metadata, but spend neither resource.
@@ -229,6 +246,9 @@ class Store(Protocol):
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         """Bounded JSON or missing (None), distinct from invalid data and transport failure."""
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        """The published route rule set, read like a flow-control snapshot."""
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -246,6 +266,17 @@ class Store(Protocol):
 
     async def release_slot(self, key: str, token: str) -> ReleaseResult: ...
 
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        """Admit one member into a sliding window of `limit`, or say how long until one expires."""
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        """Count one routed child's answer in its time bucket. Best-effort: a fault loses it."""
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        """Per endpoint, (calls, failed, slow) summed over `buckets`; None when the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -254,6 +285,7 @@ class LocalStore:
 
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+        self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -279,6 +311,9 @@ class LocalStore:
         # Local state cannot stand in for published Redis configuration.
         return FlowControlReadFailure.UNAVAILABLE
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return FlowControlReadFailure.UNAVAILABLE
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
@@ -291,6 +326,34 @@ class LocalStore:
 
     async def aclose(self) -> None:
         self._windows.clear()
+        self._health.clear()
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        now = time.monotonic()
+        key = (endpoint_id, bucket)
+        if key not in self._health and len(self._health) >= _LOCAL_MAX_KEYS:
+            self._health = {k: v for k, v in self._health.items() if v[0] > now}
+            if len(self._health) >= _LOCAL_MAX_KEYS:
+                self._health.clear()
+        expires, counts = self._health.get(key, (now + ttl_s, [0, 0, 0]))
+        counts[0] += 1
+        counts[1] += int(failed)
+        counts[2] += int(slow)
+        self._health[key] = (expires, counts)
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        now = time.monotonic()
+        out = {}
+        for endpoint_id in endpoint_ids:
+            total = [0, 0, 0]
+            for bucket in buckets:
+                expires, counts = self._health.get((endpoint_id, bucket), (0.0, [0, 0, 0]))
+                if expires > now:
+                    total = [a + b for a, b in zip(total, counts)]
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def acquire_slot(self, key: str, token: str, ttl_ms: int, limit: int) -> AcquireResult:
         return "unavailable"
@@ -304,6 +367,9 @@ class LocalStore:
 
     async def release_slot(self, key: str, token: str) -> ReleaseResult:
         return "unavailable"
+
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        return RateWindowResult("unavailable")
 
 
 class RedisStore:
@@ -330,10 +396,15 @@ class RedisStore:
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:
             return FlowControlReadFailure.INVALID
+        return await self._read_published(f"treg:traffic-control:org:{org_id}")
+
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return await self._read_published(ROUTE_RULES_KEY)
+
+    async def _read_published(self, key: str) -> FlowControlReadResult:
         try:
             async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
-                value = await self._client.eval(
-                    _READ_ORG_FLOW_CONTROL, 1, f"treg:traffic-control:org:{org_id}")
+                value = await self._client.eval(_READ_ORG_FLOW_CONTROL, 1, key)
             if value is None:
                 return None
             if not isinstance(value, str) or len(value.encode("utf-8")) > _FLOW_CONTROL_MAX_BYTES:
@@ -393,6 +464,54 @@ class RedisStore:
     async def release_slot(self, key: str, token: str) -> ReleaseResult:
         result = await self._slot_eval(_RELEASE_SLOT, key, token)
         return "unavailable" if result is None else "released" if result else "not_owned"
+
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                result = await self._client.eval(_RATE_WINDOW, 1, key, token, ttl_ms, limit)
+            admitted, wait_ms = int(result[0]), int(result[1])
+        except Exception:  # noqa: BLE001 - any Redis fault reads as an unknown window
+            return RateWindowResult("unavailable")
+        return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        key = _route_health_key(endpoint_id, bucket)
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    pipe.hincrby(key, "n", 1)
+                    if failed:
+                        pipe.hincrby(key, "f", 1)
+                    if slow:
+                        pipe.hincrby(key, "s", 1)
+                    pipe.expire(key, ttl_s, nx=True)
+                    await pipe.execute()
+        except Exception:  # noqa: BLE001 - health is advisory; a lost count only delays a verdict
+            return
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    for endpoint_id in endpoint_ids:
+                        for bucket in buckets:
+                            pipe.hmget(_route_health_key(endpoint_id, bucket), "n", "f", "s")
+                    rows = await pipe.execute()
+        except Exception:  # noqa: BLE001 - an unreadable store reads as no evidence
+            return None
+        out = {}
+        for i, endpoint_id in enumerate(endpoint_ids):
+            total = [0, 0, 0]
+            for row in rows[i * len(buckets):(i + 1) * len(buckets)]:
+                for j, value in enumerate(row or ()):
+                    try:
+                        total[j] += max(0, int(value or 0))
+                    except (TypeError, ValueError):
+                        continue
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def ping(self) -> bool:
         try:
@@ -583,6 +702,10 @@ def drain_lease_errors() -> list[dict]:
         rows = list(_lease_errors.values())
         _lease_errors.clear()
     return rows
+
+
+def _route_health_key(endpoint_id: str, bucket: int) -> str:
+    return f"treg:route-health:v1:{endpoint_id}:{bucket}"
 
 
 def _note_fault(exc: BaseException) -> None:

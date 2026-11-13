@@ -58,6 +58,10 @@ OTP_START_WINDOW_S = 900      # 15 minutes
 OTP_START_MAX_PER_EMAIL = 5   # code requests for one inbox per window (caps bombing a single victim)
 OTP_START_MAX_PER_IP = 30     # code requests from one IP per window (looser — offices/NAT share an IP)
 TURNSTILE_ACTION = "email_start"  # must match the action the sign-in forms pass to captcha.js
+SOCIAL_TURNSTILE_ACTION = "social_start"  # must match the action the social check page passes
+SOCIAL_CHECK_NS = "social_check"
+SOCIAL_CHECK_RATE_NS = "social_check_rate"
+SOCIAL_CHECK_MAX_PER_IP = 30  # siteverify calls from one IP per window; past it the token is ignored
 AUTH_CODE_TTL_S = 300   # a code is redeemed within seconds; five minutes is generous, not a window
 
 
@@ -180,6 +184,12 @@ class SocialLoginProof:
 
 
 @dataclass(frozen=True)
+class SocialCheckPending:
+    """A provider proved an address with no verified user yet; the browser check decides its credit."""
+    nonce: str
+
+
+@dataclass(frozen=True)
 class RevokedIdentityTokens:
     token: str
     email: str
@@ -199,23 +209,8 @@ class CurrentIdentity:
 
 
 @dataclass(frozen=True)
-class InviteEmailConfirmation:
-    email: str
-    org_name: str
-    invited_by: str
-    role: str
-    switch_email: str | None
-
-
-@dataclass(frozen=True)
 class InviteCodePrefill:
     email: str
-
-
-@dataclass(frozen=True)
-class InviteSigninProof:
-    destination: str
-    session_cookie: str
 
 
 @dataclass(frozen=True)
@@ -228,24 +223,31 @@ class OAuthAuthorizationView:
     teams: list[dict]
 
 
-async def _check_browser(captcha_token: str, client_ip: str, client: str = "browser") -> tuple[str, bool]:
-    """Classify the Turnstile token and decide (outcome, promo_eligible) for this code request.
+async def _check_browser(
+    captcha_token: str, client_ip: str, client: str = "browser", *,
+    action: str = TURNSTILE_ACTION, refuse: bool = True,
+) -> tuple[str, bool]:
+    """Classify the Turnstile token and decide (outcome, promo_eligible) for this request.
 
     Off: no outcome, nothing changes. `observe` only records. `enforce` refuses a missing or
     invalid token, and lets an unanswered check through without signup credit, so a Cloudflare
     outage costs a new account its credit rather than costing everyone their sign-in. A browser
     that could not get a token says why (`turnstile.client_reason`), which only picks the message.
+    With `refuse=False` (a provider already proved the identity) nothing is refused; any outcome
+    but `pass` only withholds credit.
     """
     if not turnstile.enabled():
         return "", True
-    outcome = await turnstile.verify(captcha_token, action=TURNSTILE_ACTION, remote_ip=client_ip)
+    outcome = await turnstile.verify(captcha_token, action=action, remote_ip=client_ip)
     reason = turnstile.client_reason(captcha_token)
     mode = get_settings().turnstile_mode
     logging.getLogger("treg").info(
-        "event=turnstile_email_start outcome=%s reason=%s client=%s mode=%s",
-        outcome, reason or "-", client, mode)
+        "event=turnstile_%s outcome=%s reason=%s client=%s mode=%s",
+        action, outcome, reason or "-", client, mode)
     if mode != "enforce":
         return outcome, True
+    if not refuse:
+        return outcome, outcome == turnstile.PASS
     if outcome == turnstile.MISSING and reason in ("blocked", "pending"):
         raise EmailAuthError(f"captcha_{reason}")
     if outcome in (turnstile.MISSING, turnstile.INVALID):
@@ -271,7 +273,8 @@ async def start_email_login(
         await ratestore.sweep(db, OTP_START_NS)
         allowed = await ratestore.rate_check(
             db, OTP_START_NS,
-            [(f"e:{email}", OTP_START_MAX_PER_EMAIL), (f"i:{client_ip}", OTP_START_MAX_PER_IP)],
+            [(f"e:{email}", OTP_START_MAX_PER_EMAIL),
+             *ratestore.ip_limit(client_ip, OTP_START_MAX_PER_IP, key=f"i:{client_ip}")],
             OTP_START_WINDOW_S,
         )
         await db.commit()
@@ -344,7 +347,8 @@ async def verify_email_login(
             logging.getLogger("treg").info(
                 "event=turnstile_email_verify outcome=%s new_user=%s client=%s",
                 entry["captcha"], user.id in created, client)
-        signup.track_signup(user, created, "email", entry_surface, captcha=entry.get("captcha", ""))
+        signup.track_signup(user, created, "email", entry_surface, captcha=entry.get("captcha", ""),
+                            client=client)
         token = sess.make_identity(
             user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
             scope=sess.BOOTSTRAP_SCOPE,
@@ -614,13 +618,73 @@ async def start_google_login(cli: str, callback_base: Callable[[], str]) -> Soci
     return SocialLoginStart(state=state, url=url)
 
 
-async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "") -> SocialLoginProof:
+async def _social_identity_proven(
+    email: str, state: str, door: str, entry_surface: str, account_created_at: str = "",
+) -> SocialLoginProof | SocialCheckPending:
+    """Sign in a verified user now. An address no verified user holds yet waits for the browser
+    check, because its first proof is where signup credit is decided."""
+    if turnstile.enabled() and get_settings().turnstile_social:
+        async with database.session_maker() as db:
+            verified = (await db.execute(select(User.email_verified_at).where(
+                User.email == _norm_email(email)))).scalar_one_or_none()
+            if verified is None:
+                nonce = crypto.new_token()
+                await ratestore.sweep(db, SOCIAL_CHECK_NS)
+                await ratestore.kv_put(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce), {
+                    "door": door,
+                    "login": crypto.encrypt(json.dumps({
+                        "email": email, "state": state, "entry_surface": entry_surface,
+                        "account_created_at": account_created_at,
+                    })),
+                }, HANDSHAKE_TTL)
+                await db.commit()
+                return SocialCheckPending(nonce=nonce)
+            await db.commit()
+    return await _provision_social_user(email, state, door, entry_surface,
+                                        account_created_at=account_created_at)
+
+
+async def social_check_door(nonce: str) -> str | None:
+    """The provider of a login waiting for its browser check, or None when there is none."""
+    if not nonce:
+        return None
+    async with database.session_maker() as db:
+        kept = await ratestore.kv_get(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce))
+        await db.commit()
+    return kept["door"] if kept else None
+
+
+async def finish_social_check(nonce: str, captcha_token: str, client_ip: str) -> SocialLoginProof:
+    """Classify the check once and sign the waiting login in; in enforce only a `pass` keeps the
+    signup credit. A per-IP window bounds siteverify calls: past it the token is not sent."""
+    async with database.session_maker() as db:
+        kept = await ratestore.kv_take(db, SOCIAL_CHECK_NS, crypto.hash_token(nonce)) if nonce else None
+        allowed = await ratestore.rate_check(
+            db, SOCIAL_CHECK_RATE_NS,
+            ratestore.ip_limit(client_ip, SOCIAL_CHECK_MAX_PER_IP, key=f"i:{client_ip}"), OTP_START_WINDOW_S)
+        await db.commit()
+    if kept is None:
+        raise SocialLoginError("check_expired")
+    login = json.loads(crypto.decrypt(kept["login"]))
+    captcha, promo_eligible = await _check_browser(
+        captcha_token if allowed else "", client_ip, kept["door"],
+        action=SOCIAL_TURNSTILE_ACTION, refuse=False)
+    return await _provision_social_user(
+        login["email"], login["state"], kept["door"], login["entry_surface"],
+        account_created_at=login["account_created_at"], captcha=captcha, promo_eligible=promo_eligible)
+
+
+async def _provision_social_user(
+    email: str, state: str, door: str, entry_surface: str = "", *,
+    account_created_at: str = "", captcha: str = "", promo_eligible: bool = True,
+) -> SocialLoginProof:
     created: set[int] = set()
     proven: set[int] = set()
     async with database.session_maker() as db:
         try:
             user = await signup.find_or_create_user(
                 db, email, door=door, created=created, verified=True, proven=proven,
+                promo_eligible=promo_eligible,
             )  # first login creates only the user
         except signup.MachineIdentityError as exc:
             raise SocialLoginError("machine_identity") from exc
@@ -631,15 +695,32 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
         await db.commit()
         if proven:
             await signup.grant_signup_promo_on_proof(user.id)
-        signup.track_signup(user, created, door, entry_surface)
         # Browser session OR `treg login` handshake - both go through the /login team picker.
-        return SocialLoginProof(user=user, cli_state=await _consume_cli_state(state))
+        cli_state = await _consume_cli_state(state)
+        if user.id in proven:
+            logging.getLogger("treg").info(
+                "event=social_signup door=%s captcha=%s promo=%s account_age_days=%s",
+                door, captcha or "-", promo_eligible, _age_days(account_created_at))
+        signup.track_signup(user, created, door, entry_surface, captcha=captcha,
+                            client="cli_browser" if cli_state is not None else "browser")
+        return SocialLoginProof(user=user, cli_state=cli_state)
+
+
+def _age_days(created_at: str) -> str:
+    """Whole days since a provider's ISO-8601 account creation time, or `-` when it gave none."""
+    try:
+        born = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return "-"
+    if born.tzinfo is None:
+        return "-"
+    return str((datetime.now(timezone.utc) - born).days)
 
 
 async def complete_github_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
     callback_base: Callable[[], str], *, entry_surface: str = "",
-) -> SocialLoginProof:
+) -> SocialLoginProof | SocialCheckPending:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
@@ -668,13 +749,14 @@ async def complete_github_login(
     except Exception as exc:
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "github", entry_surface)
+    return await _social_identity_proven(email, state, "github", entry_surface,
+                                         str(prof.get("created_at") or ""))
 
 
 async def complete_google_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
     callback_base: Callable[[], str], *, entry_surface: str = "",
-) -> SocialLoginProof:
+) -> SocialLoginProof | SocialCheckPending:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
@@ -705,7 +787,7 @@ async def complete_google_login(
     except Exception as exc:
         print(f"[auth] google callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "google", entry_surface)
+    return await _social_identity_proven(email, state, "google", entry_surface)
 
 
 async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIdentity:
@@ -783,28 +865,13 @@ async def _live_invite_by_email_token(db: AsyncSession, t: str) -> Invite | None
     return invite
 
 
-async def invite_signin_landing(
-    email_token: str, code: str, session_cookie: str,
-) -> InviteEmailConfirmation | InviteCodePrefill:
+async def invite_signin_landing(email_token: str, code: str) -> InviteCodePrefill:
     async with database.session_maker() as db:
         if email_token:
             invite = await _live_invite_by_email_token(db, email_token)
             if invite is None:
                 raise InviteSigninError("expired")
-            org = await db.get(Org, invite.org_id)
-            switch_email = None
-            uid = sess.read_session(session_cookie)
-            if uid is not None:
-                current = await db.get(User, uid)
-                if current is not None and current.email != invite.email:
-                    switch_email = current.email
-            return InviteEmailConfirmation(
-                email=invite.email,
-                org_name=org.name if org else "the team",
-                invited_by=invite.invited_by or "A teammate",
-                role=invite.role,
-                switch_email=switch_email,
-            )
+            return InviteCodePrefill(email=invite.email)
         code = (code or "").strip()
         invite = (await db.execute(select(Invite).where(Invite.code_hash == crypto.hash_token(code)))
                   ).scalar_one_or_none() if code else None
@@ -812,40 +879,6 @@ async def invite_signin_landing(
                 or (invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive())):
             raise InviteSigninError("expired")
         return InviteCodePrefill(email=invite.email)
-
-
-async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
-    async with database.session_maker() as db:
-        invite = await _live_invite_by_email_token(db, email_token)
-        if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
-            raise InviteSigninError("expired")
-        proven: set[int] = set()
-        try:
-            user = await signup.find_or_create_user(
-                db, invite.email, door="invite_link", verified=True, proven=proven,
-            )  # only the inbox-only link proves the email
-        except signup.MachineIdentityError as exc:
-            raise InviteSigninError("machine_identity") from exc
-        except signup.BlockedEmailError as exc:  # an invite to a listed domain must not become a session
-            raise InviteSigninError("blocked_domain") from exc
-        if user is None or user.suspended:  # a banned account may hold the link but must not get a session
-            raise InviteSigninError("suspended")
-        invite.email_token_hash = None  # consume: one sign-in per emailed link
-        db.add(invite)
-        await db.commit()
-        if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
-        # A share-born invite lands on the shared page itself (the SPA auto-accepts + switches org);
-        # a plain invite lands on the dashboard with the accept banner. `landing` was
-        # allowlist-validated at create time, so this can never redirect off-app.
-        destination = (
-            f"{invite.landing}?invite_org={invite.org_id}"
-            if invite.landing else f"/?invite_org={invite.org_id}"
-        )
-        return InviteSigninProof(
-            destination=destination,
-            session_cookie=sess.make_session(user.id, token_version=user.token_version),
-        )
 
 
 async def register_oauth_client(

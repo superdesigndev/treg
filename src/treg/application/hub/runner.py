@@ -1,4 +1,4 @@
-"""The hub runner, JSON road: the graph, the waves, the steps (docs/HUB-DECISIONS.md).
+"""The hub runner, JSON road: the graph, the waves, the steps.
 
 A run is `POST /call/<team>.<name>` with the inputs as a JSON body. The runner resolves the
 manifest's references into a graph, starts every ready step (four at a time), and runs each
@@ -10,7 +10,7 @@ Two teams meet in one run: the CALLER (identity and money) and the MAKER (the to
 names). A catalog step runs as the caller: their balance, their rules, their key if they have
 one for the provider, else treg's. A step on one of the maker's own tools runs as the maker:
 their registered key, unmetered, their tool. That is how a shared recipe can use a key the
-caller never holds (HUB-DECISIONS round 2 q9).
+caller never holds.
 """
 
 from __future__ import annotations
@@ -52,7 +52,8 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"accept-encoding"})
 # Refusals that are the same for every step: no point starting anything else.
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+                              "platform_daily_cap_reached", "member_spend_cap_reached",
+                              "daily_cap_reached"})
 
 
 class _Bytes:
@@ -375,7 +376,7 @@ async def run_hub_tool(
         return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
 
 
-    # The seller's price (docs/HUB-DECISIONS.md): one extra hold `{run}:price` on the CALLER
+    # The seller's price: one extra hold `{run}:price` on the CALLER
     # at run start, settled to the MAKER as `earned` credit on success, released on failure. Not
     # charged when the caller IS the maker (their own tool, and the publish check run), so the check
     # never costs the seller their own price.

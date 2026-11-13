@@ -1,4 +1,4 @@
-"""Overflow — the child cycle (docs/PROVIDER-CAPACITY-PLAN.md §4.3).
+"""Overflow — the child cycle.
 
 When treg's OWN account for a provider fails a tier-4 call (a balance/quota signature, a burst-429
 that smoothing could not absorb, a connect error), serve the SAME vendor endpoint through a
@@ -22,6 +22,7 @@ org that opted out (step F), or a route the worker has not enabled.
 from __future__ import annotations
 
 from datetime import timedelta
+from collections.abc import Awaitable, Callable
 import asyncio
 import json
 import logging
@@ -98,9 +99,12 @@ async def _send(client: httpx.AsyncClient, req: AggregatorRequest) -> httpx.Resp
 
 
 async def _run(client: httpx.AsyncClient, aggregator: str, route, key: str, query, body: bytes | None,
-               path_params: dict | None, budget: _BudgetReservation | None = None) -> AggregatorResult:
+               path_params: dict | None, budget: _BudgetReservation | None = None,
+               before_outbound: Callable[[], Awaitable[None]] | None = None) -> AggregatorResult:
     adapter = by_name(aggregator)
     req = adapter.build(route, key, query, body, path_params)
+    if before_outbound is not None:
+        await before_outbound()
     if budget is not None:
         budget.outbound = True
     r = await _send(client, req)
@@ -119,6 +123,7 @@ def _child(mk: MarketplaceCall, route) -> MarketplaceCall:
     # The child settles against ITS price: an aggregator that reports no cost settles at the
     # aggregator reserve, never at the parent's direct price or table ceiling.
     return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg,
+                   holdless=False, overflow_hold_possible=False,
                    cost_type="per_call" if route.agg_unit == "call" else "per_result",
                    unit_micro=agg,
                    settlement_basis={"when": "response", "amount": {"kind": "observed"},
@@ -231,6 +236,7 @@ async def _maybe_overflow_attempt(
     audit_client: str = "", force_trigger: str | None = None,
     reserved: list[MarketplaceCall],
     budget_reservations: list[_BudgetReservation],
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> OverflowOutcome | None:
     """After the primary's settle released — or, with `force_trigger`, INSTEAD of a direct attempt
     the resolver already knows would 402 (`mk.skip_direct`). None = nothing to do (the vendor's
@@ -272,12 +278,15 @@ async def _maybe_overflow_attempt(
     path_params = {k: v for k, v in query_items if k in mk.consumed}
     if mode == "on":
         # Child hold: own id, same call_ref family. Insufficient balance here is the normal 402.
+        # Marked first: a cancel can land after the reserve commits but before it returns.
+        mk.overflow_hold_possible = True
         await _platform_reserve(child, caller, meta=meta, call_ref=f"{call_ref}:overflow")
         reserved.append(child)
     res: AggregatorResult | None = None
     try:
         res = await _run(
             client, aggregator, route, key, query, caller_body or None, path_params, budget,
+            before_outbound,
         )
     except httpx.RequestError as exc:
         res = AggregatorResult(None, b"", None, "malformed", f"{type(exc).__name__}: {exc}")
@@ -369,6 +378,7 @@ async def maybe_overflow(
     *, mk: MarketplaceCall, caller, meta, call_ref: str, status: int, headers, body: bytes,
     method: str, query_items: list[tuple[str, str]], caller_body: bytes, client: httpx.AsyncClient,
     audit_client: str = "", force_trigger: str | None = None,
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> OverflowOutcome | None:
     """Run one optional overflow attempt without letting its infrastructure replace the caller's
     existing vendor answer. A skip-direct caller interprets None as its original capacity 503."""
@@ -380,6 +390,7 @@ async def maybe_overflow(
             body=body, method=method, query_items=query_items, caller_body=caller_body,
             client=client, audit_client=audit_client, force_trigger=force_trigger,
             reserved=reserved, budget_reservations=budget_reservations,
+            before_outbound=before_outbound,
         )
     except asyncio.CancelledError:
         if budget_reservations:
@@ -396,11 +407,15 @@ async def maybe_overflow(
                 log.exception("overflow budget cleanup failed for cancelled %s", mk.endpoint_id)
         raise
     except CallFailure:
-        if budget_reservations:
-            try:
-                await _release_budget(budget_reservations[0])
-            except Exception:
-                log.exception("overflow budget release failed for %s", mk.endpoint_id)
+        try:
+            if reserved:
+                await _platform_settle(reserved[0], None, reason="overflow_admission_refused")
+        finally:
+            if budget_reservations:
+                try:
+                    await _release_budget(budget_reservations[0])
+                except Exception:
+                    log.exception("overflow budget release failed for %s", mk.endpoint_id)
         raise
     except Exception:
         log.exception("overflow attempt crashed for %s", mk.endpoint_id)

@@ -1,4 +1,4 @@
-"""The hub's script sandbox — the CHILD process (docs/HUB-DECISIONS.md round 2).
+"""The hub's script sandbox — the CHILD process.
 
 Runs one maker's `run.js` inside QuickJS, an embedded JavaScript engine with no network, no file
 system, no `require`, no `process`, no timers. The only road out is `ctx.call`, which crosses

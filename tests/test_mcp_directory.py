@@ -348,6 +348,19 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_balance == directory_balance
 
 
+async def test_only_the_team_surface_shows_a_rows_note(clients):
+    """The directory surface returns what it was submitted with; `/mcp/` shows the row's note."""
+    from treg.domain.catalog import store
+    ep = next(e for e in store.load().endpoints
+              if e.get("note") and e.get("platform") not in mcp._DIRECTORY_HIDDEN_PLATFORMS)
+    token = clients.headers["X-Treg-Token"]
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+    assert team["endpoint"]["note"] == ep["note"]
+    assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
+
+
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
     from treg import audit
 
@@ -524,15 +537,17 @@ async def test_v2_write_call_and_insufficient_balance_errors_use_shared_behavior
             org.balance_micro = 0
             db.add(org)
             await db.commit()
-        async with directory_session() as client:
-            refused = await _call_tool(client, "catalog_call_read", {
-                "endpoint_id": "tikhub.tiktok.video.comments",
-                "params": {"aweme_id": "7"},
-            }, token)
-        blob = json.dumps(refused)
-        assert refused["status"] == 402
-        assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
-        assert "not enough for this call" in refused["hint"]
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
+        async with paired_mcp_session() as client:
+            refused = await _call_tool(client, "catalog_call_read", args, token)
+            team = await _call_tool(client, "call", args, token, path="/mcp/")
+        for answer in (refused, team):
+            blob = json.dumps(answer)
+            assert answer["status"] == 402
+            assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
+        assert refused["hint"] == "the team's prepaid balance is not enough for this call"
+        assert team["hint"].startswith(refused["hint"])
+        assert "Team → Billing" in team["hint"]
     finally:
         get_settings.cache_clear()
 

@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 import pytest
 from httpx import AsyncClient
 
+from treg import page_media
+from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
@@ -32,7 +34,7 @@ async def test_grokbot_icons_are_served_files(clients: AsyncClient):
 
 async def test_static_pages_fill_the_catalog_size(clients: AsyncClient):
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
-    for path in ("/grokbot", "/fable", "/people-search", "/ugc", "/aeo", "/jev", "/gpt6", "/resources"):
+    for path in ("/grokbot", "/fable", "/people-search", "/ugc", "/aigc", "/aeo", "/jev", "/gpt6", "/resources"):
         text = (await clients.get(path)).text
         assert f"{endpoints} " in text, path
     assert f"{providers} providers" in (await clients.get("/grokbot")).text
@@ -42,7 +44,7 @@ async def test_static_page_revalidates_to_a_304(clients: AsyncClient):
     """Filling placeholders turned these pages from FileResponses into rendered HTML; the ETag
     keeps a browser's `no-cache` revalidation cheap, including an edge-weakened tag."""
     first = await clients.get("/grokbot")
-    etag = first.headers["etag"]
+    etag = first.headers["etag"].removeprefix("W/")
     assert first.headers["cache-control"] == "no-cache"
     for sent in (etag, f"W/{etag}", f'"other", {etag}'):
         again = await clients.get("/grokbot", headers={"If-None-Match": sent})
@@ -68,6 +70,30 @@ async def test_media_cache_policy(clients: AsyncClient, path: str, policy: str):
         assert again.status_code == 304
 
 
+def test_every_page_video_is_published():
+    """Videos are not in Git, so a page naming one the manifest lacks would show nothing. Every
+    key also sits under the bucket prefix picture housekeeping leaves alone."""
+    named = set()
+    for file in WEB.rglob("*"):
+        if file.suffix in {".html", ".js"} and "dashboard" not in file.parts:
+            named |= set(re.findall(r"media/([\w./-]+\.(?:mp4|webm|mov))\b", file.read_text("utf-8")))
+    published = page_media.manifest()
+    assert named - published.keys() == set()
+    assert all(key.startswith(page_media.PREFIX) for key in published.values())
+
+
+async def test_page_video_redirects_to_its_published_copy(clients: AsyncClient, monkeypatch):
+    key = page_media.manifest()["ugc/tutorial.mp4"]
+    for base, location in (("", f"/media-files/{key}"),
+                           ("https://media.example/", f"https://media.example/{key}")):
+        monkeypatch.setattr(get_settings(), "media_base_url", base)
+        for method in (clients.get, clients.head):
+            r = await method("/media/ugc/tutorial.mp4", follow_redirects=False)
+            assert r.status_code == 302
+            assert r.headers["location"] == location
+            assert r.headers["cache-control"] == "public, max-age=300"
+
+
 # A typed catalog size: "2,896 tools", "2,600+ data endpoints", "+ 2,867 more</b> tools", and any
 # whole-catalog provider count ("60 providers", "60+ providers", "~80 providers"). Per-job figures
 # ("3 providers, ranked", "16 providers") are facts about one capability and stay allowed.
@@ -79,7 +105,7 @@ def _front_door_files() -> list[Path]:
     skip = {"dashboard", "vendor", "media"}
     files = [p for p in WEB.rglob("*") if p.suffix in {".html", ".js", ".md", ".txt"}
              and not skip & set(p.relative_to(WEB).parts)]
-    return files + [ROOT / "README.md", ROOT / "docs" / "TUTORIAL.md"]
+    return files + [ROOT / "README.md"]
 
 
 def test_no_page_types_the_catalog_size():

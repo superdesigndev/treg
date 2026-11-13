@@ -8,8 +8,8 @@ new and lost keywords, paid keywords) and treg's routed backlinks summary (the c
 that answers; `backlinks_source` names it). A JSON-steps recipe: no logic, just two tools joined.
 
 `source` picks the Google database (`us` by default). A fixed price of $0.01 a
-run (a JSON recipe has one price; a margin on the fees needs a script and `ctx.charge`), so a run
-costs about $0.041 (about $0.031 in fees plus $0.01).
+run on top of the provider fees (a JSON recipe has one price; a margin on the fees needs a script
+and `ctx.charge`).
 
 Why DataForSEO is not a step here: its live endpoints take a JSON array body, and a JSON step's
 `input` is an object. A script recipe can call it (`ctx.call(id, {body: [...]})`).

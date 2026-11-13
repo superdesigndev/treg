@@ -32,6 +32,13 @@ async def test_anymailfinder_balance_uses_free_account_route():
                                b'{"error":"upgrade_needed","message":"You do not have enough credits."}').kind == "balance"
 
 
+def test_leadoceans_fair_use_pace_is_its_period_allowance_used_up():
+    body = '{"success":false,"error":{"message":"Fair-use pace reached \u2014 this account has received 50,000 search records"}}'
+    sig = signatures.classify("leadocean", 429, {}, body)
+    assert sig is not None and sig.kind == "quota" and signatures.is_exhausting(sig)
+    assert signatures.classify("leadocean", 429, {}, '{"error":"slow down"}').kind != "quota"
+
+
 @pytest.mark.parametrize("credits", [None, True, -1, "12"])
 async def test_anymailfinder_balance_rejects_invalid_values(credits):
     async with httpx.AsyncClient(transport=httpx.MockTransport(
@@ -115,6 +122,31 @@ async def test_sixtyfour_balance_uses_the_free_credit_route():
     async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
         row = await collectors._sixtyfour(client, "test")
     assert row == {"value": 12.5, "unit": "credits", "note": "Organization credit balance"}
+
+
+async def test_leadocean_usage_monitors_independent_record_windows_without_blocking_both_pools():
+    def probe(request):
+        assert str(request.url) == "https://api.leadocean.io/v1/usage"
+        assert request.headers["x-api-key"] == "test"
+        return httpx.Response(200, json={"success": True, "data": {"pace": {
+            "search": [{"used": 10, "limit": 10}, {"used": 20, "limit": 100}],
+            "enrich": [{"used": 2, "limit": 10}, {"used": 4, "limit": 100}],
+        }}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._leadocean(client, "test")
+    assert row["value"] == 0 and row["informational"] is True
+    assert policy.default_policy("leadocean", has_key=True).rate_limit["limit"] == 200
+
+
+@pytest.mark.parametrize("bad", [None, True, "1", -1])
+async def test_leadocean_usage_rejects_invalid_counters(bad):
+    pace = {"search": [{"used": bad, "limit": 10}],
+            "enrich": [{"used": 1, "limit": 10}]}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"data": {"pace": pace}}))) as client:
+        with pytest.raises(ValueError, match="invalid pace counter"):
+            await collectors._leadocean(client, "test")
 
 
 @pytest.mark.parametrize("credits", [None, True, "12.5", float("nan"), -1])
@@ -1049,6 +1081,7 @@ async def test_getleadsio_rejects_payload_without_a_meter(payload):
     (collectors._piapi, {"data": {"account_id": "a", "equivalent_in_usd": 3.2}}, 3.2, "USD"),
     (collectors._piapi, {"equivalent_in_usd": 0}, 0, "USD"),
     (collectors._enrow, {"credits": 10007.5, "credits_breakdown": {}}, 10007.5, "credits"),
+    (collectors._filtrat, {"balance": 9981.0}, 9981.0, "credits"),
 ])
 async def test_documented_balance_collectors(collector, payload, value, unit):
     row = await _serve_json(collector, payload)
@@ -1056,7 +1089,7 @@ async def test_documented_balance_collectors(collector, payload, value, unit):
 
 
 @pytest.mark.parametrize("collector", [collectors._anyapi, collectors._reapi, collectors._piapi,
-                                        collectors._enrow])
+                                        collectors._enrow, collectors._filtrat])
 @pytest.mark.parametrize("payload", [{}, {"usd": -1, "balance": -1, "equivalent_in_usd": -1,
                                         "credits": -1}])
 async def test_documented_balance_collectors_reject_missing_or_negative(collector, payload):

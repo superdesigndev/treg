@@ -702,20 +702,29 @@ async def test_pending_row_write_failure_releases_the_hold_and_alerts(
     assert entry.meta.get("reason") == "async_task_not_recorded"
 
 
+async def _fund_purchased(clients: AsyncClient) -> None:
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, 50_000_000, "pi_asynctasks_video")
+        await db.commit()
+
+
 @pytest.fixture
-def minimax_platform(monkeypatch):
+async def minimax_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 
 
 @pytest.fixture
-def openrouter_platform(monkeypatch):
+async def openrouter_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_OPENROUTER", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "openrouter")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 
@@ -821,7 +830,7 @@ async def test_platform_task_status_requires_same_org_submission(
         params=[("id", "prediction-owned"), ("id", "prediction-unknown")])
     assert ambiguous.status_code == 400 and relayed == [True]
 
-    other = await clients.post("/users", json={"email": "task-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "task-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     denied = await clients.get(
         "/call/replicate.predictions.get?id=prediction-owned", headers=stranger)
@@ -909,7 +918,7 @@ async def test_legacy_platform_async_resources_are_recorded_and_authorized(
     for url in owned_calls:
         assert (await clients.get(url)).status_code == 200
 
-    other = await clients.post("/users", json={"email": "legacy-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "legacy-stranger@example.com"})
     denied = await clients.get(owned_calls[0], headers={"X-Treg-Token": other.json()["token"]})
     assert denied.status_code == 403
 
@@ -963,7 +972,7 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
                            ("icypeas.search.results.read", {"id": "someone-elses"})]:
         response = await clients.post(f"/call/{endpoint}", json=body)
         assert response.status_code in (400, 403), (endpoint, body, response.status_code)
-    other = await clients.post("/users", json={"email": "icypeas-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "search-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
     for endpoint, body in owned:
         assert (await clients.post(f"/call/{endpoint}", json=body, headers=stranger)).status_code == 403
@@ -1032,7 +1041,7 @@ async def test_owned_terminal_poll_teaches_result_id_before_fetch(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned")
     assert fetched.status_code == 200 and len(relay_calls) == 2
 
-    other = await clients.post("/users", json={"email": "file-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "file-stranger@example.com"})
     denied = await clients.get(
         "/call/minimax.video-gen.result.retrieve?file_id=minimax-file-owned",
         headers={"X-Treg-Token": other.json()["token"]})
@@ -1610,7 +1619,7 @@ async def test_another_org_cannot_read_a_task_by_its_call_ref(
     assert (await task_app.settle_due()).settled == 1
     assert call_id in await task_app.views_for(1, [call_id])
     assert await task_app.views_for(2, [call_id]) == {}
-    other = await clients.post("/users", json={"email": "someone-else@example.com"})
+    other = await verified_signup(clients, json={"email": "someone-else@example.com"})
     assert other.status_code == 200
     stranger = {"X-Treg-Token": other.json()["token"]}
     assert (await clients.get(f"/calls/{call_id}", headers=stranger)).status_code == 404
@@ -1786,3 +1795,54 @@ def test_a_terminal_on_submission_row_archives_only_finished_answers():
     assert not call_service._only_submits(instant)
     assert call_service._unfinished_submission(instant, b'{"status": "queued"}')
     assert not call_service._unfinished_submission(instant, b'{"status": "done"}')
+
+
+def _upstream_header(relayed: list, name: bytes) -> list[str]:
+    return [v.decode() for req in relayed for k, v in req.raw_headers if k.lower() == name]
+
+
+async def test_shared_key_calls_carry_an_opaque_per_team_client_code(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """A provider that names a `client_header` gets treg's code for the team on treg's key: stable per
+    team, different per team and per provider, never the team's id, and replacing any caller value.
+    A team's own key, and an unset secret, add nothing."""
+    from dataclasses import replace
+
+    from treg.domain.catalog import store as catalog_store
+    from treg.infra.upstream.relay import shared_client_code
+
+    cat = catalog_store.load()
+    monkeypatch.setattr(catalog_store, "load",
+                        lambda: replace(cat, client_headers={**cat.client_headers, "replicate": "x-client-id"}))
+    relayed = []
+
+    async def fake_relay(request, *args, **kwargs):
+        relayed.append(request)
+        return _response(201, {"id": f"prediction-{len(relayed)}", "status": "starting"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    body = {"input": {"prompt": "a"}}
+    forged = {"X-Client-Id": "someone-else"}
+
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert _upstream_header(relayed, b"x-client-id") == ["someone-else"], "no secret set: header untouched"
+
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "test-secret")
+    get_settings.cache_clear()
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    other = await verified_signup(clients, json={"email": "client-code-stranger@example.com"})
+    assert (await clients.post(f"/call/{EP}", json=body,
+                               headers={"X-Treg-Token": other.json()["token"]})).status_code == 201
+    first, again, stranger = _upstream_header(relayed, b"x-client-id")[1:]
+    assert first == again, "one team keeps one code"
+    assert first != stranger, "two teams share a code"
+    assert first.startswith("t_") and len(first) == 26 and first[2:].isalnum()
+    assert first == shared_client_code("test-secret", "replicate", 1)
+    assert first != shared_client_code("test-secret", "crawl4ai", 1), "the code differs per provider"
+    assert "1" != first and "someone-else" not in _upstream_header(relayed, b"x-client-id")[1:]
+
+    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    assert _upstream_header(relayed[-1:], b"x-client-id") == [], "a team's own key carries no code"

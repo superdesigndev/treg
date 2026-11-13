@@ -465,6 +465,14 @@ Then: </span><span class="ask">Look at what we are working on and propose three 
      work out who that is from the project, or ask one question. `short` is the line the pane shows. */
   var MCP_URL = 'https://treg.to/mcp/';
   var SETUP_CMD = 'curl -fsSL https://treg.to/install.sh | sh && treg login';
+  /* An ad click in the cookie (adtrack.js runs first) gets a short install link bound to it, so a sign-in
+     finished in an agent's own browser still attributes. Plain command without a click or until the code arrives. */
+  if (/(^|;\s*)treg_ad=/.test(document.cookie)) {
+    fetch('/i', { method: 'POST', credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var code = d && d.code;
+      if (code && /^[a-z0-9]{6}$/.test(code)) { SETUP_CMD = 'curl -fsSL https://treg.to/i/' + code + ' | sh && treg login'; render(); }
+    }).catch(function () {});
+  }
   var SETUP_BEFORE = 'Set up treg if this agent does not have it yet. Run\n';
   var SETUP_AFTER = '\nand let me sign in when the browser opens (new accounts get $1 free). How it works: https://treg.to/llms.txt\n\nThen: ';
   var JOBS = {

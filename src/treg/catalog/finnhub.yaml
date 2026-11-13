@@ -4,8 +4,8 @@ source:
   openapi: null # paths transcribed and live-verified 2026-08-15 (free tier, 60 req/min)
   curated: 2026-08-15
 # TRIAL POOL + own-key: treg holds only Finnhub's free key, and their free tier is licensed for personal,
-# non-commercial use; the commercial All-In-One is $3,500/mo billed annually (research doc,
-# licensing table). No fx rate -> usd null -> platform_eligible FALSE by construction. A team pasting
+# non-commercial use; the commercial All-In-One is $3,500/mo billed annually.
+# No fx rate -> usd null -> platform_eligible FALSE by construction. A team pasting
 # its own Finnhub key gets everything at their own tier's limits.
 pricing_url: https://finnhub.io/pricing
 # Archive/cache judgment: a JUDGED forbidden, distinct from unjudged-absent. Finnhub's terms bar
@@ -16,6 +16,9 @@ cache:
   license_quote: "You hereby agree to not redistribute or share access to data or derived results from the data obtained from Finnhub with anyone or any 3rd party without written approval from Finnhub."
   source_url: https://finnhub.io/terms-of-service
   checked: "2026-08-27"
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance: {source: docs, source_url: 'https://finnhub.io/pricing', checked: '2026-08-15', confidence: documented}
 endpoints:
   - id: finnhub.quote
     domain: stocks
@@ -30,7 +33,14 @@ endpoints:
       queryParams:
         symbol: {type: string, required: true, example: "AAPL"}
     test_request: {queryParams: {symbol: "AAPL"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://finnhub.io/pricing", checked: "2026-08-15", confidence: documented, note: "$0 on treg's key: a TRIAL POOL of 50 calls per team per day served on treg's free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan's limits"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: '$0 on treg''s key: a TRIAL POOL of 50 calls per team per day served on treg''s free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan''s limits'
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.c, op: absent}}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/finnhub.quote.json
@@ -48,7 +58,12 @@ endpoints:
       queryParams:
         symbol: {type: string, required: true, example: "AAPL"}
     test_request: {queryParams: {symbol: "AAPL"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://finnhub.io/pricing", checked: "2026-08-15", confidence: documented, note: "$0 on treg's key: a TRIAL POOL of 50 calls per team per day served on treg's free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan's limits"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: '$0 on treg''s key: a TRIAL POOL of 50 calls per team per day served on treg''s free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan''s limits'
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/finnhub.company.profile.json
@@ -66,7 +81,12 @@ endpoints:
       queryParams:
         q: {type: string, required: true, example: "apple"}
     test_request: {queryParams: {q: "apple"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://finnhub.io/pricing", checked: "2026-08-15", confidence: documented, note: "$0 on treg's key: a TRIAL POOL of 50 calls per team per day served on treg's free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan's limits"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: '$0 on treg''s key: a TRIAL POOL of 50 calls per team per day served on treg''s free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan''s limits'
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/finnhub.symbol.search.json
@@ -86,7 +106,12 @@ endpoints:
         from: {type: string, required: true, note: "YYYY-MM-DD", example: "2026-08-10"}
         to: {type: string, required: true, note: "YYYY-MM-DD", example: "2026-08-15"}
     test_request: {queryParams: {symbol: "AAPL", from: "2026-08-10", to: "2026-08-15"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://finnhub.io/pricing", checked: "2026-08-15", confidence: documented, note: "$0 on treg's key: a TRIAL POOL of 50 calls per team per day served on treg's free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan's limits"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: '$0 on treg''s key: a TRIAL POOL of 50 calls per team per day served on treg''s free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan''s limits'
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/finnhub.company.news.json
@@ -105,7 +130,12 @@ endpoints:
         symbol: {type: string, required: true, example: "AAPL"}
         metric: {type: string, required: true, note: "all", example: "all"}
     test_request: {queryParams: {symbol: "AAPL", metric: "all"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://finnhub.io/pricing", checked: "2026-08-15", confidence: documented, note: "$0 on treg's key: a TRIAL POOL of 50 calls per team per day served on treg's free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan's limits"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: '$0 on treg''s key: a TRIAL POOL of 50 calls per team per day served on treg''s free-tier finnhub key (fx.yaml kind: treg_trial). Past the allowance the call is refused with a connect-your-own-key hint. With your own key: unmetered, your plan''s limits'
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/finnhub.metrics.basic.json

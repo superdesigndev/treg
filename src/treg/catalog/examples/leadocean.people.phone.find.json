@@ -1,0 +1,16 @@
+{
+  "data": {
+    "person_id": "123",
+    "found": true,
+    "phones": [
+      {
+        "phone": "+12025550101",
+        "type": "mobile"
+      }
+    ],
+    "best": {
+      "phone": "+12025550101",
+      "type": "mobile"
+    }
+  }
+}

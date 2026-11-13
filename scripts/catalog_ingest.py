@@ -33,9 +33,11 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from treg.domain.catalog.schema import spelling
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -167,7 +169,7 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
 
 
 def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True,
-                       carry_input: bool = True) -> int:
+                       carry_input: bool = True, fresh_price_note: bool = False) -> int:
     """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
@@ -196,6 +198,11 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     the top of a proven request would drop the stamp on the next ingest and re-bill the call to
     learn what the file already knew. `--refresh` re-fetches the docs; re-verifying is what
     replaces a proven request, not re-ingesting.
+
+    A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
+    card, so the fresh one is written over the carried one. With `fresh_price_note` the same holds
+    for a carried v2 `price` (AnyAPI's note names its sources and failover ceiling); every other
+    provider keeps its reviewed `price` whole, note included.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
     old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
@@ -212,6 +219,8 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
         if not prev or prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
             place_added(ep)
             continue
+        fresh_notes = {key: ep[key].get("note") for key in (("cost", "price") if fresh_price_note else ("cost",))
+                       if isinstance(ep.get(key), dict)}
         carried_fields = [
             "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
             # Reviewed per-row facts no spec carries: a price read from the provider's own bill
@@ -219,11 +228,28 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             # cannot be tested, and a retired/broken `status`. Dropping them on a re-ingest
             # silently un-prices, un-checks and un-retires rows.
             "cost", "observed_cost", "expect", "untestable", "status",
+            # A caller-facing caveat about the whole tool, written by a reviewer: no ingest writes one.
+            "note",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
             "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
         ]
+        if spelling(prev) == "v2":
+            # A row in the v2 spelling carries its reviewed cost and its outcome rules, which hold
+            # the miss its adapter no longer does.
+            carried_fields += ["reserve", "settle", "bill", "error", "miss", "not_found"]
+            if prev.get("price") is not None:
+                # A price and its provenance are one reviewed fact: an absent provenance inherits the
+                # provider's default and a null one opts the row out, whatever the fresh entry says.
+                ep["price"] = prev["price"]
+                if "provenance" in prev:
+                    ep["provenance"] = prev["provenance"]
+                else:
+                    ep.pop("provenance", None)
+            for key in ("price", "expect", "reserve", "settle", "bill", "error", "miss", "not_found"):
+                if key in prev and prev[key] is None:
+                    ep[key] = None  # a reviewed opt-out of the provider's default
         if carry_input:
             carried_fields.append("input")
         if carry_capability:
@@ -235,6 +261,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
                 continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
+        for key, note in fresh_notes.items():
+            if note and isinstance(ep.get(key), dict):
+                ep[key] = {**ep[key], "note": note}
         if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
@@ -272,9 +301,10 @@ def place_added(ep: dict) -> None:
 
 
 def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
-                   *, carry_capability: bool = True, carry_input: bool = True) -> Path:
+                   *, carry_capability: bool = True, carry_input: bool = True,
+                   fresh_price_note: bool = False) -> Path:
     carried = carry_verification(provider, endpoints, carry_capability=carry_capability,
-                                 carry_input=carry_input)
+                                 carry_input=carry_input, fresh_price_note=fresh_price_note)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -693,10 +723,9 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
             tail = uri.strip("/").split("/")[3:]
             where = "/".join(tail[:-1])
             summary = f"{label}: {titlecase(tail[-1]).lower()}" + (f" ({where})" if where else "")
-        cost = float(row.get("endpoint_cost") or 0)
+        cost = Decimal(str(row.get("endpoint_cost") or 0))
         entry = {
             "id": slug_id("tikhub", uri.replace("/api/v1/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             "path": uri,
@@ -707,10 +736,11 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         title = short_name((doc_op or {}).get("name") or "", summary)
         if title:
             entry["name"] = title
-        entry["cost"] = (
-            {"type": "free", "value": 0.0, "currency": "USD"} if cost == 0
-            else {"type": "per_success", "value": cost, "currency": "USD"}
-        )
+        # The provenance and the billing rule are the `defaults:` of tikhub.yaml.
+        if cost == 0:
+            entry["price"], entry["provenance"] = {"value": "0", "currency": "USD", "unit": "call"}, None
+        else:
+            entry["price"] = {"value": format(cost.normalize(), "f"), "currency": "USD", "per": 1, "unit": "call"}
         if doc_op is not None:
             documented += 1
             inp, test, reason = tikhub_input_and_test(doc_op, docs_defs, method=method, spec_op=op)
@@ -838,6 +868,8 @@ DFS_TASK_GET = ("task_get/advanced/{id}", "task_get/{id}", "task_get/regular/{id
 # when it is POSTED, so an error the finished task reports is still a billed answer: the descriptor
 # settles it at the charge the submission reported, never at zero (the provider decides).
 DFS_TASK_PROGRESS = [20100, 40601, 40602]
+# A task_post answers 20100, task created, where every other route answers the provider's 20000.
+DFS_TASK_POSTED = {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
 DFS_TASK_FAILED = [40101, 40102, 40103, 40106, 40400, 40401, 40402, 40403, 40404, 40405, 40408,
                    50000, 50001, 50301, 50302, 50303, 50304, 50401, 50402]
 # The on-page crawl's readers take the crawl's task id: in the path (summary) or in a one-element
@@ -857,7 +889,6 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
     docs = DFS_DOCS.search(desc)
     row = {
         "id": endpoint_id,
-        "tier": "extended",
         "platform": post["platform"],
         "kind": "utility",
         "method": "GET",
@@ -869,8 +900,10 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
             "type": "string", "required": True,
             "note": "tasks[].id from the submission's answer",
             "example": "00000000-0000-0000-0000-000000000000"}}},
-        "cost": {"type": "free", "value": 0, "currency": "USD", "unit": "call",
-                 "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        "price": {"value": "0", "currency": "USD", "unit": "call",
+                  "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        # a task_get answers 20000 only once its task is done; the async status words judge it
+        "expect": None,
         "resource_ownership": {"requires": {"kind": f"poll:{endpoint_id}", "param": "id"}},
     }
     if docs:
@@ -880,7 +913,7 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
 
 def dfs_submission(post: dict, reader_id: str) -> None:
     """Make a /task_post row an async submission whose tasks the submitting team owns."""
-    post["expect"] = {"json_path": "tasks.0.status_code", "equals": 20100}
+    post["expect"] = DFS_TASK_POSTED
     post["resource_ownership"] = {"produces": [{"kind": f"poll:{reader_id}", "path": "tasks.*.id"}]}
     post["async"] = {
         "id_from": "tasks.0.id",
@@ -935,7 +968,6 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             summary = titlecase(seg[-1])
         entry = {
             "id": slug_id("dataforseo", path.replace("/v3/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             # base_url already ends in /v3 - a verbatim spec path would relay to /v3/v3/… (404).
@@ -965,7 +997,7 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             dfs_submission(post, reader["id"])
             readers.append(reader)
         elif post["path"] == "/on_page/task_post":
-            post["expect"] = {"json_path": "tasks.0.status_code", "equals": 20100}
+            post["expect"] = DFS_TASK_POSTED
             post["resource_ownership"] = {
                 "produces": [{"kind": DFS_ON_PAGE_TASK, "path": "tasks.*.id"}]}
     endpoints += readers
@@ -1021,6 +1053,10 @@ JOA_PLATFORM = {
 }
 
 
+def _money(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
 def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     sitemap = fetch("https://docs.justoneapi.com/en/sitemap.xml", "justoneapi_sitemap.xml",
                     refresh=refresh).decode()
@@ -1072,7 +1108,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 summary = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else spec["info"].get("title", rel)
                 entry = {
                     "id": slug_id("justoneapi", path.replace("/api/", "")),
-                    "tier": "extended",
                     "platform": platform,
                     "method": method,
                     "path": path,
@@ -1085,10 +1120,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                                    summary)
                 if title:
                     entry["name"] = title
+                # The provenance and the success rule are the `defaults:` of justoneapi.yaml.
                 price = joa_prices.get(path)
                 if price is not None:
-                    entry["cost"] = {"type": "per_success", "value": price, "currency": "CNY",
-                                     "note": "billed only on success (code 0); errors free"}
+                    entry["price"] = {"value": _money(price), "currency": "CNY", "per": 1, "unit": "call",
+                                      "note": "billed only on success (code 0); errors free"}
+                else:
+                    entry["provenance"] = None
                 endpoints.append(entry)
 
     source = {
@@ -1114,19 +1152,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
 
 
-def _aigc_async_static() -> dict:
-    return {
-        "id_from": "id",
-        "poll": {"endpoint": "openrouter.video-gen.task.status",
-                 "param": {"in": "pathParams", "name": "id"}},
-        "status": {"path": "status", "success": ["completed"],
-                   "failure": ["failed", "cancelled", "expired"]},
-        "result": {"fetch": "openrouter.video-gen.result.retrieve",
-                   "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}},
-        "interval": 30,
-    }
-
-
 def core_body_models(provider: str, method: str, path: str) -> set[str]:
     """Fixed body.model values curated in core for one shared generation route."""
     core = CATALOG / f"{provider}.yaml"
@@ -1144,7 +1169,10 @@ def core_body_models(provider: str, method: str, path: str) -> set[str]:
     return models
 
 
-def _openrouter_cost(model: dict) -> dict:
+def _openrouter_price(model: dict) -> dict:
+    """A generated row's v2 cost keys, written against the `defaults:` of openrouter.yaml: the rate
+    card provenance and the terminal usage.cost settle are inherited, so a priced row carries only
+    its price."""
     model_id = str(model["id"])
     skus = model.get("pricing_skus") or {}
     unsupported = (
@@ -1152,14 +1180,10 @@ def _openrouter_cost(model: dict) -> dict:
     )
     if any(str(name).startswith(unsupported) for name in skus):
         return {
-            "type": "per_success",
-            "value": None,
-            "confidence": "unknown",
-            "source": "rate_card_api",
-            "source_url": "https://openrouter.ai/api/v1/videos/models",
-            "checked": "2026-09-02",
-            "rate_card": {str(name): str(value) for name, value in sorted(skus.items())},
-            "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.",
+            "price": {"value": None, "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only."},
+            "provenance": {"source": "rate_card_api", "source_url": "https://openrouter.ai/api/v1/videos/models",
+                           "checked": "2026-09-02", "confidence": "unknown"},
+            "settle": None,
         }
     durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
     duration_max = max(durations, default=30)
@@ -1198,22 +1222,18 @@ def _openrouter_cost(model: dict) -> dict:
     rows = list(grouped.values())
     rows.sort(key=lambda row: (-len(row["when"]), sorted(row["when"].items())))
     upper = max([minimum, *maxima], default=0.0)
-    return {
-        "type": "per_success",
-        "table": rows or [{"when": {"body.model": model_id}, "value": 0.0}],
+    table = [{"when": [{"path": k, "op": "equals", "value": v} for k, v in row["when"].items()],
+              "value": _money(row["value"]), **({"times": row["times"]} if "times" in row else {})}
+             for row in rows or [{"when": {"body.model": model_id}, "value": 0.0}]]
+    return {"price": {
+        "table": table,
         "fallback": {
-            "value": round(upper + 0.000000001, 9),
+            "value": _money(round(upper + 0.000000001, 9)),
             "note": "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.",
         },
         "currency": "USD",
-        "settle": "usage",
-        "usage": {"path": "usage.cost", "unit": "usd"},
-        "source": "rate_card_api",
-        "source_url": "https://openrouter.ai/api/v1/videos/models",
-        "checked": "2026-09-02",
-        "confidence": "documented",
         "note": "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).",
-    }
+    }}
 
 
 def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
@@ -1246,7 +1266,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                                       "default": bool(model.get("generate_audio", False))}
         ep = {
             "id": slug_id("openrouter", model_id),
-            "tier": "extended",
             "platform": "video-gen",
             "domain": "models",
             "method": "POST",
@@ -1256,7 +1275,7 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                 str(model.get("description") or f"Generate video with {model_id}.")
             ).replace("\N{EM DASH}", "-")[:400],
             "input": {"body": body, "bodyType": "json"},
-            "cost": _openrouter_cost(model),
+            **_openrouter_price(model),
             "docs_url": f"https://openrouter.ai/{model_id}",
         }
         endpoints.append(ep)
@@ -1265,12 +1284,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
         "Generated from the live video model rate card. Each row fixes one model on POST /videos.",
         "pricing_skus become a first-match reserve table; terminal usage.cost remains authoritative.",
     ], carry_capability=False)
-    # Provider defaults belong at the document top level, not inside source provenance.
-    generated = yaml.safe_load(out.read_text())
-    doc = {"provider": generated["provider"], "source": generated["source"],
-           "async": _aigc_async_static(), "endpoints": generated["endpoints"]}
-    header, _, _ = out.read_text().partition("provider:")
-    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
     return out, {"models": len(endpoints)}
 
 
@@ -1449,7 +1462,7 @@ _ANYAPI_MEASURED: dict[str, dict] | None = None
 # source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
 # number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
 # listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
-# `reported_charge` (`costUsd`) is what actually settles either way.
+# `costUsd` (the settle default in anyapi.yaml) is what actually settles either way.
 #
 # This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
 # lower number there would be a smaller reserve with no upside. It also does NOT apply to a
@@ -1472,20 +1485,10 @@ def _anyapi_measured() -> dict[str, dict]:
     return _ANYAPI_MEASURED
 
 
-def _anyapi_measured_window() -> tuple[str, int]:
-    """The ledger export's own window, which is NOT the rate-card read date.
-
-    ANYAPI_CHECKED moves whenever the rate card is re-read; the measured window only moves when
-    the ledger is re-exported. Reusing one date for both made a re-read silently restate every
-    measured price as covering days it never saw.
-    """
-    blob = json.loads(pricing_evidence_file("anyapi_measured_charges.json").read_text())
-    return blob.get("as_of", ANYAPI_CHECKED), blob.get("window_days", 60)
-
-
 def _anyapi_input(schema: dict, example: dict) -> dict:
     """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
-    routing controls, so a generated `test_request` is built from the vendor's own examples."""
+    routing controls, so a generated `test_request` is built from the vendor's own examples. AnyAPI
+    takes the shared `fields` query parameter as one comma-separated value, so a list is joined."""
     required = set(schema.get("required") or [])
     body = {}
     for name, spec in (schema.get("properties") or {}).items():
@@ -1502,13 +1505,14 @@ def _anyapi_input(schema: dict, example: dict) -> dict:
         if name in example:
             field["example"] = example[name]
         body[name] = field
-    return {"body": body, "bodyType": "json"}
+    return {"body": body, "bodyType": "json", "queryArrayEncoding": "comma"}
 
 
-def _anyapi_cost(api: dict) -> dict:
-    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges.
+def _anyapi_price(api: dict) -> dict:
+    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges, as the
+    row's `price` and `provenance`; the reported settle on `costUsd` is the `defaults:` of anyapi.yaml.
 
-    `cost.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
+    `price.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
     trailing 60 days (ANYAPI_MEASURED_FILE), so the shelf price is what nine calls in ten settle at
     or below. That replaces the rate card's `pricing.from.maxUsd` - the CHEAPEST source's price at
     the input maximum - which is wrong in both directions wherever the ledger can check it: it
@@ -1534,8 +1538,8 @@ def _anyapi_cost(api: dict) -> dict:
 
     `source: observed` is this catalog's own word for a price seen being billed rather than read
     off a page (domain/catalog/store.COST_SOURCES); the rate-card fallback keeps `rate_card_api`.
-    `reported_charge` stays on every row either way: `costUsd` is the only number that knows which
-    source served and how many rows came back, and it is what settles.
+    Every row settles on `costUsd` either way: it is the only number that knows which source served
+    and how many rows came back.
     """
     measured = (None if api["id"] in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE
                 else _anyapi_measured().get(api["id"]))
@@ -1544,15 +1548,11 @@ def _anyapi_cost(api: dict) -> dict:
         price = max(price, _anyapi_flat_floor(api))
         price = min(price, api["pricing"].get("failoverMaxUsd") or price)
     return {
-        "type": "per_success",
-        "value": price,
-        "currency": "USD",
-        "unit": "call",
-        "reported_charge": {"path": "costUsd", "unit": "usd"},
-        "source": "observed" if measured else "rate_card_api",
-        "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
-        "checked": ANYAPI_CHECKED,
-        "confidence": "verified",
+        "price": {"value": _money(price), "currency": "USD", "unit": "call",
+                  "note": anyapi_cost_note(len(api.get("lanes") or []), api["pricing"]["failoverMaxUsd"])},
+        "provenance": {"source": "observed" if measured else "rate_card_api",
+                       "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
+                       "checked": ANYAPI_CHECKED, "confidence": "verified"},
     }
 
 
@@ -1574,41 +1574,16 @@ def _anyapi_flat_floor(api: dict) -> float:
     pricing = (api.get("pricing") or {}).get("from") or {}
     return pricing.get("maxUsd", 0.0) if pricing.get("model") == "flat" else 0.0
 
-def anyapi_price_basis(sku: str, api: dict | None = None) -> str:
-    """One sentence naming where this row's price came from, for the row's own `note`.
 
-    Core rows are hand-curated but priced by the same rule, so this is shared rather than copied.
-    Pass `api` (the rate-card row) to have a clamped price say so: a p90 is a statistic over a
-    trailing window, and a row whose note claims a $0.002 median while charging $0.0012 reads as a
-    contradiction rather than as the correction it is.
-    """
-    if sku in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE:
-        return ("Price is the cheapest source's advertised price, because the sources that "
-                "serve this endpoint charge very different amounts for the same number of "
-                "results; a rescue on a dearer source settles above it.")
-    as_of, days = _anyapi_measured_window()
-    m = _anyapi_measured().get(sku)
-    if m:
-        basis = (f"Price is the p90 of what AnyAPI really charged for this endpoint over the {days} "
-                 f"days to {as_of} ({m['calls']} charged calls, ${m['p50_usd']:g} median), not "
-                 "a list price; roughly one call in ten settles above it.")
-        return basis + (_anyapi_clamp_clause(m["p90_usd"], api) if api else "")
-    return (f"Too few charged calls in the {days} days to {as_of} to measure, so the price is "
-            "the live rate card's cheapest source at the input maximum.")
-
-
-def _anyapi_clamp_clause(p90: float, api: dict) -> str:
-    """The sentence a clamped measured price owes the reader, or nothing when it was not clamped."""
-    ceiling = (api.get("pricing") or {}).get("failoverMaxUsd")
-    floor = _anyapi_flat_floor(api)
-    if ceiling and p90 > ceiling:
-        return (f" That p90 is capped here at ${ceiling:g}, the dearest price any source can charge "
-                "for this request today: the dearer source it measured has since been withdrawn, so "
-                "no call can settle at the p90 any more.")
-    if floor > p90:
-        return (f" That p90 is raised here to ${floor:g}, today's cheapest advertised price, because "
-                "the cheaper source it measured has since been withdrawn.")
-    return ""
+def anyapi_cost_note(lanes: int, ceiling: float) -> str:
+    """The row's `price.note`: how far a failover can take one charge, what settles it and how a
+    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_price`.
+    The hand-curated core rows in anyapi.yaml use the same sentences."""
+    serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
+             f"to ${ceiling:g} at the dearest." if lanes > 1 else
+             f"One source serves this, at up to ${ceiling:g} a call.")
+    return (f"{serve} The charge follows the answer's `costUsd`, not the listed price. Send "
+            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.")
 
 
 def ingest_anyapi(refresh: bool = False):
@@ -1645,7 +1620,6 @@ def ingest_anyapi(refresh: bool = False):
             continue
         ep = {
             "id": f"anyapi.{sku}",
-            "tier": "extended",
             "platform": platform,
             "domain": sku.split(".", 1)[1].split("_")[0],
             "method": api["method"].upper(),
@@ -1653,23 +1627,13 @@ def ingest_anyapi(refresh: bool = False):
             "name": clean(api["name"])[:60],
             "summary": clean(api["description"])[:400],
             "input": _anyapi_input(content.get("schema") or {}, example),
-            "cost": _anyapi_cost(api),
+            **_anyapi_price(api),
             # One public page per SKU: live price, source routing and measured 30-day uptime.
             "docs_url": ("https://getanyapi.com/api/"
                          f"{prefix.replace('_', '-')}/{sku.split('.', 1)[1].replace('_', '-')}"),
         }
         # No `test_request` here: a freshly ingested entry has never been called, and the vendor's
         # own example values already ride on each input field for the verify pass to build one from.
-        lanes = len(api.get("lanes") or [])
-        ceiling = api["pricing"]["failoverMaxUsd"]
-        ep["note"] = (
-            f"AnyAPI slug `{sku}`. {anyapi_price_basis(sku, api)} "
-            f"{lanes} source{'s' if lanes != 1 else ''} can serve it; the "
-            f"cheapest serves first and a failed attempt is retried on the next, up to a "
-            f"${ceiling:g} ceiling per request. `costUsd` on the response is the exact charge, "
-            f"which is what reported_charge settles. Send `max_cost_usd` to refuse any source "
-            f"dearer than a price you name."
-        )
         endpoints.append(ep)
         unknown_platform.add(platform)
     source = {"method": "openapi + provider rate card", "ingested": ANYAPI_CHECKED,
@@ -1678,14 +1642,14 @@ def ingest_anyapi(refresh: bool = False):
         "Every SKU AnyAPI publishes on its ten busiest platforms, minus the routes curated in",
         "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
         "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
-        "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
+        "Prices are MEASURED: price.value is the p90 of what AnyAPI actually billed for that SKU",
         "over the 60 days to the ingest date (operator-supplied pricing evidence), so it is",
         "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
-        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price and",
-        "says so in its note (cost.source: rate_card_api vs observed). One call in ten settles",
-        "ABOVE the reserve by design; every response reports its exact charge as costUsd, which is",
-        "what reported_charge settles on.",
-    ], carry_capability=True, carry_input=False)
+        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price",
+        "(provenance.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve",
+        "by design; every response reports its exact charge as costUsd, which the settle default in",
+        "anyapi.yaml settles on. price.note tells the caller the failover ceiling and how to cap it.",
+    ], carry_capability=True, carry_input=False, fresh_price_note=True)
     return out, {"endpoints": len(endpoints)}
 
 

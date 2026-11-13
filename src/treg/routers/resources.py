@@ -322,7 +322,7 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
 
 def _allowed_server_bins() -> set[str]:
     """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user (docs/CLI-RUN-PLAN.md Option A)."""
+    member naming `bash`/`python` to run arbitrary code as the server user."""
     from . import providers as prov
     bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
     bins.discard(None)
@@ -375,7 +375,7 @@ async def list_tools(
 ) -> list[dict]:
     rows = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     # The per-member tool ACL hides what it gates: a restricted member's listing shows only their tools.
-    return [_tool_view(t) for t in rows if access_policy._tool_usable(caller, t)]
+    return [_tool_view(t) for t in access_policy.usable_tools(caller, rows)]
 
 
 @app.get("/tools/by-name/{name}")

@@ -93,7 +93,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit on a hit; nothing on a miss"
-    note: "not live-tested to preserve trial credits — the finder allowance on the verification account was 25 credits and was reserved for /search/name and /technologies"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.domain
@@ -116,18 +115,22 @@ endpoints:
       note: "returns {contacts: [...]}. DEPRECATED in Findymail's own docs in favour of /search/employees, which takes explicit job titles and a result count — prefer that one for new work"
     test_request:
       body: {domain: "stripe.com", roles: ["ceo"]}
-    cost:
-      type: per_result
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 1
-      unit: call
+      unit: result
+      note: 1 finder credit per email found; free when none. The hold is one email per request.
+    provenance:
       source: docs
-      source_url: https://www.findymail.com/pricing
-      checked: '2026-08-20'
+      source_url: https://app.findymail.com/docs/
+      checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per verified email returned — the number of roles is the price dial"
-    note: "not live-tested to preserve trial credits; also marked deprecated upstream, so /search/employees is the route to verify first when credits allow"
+    reserve: {entities: {from: body.domain}}
+    settle: {count: {path: response.contacts}}
+    bill: {miss: charged, error: charged}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.contacts, op: empty}}
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.employees
@@ -146,7 +149,7 @@ endpoints:
       body:
         website: {type: string, required: true, note: "the company website or domain", example: "stripe.com"}
         job_titles: {type: "array[string]", required: true, note: "job titles to match", example: ["Head of Engineering"]}
-        count: {type: integer, required: false, note: "how many contacts to return, max 5 — THIS IS THE PRICE DIAL (1 finder credit per contact returned)", example: 1}
+        count: {type: integer, required: false, note: "how many contacts to return, default 1, max 3 (4 or 5 are reduced to 3) — THIS IS THE PRICE DIAL (1 finder credit per contact returned)", example: 1}
       note: "returns an array of {name, linkedinUrl, companyWebsite, companyName, jobTitle}. Always set an explicit small `count`"
     test_request:
       body: {website: "stripe.com", job_titles: ["Head of Engineering"], count: 1}
@@ -155,13 +158,13 @@ endpoints:
       value: 1
       currency: credit
       per: 1
-      unit: call
+      unit: result
+      reserve: {rows: {param: body.count, default: {value: 1, source: docs}, max: 3}}
       source: docs
-      source_url: https://www.findymail.com/pricing
-      checked: '2026-08-20'
+      source_url: https://app.findymail.com/docs/
+      checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per contact found; `count` caps the spend"
-    note: "not live-tested to preserve trial credits"
+      note: "1 finder credit per contact found; free when none. `count` caps the spend"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.company
@@ -196,7 +199,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit when a company record is returned; nothing on a miss"
-    note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.phone
@@ -226,7 +228,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "TEN finder credits per phone found — the most expensive route here by an order of magnitude. Nothing is charged on a miss."
-    note: "not live-tested: at 10 credits it would have consumed 40% of the verification account's entire finder allowance"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.reverse-email
@@ -259,7 +260,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit for the profile URL, 2 when with_profile=true. Nothing on a miss. The 1-vs-2 split is stated in the API docs, not on the pricing page (which only publishes the flat 1 credit = 1 verified email rate)."
-    note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.verify
@@ -361,7 +361,7 @@ endpoints:
         seed: {type: string, required: true, note: "the seed company's domain", example: "stripe.com"}
         same_country: {type: boolean, required: false, note: "restrict results to the seed's country"}
         same_size: {type: boolean, required: false, note: "restrict results to the seed's headcount band"}
-        limit: {type: integer, required: false, note: "max companies to return, up to 10000 — THIS IS THE PRICE DIAL", example: 10}
+        limit: {type: integer, required: false, note: "max companies to return, default 100, up to 10000 — THIS IS THE PRICE DIAL", example: 10}
         exclusion_list_ids: {type: "array[integer]", required: false, note: "ids of saved exclusion lists whose domains should be dropped from the results"}
       note: "returns {companies: [{domain, name, linkedin_url, company_size, country}], total, credits_used} — `credits_used` reports the actual charge back to you"
     test_request:
@@ -371,13 +371,14 @@ endpoints:
       value: 1
       currency: credit
       per: 10
-      unit: call
+      unit: result
+      reserve: {rows: {param: body.limit, default: {value: 100, source: docs}, max: 10000}}
+      reported_charge: {path: credits_used, unit: credit}
       source: docs
       source_url: https://app.findymail.com/docs/
-      checked: '2026-08-20'
+      checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per 10 results, rounded up — so the minimum useful call is 1 credit. The response echoes `credits_used`."
-    note: "not live-tested to preserve trial credits"
+      note: "1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`."
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.intellimatch.search
@@ -409,7 +410,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: unknown
       note: "Findymail documents the cost as varying with `limit` and `config` (enrichment level) and publishes no single rate, so no value is asserted. Budget by reading GET /credits before and after."
-    note: "not live-tested to preserve trial credits — an unknown-cost async job was the wrong thing to point at a 25-credit account"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.intellimatch.status
@@ -452,7 +452,6 @@ endpoints:
     test_request:
       queryParams: {hash: "abc123", per_page: 10}
     cost: {type: free, value: 0, currency: USD, unit: call}
-    note: "not live-tested: there is no completed job hash to read, because the paid search that produces one was skipped to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.signals

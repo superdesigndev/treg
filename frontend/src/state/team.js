@@ -14,6 +14,10 @@ async createOrg(){ const name=(this.newOrgName||'').trim(); if(!name){ this.orgE
         this.newOrg=false; this.newOrgName=''; await this.loadAll(); this.switchOrg({slug:o.org}); }
       catch(e){ this.orgErr='Could not create: '+(e.detail||e.status); } finally{ this.orgBusy=false; } },
 async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgInvites=[]; this.lastInvite=null;
+      // '#billing' is where a 402 sends everyone, but only admins can add funds: a member who lands
+      // there is told whom to ask instead of meeting a tab that is not theirs.
+      this.memberFunds=!this.canAdmin && this.orgTab==='billing';
+      if(this.memberFunds) this.loadTeamAdmins();
       if(!this.canAdmin && !['keys','danger','sso'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
       if(!this.activeOrgId) return; const id=this.activeOrgId, live=this.ticket('orgAdmin');
@@ -32,6 +36,10 @@ async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgI
            const sel={}; this.projects.forEach(p=>{ sel[p.id]=true; }); this.agentProjSel=sel;
            this.observedAgents=observed; }
       catch(e){ if(!live()) return; this.orgMembersLoaded=true; this.orgErr='Load team failed: '+(e.detail||e.status); } },
+async loadTeamAdmins(){ this.teamAdmins=null; if(!this.activeOrgId) return;
+      const live=this.ticket('teamAdmins');
+      const admins=await this.api('/orgs/'+this.activeOrgId+'/admins').catch(()=>[]);
+      if(live()) this.teamAdmins=admins; },
 async loadMyUsage(){ if(!this.activeOrgId){ this.myUsage=null; return; }
       const live=this.ticket('myUsage');
       const usage=await this.api('/usage/me').catch(()=>null);
@@ -47,6 +55,16 @@ async setCap(m, val){ const cap=this.capValue(val);
       catch(e){ this.orgErr='Set cap failed: '+(e.detail||e.status); }
       await this.loadOrgAdmin(); },
 // reload → reverts the input to the true cap on failure
+// A member's own dollar limit: empty follows the team default (null), "none" is no limit (-1).
+// Returns an error message, or '' when saved (or nothing changed).
+async setSpendCap(m, val){ const t=String(val??'').trim().toLowerCase();
+      const micro=t==='none' ? -1 : this.usdValue(t);
+      if(Number.isNaN(micro)){ await this.loadOrgAdmin(); return 'Daily spend must be a dollar amount.'; }
+      if(micro===m.daily_spend_cap_micro) return '';
+      let err='';
+      try{ await this.api('/orgs/'+this.activeOrgId+'/members/'+m.user_id+'/spend-cap',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({daily_spend_cap_micro:micro})}); }
+      catch(e){ err='Could not save the spend limit: '+(e.detail||e.status); }
+      await this.loadOrgAdmin(); return err; },
     async sendInvite(){ const email=(this.inviteEmail||'').trim(); if(!email){ this.orgErr='Enter an email address to invite.'; return; }
       // Invites attach to an email - the server only trims/lowercases, so guard the format here or a
       // typo like "foo bar" becomes a permanently-unacceptable dead invite cluttering the list.

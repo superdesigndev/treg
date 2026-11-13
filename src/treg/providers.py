@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 27  # v27: Arihaan People API + MobiusEngine Jobs Data key detection
+CATALOG_VERSION = 28  # v28: Arihaan People API key detection (v27: MobiusEngine.ai Jobs Data renamed)
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -187,9 +187,10 @@ CATALOG: list[dict] = [
     {"provider": "Valyu",       "tokens": ["VALYU_API_KEY", "VALYU"], "base_url": "https://api.valyu.ai", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/datasources"},
     {"provider": "Keenable",    "tokens": ["KEENABLE"],            "base_url": "https://api.keenable.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
     {"provider": "Sixtyfour AI", "tokens": ["SIXTYFOUR"],           "base_url": "https://api.sixtyfour.ai",                       "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "check-balance"},
+    {"provider": "LeadOcean", "tokens": ["LEADOCEAN"], "base_url": "https://api.leadocean.io", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/account"},
     {"provider": "BlitzAPI",     "tokens": ["BLITZAPI", "BLITZ_API"], "base_url": "https://api.blitz-api.ai",                    "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v2/account/key-info"},
     {"provider": "Arihaan People API", "tokens": ["ARIHAAN_PEOPLE"], "base_url": "https://people-api.arihaan.ai", "auth": {"shape": "bearer"}, "probe": "v2/balance"},
-    {"provider": "MobiusEngine Jobs Data", "tokens": ["MOBIUSENGINE_JOBS"], "base_url": "https://jobs-api.arihaan.ai", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/balance"},
+    {"provider": "MobiusEngine.ai Jobs Data", "tokens": ["MOBIUSENGINE_JOBS"], "base_url": "https://jobs-api.arihaan.ai", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/balance"},
     {"provider": "Olostep",     "tokens": ["OLOSTEP"],             "base_url": "https://api.olostep.com",                         "auth": {"shape": "bearer"}, "probe": "user/credits/info"},
     {"provider": "ScrapeGraphAI", "tokens": ["SCRAPEGRAPHAI", "SGAI"],
      "base_url": "https://v2-api.scrapegraphai.com",
@@ -428,8 +429,7 @@ def classify_cli(entry: dict, *, installed: bool, secret_present: bool, logged_i
     (is the `bin` installed? is its credential env var set? is a login config file present?). PURE — no
     filesystem/network here, so it's fully unit-testable. Returns a decision dict:
       {status, tier?, env?, action?, reason?} where status ∈
-      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local.
-    See docs/CLI-AUTOIMPORT-PLAN.md §5."""
+      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local."""
     cli = entry.get("cli") or {}
     mech = cli.get("auth_mechanism", "env")
     if cli.get("unsupported") or mech == "device":

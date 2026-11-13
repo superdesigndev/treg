@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import replace
+from pathlib import Path
 
 import httpx
 import pytest
@@ -16,8 +18,10 @@ from treg.application import call_events as ev
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.config import get_settings
+from treg.domain.arena import safe_output
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import contracts as C
+from treg.domain.catalog.routing import paths as P
 
 from test_bounceban_async import (  # noqa: F401
     EMAIL, STATUS, VERIFY, VERIFYING, Upstream, _finished, _tasks, bounceban_on, fast_polls)
@@ -232,6 +236,7 @@ def test_one_spelling_per_subject():
     assert (ev.normalize("linkedin_url", "https://www.linkedin.com/in/APerson/")
             == ev.normalize("linkedin_handle", "aperson") == "aperson")
     assert ev.normalize("full_name", "  A   Person ") == "a person"
+    assert ev.normalize("phone", "+44 7700 900123") == ev.normalize("phone", "0044 7700-900123") == "447700900123"
     assert ev.domain_class("gmail.com") == "webmail"
     assert ev.domain_class("cs.mit.edu") == "edu" and ev.domain_class("ox.ac.uk") == "edu"
     assert ev.domain_class("nasa.gov") == "gov" and ev.domain_class("sample.example") == "company"
@@ -258,10 +263,117 @@ def test_an_array_body_identity_reads_back_through_a_bare_expression():
     body = json.dumps([{"url": "https://www.linkedin.com/in/aperson/"}]).encode()
     given = ev.vendor_identity(adapter, contract, [("dataset_id", "x"), ("format", "json")], body)
     assert given == {"linkedin_url": "https://www.linkedin.com/in/aperson/"}
-    # A computed expression (`e164_digits(phone)`) is not inverted.
-    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    # A computed expression (`e164_digits(phone)`) is not inverted; only `in_read` reads it back.
+    adapter = C.Adapter(endpoint_id="x", accepts=(("phone",),), in_map={}, out_map={}, miss="",
+                        in_expr={"body.telephone_number": "e164_digits(phone)"})
     body = json.dumps({"telephone_number": "15550100"}).encode()
-    assert ev.vendor_identity(hlr, cat.contracts["people.phone.live"], [], body) == {}
+    assert ev.vendor_identity(adapter, cat.contracts["people.phone.live"], [], body) == {}
+
+
+def test_a_verifier_records_the_number_it_checked_in_the_finders_spelling():
+    cat = catalog_store.load()
+    live = cat.contracts["people.phone.live"]
+    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    digits = json.dumps({"telephone_number": "16175550142", "usa_status": "YES"}).encode()
+    national = json.dumps({"telephone_number": "6175550142", "input_format": "USA"}).encode()
+    assert ev.vendor_identity(hlr, live, [], digits) == {"phone": "+16175550142"}
+    # A national number is the provider's to read with input_format; treg does not guess it.
+    assert ev.vendor_identity(hlr, live, [], national) == {}
+    validate = cat.adapters["hlrlookup.people.phone.validate"]
+    assert ev.vendor_identity(validate, cat.contracts["people.phone.verify"], [], digits) == {"phone": "+16175550142"}
+    owner = cat.contracts["people.contact.verify"]
+    trestle = cat.adapters["trestleiq.people.contact.verify"]
+    given = ev.vendor_identity(trestle, owner, [("name", "Ann Lee"), ("phone", "(617) 555-0142")], None)
+    assert given == {"phone": "+16175550142", "full_name": "Ann Lee"}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        checked, _ = ev.input_columns(owner, given)
+        live_cols, _ = ev.input_columns(live, ev.vendor_identity(hlr, live, [], digits))
+        found = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "+1 617 555 0142"})
+    get_settings.cache_clear()
+    assert checked["input_keys"]["phone"] == live_cols["input_keys"]["phone"] == found["answer_keys"]["phone"]
+    assert checked["input_type"] == "full_name+phone"
+    assert checked["input_meta"] == live_cols["input_meta"] == {"calling_code": "1"}
+    assert found["answer_values"] == {"phone_calling_code": "1"}
+
+
+def _built(endpoint_id: str, query=(), body: dict | None = None, answer: dict | None = None) -> dict:
+    """The columns the sink's flusher builds for one direct call, through the real path."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        # `emit` resolves the capability from the endpoint before the builder runs.
+        capability = catalog_store.load().by_id[endpoint_id]["capability"]
+        out = ev._derived(endpoint_id, capability, tuple(query), json.dumps(body).encode() if body else None,
+                          None, 200, json.dumps(answer).encode(), None, True)
+    get_settings.cache_clear()
+    return out
+
+
+def _example(endpoint_id: str) -> dict:
+    examples = Path(catalog_store.__file__).parents[2] / "catalog" / "examples"
+    return json.loads((examples / f"{endpoint_id}.json").read_text())
+
+
+def test_phone_verifiers_record_their_verdicts_in_the_event():
+    cat = catalog_store.load()
+    owner = _built("trestleiq.people.contact.verify", [("name", "Ann Lee"), ("phone", "+16175550142")],
+                   answer=_example("trestleiq.people.contact.verify"))
+    assert owner["answer_values"] == {"name_match": "true", "contact_grade": "A", "phone_valid": "true",
+                                      "line_type": "Mobile", "activity_score": "100"}
+    assert set(owner["input_keys"]) == {"phone", "full_name"}
+    live = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"},
+                  answer=_example("hlrlookup.people.phone.verify"))
+    assert live["answer_values"] == {"live_status": "LIVE", "line_type": "MOBILE", "ported": "true"}
+    assert live["input_meta"] == {"calling_code": "44"}
+    # The Arena's own filter is unchanged: it still blanks a boolean it does not rank on.
+    core = cat.adapters["hlrlookup.people.phone.verify"].from_upstream(_example("hlrlookup.people.phone.verify"))
+    assert safe_output(core, capability="people.phone.live")["ported"] is None
+
+
+@pytest.mark.parametrize("is_ported,ported", [("YES", "true"), ("NO", "false"), ("UNKNOWN", None), (None, None)])
+def test_hlr_live_keeps_an_unknown_porting_status_unknown(is_ported, ported):
+    answer = _example("hlrlookup.people.phone.verify")
+    answer["results"][0]["is_ported"] = is_ported
+    built = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"}, answer=answer)
+    assert built["answer_values"].get("ported") == ported
+
+
+@pytest.mark.parametrize("number_type,error,valid", [
+    ("BAD_FORMAT", "NONE", "false"), ("MOBILE", "NONE", "true"), ("UNKNOWN", "NONE", None),
+    (None, "INTERNAL_ERROR", None)])
+def test_hlr_validate_reads_a_bad_format_number_as_invalid(number_type, error, valid):
+    answer = {"results": [{"error": error, "telephone_number_type": number_type, "credits_spent": 0}]}
+    built = _built("hlrlookup.people.phone.validate", body={"telephone_number": "447540822872"},
+                   answer=answer)
+    assert (built.get("answer_values") or {}).get("valid") == valid
+
+
+def test_a_trestle_country_hint_reads_a_national_number_in_that_country():
+    def key(query):
+        return (_built("trestleiq.people.phone.verify", query,
+                       answer=_example("trestleiq.people.phone.verify")).get("input_keys") or {}).get("phone")
+    us = key([("phone", "6175550142")])
+    assert us and us == key([("phone", "+16175550142")]) == key([("phone", "6175550142"), ("phone.country_hint", "CA")])
+    # A national number in a country treg cannot place gets no key rather than a +1 one.
+    assert key([("phone", "2079460958"), ("phone.country_hint", "GB")]) is None
+    assert key([("phone", "+442079460958"), ("phone.country_hint", "GB")]) not in (None, us)
+
+
+def test_a_read_back_rule_is_part_of_the_adapter_fingerprint():
+    hlr = catalog_store.load().adapters["hlrlookup.people.phone.verify"]
+    assert ev.adapter_fingerprint(hlr) != ev.adapter_fingerprint(replace(hlr, in_read={}))
+    assert ev.adapter_fingerprint(replace(hlr, in_read={"phone": "fmt('+{}', body.telephone_number)"})) \
+        != ev.adapter_fingerprint(hlr)
+
+
+@pytest.mark.parametrize("number,code", [("+1 617 555 0142", "1"), ("+7 912 345 6789", "7"),
+                                         ("+44 7700 900123", "44"), ("+353 85 123 4567", "353"),
+                                         ("+86 138 0013 8000", "86"), ("+971 50 123 4567", "971"),
+                                         ("6175550142", None)])
+def test_calling_code(number, code):
+    assert P.calling_code(number) == code
 
 
 def test_ref_parts():
@@ -269,6 +381,8 @@ def test_ref_parts():
     assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
     assert ev.ref_parts("abc:v") == ("abc", "v", None)
     assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
+    assert ev.ref_parts("abc:s2") == ("abc", "s2", None)
+    assert ev.ref_parts("abc:s2.7") == ("abc", "s2.7", None)
 
 
 def test_an_unknown_analytics_mode_fails_the_contract():
@@ -347,6 +461,24 @@ def test_company_segments_land_as_values_and_the_domain_joins_the_find():
     assert person["answer_keys"] == {"company_domain": find["input_keys"]["domain"]}
 
 
+def test_a_found_phone_joins_its_live_check_in_one_spelling():
+    cat = catalog_store.load()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        found = ev.answer_columns(cat.contracts["people.phone.find"],
+                                  {"phone": "+1 (617) 555-0142", "line_type": "mobile", "country_code": "US"})
+        other = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "0016175550142"})
+        national = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "(617) 555-0142"})
+        live, _ = ev.input_columns(cat.contracts["people.phone.live"], {"phone": "+16175550142"})
+    get_settings.cache_clear()
+    assert found["answer_keys"]["phone"] == other["answer_keys"]["phone"] == live["input_keys"]["phone"]
+    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US", "phone_calling_code": "1"}
+    # without a country code the digits could be another country's number, so no key
+    assert national["answer_keys"] is None
+    assert ev.normalize("phone", "6175550142") is None
+
+
 def test_a_long_value_is_capped():
     contract = catalog_store.load().contracts["companies.enrich"]
     cols = ev.answer_columns(contract, {"name": "Acme", "location": "x" * 1000})
@@ -417,6 +549,24 @@ async def test_find_then_verify_join_on_the_email_hash(clients: AsyncClient, enr
     assert verify["input_meta"] == {"domain_class": "company", "tld": "example"}
     assert verify["answer_values"] == {"valid": "false", "status": "accept_all", "score": "50"}
     assert verify["verdict"] == "catch_all" and verify.get("answer_keys") is None
+
+
+async def test_a_routed_miss_records_the_empty_answer_it_returned(clients: AsyncClient, enrichment_on,
+                                                                 events_on, monkeypatch):
+    """A provider answered and found no one: the caller got an empty answer, and the event
+    counts it (`rows: 0`) instead of recording no answer at all."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"data": []})] * 20}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"company_domain": "sample.example", "title": "Head of Sales", "country": "US"},
+                           headers={"X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss", (r.text, seen)
+    parent_ref = r.headers["x-treg-call-id"]
+    [parent] = [e for e in await _flushed(events_on) if e["call_ref"] == parent_ref]
+    assert parent["hit"] is False
+    assert parent["answer_values"] == {
+        "rows": "0", "rows_with_profile_url": "0", "rows_dup": "0", "rows_company_match": "0",
+        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "2"}
 
 
 async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,

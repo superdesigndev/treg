@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,8 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     # would be caught the moment the two disagree.
     served = await clients.get("/skill.md")
     assert f"description: {entry['description']}" in served.text
+    # The installer offers the others to the human in one line each; a trigger description is no pitch.
+    assert all(s.get("summary") for s in skills[1:])
 
 
 async def test_well_known_skill_md_matches_the_canonical_one(clients):
@@ -96,6 +99,52 @@ async def test_web_access_landing_page_installs_the_skill(clients):
     assert r.status_code == 200 and "{BASE}" not in r.text
     assert "npx skills add superdesigndev/treg --skill web-access" in r.text
     assert "/web-arena/api/leaderboard" in r.text
+
+
+async def test_rea_growth_skill_is_served_but_opt_in(clients):
+    """The /rea-growth flow as a skill, served by URL with its placeholders filled, but kept out of
+    the index so install.sh never installs it unasked."""
+    r = await clients.get("/skills/rea-growth/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: rea-growth")
+    assert "{BASE}" not in r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"]
+    assert "rea-growth" not in [s["name"] for s in idx]
+
+
+def test_rea_growth_skill_names_only_endpoints_that_exist():
+    """Unlike lead-signals, rea-growth names endpoint ids step by step, so an agent calls them
+    as written. A renamed or retired row would send it to a 404 mid-run; this fails first."""
+    from treg.domain.catalog import store as catalog_store
+
+    ids = {e["id"] for e in catalog_store.load().endpoints}
+    text = (Path(__file__).resolve().parent.parent / "src/treg/web/skills/rea-growth/SKILL.md").read_text(
+        encoding="utf-8")
+    named = set(re.findall(r"`([a-z0-9]+(?:\.[a-z0-9_-]+){2,})`", text))
+    assert len(named) > 20
+    assert sorted(named - ids) == []
+
+
+async def test_ai_ugc_video_skill_is_served_but_opt_in(clients):
+    """The /aigc page's prompt points agents at this skill by URL, so it must be served; it spends
+    real money on video, so install.sh must never install it unasked."""
+    r = await clients.get("/skills/ai-ugc-video/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith('---\nname: "ai-ugc-video"')
+    assert "{BASE}" not in r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"]
+    assert "ai-ugc-video" not in [s["name"] for s in idx]
+
+
+def test_ai_ugc_video_skill_names_only_endpoints_that_exist():
+    """The skill's tool table names endpoint ids an agent calls as written; a renamed or retired
+    row would send it to a 404 mid-shoot, after money is spent on earlier stages."""
+    from treg.domain.catalog import store as catalog_store
+
+    ids = {e["id"] for e in catalog_store.load().endpoints}
+    text = (Path(__file__).resolve().parent.parent / "src/treg/web/skills/ai-ugc-video/SKILL.md").read_text(
+        encoding="utf-8")
+    named = set(re.findall(r"`([a-z0-9]+(?:\.[a-z0-9_-]+){2,})`", text))
+    assert len(named) >= 8
+    assert sorted(named - ids) == []
 
 
 async def test_jev_memory_skill_is_served_but_opt_in(clients):

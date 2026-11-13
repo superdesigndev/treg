@@ -28,6 +28,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "harvestapi": ("cash", "auto_recharge", "api"),  # Owner will enable vendor auto top-up for production.
     "fetchinio": ("credits", "manual", "api"),
     "sixtyfour": ("credits", "subscription", "api"),
+    "leadocean": ("rolling_quota", "quota_reset", "api"),
     "blitzapi": ("monthly_quota", "quota_reset", "api"),
     "dataforseo": ("cash", "auto_recharge", "api"),
     "tikhub": ("cash", "auto_recharge", "api"),
@@ -39,6 +40,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "findymail": ("credits", "manual", "api"),
     "anymailfinder": ("credits", "manual", "api"),
     "enrow": ("credits", "manual", "api"),
+    "filtrat": ("credits", "manual", "api"),
+    "filtrat_finder": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
@@ -55,6 +58,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "hlrlookup": ("credits", "manual", "api"),
     "tavily": ("credits", "manual", "api"),
     "search1api": ("credits", "auto_recharge", "api"),
+    "bravesearch": ("cash", "auto_recharge", "manual"),
     "octen": ("cash", "manual", "manual"),
     "linkup": ("cash", "manual", "api"),
     # The balance route needs an Account API OAuth token, not the API key treg holds.
@@ -119,6 +123,10 @@ _QUOTAS: dict[str, dict] = {
 _RATE_LIMITS: dict[str, dict] = {
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
+    # treg's partner key is limited to 600 verifications a minute (429 with Retry-After: 60 above that).
+    "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
+    # treg's finder key (its own Filtrat account) is limited to 110 searches a minute.
+    "filtrat-finder": {"limit": 110, "window_s": 60, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -127,12 +135,14 @@ _RATE_LIMITS: dict[str, dict] = {
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.
     "perplexity": {"limit": 1, "window_s": 1, "source": "docs"},
-    # The account reports 5 requests/s, but /post/engagement consumes two rate-limit units. The
-    # provider-wide limiter cannot weight one endpoint, so two calls/s is the safe shared-key pace.
+    # /post/engagement consumes two rate-limit units. The provider-wide limiter cannot weight one
+    # endpoint and each process keeps its own allowance, so the shared key stays at a conservative
+    # two calls/s, below the account's allowance.
     "fetchinio": {"limit": 2, "window_s": 1, "source": "policy"},
     # No published provider-wide limit. The shared-key smoother uses the documented
     # balance-check allowance as a conservative policy ceiling for all routes.
     "sixtyfour": {"limit": 60, "window_s": 60, "source": "policy"},
+    "leadocean": {"limit": 200, "window_s": 1, "source": "policy"},
     # The allowance is independent per endpoint; this is the fallback for uncatalogued calls.
     "blitzapi": {"limit": 10, "window_s": 1, "source": "policy"},
     "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},
@@ -176,6 +186,7 @@ _RATE_LIMITS: dict[str, dict] = {
     # Most routes allow 200/min; screenshot has a separate 10/min ceiling. This provider-wide
     # spacer is not a strict quota gate, so do not slow every search to screenshot's allowance.
     "search1api": {"limit": 200, "window_s": 60, "source": "docs"},
+    "bravesearch": {"limit": 50, "window_s": 1, "source": "docs"},
     # The free Base plan allows up to 20 QPS. Pace the shared key below that ceiling;
     # endpoint-specific Extract URL limits remain enforced by Octen.
     "octen": {"limit": 5, "window_s": 1, "source": "policy"},
@@ -233,6 +244,8 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     # Email Verifier publishes no limit; its 429s carry x-ratelimit-limit 20 per minute, far below
     # the documented 1,000/min for other APIs. A provider-wide 20/min would slow every other route.
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
+    # Company pages on treg's finder key have their own allowance, apart from finder searches.
+    "filtrat-finder.companies.enrich": {"limit": 600, "window_s": 60, "source": "docs"},
 }
 
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
@@ -245,6 +258,17 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
+    # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
+    # then 503 SERVER_BUSY), and 20 finder searches on treg's finder key.
+    "filtrat": 10,
+    "filtrat-finder": 20,
+}
+# An endpoint family whose in-progress allowance differs from its provider's has its own places
+# here, shared by every endpoint listed. They replace the provider's places for those endpoints and
+# do not draw from them.
+_ENDPOINT_CONCURRENCY: dict[str, dict] = {
+    # Company pages on treg's finder key: their own places, so they never hold a finder search's.
+    "filtrat-finder.company-pages": {"limit": 20, "endpoints": ("filtrat-finder.companies.enrich",)},
 }
 
 

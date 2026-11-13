@@ -10,7 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from conftest import verified_signup
+from conftest import verified_signup, accept_with_code
 from treg import archive, archive_bodies, audit, bootstrap
 from treg.application import archive_erasure
 from treg.application.call import service as call_service
@@ -291,7 +291,7 @@ async def test_opt_out_is_admin_only_and_records_the_moment(clients: AsyncClient
     assert row.archive_opt_out_at is not None
     # A member who is not an admin may read it but not change it.
     inv = await clients.post(f"/orgs/{org_id}/invites", json={"email": "plain@example.com", "role": "member"})
-    accepted = await clients.post("/invites/accept", json={"code": inv.json()["code"], "email": "plain@example.com"})
+    accepted = await accept_with_code(clients, json={"code": inv.json()["code"], "email": "plain@example.com"})
     assert accepted.status_code == 200, accepted.text
     headers = {"X-Treg-Token": accepted.json()["token"]}
     assert (await _settings(clients, org_id, headers))["archive"] is False
@@ -367,3 +367,268 @@ async def test_the_worker_command_erases_one_opted_out_team(clients: AsyncClient
     assert await worker._admin_erase_archive(argparse.Namespace(org=org_id)) == 0
     keys, _ = await _rows()
     assert keys == []
+
+
+# ---------------------------------------------------------------------------------------------
+# Running an erasure on a live database: count first, small passes, every statement capped
+
+async def _two_own_answers_and_a_mark(clients, monkeypatch) -> int:
+    _vendor_says(monkeypatch, OWN)
+    await _own_key(clients)
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"other": "bytes"}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    org_id = await _org_id(clients)
+    async with session_maker() as s:
+        s.add(ArchiveKeyOrg(org_id=org_id, key_hash="a" * 64))
+        await s.commit()
+    return org_id
+
+
+async def test_a_dry_run_counts_what_would_go_and_deletes_nothing(
+        clients: AsyncClient, own_key_serve, monkeypatch, capsys):
+    org_id = await _two_own_answers_and_a_mark(clients, monkeypatch)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)          # one key per pass: the cursor moves
+    expected = {"org_id": org_id, "opted_out": False, "keys": 2, "snapshots": 2, "bodies": 2, "marks": 1}
+    assert await archive_erasure.count_org(org_id) == expected
+    from treg import worker
+    import argparse
+    import json
+    import treg.infra.db as infra_db
+
+    async def verified():
+        return None
+    monkeypatch.setattr(infra_db, "verify_db", verified)
+    assert await worker._admin_erase_archive(argparse.Namespace(org=org_id, dry_run=True)) == 0
+    assert json.loads(capsys.readouterr().out) == expected
+    keys, _ = await _rows()
+    assert len(keys) == 2 and len(await _marks()) == 1
+
+    await _opt_out(clients, org_id)
+    assert (await archive_erasure.erase_org(org_id))["keys"] == 2
+    assert await archive_erasure.count_org(org_id) == {**expected, "opted_out": True, "keys": 0,
+                                                       "snapshots": 0, "bodies": 0, "marks": 0}
+
+
+async def test_erasure_caps_every_statement_on_postgres(clients: AsyncClient, own_key_serve, monkeypatch):
+    from sqlalchemy import event, text
+    org_id = await _two_own_answers_and_a_mark(clients, monkeypatch)
+    await _opt_out(clients, org_id)
+    engine = session_maker.kw["bind"].sync_engine
+    seen: list[str] = []
+    begins: list[int] = []
+
+    def record(conn, cursor, statement, *args):
+        seen.append(statement)
+
+    def began(conn):
+        begins.append(1)
+    event.listen(engine, "before_cursor_execute", record)
+    event.listen(engine, "begin", began)
+    try:
+        assert (await archive_erasure.erase_org(org_id))["keys"] == 2
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+        event.remove(engine, "begin", began)
+    caps = [s for s in seen if s.startswith("SET LOCAL statement_timeout")]
+    if engine.dialect.name != "postgresql":
+        assert caps == []
+        return
+    # Every transaction the erasure opens is capped, the opt-out check included.
+    assert len(caps) == len(begins) == 5
+    async with session_maker() as s:
+        await archive_erasure._bounded(s)
+        assert (await s.execute(text("SHOW statement_timeout"))).scalar_one() == "30s"
+
+
+async def test_sole_public_answers_go_on_request_and_shared_ones_stay(
+        clients: AsyncClient, serve, monkeypatch, capsys):
+    """A platform-key answer only this team paid for is erased with `include_sole_public`; one
+    another team also paid for stays, with that team's mark."""
+    import hashlib
+    store = MemoryObjectStore()
+    bootstrap.configure_archive_object_store(store)
+    monkeypatch.setattr(archive.get_settings(), "archive_body_write", "both")
+    try:
+        org_a = await _org_id(clients)
+        _vendor_says(monkeypatch, b'{"only": "a"}')
+        await clients.get(f"/call/{EP}?aweme_id=7")                     # A alone asks this
+        _vendor_says(monkeypatch, b'{"shared": 1}')
+        await clients.get(f"/call/{EP}?aweme_id=8")                     # A and, below, B
+        await archive.drain()
+        other = await verified_signup(clients, json={"email": "public-sharer@example.com"})
+        hb = {"X-Treg-Token": other.json()["token"]}
+        assert (await clients.get(f"/call/{EP}?aweme_id=8", headers=hb)).headers["X-Treg-Cache"] == "hit"
+        await archive.drain()
+        only_a = hashlib.sha256(b'{"only": "a"}').hexdigest()
+        shared = hashlib.sha256(b'{"shared": 1}').hexdigest()
+        assert {only_a, shared} <= set(store.objects)
+        await _opt_out(clients, org_a)
+
+        counted = await archive_erasure.count_org(org_a, include_sole_public=True)
+        assert (counted["public_keys"], counted["public_snapshots"], counted["keys"],
+                counted["marks"]) == (1, 1, 0, 2)
+        result = await archive_erasure.erase_org(org_a, include_sole_public=True)
+        assert (result["public_keys"], result["keys"], result["objects"]) == (1, 0, 1)
+
+        keys, snaps = await _rows()
+        assert len(keys) == 1 and [s.content_hash for s in snaps] == [shared]
+        assert only_a not in store.objects and shared in store.objects
+        assert [m.org_id for m in await _marks()] == [(await _org_id(clients, hb))]
+        async with session_maker() as s:
+            stat = (await s.execute(select(ArchiveEndpointStat).where(
+                ArchiveEndpointStat.endpoint_id == EP))).scalar_one()
+        assert (stat.keys, stat.snapshots) == (1, 1)
+        # B is still served the shared answer.
+        assert (await clients.get(f"/call/{EP}?aweme_id=8", headers=hb)).headers["X-Treg-Cache"] == "hit"
+    finally:
+        await archive.drain()
+        bootstrap.configure_archive_object_store(None)
+
+
+async def test_without_the_flag_public_answers_stay(clients: AsyncClient, serve):
+    org_a = await _org_id(clients)
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    counted = await archive_erasure.count_org(org_a)
+    assert "public_keys" not in counted and counted["marks"] == 1
+    assert await archive_erasure.erase_org(org_a) == {"org_id": org_a, "keys": 0, "objects": 0}
+    keys, _ = await _rows()
+    assert len(keys) == 1 and await _marks() == []
+
+
+async def test_a_concurrent_default_erasure_cannot_hide_sole_public_answers(
+        clients: AsyncClient, serve, monkeypatch):
+    """The public phase reads its candidates once, up front: a default erasure that deletes the
+    team's marks mid-run (an owner delete, a second worker) does not leave answers behind."""
+    from treg.domain.governance.teams import erase_archive_rows
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def marks_go_mid_run(hashes):
+        if not calls:
+            async with session_maker() as s:
+                await erase_archive_rows(s, org_a, [])
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", marks_go_mid_run)
+    result = await archive_erasure.erase_org(org_a, include_sole_public=True)
+    assert result["public_keys"] == 2
+    keys, snaps = await _rows()
+    assert keys == [] and snaps == []
+
+
+async def test_a_candidate_another_team_pays_for_mid_run_stays(clients: AsyncClient, serve, monkeypatch):
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    keys, _ = await _rows()
+    later = max(keys, key=lambda k: k.id)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def another_team_pays(hashes):
+        if not calls:
+            async with session_maker() as s:
+                s.add(ArchiveKeyOrg(org_id=org_a + 1000, key_hash=later.key_hash))
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", another_team_pays)
+    assert (await archive_erasure.erase_org(org_a, include_sole_public=True))["public_keys"] == 1
+    keys, _ = await _rows()
+    assert [k.id for k in keys] == [later.id]
+
+
+async def test_sole_public_candidates_are_read_a_page_of_marks_at_a_time(
+        clients: AsyncClient, serve, monkeypatch):
+    org_a = await _org_id(clients)
+    for n in (7, 8, 9):
+        _vendor_says(monkeypatch, b'{"q": %d}' % n)
+        await clients.get(f"/call/{EP}?aweme_id={n}")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_MARK_PAGE", 2)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 2)
+    assert (await archive_erasure.count_org(org_a, include_sole_public=True))["public_keys"] == 3
+    seen: list[dict] = []
+    result = await archive_erasure.erase_org(org_a, include_sole_public=True, progress=seen.append)
+    assert result["public_keys"] == 3
+    assert [(p["phase"], p["keys"], p["candidates_left"]) for p in seen] == [
+        ("public", 2, 1), ("public", 3, 0)]
+    keys, snaps = await _rows()
+    assert keys == [] and snaps == [] and await _marks() == []
+
+
+async def test_marks_that_vanish_while_candidates_are_read_stop_the_job(
+        clients: AsyncClient, serve, monkeypatch):
+    from treg.domain.governance.teams import erase_archive_rows
+    org_a = await _org_id(clients)
+    for n in (7, 8):
+        _vendor_says(monkeypatch, b'{"q": %d}' % n)
+        await clients.get(f"/call/{EP}?aweme_id={n}")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_MARK_PAGE", 1)
+    real = archive_erasure.archive_mark_hashes
+
+    async def a_concurrent_erasure(db, org_id, **kw):
+        page = await real(db, org_id, **kw)
+        async with session_maker() as s:
+            await erase_archive_rows(s, org_a, [])
+            await s.commit()
+        return page
+    monkeypatch.setattr(archive_erasure, "archive_mark_hashes", a_concurrent_erasure)
+    with pytest.raises(RuntimeError, match="another erasure is running"):
+        await archive_erasure.erase_org(org_a, include_sole_public=True)
+    keys, snaps = await _rows()
+    assert len(keys) == 2 and len(snaps) == 2
+
+
+async def test_erasure_moves_endpoint_totals_in_endpoint_order(monkeypatch):
+    """`archive.flush_stats` locks the same rows in endpoint order; erasure must too, or the two
+    deadlock."""
+    from sqlalchemy import event
+    from treg.domain.governance.teams import erase_archive_keys
+    from treg.models import ArchiveKey, ArchiveSnapshot
+    async with session_maker() as s:
+        ids = []
+        for ep in ("zz.order", "aa.order", "mm.order"):
+            s.add(ArchiveEndpointStat(endpoint_id=ep, keys=1, snapshots=1))
+            key = ArchiveKey(key_hash=f"h-{ep}", endpoint_id=ep)
+            s.add(key)
+            await s.flush()
+            s.add(ArchiveSnapshot(key_id=key.id, content_hash=f"c-{ep}"))
+            ids.append(key.id)
+        await s.commit()
+    engine = session_maker.kw["bind"].sync_engine
+    order: list[str] = []
+
+    def record(conn, cursor, statement, params, *args):
+        if statement.startswith("UPDATE archiveendpointstat"):
+            order.append(next(p for p in (params.values() if isinstance(params, dict) else params)
+                              if isinstance(p, str) and p.endswith(".order")))
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        async with session_maker() as s:
+            assert await erase_archive_keys(s, ids) == 3
+            await s.commit()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert order == ["aa.order", "mm.order", "zz.order"]

@@ -34,6 +34,12 @@ log = logging.getLogger("treg.capacity")
 _FORBIDDEN_IN_NOTE = ("key", "token", "secret", "bearer", "sk_", "password")
 
 
+def state_key(provider: str) -> str:
+    """The `capacity:state` key for a provider in either spelling: the account's Settings slot
+    (`fiber-ai` -> `fiber_ai`), the one the sweep publishes under."""
+    return platform_setting_name(provider).removeprefix("platform_key_")
+
+
 def _has_key(provider: str) -> bool:
     if provider.startswith("overflow:"):
         return bool(getattr(get_settings(), f"overflow_key_{provider.split(':', 1)[1]}", ""))
@@ -101,7 +107,7 @@ async def run_sweep(db: AsyncSession, *, client: httpx.AsyncClient | None = None
         snaps.append(snap)
         state = latest_state(policies[provider], snap, now)
         states[provider] = state
-        await ratestore.kv_put(db, STATE_NS, provider, state.to_json(), ttl_s=STATE_TTL_S)
+        await ratestore.kv_put(db, STATE_NS, state_key(provider), state.to_json(), ttl_s=STATE_TTL_S)
     await db.commit()
     for p in unknown:
         log.warning("capacity policy for %s imported as unknown — classify it", p)

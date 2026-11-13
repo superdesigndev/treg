@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import gzip
+import zlib
 from urllib.parse import urlsplit
 
+import anyio
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from starlette.datastructures import MutableHeaders
+from starlette.datastructures import Headers, MutableHeaders
 
+from . import client_notice
 from .config import LEGACY_PUBLIC_HOSTS, get_settings
 from .domain.identity import session as sess
 
@@ -96,6 +99,35 @@ class _SecurityHeadersMiddleware:
         return await self.app(scope, receive, send_with_security_headers)
 
 
+class _ClientNoticeMiddleware:
+    """Answers a CLI that sends `X-Treg-Client-Version` with `X-Treg-Client-Notice` when the
+    operator's `cli_latest_version` or `cli_min_version` says it is behind (client_notice.py)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        settings = get_settings()
+        if not (settings.cli_latest_version or settings.cli_min_version):
+            return await self.app(scope, receive, send)
+        version = next((v.decode("latin-1") for k, v in scope.get("headers", [])
+                        if k == b"x-treg-client-version"), "")
+        text = client_notice.notice(version, latest=settings.cli_latest_version,
+                                    minimum=settings.cli_min_version)
+        if not text:
+            return await self.app(scope, receive, send)
+
+        async def send_with_notice(message):
+            if message["type"] == "http.response.start":
+                message = dict(message, headers=list(message.get("headers", [])))
+                MutableHeaders(scope=message)[client_notice.NOTICE_HEADER] = text
+            await send(message)
+
+        return await self.app(scope, receive, send_with_notice)
+
+
 class _DevTitleMiddleware:
     """On a local dev server, every page's `<title>` starts with "[dev] ", so its browser tab is told
     apart from treg.to's at a glance. Registered only when `Settings.local_dev` holds; it buffers an
@@ -131,6 +163,93 @@ class _DevTitleMiddleware:
             await send({"type": "http.response.body", "body": html})
 
         return await self.app(scope, receive, send_marked)
+
+
+_GZIP_TYPES = ("text/", "application/json", "application/x-ndjson", "application/javascript",
+               "application/xml", "image/svg+xml")
+_GZIP_MIN_BYTES = 1024
+_GZIP_LEVEL = 4
+_GZIP_THREAD_BYTES = 64 * 1024
+_GZIP_THREADS = anyio.CapacityLimiter(4)
+
+
+def _accepts_gzip(scope) -> bool:
+    for key, value in scope["headers"]:
+        if key == b"accept-encoding":
+            for item in value.decode("latin-1").lower().replace(" ", "").split(","):
+                coding, _, q = item.partition(";q=")
+                if coding == "gzip":
+                    try:
+                        return float(q or 1) > 0
+                    except ValueError:
+                        return False
+    return False
+
+
+def _gzippable(status: int, headers: Headers) -> bool:
+    ctype = headers.get("content-type", "").lower()
+    length = headers.get("content-length", "")
+    return (status not in (204, 206, 304)
+            and not (length.isdigit() and int(length) < _GZIP_MIN_BYTES)
+            and "content-encoding" not in headers
+            and "content-range" not in headers
+            and "no-transform" not in headers.get("cache-control", "").lower()
+            and not ctype.startswith("text/event-stream")
+            and (ctype.startswith(_GZIP_TYPES) or "+json" in ctype or "+xml" in ctype))
+
+
+def _deflate_now(encoder, body: bytes, more: bool) -> bytes:
+    return encoder.compress(body) + encoder.flush(zlib.Z_SYNC_FLUSH if more else zlib.Z_FINISH)
+
+
+async def _deflate(encoder, body: bytes, more: bool) -> bytes:
+    if len(body) < _GZIP_THREAD_BYTES:
+        return _deflate_now(encoder, body, more)
+    return await anyio.to_thread.run_sync(_deflate_now, encoder, body, more, limiter=_GZIP_THREADS)
+
+
+class _GzipResponseMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not _accepts_gzip(scope):
+            return await self.app(scope, receive, send)
+        start: dict | None = None
+        encoder = None
+
+        async def send_gzipped(message):
+            nonlocal start, encoder
+            if message["type"] == "http.response.start":
+                if _gzippable(message["status"], Headers(raw=message.get("headers", []))):
+                    start = message
+                    return None
+                return await send(message)
+            if start is None and encoder is None:
+                return await send(message)
+            body, more = message.get("body", b""), message.get("more_body", False)
+            if encoder is None:
+                begin, start = dict(start, headers=list(start.get("headers", []))), None
+                if message["type"] != "http.response.body" or (not more and len(body) < _GZIP_MIN_BYTES):
+                    await send(begin)
+                    return await send(message)
+                encoder = zlib.compressobj(_GZIP_LEVEL, zlib.DEFLATED, 31)
+                data = await _deflate(encoder, body, more)
+                headers = MutableHeaders(scope=begin)
+                headers["content-encoding"] = "gzip"
+                headers.add_vary_header("Accept-Encoding")
+                if headers.get("etag", "").startswith('"'):
+                    headers["etag"] = "W/" + headers["etag"]
+                if more:
+                    del headers["content-length"]
+                else:
+                    headers["content-length"] = str(len(data))
+                await send(begin)
+                return await send({"type": "http.response.body", "body": data, "more_body": more})
+            data = await _deflate(encoder, body, more)
+            return await send({"type": "http.response.body", "body": data, "more_body": more})
+
+        return await self.app(scope, receive, send_gzipped)
 
 
 _BODY_ENC_HEADER = b"x-treg-body-encoding"
