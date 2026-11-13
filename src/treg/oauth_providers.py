@@ -3010,6 +3010,35 @@ FIRECRAWL = OAuthProvider(
     probe_path="/v2/team/credit-usage",
 )
 
+HYDRAFETCH = OAuthProvider(
+    service="hydrafetch",
+    display_name="Hydrafetch",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hf_…",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://app.hydrafetch.com/keys",
+    setup_action_label="Get your Hydrafetch API key",
+    setup_steps=(
+        "Sign in to Hydrafetch and open API Keys.",
+        "Create a secret key and copy it.",
+    ),
+    setup_note=(
+        "Scrape, Search, News, Map, Crawl, Batch, Extract, Screenshot, Brand and Jobs spend "
+        "Hydrafetch credits only on a successful result. Connecting checks a free job lookup."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Scrape pages to markdown, search the web and news, map and crawl sites, and read company brands.",
+    base_url="https://api.hydrafetch.com",
+    docs_url="https://docs.hydrafetch.com",
+    probe_path="/v1/web/jobs/00000000-0000-7000-8000-000000000000",
+    probe_reject_statuses=(401, 403),
+)
+
 CRAWL4AI = OAuthProvider(
     service="crawl4ai",
     display_name="Crawl4AI",
@@ -4289,7 +4318,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, HYDRAFETCH, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
