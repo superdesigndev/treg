@@ -33,6 +33,11 @@
     },
     {
       "args": [],
+      "class": "treg.bootstrap_http._GzipResponseMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
       "class": "treg.infra.org_traffic.RequestLogMiddleware",
       "kwargs": {}
     },

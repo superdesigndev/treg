@@ -109,7 +109,8 @@ def test_segment_records_every_category_and_no_raw_value():
         "title_function": "executive", "title_seniority": "c_level_founder", "title_lang": "non_en",
         "title_words": "1-2", "has_location": "true", "location_kind": "region",
         "limit_bucket": ">25", "q_words": "none", "q_lang": "none", "q_has_place": "none",
-        "name_given": "false", "has_keywords": "true", "segments_version": S.PEOPLE_SEARCH.version,
+        "name_given": "false", "has_keywords": "true", "company_given": "true",
+        "segments_version": S.PEOPLE_SEARCH.version,
     }
     named = ev.segment(_contract(), {"full_name": "Ann Lee", "q": "ann lee at acme in Paris"})[1]
     for raw in ("geschäftsführer", "bavaria", "acme", "ann", "paris", "saas"):
@@ -120,6 +121,7 @@ def test_segment_records_every_category_and_no_raw_value():
         assert all(checks[k](v) for k, v in m.items() if k != "segments_version")
     assert "segments_version" not in checks
     assert named["name_given"] == "true" and named["limit_bucket"] == "6-10"  # the contract default
+    assert named["company_given"] == "false"
 
 
 def test_a_contract_without_a_segment_set_records_none():
@@ -376,3 +378,14 @@ def test_a_title_list_is_a_complete_request_and_records_its_categories():
 def test_a_request_read_back_into_no_variant_records_no_request_categories():
     _, meta, _ = ev.segment(_contract(), {"limit": 5})
     assert meta == {}
+
+
+def test_web_search_records_contents_so_a_route_rule_can_ask_exa_for_passages():
+    contracts = catalog_store.load().contracts
+    web = contracts["web.search"]
+    assert ev.segment(web, {"q": "best crm", "contents": True})[1] == {"contents": "true"}
+    assert ev.segment(web, {"q": "best crm", "contents": False})[1] == {"contents": "false"}
+    assert ev.segment(web, {"q": "best crm"})[1] == {}
+    rule = {"id": "web-search-contents", "capability": "web.search", "match": {"contents": "true"},
+            "order": ["exa"]}
+    R.check_against(R.parse(_envelope(rule)), contracts, reader_app._servers_of, ev.segment_checks)

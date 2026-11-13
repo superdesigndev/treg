@@ -46,6 +46,17 @@ adapters:
     # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
     out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
     miss: "found_email == null"
+  filtrat-finder.companies.enrich:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.url}
+    const: {body.mode: json}
+    # Read live from the page; the extras (type, followers, specialties, locations, phone, social)
+    # ride in raw.
+    out: {name: company.name, domain: company.domain, website: company.website,
+          description: company.description, industry: company.industry,
+          employees: "coalesce(fmt('{}', company.employees), company.size)",
+          location: company.headquarters, linkedin_url: url}
+    miss: "status != 'found'"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
@@ -3662,17 +3673,37 @@ adapters:
 
   # BlitzAPI shares these lookup and search contracts. Its other routes need a company LinkedIn
   # URL, a provider-specific cascade, or a result shape that no current contract accepts.
+  crawl4ai.people.email.find:
+    accepts: [[linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, full_name: queryParams.name,
+         domain: queryParams.domain}
+    out: {email: data.email.value, verified: "data.email.status == 'valid'"}
+    miss: "data.email.value == null"
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     # `found` reports a hit, not a deliverability check; the body carries no verification status.
     out: {email: email}
     miss: "found == false"
+  crawl4ai.people.phone.find:
+    accepts: [[linkedin_url], [linkedin_handle], [email], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, email: queryParams.email,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {phone: data.phone.value, line_type: data.phone.line}
+    miss: "data.phone.value == null"
   blitzapi.people.phone.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     out: {phone: phone}
     miss: "found == false"
+  crawl4ai.people.enrich:
+    accepts: [[email], [linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {email: queryParams.email, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {full_name: data.name, first_name: data.first_name, last_name: data.last_name, title: data.title,
+          company: data.company.name, company_domain: data.company.domain, linkedin_url: data.linkedin_url,
+          location: "join(data.location.city, data.location.country_code)"}
+    miss: "data == null"
   blitzapi.people.enrich:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
