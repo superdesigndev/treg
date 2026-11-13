@@ -99,6 +99,17 @@ test('Astra sign-in uses the same SSO mode switch', async ({ page }) => {
   await expect(dialog.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible()
 })
 
+test('remaining public sign-in dialogs offer company SSO last', async ({ page }) => {
+  for (const path of ['/rea-growth', '/social']) {
+    await page.goto(path)
+    const dialog = page.locator('#signin-scrim .smodal')
+    await expect(dialog.locator('button.treg-signin-method', { hasText: 'Company SSO' })).toHaveCount(1)
+    const methods = await dialog.locator('a[href^="/auth/"], button').allTextContents()
+    expect(methods.indexOf('GitHub')).toBeLessThan(methods.indexOf('Google'))
+    expect(methods.indexOf('Google')).toBeLessThan(methods.indexOf('Company SSO'))
+  }
+})
+
 test('Arena sign-in dialogs keep email code primary and submit SSO with Enter', async ({ page }) => {
   await page.route('**/auth/sso/discover', route => route.fulfill(json({ teams: [] })))
   let checked = 0
