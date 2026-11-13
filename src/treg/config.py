@@ -449,6 +449,7 @@ class Settings(BaseSettings):
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
     platform_key_crawl4ai: str = ""
     platform_key_firecrawl: str = ""  # Bearer; Standard plan credits, priced at the public base-plan rate
+    platform_key_hydrafetch: str = ""  # X-API-Key; plan credits, charged only on a successful result
     platform_key_scrapegraphai: str = ""  # SGAI-APIKEY; credit balance and bounded v2 web tools
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
     platform_key_perplexity: str = ""    # Bearer; prepaid USD credits, no documented balance API

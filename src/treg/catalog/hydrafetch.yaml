@@ -1,0 +1,368 @@
+provider: hydrafetch
+source:
+  docs: https://docs.hydrafetch.com
+  openapi: https://api.hydrafetch.com/openapi.json
+  curated: '2026-11-13'
+limits: "Per-workspace rate limit by plan: 30 requests/minute on Build, 45 on Pilot, 60 on Ship, 120 on Scale, 240 on Fleet; 429 with Retry-After past it. Credits are prepaid per plan cycle; 402 when a request would need more than remain, and nothing is charged."
+pricing_url: https://hydrafetch.com/pricing
+proposed_capabilities:
+  companies.brand.assets: "Logos, brand colors and imagery for a company domain"
+  companies.brand.styleguide: "Extract a site's design system: colors, type scale, spacing, components"
+  web.extract.batch.status: "Read a batch scrape's progress and results"
+defaults:
+  provenance: {source: docs, source_url: 'https://hydrafetch.com/pricing', checked: '2026-11-13', confidence: documented}
+  expect: {path: response.success, op: equals, value: true}
+
+endpoints:
+  - id: hydrafetch.web.scrape
+    added: '2026-11-13'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/web/scrape
+    name: Scrape a page to markdown
+    summary: Read one URL and return its main content as clean markdown, with title, metadata and optional HTML, links and structured data.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        formats: {type: "array[string]", required: false, note: "markdown (default), html, rawHtml, links, structured, summary, json", example: ["markdown"]}
+        onlyMainContent: {type: boolean, required: false, default: true}
+        maxAge: {type: integer, required: false, min: 0, max: 604800000, note: "Serve a stored capture younger than this many milliseconds; 0 reads the page now."}
+        render: {type: boolean, required: false, default: false, note: "Always read the page in a browser."}
+        location: {type: object, required: false, note: "{country: US} or {country: DE} reads the page from that country."}
+        timeout: {type: integer, required: false, min: 1000, max: 100000}
+    test_request: {body: {url: "https://example.com", formats: [markdown]}}
+    price: {value: '1', currency: credit, unit: call, note: "The summary format adds 1 credit and the json format 4."}
+    miss: {status: [404, 422], means: "404: the page does not exist; 422: the site did not respond or the page could not be read. Nothing is charged."}
+    docs_url: https://docs.hydrafetch.com/endpoints/scrape
+
+  - id: hydrafetch.web.search
+    added: '2026-11-13'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/web/search
+    name: Search the web
+    summary: Search the web and return ranked results with title, URL and snippet, filterable by domain, country and recency.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "open source vector databases"}
+        limit: {type: integer, required: false, min: 1, max: 15, example: 5}
+        timeRange: {type: string, required: false, enum: [day, week, month, year]}
+        country: {type: string, required: false, note: "ISO 3166 alpha-2 code to bias results toward a region."}
+        includeDomains: {type: "array[string]", required: false}
+        excludeDomains: {type: "array[string]", required: false}
+        scrapeResults: {type: boolean, required: false, enum: [false], note: "Page reads are a separate call to hydrafetch.web.scrape or hydrafetch.web.batch."}
+    test_request: {body: {query: "open source vector databases", limit: 3}}
+    price: {value: '1', currency: credit, unit: call}
+    miss: {when: {path: response.data.results, op: empty}}
+    docs_url: https://docs.hydrafetch.com/endpoints/search
+
+  - id: hydrafetch.web.search.news
+    added: '2026-11-13'
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/web/news
+    name: Search the news
+    summary: Find recent news articles about a query, newest first, with publisher, date and snippet.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "AI chip export rules"}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 50, example: 5}
+        timeRange: {type: string, required: false, default: week, enum: [hour, day, week, month]}
+        country: {type: string, required: false, note: "ISO 3166 alpha-2 code to lean toward that edition."}
+        includeDomains: {type: "array[string]", required: false}
+        excludeDomains: {type: "array[string]", required: false}
+        scrapeResults: {type: boolean, required: false, enum: [false], note: "Article reads are a separate call to hydrafetch.web.scrape or hydrafetch.web.batch."}
+    test_request: {body: {query: "AI chip export rules", limit: 3, timeRange: week}}
+    price: {value: '1', currency: credit, unit: call}
+    miss: {when: {path: response.data.results, op: empty}}
+    docs_url: https://docs.hydrafetch.com/endpoints/news
+
+  - id: hydrafetch.web.map
+    added: '2026-11-13'
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /v1/web/map
+    name: Map a site's URLs
+    summary: List the URLs of a site from its sitemaps and links, newest first, with search, paging and subdomain options.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        limit: {type: integer, required: false, min: 1, max: 5000, example: 50}
+        search: {type: string, required: false, note: "Keep only URLs containing this term."}
+        sitemap: {type: string, required: false, enum: [skip, include, only]}
+        includeSubdomains: {type: boolean, required: false, default: false}
+        offset: {type: integer, required: false, min: 0, max: 100000}
+    test_request: {body: {url: "https://example.com", limit: 10}}
+    price: {value: '1', currency: credit, unit: call}
+    miss: {when: {path: response.data.links, op: empty}}
+    docs_url: https://docs.hydrafetch.com/endpoints/map
+
+  - id: hydrafetch.web.crawl
+    added: '2026-11-13'
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /v1/web/crawl
+    name: Crawl a website
+    summary: Start a crawl from a URL that follows links within the site and returns every page as markdown.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        limit: {type: integer, required: false, min: 1, max: 500, example: 5}
+        maxDepth: {type: integer, required: false, min: 0, max: 10, example: 1}
+        includePaths: {type: "array[string]", required: false, note: "Regex patterns a URL path must match; they apply to the starting URL too."}
+        excludePaths: {type: "array[string]", required: false}
+        allowSubdomains: {type: boolean, required: false, default: false}
+        sitemap: {type: string, required: false, enum: [skip, include]}
+    test_request: {body: {url: "https://example.com", limit: 1, maxDepth: 0}}
+    price: {value: '1', currency: credit, per: 1, unit: page, note: "A page that could not be read costs 0; the status reports creditsUsed."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 500}}
+    docs_url: https://docs.hydrafetch.com/endpoints/crawl
+    async:
+      id_from: crawlId
+      poll:
+        endpoint: hydrafetch.web.crawl.status
+        param: {in: pathParams, name: id}
+      status:
+        path: data.status
+        progress: [running]
+        success: [completed]
+        failure: []
+        billed_failure: [failed, cancelled]
+      result: {path: data.pages}
+      interval: 5
+
+  - id: hydrafetch.web.crawl.status
+    added: '2026-11-13'
+    kind: utility
+    capability: web.crawl.status
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: GET
+    path: /v1/web/crawl/{id}
+    name: Get a crawl's status and pages
+    summary: Read a crawl's progress, credits used and the markdown of every page read so far.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "crawlId returned when the crawl started."}
+    resource_ownership:
+      requires: {kind: "poll:hydrafetch.web.crawl.status", param: id}
+    untestable: "Needs the id of a crawl started by the same key."
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.hydrafetch.com/endpoints/crawl
+
+  - id: hydrafetch.web.batch
+    added: '2026-11-13'
+    capability: web.extract.batch
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/web/batch
+    name: Scrape a list of URLs
+    summary: Start a batch that reads a list of URLs and returns each page as markdown.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, maxItems: 1000, example: ["https://example.com", "https://example.org"]}
+        scrapeOptions: {type: object, required: false, note: "The same options as hydrafetch.web.scrape, applied to every URL."}
+    test_request: {body: {urls: ["https://example.com"]}}
+    price: {value: '1', currency: credit, per: 1, unit: page, note: "A page that could not be read costs 0; the status reports creditsUsed."}
+    docs_url: https://docs.hydrafetch.com/endpoints/batch
+    async:
+      id_from: batchId
+      poll:
+        endpoint: hydrafetch.web.batch.status
+        param: {in: pathParams, name: id}
+      status:
+        path: data.status
+        progress: [running]
+        success: [completed]
+        failure: []
+        billed_failure: [failed, cancelled]
+      result: {path: data.pages}
+      interval: 5
+
+  - id: hydrafetch.web.batch.status
+    added: '2026-11-13'
+    kind: utility
+    capability: web.extract.batch.status
+    platform: web
+    domain: extract
+    scope: any_account
+    method: GET
+    path: /v1/web/batch/{id}
+    name: Get a batch's status and pages
+    summary: Read a batch's progress, credits used and the markdown of every page read so far.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "batchId returned when the batch started."}
+    resource_ownership:
+      requires: {kind: "poll:hydrafetch.web.batch.status", param: id}
+    untestable: "Needs the id of a batch started by the same key."
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.hydrafetch.com/endpoints/batch
+
+  - id: hydrafetch.web.extract.structured
+    added: '2026-11-13'
+    capability: web.extract.structured
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/web/extract
+    name: Extract structured data from pages
+    summary: Pull the fields a JSON Schema or prompt describes from one or more pages, with sources and per-field confidence.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, maxItems: 10, example: ["https://example.com"]}
+        schema: {type: object, required: false, note: "JSON Schema of the result; schema or prompt is required."}
+        prompt: {type: string, required: false, example: "The page title and the main heading"}
+        showSources: {type: boolean, required: false, default: false}
+        showConfidence: {type: boolean, required: false, default: false}
+    test_request: {body: {urls: ["https://example.com"], prompt: "The page title and the main heading"}}
+    price: {value: '5', currency: credit, per: 1, unit: page, note: "Charged per URL extracted; a URL that could not be read costs 0."}
+    miss: {when: {path: response.data.results, op: empty}}
+    docs_url: https://docs.hydrafetch.com/endpoints/extract
+
+  - id: hydrafetch.web.screenshot
+    added: '2026-11-13'
+    capability: web.screenshot
+    platform: web
+    domain: screenshot
+    scope: any_account
+    method: POST
+    path: /v1/web/screenshot
+    name: Screenshot a page
+    summary: Capture a rendered page as an image at a chosen viewport, viewport-only or full page.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        fullPage: {type: boolean, required: false, default: false}
+        viewport: {type: string, required: false, enum: [desktop, laptop, tablet, mobile], default: desktop}
+        waitFor: {type: integer, required: false, min: 0, max: 30000}
+    test_request: {body: {url: "https://example.com", viewport: desktop}}
+    price: {value: '5', currency: credit, unit: call}
+    miss: {status: [422], means: "The page could not be loaded; nothing is charged."}
+    docs_url: https://docs.hydrafetch.com/endpoints/screenshot
+
+  - id: hydrafetch.companies.brand
+    added: '2026-11-13'
+    capability: companies.brand.assets
+    platform: companies
+    domain: brand
+    scope: any_account
+    method: GET
+    path: /v1/web/brand
+    name: Get a company's brand
+    summary: Resolve a company domain to its name, description, logos for light and dark backgrounds, colours, fonts, socials and contact details.
+    input:
+      queryParams:
+        domain: {type: string, required: true, example: "stripe.com"}
+    test_request: {queryParams: {domain: "stripe.com"}}
+    price: {value: '5', currency: credit, unit: call, note: "A domain that does not resolve to a brand costs 0."}
+    docs_url: https://docs.hydrafetch.com/endpoints/brand
+
+  - id: hydrafetch.companies.logo
+    added: '2026-11-13'
+    capability: companies.brand.assets
+    platform: companies
+    domain: brand
+    scope: any_account
+    method: GET
+    path: /v1/web/brand/logo
+    name: Get a company's logo
+    summary: Return a direct, embeddable image URL for a company's icon or wordmark, chosen for a light or dark background.
+    input:
+      queryParams:
+        domain: {type: string, required: true, example: "stripe.com"}
+        theme: {type: string, required: false, default: light, enum: [light, dark, auto]}
+        type: {type: string, required: false, default: icon, enum: [icon, wordmark]}
+    test_request: {queryParams: {domain: "stripe.com", theme: light, type: icon}}
+    price: {value: '1', currency: credit, unit: call, note: "A domain with no logo costs 0."}
+    docs_url: https://docs.hydrafetch.com/endpoints/brand-logo
+
+  - id: hydrafetch.companies.styleguide
+    added: '2026-11-13'
+    capability: companies.brand.styleguide
+    platform: companies
+    domain: brand
+    scope: any_account
+    method: GET
+    path: /v1/web/styleguide
+    name: Read a site's design system
+    summary: Read the colours by role, type scale, radius, buttons and component styles a site paints, from computed styles.
+    input:
+      queryParams:
+        domain: {type: string, required: false, example: "stripe.com", note: "Reads the homepage; domain or url is required."}
+        url: {type: string, required: false, note: "One page to read instead of the homepage."}
+        maxAge: {type: integer, required: false, min: 0}
+    test_request: {queryParams: {domain: "stripe.com"}}
+    price: {value: '10', currency: credit, unit: call, note: "A site that could not be read costs 0."}
+    docs_url: https://docs.hydrafetch.com/endpoints/styleguide
+
+  - id: hydrafetch.companies.jobs.search
+    added: '2026-11-13'
+    capability: companies.jobs.search
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /v1/web/index/jobs/search
+    name: Search open jobs across career sites
+    summary: Search open jobs collected from company career sites and hiring platforms by title words, location, remote and recency.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "platform engineer", note: "Every word must appear in the job title."}
+        location: {type: string, required: false, example: "Berlin"}
+        remoteOnly: {type: boolean, required: false, default: false}
+        postedWithinDays: {type: integer, required: false, min: 1, max: 365}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, example: 10}
+        includeDescriptions: {type: boolean, required: false, default: false}
+    test_request: {body: {query: "platform engineer", limit: 10}}
+    price: {value: '1', currency: credit, per: 10, unit: result, note: "1 credit per 10 jobs returned, rounded up; no jobs costs 0."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.data}}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://docs.hydrafetch.com/endpoints/jobs-search
+
+  - id: hydrafetch.account.jobs.get
+    kind: account
+    added: '2026-11-13'
+    capability: account.jobs.get
+    platform: account
+    domain: jobs
+    scope: own_account
+    method: GET
+    path: /v1/web/jobs/{id}
+    name: Get a call that is still running
+    summary: Read a call that answered 202, returning its status and, once completed, the call's own answer.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "jobId from the 202 answer."}
+    untestable: "Needs the jobId of a call made by the same key that answered 202."
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.hydrafetch.com/endpoints/jobs
