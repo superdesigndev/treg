@@ -386,6 +386,12 @@ cookie-authenticated mutation.
 included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
 ([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
 
+**Response encoding**: `_GzipResponseMiddleware` gzips a text, JSON or XML answer of at least
+1 KiB for a client whose `Accept-Encoding` takes gzip, flushing every streamed chunk so a stream
+still arrives as it is produced. An answer already carrying a
+`Content-Encoding`, an event stream, a partial (206) or `no-transform` answer and binary types
+pass untouched. "Byte for byte" anywhere in these docs means the body after content decoding.
+
 ## Views
 
 A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
