@@ -497,11 +497,10 @@ class Invite(SQLModel, table=True):
     """A one-time invite code (no email server yet). An admin creates it and shares the code
     (Slack/DM); the invitee redeems it and mints their own org-scoped token. (Used by PR2.)
 
-    TWO secrets, deliberately split: `code_hash` is the admin-visible out-of-band code (returned
-    from POST /orgs/{id}/invites so it can be relayed via Slack/DM) — it lets you JOIN but never
-    signs you in, because the admin provably holds it. `email_token_hash` is a second secret that
-    ONLY travels inside the invite email's link: possession proves inbox access (the same bar as
-    the emailed OTP), so /auth/invite-signin may mint a session from it. One-time: nulled on use.
+    TWO secrets: `code_hash` is the admin-visible out-of-band code (returned from
+    POST /orgs/{id}/invites so it can be relayed via Slack/DM); `email_token_hash` travels only in
+    the invite email's link. Neither signs anyone in: the code names the invite for a signed-in
+    invitee, and the link only prefills the invitee's address on the login page.
     """
 
     id: int | None = Field(default=None, primary_key=True)
@@ -509,7 +508,7 @@ class Invite(SQLModel, table=True):
     email: str = Field(index=True)
     role: str = Field(default="member")
     code_hash: str = Field(index=True)
-    email_token_hash: str | None = Field(default=None, index=True)  # inbox-only sign-in secret (see docstring)
+    email_token_hash: str | None = Field(default=None, index=True)  # the emailed link's lookup key (see docstring)
     status: str = Field(default="pending")  # pending | accepted | revoked
     invited_by: str = Field(default="")  # inviter email (audit)
     expires_at: NaiveUTC | None = Field(default=None)  # one-time AND time-bounded; None = never
