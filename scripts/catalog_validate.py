@@ -1568,13 +1568,17 @@ def check_routing(errors: list[str]) -> None:
     """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
     from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts, retired_contract_keys
 
-    for problem in retired_contract_keys(schema.read_yaml(CATALOG / "contracts.yaml") or {}):
-        fail(errors, "contracts.yaml", problem)
     for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
         try:
-            parse(schema.read_yaml(CATALOG / name) or {})
+            doc = schema.read_yaml(CATALOG / name) or {}
+            parse(doc)
         except (ValueError, TypeError, AttributeError) as exc:
             fail(errors, name, f"does not parse: {exc}")
+            continue
+        if name == "contracts.yaml":
+            # The loader skips a retired key so an older catalog still loads; the shipped one may not carry it.
+            for problem in retired_contract_keys(doc):
+                fail(errors, name, problem)
 
 
 def check_manifests(errors: list[str]) -> None:
