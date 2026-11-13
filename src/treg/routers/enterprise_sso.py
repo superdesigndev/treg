@@ -76,20 +76,7 @@ async def sso_domains(org_id: int, caller: Caller = Depends(require_member)) -> 
     if not settings.workos_api_key:
         raise HTTPException(503, "WorkOS is not configured")
     try:
-        _, config = await enterprise_sso.configured_team(org_id)
-        if not config.workos_org_id:
-            return {"status": "not_started", "domains": []}
-        async with httpx.AsyncClient() as client:
-            organization = await workos.get_organization(client, key=settings.workos_api_key,
-                organization=config.workos_org_id)
-        if organization.get("external_id") != str(org_id):
-            raise workos.WorkOSError("WorkOS organization does not belong to this team")
-        domains = [{"domain": item["domain"], "state": item["state"]}
-                   for item in (organization.get("domains") or [])
-                   if isinstance(item, dict) and isinstance(item.get("domain"), str)
-                   and item.get("state") in {"verified", "pending", "failed"}]
-        states = {item["state"] for item in domains}
-        status = next((state for state in ("verified", "pending", "failed") if state in states), "not_started")
+        status, domains = await enterprise_sso.domain_status(org_id, workos_api_key=settings.workos_api_key)
         return {"status": status, "domains": domains}
     except (enterprise_sso.EnterpriseSSOError, workos.WorkOSError) as exc:
         raise HTTPException(422, str(exc)) from exc
