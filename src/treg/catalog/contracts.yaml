@@ -367,7 +367,6 @@ contracts:
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
-    prefer: [crawl4ai]
 
   people.search:
     summary: "Find people by a free-text description, or by company domain / title / country — one row per person in `people`, its `summary` the provider's evidence to check a brief against"
@@ -393,11 +392,9 @@ contracts:
     # {company_domain, q} by company alone and is dropped; icypeas answers {q, title}.
     scoping: [company_domain, title, full_name, q]
     carried_by: {q: [title]}
-    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
-    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
-    # those adapters append them to q themselves. No domain: they fold a domain into a q the
-    # caller wrote, but a {company_domain} or {company_domain, title} request still skips them.
-    stand_in: {q: "join(full_name, title, location)"}
+    # exa and parallel take only {q}: a sentence from the caller's fields lets them answer the rest.
+    stand_in: {q: "people_text(full_name, title, company_domain, location, country_name(country))"}
+    stand_in_carries: {q: [full_name, title, company_domain, location, country]}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
@@ -428,19 +425,8 @@ contracts:
       rank_by_role: {asked: title, now: title, since: title_since, past: past_titles, ended: title_until, flag: title_match}
     miss: "people == []"
     idempotent: true
-    prefer: [crawl4ai]
-    # A free-text `q` is a semantic question: ask the semantic searches first.
-    # A role with no company or name ({title}, {q, title}) is one too: half the teams ask exa first
-    # (`in_rollout`) so the two orders compare on live calls. Company and name rules come first.
-    prefer_when:
-      - {sent: [q, title, company_domain], prefer: [crawl4ai]}
-      - {sent: [q, title, full_name], prefer: [crawl4ai]}
-      - {sent: [q, title], prefer: [exa, crawl4ai], percent: 50}
-      - {sent: [q, title], prefer: [crawl4ai]}
-      - {sent: [q], prefer: [exa, parallel, crawl4ai]}
-      - {sent: [company_domain], prefer: [crawl4ai]}
-      - {sent: [full_name], prefer: [crawl4ai]}
-      - {sent: [title], prefer: [exa, crawl4ai], percent: 50}
+    # No contract order: routed providers rank by cost per hit. Orders per kind of request (a
+    # free-text `q`, a role at a company, a country) are published route rules; `prefer_when` is retired.
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
@@ -480,7 +466,6 @@ contracts:
       linkedin_url: {type: str}
     miss: "name == null"
     idempotent: true
-    prefer: [crawl4ai]
 
   companies.similar:
     summary: "Find companies similar to a seed domain"
@@ -523,7 +508,6 @@ contracts:
       count: {type: int}
     miss: "places == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   tiktok.user.videos:
     summary: "List a TikTok user's recent videos by secUid — provider-native video objects in `videos`"
@@ -1075,7 +1059,6 @@ contracts:
     # except a per_call one, which bills it.
     miss: "ads == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   google.ads.transparency:
     summary: "The ads Google Ads Transparency Center shows for one company domain — provider-native ad rows in `ads`"
@@ -1121,7 +1104,6 @@ contracts:
       next_cursor: {type: str}
     miss: "reviews == []"
     idempotent: true
-    prefer: [crawl4ai]
 
   facebook.user.profile:
     summary: "A public Facebook profile or page by URL or profile id — treg picks the provider and names the one that served"
@@ -1427,7 +1409,7 @@ contracts:
       - {q: str}
     filters:
       limit: {type: int, default: 10, note: "maximum results, where the provider accepts one"}
-      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents"}
+      contents: {type: bool, default: null, note: "true: asks a provider that returns each page's passages matching q (at its search price), so the names on a list page can be read without treg.web.extract. If it fails, the next provider answers without passages and _treg.ignored_filters names contents", analytics: value}
     output:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
@@ -1435,10 +1417,7 @@ contracts:
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
-    prefer: [crawl4ai]
-    # Asked for passages: the provider that returns them leads, not the cheaper snippet-only one.
-    prefer_when:
-      - {sent: [contents], prefer: [exa]}
+    # Asked for passages (`contents: true`), a published route rule asks exa first.
 
   web.search.news:
     summary: "Search recent news — provider-native article rows in `results`"
@@ -1463,7 +1442,6 @@ contracts:
     miss: "pages == []"
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
-    prefer: [crawl4ai]
 
   web.extract.structured:
     summary: "Extract typed JSON from one web page, described by a JSON schema and/or a plain-English instruction — the extracted data in `data`"
@@ -1477,7 +1455,6 @@ contracts:
       data: {type: any, required: true, note: "the extracted records, in the shape the schema asked for; raw is the provider's whole body"}
     miss: "data == null"
     idempotent: true
-    prefer: [crawl4ai]
 
   web.map:
     summary: "Discover the URLs on a website — provider-native map rows in `results`"

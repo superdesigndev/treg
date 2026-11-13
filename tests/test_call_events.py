@@ -381,6 +381,8 @@ def test_ref_parts():
     assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
     assert ev.ref_parts("abc:v") == ("abc", "v", None)
     assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
+    assert ev.ref_parts("abc:s2") == ("abc", "s2", None)
+    assert ev.ref_parts("abc:s2.7") == ("abc", "s2.7", None)
 
 
 def test_an_unknown_analytics_mode_fails_the_contract():
@@ -547,6 +549,24 @@ async def test_find_then_verify_join_on_the_email_hash(clients: AsyncClient, enr
     assert verify["input_meta"] == {"domain_class": "company", "tld": "example"}
     assert verify["answer_values"] == {"valid": "false", "status": "accept_all", "score": "50"}
     assert verify["verdict"] == "catch_all" and verify.get("answer_keys") is None
+
+
+async def test_a_routed_miss_records_the_empty_answer_it_returned(clients: AsyncClient, enrichment_on,
+                                                                 events_on, monkeypatch):
+    """A provider answered and found no one: the caller got an empty answer, and the event
+    counts it (`rows: 0`) instead of recording no answer at all."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"data": []})] * 20}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"company_domain": "sample.example", "title": "Head of Sales", "country": "US"},
+                           headers={"X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss", (r.text, seen)
+    parent_ref = r.headers["x-treg-call-id"]
+    [parent] = [e for e in await _flushed(events_on) if e["call_ref"] == parent_ref]
+    assert parent["hit"] is False
+    assert parent["answer_values"] == {
+        "rows": "0", "rows_with_profile_url": "0", "rows_dup": "0", "rows_company_match": "0",
+        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "2"}
 
 
 async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,

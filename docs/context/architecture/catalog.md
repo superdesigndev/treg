@@ -12,6 +12,7 @@ sources:
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
   - src/treg/domain/catalog/routing/quality.py
+  - src/treg/domain/catalog/routing/health.py
   - src/treg/domain/catalog/routing/synthetic.py
   - src/treg/application/rankings.py
   - src/treg/application/catalog_stats.py
@@ -19,6 +20,7 @@ sources:
   - src/treg/domain/provider_resources.py
   - src/treg/routers/provider_resources.py
   - src/treg/application/call/route.py
+  - src/treg/application/call/route_health.py
   - src/treg/application/call/async_bridge.py
   - src/treg/application/call/octen.py
   - src/treg/application/call/enrichlayer.py
@@ -1013,17 +1015,17 @@ returned and never documented as stable. An output field may say where it lands 
 - A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
   the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
   deploy and, like them, only reorders.
-- `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
-  caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
-  still wins. One order does not fit every question: `people.search` asks its semantic searches
-  first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
-  A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
-  stable sha256 bucket of capability and team id; a call with no team is never in it), and the
-  other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
-  with no company or name (`{title}`, `{q, title}`) for half the teams, so the two orders are
-  compared on live calls before every team gets it.
-  `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
-  page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
+- One order does not fit every kind of request (a free-text `{q}` is answered best by a semantic
+  search that a `{company_domain, title}` lookup can never reach), and an order for one kind is a
+  published route rule, never a contract field. `prefer_when`, the contract's old list of
+  `{sent, prefer}` orders, is retired. The runtime still loads a catalog that carries it (an older or
+  self-hosted one) but ignores it, so its orders no longer apply; the catalog validator
+  (`scripts/catalog_validate.py`, run in CI) refuses a contract that adds or keeps it. A rule is reviewed
+  by a person, observed after it goes live and reverted without a deploy; a contract field had
+  none of that, and its orders sat in this public file.
+  `web.search` `contents: true` asks a provider for each result's passages that match `q`, at its
+  search price; call events record `contents`, so a route rule can put exa first for it. A `false`
+  value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
   A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
   left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
@@ -1141,7 +1143,10 @@ an invalid extra never disables the primary.
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
   report agree; `limit` and contract defaults never count). An exhausted platform provider with an
   enabled overflow route stays a candidate at the overflow price; without one, or with no key on the
-  deployment, it is dropped and named in `dropped`.
+  deployment, it is dropped and named in `dropped`. Within a tier, a child whose short-window health
+  is `slow` (or `failing` and kept) is asked after the healthy ones, ahead of the contract's default
+  order and any published rule; only the caller's own `X-Treg-Route-Prefer` outranks it (see
+  "Child guards").
 - **Execution** (`application/call/route.py`): each attempt is a full child `execute_call` with
   `call_ref` `{parent}:r{n}` and the ordinary hold, ladder, relay, settle, audit and cancellation.
   - Vendor 4xx (not 402/405/408/410/429) is usually the caller's fault, but scrapers answer 400 for
@@ -1180,6 +1185,46 @@ an invalid extra never disables the primary.
     the end (`settle.close_deferred`, one transaction): settled when the routed call answers (a hit
     or a 200 miss), released when it fails, including cancellation. A failed routed call therefore
     charges nothing (`charged_micro: 0`, `released_micro`); a crash leaves the holds to the reaper.
+  - **Miss or failure.** The call is a 200 miss as soon as one provider answered a miss and none
+    hit, even when another failed on the way (5xx, timeout, an unreadable answer, a rejection).
+    Such a miss says `_treg.incomplete: true` / `X-Treg-Route-Incomplete: true`, and every
+    `error` attempt in it is unbilled (`route._unbill` marks its deferred hold to release), so the
+    caller pays for the misses only. The same holds for the miss that ends a walk under
+    `X-Treg-Route-Waterfall: 0`. Only a call where no provider answered a miss is 502
+    `route_failed`. A single outage turned every all-miss call into a 502 before, so one failing
+    provider failed a whole high-volume capability.
+  - **Child guards.** Two guards keep one failing child from stalling or failing a routed call.
+    *Time bound*: each synchronous child (`execute_child` and its body read) runs
+    under `asyncio.timeout_at` in the parent's task, for `route_child_timeout_s`, or twice the
+    child's measured `p95_ms` when longer, never past `call_timeout_s`
+    (`health.child_timeout_s`; 0 turns it off). On expiry the child's own cancellation path
+    releases its hold (a conditional claim, so once), any deferred hold it left is marked
+    unbillable, and the attempt is an `error` with status 504; the waterfall moves on. An `async`
+    child is never cancelled by this deadline: once the provider accepts a submission, its task row
+    and hold belong to that task (202 pending, the worker settles), and cancelling it would release
+    a hold a live task owns. Nothing else caps such a child's whole time: its submission and each
+    poll run under the relay's `call_timeout_s`, and `ROUTED_ASYNC_WAIT_SECONDS` is the bridge's
+    polling budget, which neither includes the submission nor interrupts a poll in flight. Its
+    health still counts it slow past half the same bound (`_child_bound_s`), so routing can ask it
+    after the healthy ones; only the cancellation is waived.
+    *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
+    anonymous child that reached its provider (never an archive hit, never a local refusal) counts
+    as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or
+    slow (past half its bound) in a time bucket of the key-value store (`kv.note_route_health`,
+    `BUCKETS` buckets across `route_health_window_s`, expiring with the window), so every worker
+    sees it. `build_plan` reads the window through a per-process cache of `CACHE_TTL_S`; at least
+    `route_health_min_calls` answers with `route_health_fail_pct` failed is `failing`, with
+    `route_health_slow_pct` slow is `slow`. A failing child is dropped (`dropped` entry with
+    `health: failing`) unless this call takes its probe turn (`kv.take`, one call per
+    `route_health_probe_s` fleet-wide; a plan preview never does) or no other candidate the caller
+    did not exclude and the cost ceiling can start would be left, in which case it is kept and
+    asked last. A child recovers on its own: its
+    failures age out of the window, and probes add fresh answers meanwhile. A team's own key is
+    never counted, dropped or reordered. `route_health: observe` reports verdicts (the plan's
+    `health`, the call event's route summary) without acting; `off` neither records nor reads. An
+    unreadable store reads as no evidence. These guards do not replace the capacity system: 429 and
+    402 stay with rate windows and exhausted accounts. An operator can still take a provider out by
+    hand with `route_provider_sample_pct`.
   - **Ceiling.** `X-Treg-Route-Max-Cost` (default `DEFAULT_MAX_COST_MICRO`, or the contract's
     `default_max_cost_usd`) bounds the sum; each child receives the remaining ceiling and the shared
     reservation gate checks its estimate with margin, including overflow. A budget refusal skips that
@@ -1221,17 +1266,27 @@ an invalid extra never disables the primary.
   `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
   `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
 - **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
-  identity key to an expression over the identity and filters (people.search:
-  `q = join(full_name, title, location)`). `adapter_accepts` tries the caller's own fields first and
-  builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
-  can answer a `{title}` request while every other provider's request is unchanged. The stand-in
-  never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
-  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard.
-  exa and parallel fold `company_domain` into the query text (`join(q, company_domain, …)`), and
+  identity key to an expression over the identity and filters. people.search builds `q` as a
+  sentence (`people_text`): who (name, title, both, or "people"), "at <domain>", "in <location>,
+  <country's name>" (the country left out when the location says it), so "Head of Tax at
+  stripe.com in Ireland" or "people at stripe.com".
+  `adapter_accepts` tries the caller's own fields first and builds the stand-in only when an
+  adapter accepts none of them, so exa and parallel (`{q}` only) can answer a `{title}`,
+  `{company_domain}` or `{company_domain, title}` request while every other provider's request is
+  unchanged. The stand-in never enters the plan's identity; `to_upstream` fills it for the matched
+  variant. The contract's `stand_in_carries` names the identity keys and filters the stand-in's
+  text may hold; `unscoped` counts one as sent and `ignored_filters` as used only when the text
+  says it: leaving it out changes the text, alone or beside one other key (a country the location
+  already names is said; a list, or a country code with no name, is not, so strict filters still
+  drop the provider). A key the expression reads but `stand_in_carries` leaves out
+  keeps its scoping guard, and the loader refuses a carried key the expression does not read.
+  A stand-in covers none of the caller's keys in `rank`'s specificity, so its provider follows
+  every provider that takes the caller's fields and enters earlier only through `prefer`,
+  the prefer header or a route rule. exa and parallel also fold `company_domain`
+  into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
+  said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
-  that key: `{company_domain, q}` reaches them, while `{company_domain, title}`, whose `q` treg
-  builds from the title, still skips them. The stand-in key itself always counts as sent, and a
-  folded key counts only as a string (a text join skips a list). `q` is itself a scoping key, typed
+  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
   `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is

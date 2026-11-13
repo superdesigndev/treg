@@ -4,6 +4,8 @@ status: shipped
 sources:
   - src/treg/application/key_spend.py
   - src/treg/routers/media.py
+  - src/treg/page_media.py
+  - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
@@ -118,13 +120,14 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   a generation. MCP's internal exchange token is the deliberate 120-second identity exception.
   `token_version` revokes permanent keys (missing `tv` means zero). See
   [auth-secrets](../architecture/auth-secrets.md).
-- Every identity door (GitHub, Google, email OTP, inbox-only invite link) reuses one first-proof
+- Every identity door (GitHub, Google, email OTP) reuses one first-proof
   provisioning command and creates no automatic org. Suspended users and addresses on
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
   account); limits are unchanged. The invite code is join-only and needs the invitee signed
-  in; the separate `email_token` authenticates once and never appears in a JSON response.
+  in; the separate `email_token` in the emailed link only prefills the login (it authenticates no
+  one) and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
   before any login or team mutation.
 
@@ -383,6 +386,13 @@ cookie-authenticated mutation.
 included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
 ([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
 
+**Response encoding**: `_GzipResponseMiddleware` gzips a text, JSON or XML answer of at least
+1 KiB for a client whose `Accept-Encoding` takes gzip, flushing every streamed chunk so a stream
+still arrives as it is produced, and weakens a strong `ETag` so an `If-Range` never pairs the
+encoded body with an unencoded range. An answer already carrying a
+`Content-Encoding`, an event stream, a partial (206) or `no-transform` answer and binary types
+pass untouched. "Byte for byte" anywhere in these docs means the body after content decoding.
+
 ## Views
 
 A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
@@ -419,8 +429,13 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
 - `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
   and a signed-in visitor is not redirected to `/app`. The HTML is generated from
   `marketing/landing/*.md`; never hand-edit it. `/resources` is the only page linking them.
-- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images,
-  video and fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable.
+- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images and
+  fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable. Page videos
+  are not in Git: `web/media-videos.json` maps each `/media/` path to a content-addressed copy
+  under `site/` in the public media bucket (`ugc/tutorial.<digest>.mp4`, cached immutable), and
+  the path answers a 302 (`max-age=300`) to that copy's public URL (the pictures' base, or
+  `/media-files/`). `scripts/publish_page_media.py` uploads a new or edited video and records it;
+  a test fails when a page names a video the manifest lacks.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.

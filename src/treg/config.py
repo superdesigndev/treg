@@ -503,6 +503,20 @@ class Settings(BaseSettings):
     # Optional percent of routed requests on which each shared-key provider may be considered.
     # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
     route_provider_sample_pct: str = ""
+    # Routed child guards (application/call/route_health.py, docs catalog.md "Child guards").
+    # `on` skips a treg-key child failing now and asks a slow one after the others; `observe`
+    # records and reports the verdict without acting on it; `off` neither records nor reads.
+    route_health: Literal["on", "observe", "off"] = "on"
+    route_health_window_s: int = Field(default=120, ge=10, le=3600)
+    route_health_min_calls: int = Field(default=5, ge=1, le=10_000)
+    route_health_fail_pct: int = Field(default=50, ge=1, le=100)
+    route_health_slow_pct: int = Field(default=50, ge=1, le=100)
+    # While a child is failing, one routed call per this many seconds still asks it (fleet-wide
+    # through the key-value store), so it can show it is back before its failures age out.
+    route_health_probe_s: int = Field(default=15, ge=1, le=3600)
+    # How long one child of a routed call may take before the router moves on: this floor, or twice
+    # the child's measured p95 when longer, never past call_timeout_s. 0 turns the bound off.
+    route_child_timeout_s: float = Field(default=30.0, ge=0, le=600)
     # The discovery EXPERIMENT (application.search_experiment): a relevance judge (TypeSafe's Jev)
     # scores a widened lexical recall and the result is compared with the shipped ranker on
     # behaviour — did the caller go on to `call` something from the page. `off` (default) leaves

@@ -68,7 +68,8 @@ through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 ## Linking
 
 `call_ref` is the call's `X-Treg-Call-Id`. A child's ref is its parent's plus a step
-(`:rN` waterfall attempt N, `:v` the check, `:pN` a routed poll, `:sN` a hub step); events carry
+(`:rN` waterfall attempt N, `:v` the check, `:pN` a routed poll, `:sN` a hub step, `:sN.M` item M
+of a hub `for_each` step); events carry
 `parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
 (`async_submit`) and its outcome (`async_terminal`) share the submission's `call_ref`; the terminal
 event carries `hit`, `verdict`, `cost_charged_micro` (what the task settled at; the submission's
@@ -148,7 +149,7 @@ so it records none rather than "none sent". The same function serves the event a
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 
-`people_search` (version 1), each key always present unless noted:
+`people_search` (version 2, which added `company_given`), each key always present unless noted:
 
 | Key | Vocabulary | From |
 | --- | --- | --- |
@@ -166,12 +167,14 @@ import them instead of keeping its own copy.
 | `q_words` | `1-3`, `4-8`, `9+`, `none` | |
 | `q_has_place` | `true`, `false`, `none` | a country, region or major city named in `q` |
 | `name_given` | `true`, `false` | `full_name` present after derivation |
+| `company_given` | `true`, `false` | `company_domain` present after derivation; tells `{q, title}` from `{q, title, company_domain}`, both recorded as `input_type: q` |
 | `has_keywords` | `true`, `false` | |
 
 A set may also count how an answer's rows fit the question; `people_search` writes these to
 `answer_values` as decimal strings, beside `segments_version`. Nothing from a row leaves, only the
 counts. A direct call is counted over every row its adapter mapped, in the contract's row shape,
-not the Arena's shorter reading; a routed parent over its assembled answer. A check the question
+not the Arena's shorter reading; a routed parent over the answer it returned, an empty one
+included, so a routed miss records `rows: 0`. A check the question
 gives nothing to judge by is absent, not zero; a request that cannot be read back still records
 `rows`, `rows_with_profile_url` and `rows_dup`.
 

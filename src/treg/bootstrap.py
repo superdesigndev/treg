@@ -19,16 +19,18 @@ from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index, media
-from . import bootstrap_handlers, policy
+from .application import arena, find_index, images, media
+from . import bootstrap_handlers, page_media, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
     _ClientNoticeMiddleware,
+    _GzipResponseMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -186,6 +188,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
+    ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
     ('/favicon.svg', ('GET',), 'favicon'),
@@ -209,6 +212,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/astra', ('GET',), 'astra_page'),
     ('/gpt6', ('GET',), 'gpt6_page'),
     ('/ugc', ('GET',), 'ugc_page'),
+    ('/aigc', ('GET',), 'aigc_page'),
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
@@ -509,10 +513,20 @@ class _MediaStatic(StaticFiles):
     """Page media under stable, unversioned names (`/media/<page>/...`). With no Cache-Control a
     browser applies a heuristic lifetime and never revalidates, so a page's edited script or
     stylesheet would keep running old code against new HTML. Code and text therefore revalidate
-    on every use (`no-cache`; the ETag makes that a 304), and images, video and fonts, which a page
-    only ever swaps by renaming, keep a day's cache like the logos."""
+    on every use (`no-cache`; the ETag makes that a 304), and images and fonts, which a page only
+    ever swaps by renaming, keep a day's cache like the logos.
+
+    Video is not here: `page_media` names its copy in the public media bucket, and the path
+    redirects there. The redirect is short-lived because the copy's key changes with its bytes."""
 
     _REVALIDATE = frozenset({".js", ".mjs", ".css", ".html", ".json", ".md", ".txt"})
+
+    async def get_response(self, path, scope):
+        key = page_media.manifest().get(Path(path).as_posix())
+        if key:
+            return RedirectResponse(images.public_url(key), status_code=302,
+                                    headers={"Cache-Control": "public, max-age=300"})
+        return await super().get_response(path, scope)
 
     def file_response(self, full_path, *args, **kwargs):
         response = super().file_response(full_path, *args, **kwargs)
@@ -907,6 +921,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
+    app.add_middleware(_GzipResponseMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
