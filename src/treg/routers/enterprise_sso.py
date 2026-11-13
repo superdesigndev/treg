@@ -87,9 +87,9 @@ async def sso_domains(org_id: int, caller: Caller = Depends(require_member)) -> 
         domains = [{"domain": item["domain"], "state": item["state"]}
                    for item in (organization.get("domains") or [])
                    if isinstance(item, dict) and isinstance(item.get("domain"), str)
-                   and item.get("state") in {"verified", "pending"}]
-        status = ("verified" if any(item["state"] == "verified" for item in domains)
-                  else "pending" if domains else "not_started")
+                   and item.get("state") in {"verified", "pending", "failed"}]
+        states = {item["state"] for item in domains}
+        status = next((state for state in ("verified", "pending", "failed") if state in states), "not_started")
         return {"status": status, "domains": domains}
     except (enterprise_sso.EnterpriseSSOError, workos.WorkOSError) as exc:
         raise HTTPException(422, str(exc)) from exc

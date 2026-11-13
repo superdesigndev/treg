@@ -580,6 +580,11 @@ async def test_domain_verification_setup_and_status(clients, monkeypatch):
         return organization(org_id, domains=[{"domain": "company.example", "state": "verified"}])
     monkeypatch.setattr(workos, "get_organization", verified_org)
     assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json()["status"] == "verified"
+    async def failed_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "failed"}])
+    monkeypatch.setattr(workos, "get_organization", failed_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json() == {"status": "failed", "domains": [
+        {"domain": "company.example", "state": "failed"}]}
 
 
 async def test_domain_status_rejects_another_workos_organization(clients, monkeypatch):

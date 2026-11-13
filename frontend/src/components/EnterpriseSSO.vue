@@ -140,7 +140,7 @@ export default {
             <div class="sso-step-main">
               <span class="sso-check" :class="{'done':domain?.status==='verified'}" aria-hidden="true">{{domain?.status==='verified'?'✓':'1'}}</span>
               <div class="sso-step-copy">
-                <div class="sso-step-title"><h4>Verify your company domain</h4><span class="sso-step-state">{{domain?.status==='verified'?'Verified':domain?.status==='pending'?'DNS verification pending':domainError?'Status unavailable':'Start here'}}</span></div>
+                <div class="sso-step-title"><h4>Verify your company domain</h4><span class="sso-step-state">{{domain?.status==='verified'?'Verified':domain?.status==='pending'?'DNS verification pending':domain?.status==='failed'?'Verification failed':domainError?'Status unavailable':'Start here'}}</span></div>
                 <p>WorkOS checks your company's domain before employees can sign in with SSO. Your IT admin will add a DNS record to prove ownership.</p>
                 <p v-if="domain?.domains?.length" class="sso-domain-list">{{domain.domains.map(item => `${item.domain} (${item.state})`).join(', ')}}</p>
                 <p v-if="domainError" class="sso-step-hint" role="status">{{domainError}}</p>
