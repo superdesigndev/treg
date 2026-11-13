@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json/v2"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,9 @@ import (
 // usage event it queued.
 func lastEvent(t *testing.T, argv ...string) map[string]any {
 	t.Helper()
+	flush := startFlush
+	startFlush = func(string, http.RoundTripper) {}
+	t.Cleanup(func() { startFlush = flush })
 	dir := t.TempDir()
 	t.Setenv("TREG_CONFIG", filepath.Join(dir, "config.json"))
 	t.Setenv("TREG_URL", "http://127.0.0.1:9")
