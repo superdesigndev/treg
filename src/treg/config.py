@@ -467,6 +467,7 @@ class Settings(BaseSettings):
     platform_key_openrouter: str = ""  # Bearer key for asynchronous routed generation
     # Capacity sweep only (ops/deploy.md); not another platform-provider slot.
     platform_openrouter_management_key: str = ""
+    platform_key_nace: str = ""       # Bearer key (nace_sk_…); prepaid USD balance, Drex decisions billed per input token
     platform_key_replicate: str = ""  # Bearer token for official asynchronous models
     platform_key_reapi: str = ""      # Bearer key; prepaid credits at $0.001, Seedance 2.5 + image models
     platform_key_google_ai: str = ""  # x-goog-api-key; token-billed Gemini API project (image output $120/M tokens)

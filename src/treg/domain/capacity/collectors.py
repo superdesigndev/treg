@@ -1206,6 +1206,8 @@ NO_BALANCE_API = {
     "scrubby": "no free standalone balance or usage endpoint in the official API "
                "(checked docs.scrubby.io 2026-09-16) — remaining_credits appears only on "
                "verification responses; do not spend a verification merely to collect capacity",
+    "nace": "no balance endpoint in the published Drex API reference (checked "
+            "console.nace.ai/docs 2026-11-09) — the prepaid USD balance is visible in the Nace console",
     "minimax": "no balance or quota endpoint in the international API reference (checked "
                "platform.minimax.io/docs 2026-10-01) — usage is on the console page only",
     "replicate": "no balance, credit or billing endpoint; GET /v1/account returns identity only "

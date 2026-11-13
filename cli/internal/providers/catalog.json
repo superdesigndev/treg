@@ -1,5 +1,5 @@
 {
- "version": 27,
+ "version": 28,
  "providers": [
   {
    "provider": "Google Ads",
@@ -254,6 +254,18 @@
    "auth": {
     "shape": "bearer"
    }
+  },
+  {
+   "provider": "Nace",
+   "tokens": [
+    "NACE",
+    "DREX"
+   ],
+   "base_url": "https://console.nace.ai/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "models"
   },
   {
    "provider": "ElevenLabs",
