@@ -60,7 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
     button.type = 'button';
     button.className = 'button';
     button.textContent = 'Company SSO';
-    divider.after(button);
+    const socialLinks = [...astra.querySelectorAll('a[href="/auth/github"], a[href="/auth/google"]')];
+    socialLinks.at(-1).after(button);
     const codeButton = form.querySelector('#email-start-button');
     codeButton.classList.add('dark');
     decorate(codeButton, 'mail');
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     backButton.textContent = 'Email sign-in code';
     decorate(backButton, 'back');
     backButton.hidden = true;
-    divider.after(backButton);
+    button.after(backButton);
     const setMode = (sso) => {
       codeButton.hidden = sso;
       codeButton.style.display = sso ? 'none' : '';
@@ -180,8 +181,9 @@ document.addEventListener('DOMContentLoaded', () => {
   backButton.style.width = '100%';
   backButton.hidden = true;
   backButton.style.display = 'none';
-  modal.insertBefore(ssoButton, provider);
-  modal.insertBefore(backButton, provider);
+  const socialLinks = [...modal.querySelectorAll('a[href="/auth/github"], a[href="/auth/google"]')];
+  socialLinks.at(-1).after(ssoButton);
+  ssoButton.after(backButton);
   const result = document.createElement('div');
   result.setAttribute('role', 'status');
   result.style.cssText = 'text-align:left;font-size:12px;line-height:1.5;margin-top:8px';
