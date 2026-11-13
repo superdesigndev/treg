@@ -57,14 +57,14 @@ jobs:
                 external: ":warning: *External contributor\(if $first then ", first PR" else "" end)*"
               }[$who] as $tag
             | ([.requested_reviewers[].login] + [.requested_teams[] | "@" + .slug] | join(", ")) as $reviewers
-            | {
-                text: (if $action == "review_requested" then ":eyes: *Review requested*" else $tag end)
-                  + " · <\(.html_url)|#\(.number) \(.title | esc)>\n"
-                  + "by <\(.user.html_url)|\(.user.login)>"
-                  + (if $action == "review_requested" and $tag != "" then " (\($tag))" else "" end)
-                  + (if $reviewers != "" then " → \($reviewers)" else "" end)
-                  + " · \($repo) · +\(.additions) -\(.deletions) in \(.changed_files) file\(if .changed_files == 1 then "" else "s" end)"
-                  + (if .draft then " · draft" else "" end),
-                unfurl_links: false
-              }
+            | (
+                (if $action == "review_requested" then ":eyes: *Review requested*" else $tag end)
+                + " · <\(.html_url)|#\(.number) \(.title | esc)>\n"
+                + "by <\(.user.html_url)|\(.user.login)>"
+                + (if $action == "review_requested" and $tag != "" then " (\($tag))" else "" end)
+                + (if $reviewers != "" then " → \($reviewers)" else "" end)
+                + " · \($repo) · +\(.additions) -\(.deletions) in \(.changed_files) file\(if .changed_files == 1 then "" else "s" end)"
+                + (if .draft then " · draft" else "" end)
+              ) as $text
+            | {text: $text, unfurl_links: false}
           ' <<< "$pr" | curl --fail-with-body -sS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
