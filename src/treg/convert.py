@@ -1,3 +1,4 @@
+# Modified by dajiaohuang on 2026-11-04: normalize secret contract paths across operating systems.
 """Skill -> bundle scaffolding. Deterministic discovery only.
 
 Walking a skill directory tells us its recipe (SKILL.md) and its credentials (.secret/* files).
@@ -25,10 +26,11 @@ def resolve_secret_path(base: Path, rel: str) -> Path:
     `.secret/token.json` must still find `.secrets/token.json` and vice versa. The exact path wins;
     otherwise swap the leading secret-dir segment. Returns the exact (maybe-missing) path if nothing
     matches, so callers' error messages stay meaningful."""
-    exact = base / rel
+    normalized_rel = rel.replace("\\", "/")
+    exact = base / normalized_rel
     if exact.exists():
         return exact
-    parts = Path(rel).parts
+    parts = Path(normalized_rel).parts
     if parts and parts[0] in _SECRET_DIRS:
         for sd in _SECRET_DIRS:
             alt = base.joinpath(sd, *parts[1:])
@@ -215,7 +217,7 @@ def auto_bindings(base: Path, files: list[Path]) -> tuple[list[dict], list[dict]
         while name in seen:  # two files with the same stem must not collide into one local_name
             name = f"{name}-{len(seen)}"
         seen.add(name)
-        secrets.append({"file": str(f.relative_to(base)), "name": name, "kind": kind})
+        secrets.append({"file": f.relative_to(base).as_posix(), "name": name, "kind": kind})
         if f is primary:
             bindings.append(_default_binding(name, kind, f))  # Authorization: Bearer {secret}
         else:  # a secondary credential -> its own header, value injected as-is (no Bearer)

@@ -183,12 +183,15 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
 
 ## Skill scaffolding and the `treg.json` contract (`convert.py`)
 
+<!-- Modified by dajiaohuang on 2026-11-04: document cross-platform secret contract paths. -->
+
 `treg.json` lets a skill self-describe its registration; `skill init --dir` writes it and `skill add
 --dir` registers it, loading the named secret files at push time so no secret value lives in the
-file. `resolve_secret_path` swaps `.secret` and `.secrets` when the exact spelling is absent, so a
-shared contract survives per-machine spelling drift. `secret add --dir` syncs back into an existing
-`treg.json` so CLI changes stay authoritative. `auto_bindings` (shared with the dashboard) gives each
-additional credential its own header so bindings never collide. `skill install` keeps a folder that
+file. Generated contract paths use `/` on every platform. `resolve_secret_path` normalizes Windows
+backslashes before lookup, then swaps `.secret` and `.secrets` when the exact spelling is absent, so
+a shared contract survives per-machine path and directory spelling drift. `secret add --dir` syncs
+back into an existing `treg.json` so CLI changes stay authoritative. `auto_bindings` (shared with the
+dashboard) gives each additional credential its own header so bindings never collide. `skill install` keeps a folder that
 already exists unless `--force` and ends with a summary of kept skills; the Access agent instruction
 defers to that output. Bundle file paths are re-checked to stay inside the skill dir, and secrets are
 never shipped.
