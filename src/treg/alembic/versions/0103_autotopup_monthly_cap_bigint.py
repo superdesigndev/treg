@@ -11,7 +11,9 @@ This was missed in revision 0093 which converted other money running totals.
 On Postgres the change runs in one ALTER statement. SQLite uses batch mode because it rewrites
 the whole table. The column already existed; this is a type change only.
 
-Rollback is safe while every stored value fits in integer.
+Rollback floor: code older than this revision runs on BIGINT columns unchanged, so a code rollback
+does not need the downgrade. The downgrade works only while every value still fits in `integer`;
+once a cap passes $2,147.48 it fails with "integer out of range" and changes nothing.
 """
 from collections.abc import Sequence
 
@@ -22,6 +24,7 @@ revision: str = "0103"
 down_revision: str | Sequence[str] | None = "0102"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+contract = True
 
 
 def upgrade() -> None:
