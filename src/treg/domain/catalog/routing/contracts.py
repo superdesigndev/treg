@@ -368,6 +368,19 @@ CONTRACT_KEYS = frozenset({
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
+# Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
+# providers by the keys a caller sent; an order for one kind of request is now a published route
+# rule, reviewed by a person and observed after it goes live (docs/context/architecture/route-rules.md).
+RETIRED_CONTRACT_KEYS = {"prefer_when": "publish a route rule for that order"}
+
+
+def retired_contract_keys(doc: dict) -> list[str]:
+    """`contract <capability>: <key> is retired; <what to do>` for each retired key in `doc`."""
+    return [f"contract {cap}: {key} is retired; {why}"
+            for cap, c in (doc.get("contracts") or {}).items() if isinstance(c, dict)
+            for key, why in RETIRED_CONTRACT_KEYS.items() if key in c]
+
+
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -410,11 +423,9 @@ def _expressions(what: str, *exprs: object) -> None:
 def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
-        if "prefer_when" in c:
-            # Retired: an order for one kind of request is a published route rule, reviewed and
-            # observed without a deploy (docs/context/architecture/route-rules.md).
-            raise ValueError(f"contract {cap}: prefer_when is retired; publish a route rule for that order")
-        _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        # A retired key is skipped, so a catalog written before it was retired still loads; the
+        # catalog validator refuses it in the shipped catalog (`retired_contract_keys`).
+        _known_keys(f"contract {cap}", c, CONTRACT_KEYS | RETIRED_CONTRACT_KEYS.keys())
         _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
                      *([c["miss"]] if c.get("miss") else []),
                      *([c["question_miss"]] if c.get("question_miss") else []),

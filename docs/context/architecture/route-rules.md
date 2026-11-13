@@ -38,6 +38,10 @@ falls through to them as before.
 the contract's own default order without the providers already named. Credential tier still
 sorts before any order: a team's own key is asked first whatever a rule says.
 
+A rule orders; it does not keep a failing provider in the plan. Short-window child health
+([catalog.md](catalog.md), "Child guards") still drops a treg-key child failing right now, and asks
+a slow one after the healthy ones of its tier, whatever position a rule gave it.
+
 The segment is what the call event records for the call, computed by the same function
 (`call_events.segment`): `input_type` (the identity variant, `domain+full_name`), and the
 `input_meta` keys `tld` and `domain_class`, plus any contract filter declared

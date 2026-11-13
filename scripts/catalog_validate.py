@@ -1566,8 +1566,10 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
 
 def check_routing(errors: list[str]) -> None:
     """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
-    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts
+    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts, retired_contract_keys
 
+    for problem in retired_contract_keys(schema.read_yaml(CATALOG / "contracts.yaml") or {}):
+        fail(errors, "contracts.yaml", problem)
     for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
         try:
             parse(schema.read_yaml(CATALOG / name) or {})
