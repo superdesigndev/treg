@@ -512,10 +512,11 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
     for rule in raw:
         # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
         if (not isinstance(rule, dict) or not {"sent", "prefer"} <= set(rule) <= {"sent", "prefer", "percent"}
-                or not names(rule["sent"]) or not names(rule["prefer"])
+                or not names(rule["sent"]) or not isinstance(rule["prefer"], list)
+                or not all(isinstance(x, str) and x.strip() for x in rule["prefer"])
                 or any(k.strip() not in types for k in rule["sent"])):
             raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
-                             f"prefer: [provider names], percent?: 1-99}}, got {rule!r}")
+                             f"prefer: [provider names, or none to rank by cost], percent?: 1-99}}, got {rule!r}")
         pair = (tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"]))
         if "percent" in rule:
             pct = rule["percent"]
