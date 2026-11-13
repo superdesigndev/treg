@@ -30,6 +30,7 @@ from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
     _ClientNoticeMiddleware,
+    _GzipResponseMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -330,6 +331,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/sso/invite-it', ('POST',), 'sso_invite_it'),
     ('/orgs/{org_id}/sso/setup/{intent}', ('POST',), 'sso_setup'),
     ('/orgs/{org_id}/members/{user_id}/cap', ('PATCH',), 'set_member_cap'),
+    ('/orgs/{org_id}/members/{user_id}/spend-cap', ('PATCH',), 'set_member_spend_cap'),
     ('/orgs/{org_id}/members/{user_id}/access', ('PATCH',), 'set_member_access'),
     ('/usage/me', ('GET',), 'my_usage'),
     ('/orgs/{org_id}/members/{user_id}', ('DELETE',), 'remove_member'),
@@ -920,6 +922,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
+    app.add_middleware(_GzipResponseMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)

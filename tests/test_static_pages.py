@@ -44,7 +44,7 @@ async def test_static_page_revalidates_to_a_304(clients: AsyncClient):
     """Filling placeholders turned these pages from FileResponses into rendered HTML; the ETag
     keeps a browser's `no-cache` revalidation cheap, including an edge-weakened tag."""
     first = await clients.get("/grokbot")
-    etag = first.headers["etag"]
+    etag = first.headers["etag"].removeprefix("W/")
     assert first.headers["cache-control"] == "no-cache"
     for sent in (etag, f"W/{etag}", f'"other", {etag}'):
         again = await clients.get("/grokbot", headers={"If-None-Match": sent})

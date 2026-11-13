@@ -1,0 +1,16 @@
+{
+  "data": {
+    "id": "p_example",
+    "name": "Alex Example",
+    "email": {
+      "value": "alex@example.com",
+      "status": "valid",
+      "verified": true,
+      "checked_at": "2026-11-13T03:30:00Z",
+      "kind": "work"
+    }
+  },
+  "meta": {
+    "took_ms": 60
+  }
+}
