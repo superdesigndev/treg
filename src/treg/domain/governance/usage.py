@@ -1,7 +1,7 @@
 """Per-member usage policy shared by call and run surfaces."""
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import case, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,8 @@ async def count_today(db: AsyncSession, org_id: int | None, user_email: str) -> 
     return calls + runs
 
 
-async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int) -> bool:
+async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int,
+                          today: date | None = None) -> bool:
     """Admit one usage event against the member's cap, or say no. ONE conditional UPDATE.
 
     The WHERE is the check and the SET is the count, so N concurrent calls cannot each read a
@@ -55,7 +56,7 @@ async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int) -> boo
     counted: the counter is "admitted today", so a capped member hammering the gate reads exactly
     `cap`, not a runaway number. Does not commit; the caller's transaction owns it.
     """
-    today = utcnow_naive().date()
+    today = today or utcnow_naive().date()
     # "Used today" is the counter only if it belongs to today; a stale or never-set day is 0. The
     # same expression gates and counts, so a cap of 0 refuses even the day's first event.
     used_today = case((Membership.calls_today_day == today, Membership.calls_today), else_=0)
@@ -67,6 +68,18 @@ async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int) -> boo
     return result.rowcount == 1
 
 
+async def return_daily_slot(db: AsyncSession, membership_id: int, day: date) -> None:
+    """Give back one slot `take_daily_slot` admitted on `day`, for a call a later gate refused
+    before anything was spent. The counter moves only while it still counts `day`: a refusal after
+    midnight never takes a slot from the new day. Never below 0. Does not commit."""
+    await db.execute(
+        update(Membership)
+        .where(Membership.id == membership_id, Membership.calls_today_day == day,
+               Membership.calls_today > 0)
+        .values(calls_today=Membership.calls_today - 1)
+    )
+
+
 async def seed_counter(db: AsyncSession, membership: Membership, user_email: str) -> None:
     """Start the counter from today's journal - called when a cap is set on a member who was
     unlimited until now. Only capped members are counted on the call path, so without this a
@@ -76,7 +89,7 @@ async def seed_counter(db: AsyncSession, membership: Membership, user_email: str
     membership.calls_today_day = utcnow_naive().date()
 
 
-async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) -> None:
+async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) -> date | None:
     """Refuse a call/run once the caller has used their per-user daily cap for this org. `-1` (the
     default) = unlimited, so unmetered members pay ZERO extra queries. The sandbox has its own limiter
     and is exempt.
@@ -85,17 +98,21 @@ async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) 
     OPEN if that statement cannot run: a cap is a courtesy limit an admin set on a colleague, and
     the database being unavailable is not the colleague's fault - the money gates behind this one
     are the ones that fail closed.
+
+    Returns the UTC day the slot was taken on, for `return_daily_slot`; None when none was taken.
     """
     cap = caller.membership.daily_call_cap
     if cap < 0 or sandbox:
-        return
+        return None
+    today = utcnow_naive().date()
     try:
-        admitted = await take_daily_slot(db, caller.membership.id, cap)
+        admitted = await take_daily_slot(db, caller.membership.id, cap, today)
     except Exception as exc:  # noqa: BLE001 - fail open, see docstring
         log.warning("daily-cap check failed for membership %s: %s", caller.membership.id, exc)
-        return
+        return None
     if not admitted:
         used = (await db.execute(
             select(Membership.calls_today).where(Membership.id == caller.membership.id))).scalar() or 0
         raise UsagePolicyError(
             f"daily usage limit reached ({used}/{cap}) — ask an admin to raise your cap")
+    return today

@@ -104,6 +104,9 @@ How a routed call works:
   `X-Treg-Route-Max-Cost` (default $1 per call). A miss can be billed, which is why a routed tool
   quotes `usd_per_call: null` rather than $0: set the header for bulk runs.
   `X-Treg-Route-Waterfall: 0` stops at the first miss.
+- A provider that fails or hangs on the way is skipped after a few seconds and does not spoil the
+  others' answer: when they all missed, the call is a 200 miss with `_treg.incomplete: true` (and
+  `X-Treg-Route-Incomplete: true`), billed only for the misses. Asking again later may find more.
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
@@ -223,7 +226,7 @@ each call, not the loop.
   exceed it (402 `route_max_cost`, nothing charged). Where the catalog says the provider accepts a
   ceiling parameter, treg also forwards the remaining ceiling upstream, so a provider that fails
   over to a dearer source cannot settle above it; a refusal from that parameter is a non-2xx and
-  costs nothing. For every other provider the header stays a pre-reservation guard. It applies to
+  costs nothing. For every other provider the header stays a pre-reservation guard. The reservation is the price at the requested size rounded up to the provider's billing block (one billed per 25 results holds a whole block for 5 rows), plus treg's margin, so catalog price × limit can fall short; when a provider's hold does not fit, `_treg.tried` names the hold and the ceiling left. It applies to
   each request on its own and does not add up across calls. Direct calls have no default; on a
   routed call it also bounds the whole waterfall, $1 by default, and each child receives the
   unspent remainder.
@@ -259,10 +262,11 @@ no JSON `detail` is never treg's.
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
+| 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
 | 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
 | `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
-| 502 `route_failed` | `charged_micro` in the body | Every provider of a routed call failed or missed; `tried` lists them. Misses can be billed: read `charged_micro` before running it again. |
+| 502 `route_failed` | no | No provider of a routed call answered; `tried` lists what each did. Nothing was charged; retry later. |
 | 409, 410 with an `idempotency_*` error | see below | See "Retrying without paying twice". |
 
 Any other refusal from treg (a paused provider, treg itself busy, an answer over its size limit, an

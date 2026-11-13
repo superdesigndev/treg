@@ -10,16 +10,186 @@ import { NO_KEY } from '../state/constants.js'
 import stripeSlate from '../assets/stripe-wordmark-slate.svg'
 import stripeWhite from '../assets/stripe-wordmark-white.svg'
 // The new agent's check-in poll lives as long as this page (state/agents.js).
+const TIPS = {
+  today: 'Every call and run tried today, including calls a limit refused, so it can be higher than the Calls / day limit counts.',
+  calls: 'How many calls and runs this member may make per day, on any key. Empty = no limit.',
+  spend: "The most a member or agent may spend per day on treg's keys. Calls with your own keys don't count.",
+  setAll: 'Set one daily spend limit for every member and agent',
+  tools: 'Which tools this member may call or run. The owner always has all of them.',
+  local: 'Whether this member may run CLIs on their own machine. Off = server only.',
+}
 export default {
   components: { InfoTip, Money, Avatar, TeamShowcase, TeamAvatar, EnterpriseSSO },
-  data: () => ({ NO_KEY, stripeSlate, stripeWhite, memberSsoReady: false }),
+  data: () => ({ NO_KEY, TIPS, stripeSlate, stripeWhite, memberSsoReady: false, spendCustom: {}, spendDraft: {}, spendToast: null, memberMenu: null, memberConfirm: null }),
+  computed: {
+    // Every daily limit resets at 00:00 UTC; the viewer also sees that moment in their own time.
+    resetNote() {
+      const now = new Date()
+      const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+      if (now.getTimezoneOffset() === 0) return 'Resets at 00:00 UTC.'
+      return 'Resets at 00:00 UTC (' + next.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' your time).'
+    },
+    teamBalanceMicro() { return this.billing && this.billing.balance_micro != null ? this.billing.balance_micro : null },
+    // What really bounds a day's spend: the team's daily limit when it is set and smaller than the
+    // balance, else the balance. The warnings compare with this and name which one it is.
+    spendCeiling() {
+      const bal = this.teamBalanceMicro
+      const team = this.capCfg && this.capCfg.daily_cap_micro > 0 ? this.capCfg.daily_cap_micro : null
+      if (team != null && (bal == null || team < bal)) return { micro: team, team: true }
+      return bal != null ? { micro: bal, team: false } : null
+    },
+    // How many rows "Set for all" puts on the team amount: every member and agent, not owners or admins.
+    spendLimitedCount() {
+      return (this.rosterMembers || []).filter(m => m.user_id && !m.is_observed && !this.spendExempt(m)).length
+    },
+    // Today's spend against the limits in force. Spend is only counted for people with a limit, so the
+    // people without one are reported as a number, never added in as $0.
+    spendSummary() {
+      const rows = (this.rosterMembers || []).filter(m => m.user_id && !m.is_observed)
+      const limited = rows.filter(m => m.effective_daily_spend_cap_micro != null)
+      return {
+        count: limited.length,
+        cap: limited.reduce((n, m) => n + m.effective_daily_spend_cap_micro, 0),
+        spent: limited.reduce((n, m) => n + (m.spent_today_micro || 0), 0),
+        open: rows.filter(m => m.effective_daily_spend_cap_micro == null && !this.spendExempt(m)).length,
+      }
+    },
+    memberCapDraftMicro() {
+      const t = String(this.memberCapUsd ?? '').trim()
+      return /^\d+$/.test(t) && Number(t) > 0 ? Number(t) * 1e6 : null
+    },
+    // One person may spend the whole balance in a day: the case a per-person limit exists to stop.
+    memberCapOverBalance() {
+      return this.memberCapDraftMicro != null && this.spendCeiling != null && this.memberCapDraftMicro >= this.spendCeiling.micro
+    },
+    memberCapLabel() {
+      const cap = this.capCfg && this.capCfg.member_daily_spend_cap_micro
+      return cap == null ? 'Set for all' : 'All: ' + this.money(cap)
+    },
+  },
   setup: useDashboard,
-  mounted() { this.resumeCredentialIssue(); this.resumeAgentPoll(); this.loadMemberSso() },
+  mounted() {
+    this.resumeCredentialIssue(); this.resumeAgentPoll(); this.loadMemberSso()
+    this._closeMemberMenu = () => { this.memberMenu = null }
+    for (const [t, ev, cap] of [[document, 'click', false], [window, 'scroll', true], [window, 'resize', false]]) t.addEventListener(ev, this._closeMemberMenu, cap)
+  },
   watch: {
     activeOrgId() { this.loadMemberSso() },
     orgTab(tab) { if (tab === 'sso' && this.activeRole !== 'owner') this.loadMemberSso() },
   },
   methods: {
+    // A member's spend limit is one of three choices: the team default (stored as null), no limit
+    // (-1) or their own amount. "Custom" with no amount saved yet is a local state of the row.
+    spendMode(m) {
+      if (this.spendCustom[m.user_id]) return 'custom'
+      const cap = m.daily_spend_cap_micro
+      if (cap != null && cap >= 0) return 'custom'
+      // Without a team amount, or for an owner or admin, following the team is simply no limit.
+      if (cap != null || !this.spendFollowsTeam(m)) return 'none'
+      return 'team'
+    },
+    // The row offers "Team default" only when there is a team amount that applies to it.
+    spendFollowsTeam(m) {
+      return !this.spendExempt(m) && this.capCfg != null && this.capCfg.member_daily_spend_cap_micro != null
+    },
+    spendExempt(m) {
+      return m.role === 'owner' || m.role === 'admin'
+    },
+    spendDefaultLabel(m) {
+      return 'Team default (' + this.money(this.capCfg.member_daily_spend_cap_micro) + ')'
+    },
+    async pickSpendMode(m, mode) {
+      if (mode === 'custom') {
+        this.spendCustom = { ...this.spendCustom, [m.user_id]: true }
+        await this.$nextTick()
+        const el = this.$refs['spend-' + m.user_id]
+        ;(Array.isArray(el) ? el[0] : el)?.focus()
+        return
+      }
+      const { [m.user_id]: _, ...rest } = this.spendCustom
+      this.spendCustom = rest
+      // "No limit" with no team amount stores "follow the team", so a later team amount applies.
+      const err = await this.setSpendCap(m, mode === 'none' && this.spendFollowsTeam(m) ? 'none' : '')
+      this.toastSpend(m, err)
+    },
+    spendAmount(m) {
+      const cap = m.daily_spend_cap_micro
+      return cap != null && cap >= 0 ? String(cap / 1e6) : ''
+    },
+    // The amount box saves when it loses focus (Enter blurs it). Empty puts the row back as it was.
+    async saveCustomSpend(m, value) {
+      const t = String(value ?? '').trim()
+      const without = (map) => { const { [m.user_id]: _, ...rest } = map; return rest }
+      if (!/^\d*$/.test(t)) { this.showSpendToast('Spend limits are whole dollars, for example 50.', 'bad'); return }
+      if (t && t !== this.spendAmount(m)) this.toastSpend(m, await this.setSpendCap(m, t), Number(t) * 1e6)
+      // Saved, unchanged or left empty: the row shows what the server holds again.
+      this.spendDraft = without(this.spendDraft)
+      this.spendCustom = without(this.spendCustom)
+    },
+    // What the box shows while it is being edited, so a redraw of the row never resets it.
+    spendShown(m) {
+      return m.user_id in this.spendDraft ? this.spendDraft[m.user_id] : this.spendAmount(m)
+    },
+    // The amount being typed in a row, when it would let one member spend the whole balance.
+    spendDraftOverBalance(m) {
+      if (!(m.user_id in this.spendDraft)) return null
+      const t = String(this.spendDraft[m.user_id]).trim()
+      if (!/^\d+$/.test(t) || Number(t) <= 0 || this.spendCeiling == null) return null
+      const cap = Number(t) * 1e6
+      return cap >= this.spendCeiling.micro ? cap : null
+    },
+    spendUnsaved(m) {
+      return m.user_id in this.spendDraft && String(this.spendDraft[m.user_id]).trim() !== this.spendAmount(m)
+    },
+    // `cap` is the amount just saved: the row object `m` still holds the value from before the save.
+    toastSpend(m, err, cap = null) {
+      if (err) return this.showSpendToast(err, 'bad')
+      const who = m.is_agent ? (m.name || m.email) : m.email
+      if (cap != null && cap > 0 && this.spendCeiling != null && cap >= this.spendCeiling.micro)
+        return this.showSpendToast('⚠ Spend limit saved for ' + who + ', but ' + this.money(cap) + ' a day ' + this.overBalanceWords(cap) + '. This member could ' + this.ceilingUse() + ' in one day.', 'warn')
+      this.showSpendToast('Spend limit saved for ' + who + '.')
+    },
+    overBalanceWords(cap) {
+      const { micro, team } = this.spendCeiling
+      const what = team ? "the team's daily limit (" : 'your whole balance ('
+      return (cap > micro ? 'is more than ' : 'is ') + what + this.money(micro) + ')'
+    },
+    ceilingUse() { return this.spendCeiling && this.spendCeiling.team ? "use the team's whole daily limit" : 'use all of it' },
+    showSpendToast(text, kind = 'ok') {
+      clearTimeout(this._spendToastTimer)
+      this.spendToast = { text, kind }
+      this._spendToastTimer = setTimeout(() => { this.spendToast = null }, kind === 'ok' ? 2500 : 5000)
+    },
+    // Row actions follow the API Keys tab: the safe action stays visible, the rest sit behind ⋮,
+    // and every risky one asks in a dialog first.
+    toggleMemberMenu(m, e) {
+      if (this.memberMenu && this.memberMenu.m.user_id === m.user_id) { this.memberMenu = null; return }
+      const r = e.currentTarget.getBoundingClientRect()
+      this.memberMenu = { m, top: r.bottom + 6, right: Math.max(12, innerWidth - r.right) }
+    },
+    askMember(m, action) { this.memberMenu = null; this.memberConfirm = { m, action } },
+    async confirmMember() {
+      const { m, action } = this.memberConfirm
+      this.memberConfirm = null
+      if (action === 'rotate') return this.rotateAgent(m, true)
+      if (action === 'revoke') { this.confirmAgent = 'revoke-' + m.user_id; return this.revokeAgent(m) }
+      this.confirmRemove = m.user_id
+      return this.removeMember(m)
+    },
+    async saveTeamSpend(clear) {
+      if (clear) this.memberCapUsd = ''
+      await this.saveMemberCap()
+      if (!this.memberCapErr && !this.memberCapOpen) {
+        const cap = this.capCfg && this.capCfg.member_daily_spend_cap_micro
+        this.showSpendToast(cap == null ? 'Team spend limit removed.' : 'Team spend limit set to ' + this.money(cap) + ' a day.')
+      }
+    },
+    openMemberCap() {
+      const cap = this.capCfg && this.capCfg.member_daily_spend_cap_micro
+      this.memberCapUsd = cap == null ? '' : String(cap / 1e6)
+      this.memberCapErr = ''
+      this.memberCapOpen = true
+    },
     async copyMemberSsoLink() {
       const url = new URL(`/auth/sso/${encodeURIComponent(this.activeOrg.slug)}/start`, location.origin).href
       this.orgMsg = await this.toClipboard(url) ? 'Employee sign-in link copied.' : 'Could not copy the sign-in link.'
@@ -34,7 +204,10 @@ export default {
       if (!this.memberSsoReady && this.orgTab === 'sso') this.orgTab = 'keys'
     },
   },
-  beforeUnmount() { this.parkCredentialIssue() },
+  beforeUnmount() {
+    this.parkCredentialIssue()
+    for (const [t, ev, cap] of [[document, 'click', false], [window, 'scroll', true], [window, 'resize', false]]) t.removeEventListener(ev, this._closeMemberMenu, cap)
+  },
 }
 </script>
 
@@ -63,7 +236,10 @@ export default {
               <span>If your team is out of credit, ask an admin to add funds<template v-if="teamAdmins && teamAdmins.length">: <b>{{teamAdmins.map(a=>a.email).join(', ')}}</b></template>. Only admins can see Billing.</span>
               <button class="btn sm ico" @click="memberFunds=false" aria-label="Dismiss">✕</button>
             </div>
-            <p v-if="myUsage && myUsage.cap>=0" class="sub" style="margin:-6px 0 12px">Your usage today: <b>{{myUsage.used_today}} / {{myUsage.cap}}</b> calls.</p>
+            <p v-if="myUsage && (myUsage.cap>=0 || myUsage.daily_spend_cap_micro!=null)" class="sub" style="margin:-6px 0 12px">
+              <template v-if="myUsage.daily_spend_cap_micro!=null">Your spend today: <b>{{money(myUsage.spent_today_micro||0)}} of {{money(myUsage.daily_spend_cap_micro)}}</b> on treg's keys.</template>
+              <template v-if="myUsage.cap>=0"> Your calls today: <b>{{myUsage.used_today}} / {{myUsage.cap}}</b>.</template>
+              {{resetNote}}</p>
             <div v-if="orgErr" class="banner">{{orgErr}}</div>
             <div v-if="billingNote && canAdmin" class="tut-notice" role="status" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
               <span>{{billingNote}}</span><button class="btn sm ico" @click="billingNote=''" aria-label="Dismiss">✕</button>
@@ -114,28 +290,53 @@ export default {
           </div>
 
 
+              <div v-if="memberCapOpen" class="scrim" role="dialog" aria-modal="true" aria-labelledby="member-cap-title" v-dialog="() => { memberCapOpen=false }" @click.self="memberCapOpen=false">
+                <div class="modal" style="width:min(440px,92vw)"><div class="hd"><b id="member-cap-title">Daily spend for each member/agent</b><button class="btn sm" @click="memberCapOpen=false" aria-label="Close">✕</button></div>
+                  <div style="padding:18px">
+                    <p class="sub" style="margin-top:0">The most each member and agent may spend per day on treg's keys. It replaces any custom limit set on their row. Owners and admins are not limited by it.</p>
+                    <div class="field" style="align-items:center"><span class="muted">$</span><input v-model="memberCapUsd" type="number" min="0" step="1" placeholder="No limit" aria-label="Daily spend limit for every member" @keyup.enter="saveTeamSpend(false)"/><span class="muted" style="white-space:nowrap">per day</span></div>
+                    <p class="sub" style="margin:0 0 12px;font-size:12px">Whole dollars. {{resetNote}} The whole team's limit is in <a href="#" @click.prevent="memberCapOpen=false; orgTab='danger'">Team settings</a>.</p>
+                    <p v-if="memberCapOverBalance" class="sub spend-warn" role="status" style="margin:-4px 0 8px;font-size:12px">⚠ {{money(memberCapDraftMicro)}} a day {{overBalanceWords(memberCapDraftMicro)}}. One member could {{ceilingUse()}} in a day.</p>
+                    <p v-if="memberCapDraftMicro != null && spendCeiling != null && spendLimitedCount > 1 && memberCapDraftMicro * spendLimitedCount > spendCeiling.micro" class="spend-sum" style="margin:0 0 12px">With {{spendLimitedCount}} members and agents, the most they can spend together is {{money(memberCapDraftMicro * spendLimitedCount)}} a day. <template v-if="spendCeiling.team">The team's daily limit is {{money(spendCeiling.micro)}}, so the team stops there.</template><template v-else>Your balance is {{money(spendCeiling.micro)}}.</template></p>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <button class="btn primary" :disabled="memberCapBusy" @click="saveTeamSpend(false)">{{memberCapBusy?'Saving…':'Save'}}</button>
+                      <button v-if="capCfg && capCfg.member_daily_spend_cap_micro != null" class="btn" :disabled="memberCapBusy" @click="saveTeamSpend(true)">Remove limit</button>
+                    </div>
+                    <div v-if="memberCapErr" class="banner" style="margin-top:12px">{{memberCapErr}}</div>
+                  </div></div>
+              </div>
+              <div v-if="memberMenu" class="key-actions-menu" role="menu" :style="{top:memberMenu.top+'px',right:memberMenu.right+'px'}" @click.stop>
+                <button role="menuitem" :disabled="!!credentialIssue" @click="askMember(memberMenu.m,'rotate')">Rotate token</button>
+                <button class="danger" role="menuitem" :disabled="!!credentialIssue" @click="askMember(memberMenu.m,'revoke')">Revoke agent</button>
+              </div>
+              <div v-if="memberConfirm" class="scrim" role="dialog" aria-modal="true" aria-labelledby="member-confirm-title" v-dialog="() => { memberConfirm=null }" @click.self="memberConfirm=null">
+                <div class="modal" style="width:min(470px,94vw);padding:18px 20px">
+                  <h3 id="member-confirm-title" style="margin:0">{{memberConfirm.action==='rotate'?'Rotate the token of':memberConfirm.action==='revoke'?'Revoke':'Remove'}} “{{memberConfirm.m.is_agent?memberConfirm.m.name:memberConfirm.m.email}}”?</h3>
+                  <p v-if="memberConfirm.action==='rotate'" class="sub" style="margin:12px 0 0">Its current token will stop working immediately. The replacement will be shown next, once, so you can update the agent.</p>
+                  <p v-else-if="memberConfirm.action==='revoke'" class="sub" style="margin:12px 0 0">This removes the agent from the team and revokes all its keys. Its Activity history remains; restoring it means creating and configuring it again.</p>
+                  <p v-else class="sub" style="margin:12px 0 0">They lose access to this team and its balance. Their Activity history remains. You can invite them again later.</p>
+                  <div class="row-actions" style="display:flex;justify-content:flex-end;margin-top:20px"><button class="btn sm" @click="memberConfirm=null">Cancel</button><button class="btn sm danger" @click="confirmMember">{{memberConfirm.action==='rotate'?'Rotate token':memberConfirm.action==='revoke'?'Revoke agent':'Remove member'}}</button></div>
+                </div>
+              </div>
+              <div v-if="spendToast" class="app-toast" :class="'spend-toast-' + spendToast.kind" :role="spendToast.kind === 'bad' ? 'alert' : 'status'"><p>{{spendToast.text}}</p></div>
               <div class="lbl" style="margin-top:14px">Members</div>
-              <p class="sub" style="margin:-2px 0 8px;font-size:12px">Daily cap = how many calls + runs a member may make per day. Leave it empty for no limit.</p>
-              <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>Tools</b> = which endpoints/CLIs a member may call or run. <b>Local run</b> = may run CLIs on their own machine (off = server only). The owner always has full access.</p>
-              <table>
-                <tr><th>Email</th><th>Role</th><th style="text-align:right">Today</th><th>Daily cap</th><th>Tools</th><th>Local run</th><th></th></tr>
+              <table class="members-table">
+                <tr><th>Email</th><th>Role</th><th style="text-align:right"><span class="th-tip">Calls today <InfoTip title="Calls today" :text="TIPS.today + ' ' + resetNote" side="bottom" /></span></th><th><span class="th-tip">Calls / day <InfoTip title="Calls / day" :text="TIPS.calls + ' ' + resetNote" side="bottom" /></span></th><th><span class="th-tip">Spend / day <InfoTip title="Spend / day" :text="TIPS.spend + ' ' + resetNote" side="bottom"><span v-if="spendSummary.count || spendSummary.open" class="spend-sum"><b>Today</b><template v-if="spendSummary.count"><span>Spent <b>{{money(spendSummary.spent)}}</b> of up to <b>{{money(spendSummary.cap)}}</b></span><span>{{spendSummary.count}} {{spendSummary.count===1?'member or agent':'members and agents'}} with a limit<template v-if="spendSummary.open"> · {{spendSummary.open}} with no limit</template></span></template><span v-else>{{spendSummary.open}} {{spendSummary.open===1?'member or agent has':'members and agents have'}} no limit</span></span></InfoTip><button v-if="capCfg" type="button" class="th-set" @click="openMemberCap" :title="TIPS.setAll">{{memberCapLabel}}</button></span></th><th><span class="th-tip">Tools <InfoTip title="Tools" :text="TIPS.tools" side="bottom" align="right" /></span></th><th><span class="th-tip">Local run <InfoTip title="Local run" :text="TIPS.local" side="bottom" align="right" /></span></th><th></th></tr>
                 <!-- An empty roster under its header read as "no members" until the request answered. -->
-                <tr v-if="!orgMembersLoaded"><td colspan="7" class="muted">Loading members…</td></tr>
+                <tr v-if="!orgMembersLoaded"><td colspan="8" class="muted">Loading members…</td></tr>
                 <template v-for="m in rosterMembers" :key="m.key">
                 <tr v-if="m.is_observed">
                   <td><span style="opacity:.45">↳</span> <b>{{m.client}}</b> <span class="chip" title="seen in this member\'s traffic — the runtime reports itself; attribution, not authentication">detected</span>
                     <div class="muted" style="font-size:11px">runs as {{short(m.member)}} — inherits their full access</div></td>
                   <td><span class="muted" style="font-size:12px">—</span></td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
-                  <td colspan="3"><span class="muted" style="font-size:12px">{{m.calls_30d}} calls in 30 days · last seen {{when(m.last_seen)}}</span></td>
+                  <td colspan="4"><span class="muted" style="font-size:12px">{{m.calls_30d}} calls in 30 days · last seen {{when(m.last_seen)}}</span></td>
                   <td style="text-align:right"><button class="btn sm" @click="promoteObserved(m)" title="mint this runtime its own token — its own cap, scope and audit trail">Scope this agent</button></td>
                 </tr>
                 <tr v-else>
                   <td>
                     <template v-if="m.is_agent"><span style="opacity:.45">↳</span> <b>{{m.name}}</b> <span class="chip" :title="m.email">agent</span>
-                      <div class="muted" style="font-size:11px">{{m.created_by?('owned by '+short(m.created_by)):'machine identity'}}</div>
-                      <div v-if="confirmAgent==='rotate-'+m.user_id" class="sub" style="font-size:11px;margin-top:5px;max-width:360px"><b>Its current key will stop immediately.</b> The next card shows the replacement once so you can update {{m.name}}.</div>
-                      <div v-if="confirmAgent==='revoke-'+m.user_id" class="sub" style="font-size:11px;margin-top:5px;max-width:360px"><b>This removes the agent and revokes all its keys.</b> Activity stays for audit; restoring it means creating and configuring it again.</div></template>
+                      <div class="muted" style="font-size:11px">{{m.created_by?('owned by '+short(m.created_by)):'machine identity'}}</div></template>
                     <span v-else style="display:inline-flex;gap:8px;align-items:center"><Avatar :src="m.avatar_url" :name="m.email" :size="22" round />{{m.email}}</span>
                   </td>
                   <td>
@@ -145,7 +346,18 @@ export default {
                     <span v-else class="role" :class="m.role">{{m.role}}</span>
                   </td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
-                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Daily cap for '+(m.email||m.name)" title="Empty = no limit"/></td>
+                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Calls per day for '+(m.email||m.name)" title="Calls + runs per day. Empty = no limit."/></td>
+                  <td><div class="spend-pick">
+                      <select class="msel" :value="spendMode(m)" @change="pickSpendMode(m,$event.target.value)" :aria-label="'Daily spend limit for '+(m.email||m.name)">
+                        <option v-if="spendFollowsTeam(m)" value="team">{{spendDefaultLabel(m)}}</option>
+                        <option value="none">No limit</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                      <span v-if="spendMode(m)==='custom'" class="spend-amt"><span class="muted">$</span><input :ref="'spend-'+m.user_id" class="msel" type="number" min="0" step="1" placeholder="50" :value="spendShown(m)" @input="spendDraft = { ...spendDraft, [m.user_id]: $event.target.value }" @blur="saveCustomSpend(m,$event.target.value)" @keyup.enter="$event.target.blur()" :aria-label="'Custom daily spend for '+(m.email||m.name)" title="Whole dollars per day. Saves when you press Enter or click away."/></span>
+                    </div>
+                    <div v-if="spendDraftOverBalance(m)" class="spend-warn-box" role="status">⚠ {{money(spendDraftOverBalance(m))}} a day {{overBalanceWords(spendDraftOverBalance(m))}}.</div>
+                    <div v-if="spendUnsaved(m) || spendCustom[m.user_id]" class="spend-hint">Press Enter or click away to save</div>
+                    <div v-if="m.effective_daily_spend_cap_micro!=null" class="muted" style="font-size:11px">{{money(m.spent_today_micro||0)}} of {{money(m.effective_daily_spend_cap_micro)}} today</div></td>
                   <td>
                     <span v-if="m.role==='owner'" class="chip">All</span>
                     <button v-else class="btn sm" :class="{active:editAccess===m.user_id}" @click="openAccess(m)" :title="m.tool_access===null?'Access to every tool':'Access to '+m.tool_access.length+' tool(s)'">{{m.tool_access===null?'All':m.tool_access.length+' tools'}} ▾</button>
@@ -158,15 +370,13 @@ export default {
                   </td>
                   <td style="text-align:right;white-space:nowrap">
                     <template v-if="m.is_agent">
-                      <span class="row-actions"><button class="btn sm" @click="showAgentSetup(m)" title="how to give this agent its identity">Setup</button>
-                      <button class="btn sm" :disabled="!!credentialIssue" :class="{danger:confirmAgent==='rotate-'+m.user_id}" @click="rotateAgent(m)" title="issue a new token — the old one stops working immediately">{{confirmAgent==='rotate-'+m.user_id?'Confirm rotate':'Rotate'}}</button>
-                      <button class="btn sm" :class="{danger:confirmAgent==='revoke-'+m.user_id}" @click="revokeAgent(m)">{{confirmAgent==='revoke-'+m.user_id?'Confirm revoke':'Revoke'}}</button></span>
+                      <span class="row-actions"><button class="btn sm" @click="showAgentSetup(m)" title="how to give this agent its identity">Setup</button><button class="btn sm ico" aria-haspopup="menu" :aria-expanded="!!memberMenu && memberMenu.m.user_id===m.user_id" :aria-label="'More actions for '+m.name" @click.stop="toggleMemberMenu(m,$event)">⋮</button></span>
                     </template>
-                    <button v-else-if="m.role!=='owner'" class="btn sm" :class="{danger:confirmRemove===m.user_id}" @click="removeMember(m)">{{confirmRemove===m.user_id?'Confirm remove':'Remove'}}</button>
+                    <button v-else-if="m.role!=='owner'" class="btn sm" @click="askMember(m,'remove')">Remove</button>
                   </td>
                 </tr>
                 <tr v-if="!m.is_observed && editAccess===m.user_id">
-                  <td colspan="7" style="background:color-mix(in srgb,var(--accent) 5%,transparent)">
+                  <td colspan="8" style="background:color-mix(in srgb,var(--accent) 5%,transparent)">
                     <div style="padding:6px 2px">
                       <div class="sub" style="margin-bottom:6px">Tools &amp; skills <b>{{m.email}}</b> may use/see — uncheck to withhold. All checked = full access (and new ones apply automatically).</div>
                       <div v-if="!accessNames.length" class="muted" style="font-size:12px">No tools registered yet.</div>
@@ -613,9 +823,10 @@ export default {
             <div v-if="capCfg" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
                   <span class="lbl" style="margin:0">Daily spend limit</span>
                   <p class="sub" style="margin:4px 0 8px;font-size:12px">
-                    The most this team can spend per day on treg's keys. Resets at 00:00 UTC. None by
-                    default. Worth setting if agents run unattended with auto top-up on, since a
-                    balance that refills itself can't stop a runaway one.
+                    The most this team can spend per day on treg's keys, everyone together. {{resetNote}}
+                    None by default. Worth setting if agents run unattended with auto top-up on, since a
+                    balance that refills itself can't stop a runaway one. Limits per person are on the
+                    <a href="#" @click.prevent="orgTab='members'">Members</a> tab.
                   </p>
                   <div class="field" style="max-width:560px">
                     <input v-model="capUsd" type="number" min="0" step="0.5" placeholder="no limit" style="max-width:140px"/>
@@ -746,6 +957,30 @@ export default {
 </template>
 
 <style>
+/* Wide screens: let the header tooltips out of the rounded table. On a phone the table keeps
+   base.css's own sideways scroll. */
+@media (min-width:761px) {
+  /* A collapsed border ignores border-radius; separate borders keep the round edge without the clip. */
+  .members-table { overflow:visible; border-collapse:separate; border-spacing:0; }
+  .members-table tr:first-child > :first-child { border-top-left-radius:var(--r); }
+  .members-table tr:first-child > :last-child { border-top-right-radius:var(--r); }
+  .members-table tr:last-child > :first-child { border-bottom-left-radius:var(--r); }
+  .members-table tr:last-child > :last-child { border-bottom-right-radius:var(--r); }
+}
+.spend-pick { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.spend-amt { display:inline-flex; align-items:center; gap:3px; }
+.spend-amt input { width:72px; }
+.spend-toast-bad { border-color:color-mix(in srgb,var(--red) 45%,var(--line2)); color:var(--red); }
+.spend-toast-warn { border-color:color-mix(in srgb,var(--amber) 55%,var(--line2)); color:var(--amber); }
+.spend-warn { color:var(--amber); }
+.spend-sum { display:flex; flex-direction:column; gap:2px; margin-top:10px; padding:8px 10px; border-radius:8px; background:var(--panel2); border:1px solid var(--line); color:var(--ink); font-size:12px; }
+.spend-sum b { font-weight:600; }
+.spend-warn-box { display:inline-block; margin-top:4px; padding:3px 8px; border:1px solid color-mix(in srgb,var(--amber) 45%,var(--line)); border-radius:6px; background:color-mix(in srgb,var(--amber) 12%,transparent); color:var(--amber); font-size:11px; max-width:260px; white-space:normal; }
+.spend-hint { color:var(--muted); font-size:11px; margin-top:2px; }
+.spend-pick select { max-width:180px; }
+.th-tip { display:inline-flex; align-items:center; gap:2px; white-space:nowrap; }
+.th-set { margin-left:6px; padding:2px 8px; border:1px solid var(--line); border-radius:999px; background:var(--panel); color:var(--ink); font:inherit; font-size:11px; text-transform:none; letter-spacing:0; cursor:pointer; }
+.th-set:hover, .th-set:focus-visible { background:var(--panel2); }
 .saved-card-label { display:inline-flex; align-items:center; gap:5px; margin-left:auto; white-space:nowrap; }
 .saved-card-check { width:15px; height:15px; color:var(--green); flex:none; }
 .stripe-wordmark { width:38px; height:auto; display:block; }

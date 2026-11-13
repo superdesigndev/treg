@@ -347,7 +347,7 @@ exclude = [
   ".lavish",                # local visual review artifacts, not distributable product assets
   "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
   "videos",                 # git-excluded marketing renders
-  "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
+  "/src/treg/web/media/**/*.mp4",  # a local copy of a page video; the page serves it from the bucket
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
   ".env", ".env.*",         # belt and braces: a credential file must never reach a tarball
 ]
@@ -355,7 +355,7 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/treg"]
 exclude = [
-  "/src/treg/web/media/**/*.mp4",  # the light CLI must not carry hosted-page demo videos
+  "/src/treg/web/media/**/*.mp4",  # a local copy of a page video must never reach the wheel
 ]
 # The web/ dir lives inside the treg package, so `packages` already ships every asset
 # needed at runtime (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes

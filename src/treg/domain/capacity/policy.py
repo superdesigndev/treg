@@ -244,6 +244,8 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     # Email Verifier publishes no limit; its 429s carry x-ratelimit-limit 20 per minute, far below
     # the documented 1,000/min for other APIs. A provider-wide 20/min would slow every other route.
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
+    # Company pages on treg's finder key have their own allowance, apart from finder searches.
+    "filtrat-finder.companies.enrich": {"limit": 600, "window_s": 60, "source": "docs"},
 }
 
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
@@ -265,6 +267,8 @@ _CONCURRENCY: dict[str, int] = {
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
 # do not draw from them.
 _ENDPOINT_CONCURRENCY: dict[str, dict] = {
+    # Company pages on treg's finder key: their own places, so they never hold a finder search's.
+    "filtrat-finder.company-pages": {"limit": 20, "endpoints": ("filtrat-finder.companies.enrich",)},
 }
 
 

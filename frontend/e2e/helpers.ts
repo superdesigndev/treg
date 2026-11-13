@@ -100,7 +100,8 @@ export async function textCollisions(page: Page, rows: string): Promise<string[]
       const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const text = node.textContent!.trim()
-        if (!text || !node.parentElement?.getClientRects().length) continue
+        // Text hidden with visibility (a closed tooltip) keeps its box but paints nothing.
+        if (!text || !node.parentElement?.getClientRects().length || !node.parentElement.checkVisibility({ visibilityProperty: true })) continue
         const range = document.createRange(); range.selectNodeContents(node)
         for (const r of range.getClientRects()) {
           const box = clip(r, node, row)

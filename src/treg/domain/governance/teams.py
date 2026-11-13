@@ -52,6 +52,7 @@ from ...models import (
     IdempotentCall,
     Invite,
     LedgerEntry,
+    MemberSpend,
     Membership,
     OAuthCode,
     OAuthGrant,
@@ -289,6 +290,7 @@ ORG_SCOPED_MODELS = (
     CapabilityPin,
     OrgFlowControlVersion,  # configuration history belongs to the deleted team
     TagBudget,
+    MemberSpend,  # likewise: its rows reference a Hold
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
     CallTask, AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists

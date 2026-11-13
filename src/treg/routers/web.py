@@ -3487,6 +3487,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
     ("/ugc", "ugc.html", "0.8"),
+    ("/aigc", "aigc.html", "0.8"),
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
@@ -3835,6 +3836,14 @@ async def rea_growth_skill_md():
     return _serve_md("skills/rea-growth/SKILL.md")
 
 
+@app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
+async def ai_ugc_video_skill_md():
+    """The ai-ugc-video skill: the /aigc flow (viral reference, locked assets, voices, shoot plan,
+    Seedance takes, finish) as a file an agent can follow. Opt-in like rea-growth: kept out of the
+    well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/ai-ugc-video/SKILL.md")
+
+
 @app.get("/feedback.md", include_in_schema=False)
 async def feedback_md():
     return _serve_md("feedback.md")
@@ -4042,6 +4051,13 @@ async def ugc_page(request: Request):
     return _static_page("ugc.html", request)
 
 
+@app.get("/aigc", include_in_schema=False)
+async def aigc_page(request: Request):
+    """AI video launch page: one video in four steps (viral reference, locked assets, voices,
+    the Seedance take) with each step's endpoint and price, then the ai-ugc-video skill prompt."""
+    return _static_page("aigc.html", request)
+
+
 @app.get("/aeo", include_in_schema=False)
 async def aeo_page(request: Request):
     """Landing page for the AEO workflow article: getting AI answers to recommend a product in four
@@ -4244,6 +4260,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
+     "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
     ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
      "Spot what goes viral, decode it, auto-post and A/B test. One treg key."),
     ("/rea-growth", "REA for Growth", "2026-10-29",

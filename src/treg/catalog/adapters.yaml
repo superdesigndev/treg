@@ -46,6 +46,17 @@ adapters:
     # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
     out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
     miss: "found_email == null"
+  filtrat-finder.companies.enrich:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.url}
+    const: {body.mode: json}
+    # Read live from the page; the extras (type, followers, specialties, locations, phone, social)
+    # ride in raw.
+    out: {name: company.name, domain: company.domain, website: company.website,
+          description: company.description, industry: company.industry,
+          employees: "coalesce(fmt('{}', company.employees), company.size)",
+          location: company.headquarters, linkedin_url: url}
+    miss: "status != 'found'"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
@@ -919,7 +930,10 @@ adapters:
     const: {body.pagination.page: 1}
     out: {people: data.leads, count: data.total}
     miss: "data.leads == []"
-    row: {name: "join(first_name, last_name)", title: title, company: organization_name, location: "place(city, state, country)", profile_url: linkedin_url, email: email}
+    # A search row is locked until the lead is bought: its email is the address only once
+    # `emailUnlocked` says so, never a placeholder. Phones and the unlock flags stay in raw.
+    row: {name: "coalesce(fullName, join(firstName, lastName))", title: title, company: companyName,
+          profile_url: linkedinUrl, email: "choose(emailUnlocked, email, null)"}
   prospeo.people.search:
     accepts: [[q], [title, company_domain], [company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
@@ -936,6 +950,8 @@ adapters:
     miss: "results == []"
     row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
+    # Wiza refuses `size`, which the shared key pins to 1 so one row is one price.
+    route: false
     accepts: [[title]]
     in: {title: body.filters.job_title}
     in_expr: {body.filters.job_title: "choose(title, list(obj('v', title, 's', 'i')), null)"}
@@ -952,7 +968,11 @@ adapters:
     test_identity: {company_domain: example.com}
     out: {people: content, count: totalElements}
     miss: "content == []"
-    row: {name: profile.full_name, title: profile.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.country)", profile_url: link.linkedin}
+    # The employer sits under company.summary and company.link.
+    row: {name: profile.full_name, title: profile.title, company: company.summary.name,
+          company_domain: company.link.domain,
+          location: "coalesce(location.default, place(location.city, location.state, location.country))",
+          profile_url: link.linkedin, summary: profile.headline}
   exa.people.search:
     accepts: [[q]]
     in:  {q: body.query}
@@ -961,9 +981,9 @@ adapters:
     # `summary` length; the place rides in the passage query, so the lines that name it come back.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
-    # A title and place the caller sent beside `q` ride in the text too (`phrase` skips what q
-    # already says, or what q was built from), so the search keeps the caller's role and place.
-    in_expr: {body.query: "join(phrase(q, title, location, country_name(country)), company_domain, csv(keywords))", body.numResults: limit,
+    # A title, place and company the caller sent beside `q` ride in the text too (`phrase` skips
+    # what q already says, or what q was built from), so the search keeps the caller's role and place.
+    in_expr: {body.query: "join(phrase(q, title, location, country_name(country), company_domain), csv(keywords))", body.numResults: limit,
               body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
     out: {people: results, count: "len(results)"}
@@ -979,7 +999,7 @@ adapters:
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
-    in_expr: {body.objective: "join(q, company_domain, csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
+    in_expr: {body.objective: "join(phrase(q, company_domain), csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
     const: {body.entity_type: people}
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
@@ -999,14 +1019,21 @@ adapters:
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
     out: {people: items, count: totalItems}
     miss: "items == []"
-    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url}
+    # The employer is the experience the search matched (else the current one), as a company
+    # object or a bare companyName.
+    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url,
+          company: "coalesce(get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.name'), get(flagged(experiences, 'isMatched', 'isCurrent'), 'companyName'))",
+          company_domain: "get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.domain')"}
   hunter.companies.emails:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
     max: {limit: 100}
     out: {people: data.emails, count: meta.results}
-    row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
+    # A domain search lists addresses found at the domain (or one Hunter links to it): the row's own
+    # address names its domain, so it is read there, not echoed from the request.
+    row: {name: "join(first_name, last_name)", title: position, company_domain: "email_domain(value)",
+          profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
     in:  {company_domain: body.company_domain}
@@ -2520,6 +2547,8 @@ adapters:
     test_identity: {company_domain: stripe.com}
     out: {people: output.data, next_cursor: output.nextCursor}
     miss: "output.data == []"
+    row: {name: name, title: current_job.title, company: current_job.company_name, location: locality,
+          profile_url: url, summary: headline}
   # hunter.x.multi-domain-search: not routed — free, but answers MASKED rows without names (a reveal teaser)
   # and ignores `limit` (live 2026-08-29: 100 unnamed rows for a 2-row ask); callable by id.
   leadmagic.x.role-finder:
@@ -2549,6 +2578,9 @@ adapters:
     const: {body.include_contact_details: false}
     out: {people: people, count: count, next_cursor: next_cursor}
     miss: "people == []"
+    row: {name: contact_full_name, title: contact_job_title, company: contact_company_name, company_domain: company_domain,
+          location: "place(contact_city, contact_state_code, contact_country_code)", profile_url: contact_linkedin_url,
+          summary: contact_linkedin_headline}
   findymail.search.domain:
     accepts: [[company_domain]]
     in:  {company_domain: body.domain}
@@ -3026,14 +3058,12 @@ adapters:
     in_expr: {body.max_results: limit}
     const: {body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   tavily.web.search.news:
     accepts: [[q]]
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     const: {body.topic: news, body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   linkup.web.search:
     accepts: [[q]]
     in: {q: body.q}
@@ -3166,7 +3196,6 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.extract_depth: basic}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].raw_content, '') == ''"
   linkup.web.fetch:
     accepts: [[url]]
     in: {url: body.url}
@@ -3247,8 +3276,9 @@ adapters:
     accepts: [[url], [url, q]]
     in: {url: body.url, q: body.instructions}
     in_expr: {body.limit: limit}
+    max: {limit: 20}
+    cost_units: "1"
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   olostep.web.map.search:
     accepts: [[url, q]]
     in: {url: body.url, q: body.search_query}
@@ -3384,6 +3414,8 @@ adapters:
 
   # Search returns profile URLs; full profile enrichment remains a direct provider option.
   enrichlayer.people.search:
+    # A routed row would be a bare profile URL at three credits; cheaper children cover every variant.
+    route: false
     # name, role and company are independent query filters: send every one the caller gave.
     accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title], [full_name],
               [title, company_domain], [company_domain], [title]]
@@ -3641,17 +3673,37 @@ adapters:
 
   # BlitzAPI shares these lookup and search contracts. Its other routes need a company LinkedIn
   # URL, a provider-specific cascade, or a result shape that no current contract accepts.
+  crawl4ai.people.email.find:
+    accepts: [[linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, full_name: queryParams.name,
+         domain: queryParams.domain}
+    out: {email: data.email.value, verified: "data.email.status == 'valid'"}
+    miss: "data.email.value == null"
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     # `found` reports a hit, not a deliverability check; the body carries no verification status.
     out: {email: email}
     miss: "found == false"
+  crawl4ai.people.phone.find:
+    accepts: [[linkedin_url], [linkedin_handle], [email], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, email: queryParams.email,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {phone: data.phone.value, line_type: data.phone.line}
+    miss: "data.phone.value == null"
   blitzapi.people.phone.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     out: {phone: phone}
     miss: "found == false"
+  crawl4ai.people.enrich:
+    accepts: [[email], [linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {email: queryParams.email, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {full_name: data.name, first_name: data.first_name, last_name: data.last_name, title: data.title,
+          company: data.company.name, company_domain: data.company.domain, linkedin_url: data.linkedin_url,
+          location: "join(data.location.city, data.location.country_code)"}
+    miss: "data == null"
   blitzapi.people.enrich:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
@@ -3737,7 +3789,11 @@ adapters:
     # Each returned person uses a search record, so larger requests use another routed provider.
     max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
-    in_expr: {queryParams.limit: limit}
+    # country takes ISO alpha-2 codes. city holds city keywords only, comma-separated (OR): a
+    # location in one part goes there; one in several parts ("London, United Kingdom", "Oregon,
+    # United States") has no faithful field, so it is reported ignored rather than cut to a city.
+    in_expr: {queryParams.limit: limit, queryParams.country: "upper(country_code(country))",
+              queryParams.city: "one_place(location)"}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
     # The person sits under profile_data, the current job under contact_data: without name and url a
@@ -3746,7 +3802,8 @@ adapters:
           title: "coalesce(contact_data.contact_current_experiences[0].job_title, profile_data.profile_headline)",
           company: "contact_data.contact_current_experiences[0].company_name",
           company_domain: "contact_data.contact_current_experiences[0].company_domain",
-          location: "place(profile_data.profile_address.city, profile_data.profile_address.country)",
+          location: "place(profile_data.profile_address.city, profile_data.profile_address.state,
+                           coalesce(profile_data.profile_address.country, profile_data.profile_address.country_code))",
           summary: profile_data.profile_headline}
   leadocean.companies.search:
     accepts: [[domain], [name], [industry], [q]]

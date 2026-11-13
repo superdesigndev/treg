@@ -73,8 +73,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
 - **`Org.public_demo`** marks a team whose member token is published: non-admin members are locked to
   `/call` plus reads and may never act as a user (`require_member` / `require_identity`).
 - **`ApiKey`** resolves a credential to a membership; the membership stays the only source of role,
-  tool and project access, local-run permission, daily cap and billing identity, so more keys never
-  mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
+  tool and project access, local-run permission, daily call cap, daily spend limit and billing
+  identity, so more keys never mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
   (legacy, left empty for new memberships). A signed Default token carries the row's team-local
   generation; rotation increments it, invalidating the prior token without touching other teams.
   After membership removal the detached, revoked Default row keeps the old token unauthorized.
@@ -83,8 +83,10 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   `POST /invites/{id}/accept` by id; both run `_join_invited_team`. The code is returned to the
   admin who created the invite, so it only names the invite: it never signs anyone in, never
   creates a `User`, and never yields a token for an account the caller has not proven.
-  `email_token_hash` is the inbox-only second secret in the emailed link and may sign the invitee
-  in (`/auth/invite-signin`, one-time). The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
+  to the invitee's address and redirects to the login with it prefilled, never a session, because
+  an emailed secret is only as private as every system the mail passes through and any team admin
+  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one

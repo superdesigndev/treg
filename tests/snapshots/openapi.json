@@ -106,6 +106,17 @@
             "title": "Daily Call Cap",
             "type": "integer"
           },
+          "daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Spend Cap Micro"
+          },
           "local_run_enabled": {
             "default": true,
             "title": "Local Run Enabled",
@@ -937,6 +948,17 @@
             ],
             "title": "Daily Cap Micro"
           },
+          "member_daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Daily Spend Cap Micro"
+          },
           "platform_overflow": {
             "anyOf": [
               {
@@ -1481,6 +1503,23 @@
           "base_url"
         ],
         "title": "SkillToolIn",
+        "type": "object"
+      },
+      "SpendCapIn": {
+        "properties": {
+          "daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Spend Cap Micro"
+          }
+        },
+        "title": "SpendCapIn",
         "type": "object"
       },
       "TagBudgetIn": {
@@ -4765,7 +4804,7 @@
     },
     "/auth/invite-signin": {
       "get": {
-        "description": "Landing for an invite email link. Two secrets, two very different trust levels:\n\n`t` (email_token) exists ONLY in the emailed link — possession proves inbox access, the same bar\nas the emailed OTP — so it may sign the invitee in. But not on this GET: corporate mail scanners\n(Outlook SafeLinks etc.) prefetch GET links and would consume a one-time credential before the\nhuman ever clicks. So the GET only renders a confirm page whose button POSTs the token back;\nthe POST below mints the session.\n\n`code` (legacy + out-of-band) is also returned to the admin who created the invite, so it can\nNEVER be an authentication factor — holding it lets you JOIN (POST /invites/accept), not log in.\nLinks carrying ?code= (emails sent before the split, or relayed by an admin) keep their old\nbehavior: validate and bounce to the SPA login with the email prefilled; the invitee proves the\nemail through a real door (OTP / GitHub / Google) and the invite auto-appears via /invites/mine.\nAn invalid/expired secret of either kind just lands on the site.",
+        "description": "Landing for an invite email link. Neither secret signs anyone in: the emailed `t` and the\nadmin-visible `code` only prefill the invitee's address on the SPA login, where they prove it\nthrough a real door (OTP / GitHub / Google) and the invite appears via /invites/mine. An\ninvalid/expired secret lands on the site with the expired banner.",
         "operationId": "auth_invite_signin_auth_invite_signin_get",
         "parameters": [
           {
@@ -4785,16 +4824,6 @@
             "schema": {
               "default": "",
               "title": "T",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
               "type": "string"
             }
           }
@@ -4822,7 +4851,7 @@
         "summary": "Auth Invite Signin"
       },
       "post": {
-        "description": "The confirm page's POST: the emailed one-time token signs the invitee in. Mirrors the OTP\ndoor (auth_email_verify) — find-or-create the user, refuse the suspended, set the session\ncookie — because the trust source is identical: only the inbox saw this secret. The token is\nconsumed here (one-time) so a link floating in a forwarded thread can't be replayed; the invite\nitself stays PENDING — acceptance happens in the dashboard, where a multi-team invitee can\naccept several at once. Body is parsed by hand (urlencoded form) to avoid the python-multipart\ndependency FastAPI's Form() would pull in.",
+        "description": "The confirm button of invite pages rendered before links stopped signing in. Treated like\nthe GET: prefill, never a session. Body is parsed by hand (urlencoded form) to avoid the\npython-multipart dependency FastAPI's Form() would pull in.",
         "operationId": "auth_invite_signin_confirm_auth_invite_signin_post",
         "responses": {
           "200": {
@@ -12829,6 +12858,97 @@
           }
         },
         "summary": "Set Member Cap"
+      }
+    },
+    "/orgs/{org_id}/members/{user_id}/spend-cap": {
+      "patch": {
+        "description": "Set one member's daily spend limit on treg's keys (admin/owner), in micro-USD. `null` follows\nthe team default, `-1` is no limit, 0 or more is this member's own limit.",
+        "operationId": "set_member_spend_cap_orgs__org_id__members__user_id__spend_cap_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpendCapIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Member Spend Cap Orgs  Org Id  Members  User Id  Spend Cap Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Member Spend Cap"
       }
     },
     "/orgs/{org_id}/pins": {

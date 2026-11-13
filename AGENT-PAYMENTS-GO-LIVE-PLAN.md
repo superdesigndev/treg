@@ -89,7 +89,7 @@ TREG_AGENT_PAYMENTS_X402_RPC_URL=<CDP Node URL>
 ## 5. Order
 
 1. Finish section 2. Remove this file. Review and merge with the feature off.
-2. `python -m treg upgrade` (revision 0102).
+2. `python -m treg upgrade` (revision 0103).
 3. Schedule `treg-worker agentpay reconcile` every few minutes.
 4. Stripe enables stablecoins; run the Stripe test-mode round.
 5. Create the two deposit addresses; set the env with `SETTLEMENT=stripe`.

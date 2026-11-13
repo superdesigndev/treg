@@ -148,8 +148,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
 - **`ApiKey.last_used_at`** is throttled, best-effort display metadata, never written in the
   authentication transaction. Revoked and rotated rows stay for audit; Activity rows keep their key
   snapshot after rotation, revoke or membership removal.
-- **`Invite.email_token_hash`** is the inbox-only sign-in secret, nulled on first use; the
-  admin-visible code is join-only, never an auth factor.
+- **`Invite.email_token_hash`** keys the emailed link, which only prefills the login; neither it
+  nor the admin-visible code is an auth factor.
 - **`Secret`**: expiry (`expires_at`, `last_refresh_at`, `last_error`) is a separate axis from
   `health_status`; a non-refreshable token stays healthy until it silently dies.
   `authorization_method` selects a grant's method; never infer it from the token's shape.
@@ -318,7 +318,8 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
 
 ## Caller tags (`X-Treg-Meta`)
 
-`TagSpend` is written only by `domain/money` inside the money transaction; `TagBudget` rows are
+`TagSpend` and `MemberSpend` (one row per metered call of a member whose daily spend limit applies)
+are written only by `domain/money` inside the money transaction; `TagBudget` rows are
 auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord`,
 `AsyncResourceRecord` and `CallTask` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
 snapshots are invisible to pinned readers. The reserve entry's `LedgerEntry.meta.tags` freezes
