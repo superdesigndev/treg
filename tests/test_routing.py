@@ -592,25 +592,37 @@ async def test_a_domain_suffix_rule_goes_ahead_of_prefer(clients, enrichment_on,
     assert got == first
 
 
-def test_prefer_when_is_retired_and_the_validator_refuses_it():
+def test_prefer_when_is_retired_and_the_validator_refuses_it(tmp_path, monkeypatch):
     """An order for one kind of request is a published route rule, reviewed and observed without a
     deploy; a contract field for it would bypass that loop. The loader skips the retired key, so an
-    older catalog still loads, and the catalog validator (CI) refuses it in the shipped one."""
+    older catalog still loads with its orders ignored, and the catalog validator (CI) refuses it."""
     import importlib.util
+    import shutil
     from pathlib import Path
-    from treg.domain.catalog.routing.contracts import parse_contracts, retired_contract_keys
+    import yaml
+    from treg.domain.catalog.routing.contracts import parse_contracts
     doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
                                "prefer_when": [{"sent": ["q"], "prefer": ["exa"]}]}}}
     assert parse_contracts(doc)["y"].prefer == ()
-    assert retired_contract_keys(doc) == ["contract y: prefer_when is retired; publish a route rule for that order"]
     assert all(not hasattr(c, "prefer_when") for c in catalog_store.load().contracts.values())
-    path = Path(__file__).resolve().parents[1] / "scripts" / "catalog_validate.py"
-    spec = importlib.util.spec_from_file_location("catalog_validate_retired", path)
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("catalog_validate_retired", root / "scripts" / "catalog_validate.py")
     validate = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(validate)
+    shipped = root / "src" / "treg" / "catalog"
+    shutil.copy(shipped / "adapters.yaml", tmp_path / "adapters.yaml")
+    contracts = yaml.safe_load((shipped / "contracts.yaml").read_text())
+    (tmp_path / "contracts.yaml").write_text(yaml.safe_dump(contracts))
+    monkeypatch.setattr(validate, "CATALOG", tmp_path)
     errors: list[str] = []
     validate.check_routing(errors)
-    assert errors == [], errors
+    assert errors == [], "the shipped contracts pass"
+    contracts["contracts"]["people.search"]["prefer_when"] = [{"sent": ["q"], "prefer": ["exa"]}]
+    (tmp_path / "contracts.yaml").write_text(yaml.safe_dump(contracts))
+    validate.check_routing(errors)
+    assert errors == ["contracts.yaml: contract people.search: prefer_when is retired; "
+                      "publish a route rule for that order"]
 
 
 

@@ -1018,7 +1018,9 @@ returned and never documented as stable. An output field may say where it lands 
 - One order does not fit every kind of request (a free-text `{q}` is answered best by a semantic
   search that a `{company_domain, title}` lookup can never reach), and an order for one kind is a
   published route rule, never a contract field. `prefer_when`, the contract's old list of
-  `{sent, prefer}` orders, is retired: a contract that names it does not load. A rule is reviewed
+  `{sent, prefer}` orders, is retired. The runtime still loads a catalog that carries it (an older or
+  self-hosted one) but ignores it, so its orders no longer apply; the catalog validator
+  (`scripts/catalog_validate.py`, run in CI) refuses a contract that adds or keeps it. A rule is reviewed
   by a person, observed after it goes live and reverted without a deploy; a contract field had
   none of that, and its orders sat in this public file.
   `web.search` `contents: true` asks a provider for each result's passages that match `q`, at its
