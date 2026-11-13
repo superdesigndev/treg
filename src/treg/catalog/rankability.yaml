@@ -1,0 +1,288 @@
+provider: rankability
+source:
+  docs: https://help.rankability.com/api/api-getting-started
+  openapi: https://app.rankability.com/api/openapi.json
+  curated: '2026-11-09'
+limits: 60 requests/minute per key on paid Rankability plans; response rate-limit headers are authoritative.
+pricing_url: https://www.rankability.com/pricing/
+proposed_capabilities:
+  account.usage.estimate: Estimate the usage impact of an operation before starting work
+  account.clients.list: List business workspaces in the connected organization
+  web.rank_tracking.projects.list: List saved search and AI rank tracking reports
+  web.rank_tracking.summary: Summarize saved search and AI rank tracking performance
+  web.keyword_research.projects.list: List saved keyword research projects
+  web.page.audits.list: List saved page audit reports
+  web.site_audits.list: List saved technical site audit projects
+  web.content.jobs.list: List saved content production jobs
+defaults:
+  scope: own_account
+  price:
+    value: '0'
+    currency: USD
+    per: 1
+    unit: call
+    note: Included with a paid Rankability subscription; no separate per-request fee. Shared plan limits apply.
+  provenance:
+    source: docs
+    source_url: https://www.rankability.com/api/
+    checked: '2026-11-09'
+    confidence: documented
+endpoints:
+- id: rankability.account.usage
+  capability: account.usage
+  platform: account
+  kind: account
+  method: GET
+  path: /usage
+  name: Account usage and recovery windows
+  summary: Read the active metering contract, remaining allowances and recovery windows.
+  input:
+    queryParams: {}
+    note: Any Agent API scope.
+  test_request:
+    queryParams: {}
+  docs_url: https://help.rankability.com/api/api-credits-rate-limits-and-errors
+  added: '2026-11-09'
+- id: rankability.account.usage.estimate
+  capability: account.usage.estimate
+  platform: account
+  kind: utility
+  method: GET
+  path: /usage/estimate
+  name: Usage impact before starting work
+  summary: Estimate the usage impact of an on-demand operation.
+  input:
+    queryParams:
+      operation:
+        type: string
+        required: true
+        note: Operation to estimate, for example page_audit_run or site_audit_run.
+        example: page_audit_run
+    note: 'Requires an accepted Agent API scope, such as page_audit:read; see the OpenAPI contract for the full list.'
+  test_request:
+    queryParams:
+      operation: page_audit_run
+  docs_url: https://help.rankability.com/api/api-credits-rate-limits-and-errors
+  added: '2026-11-09'
+- id: rankability.account.crawler.usage
+  capability: account.usage
+  platform: account
+  kind: account
+  method: GET
+  path: /crawler/usage
+  name: Daily crawler page quota
+  summary: Read the daily page quota and remaining crawler capacity.
+  input:
+    queryParams: {}
+    note: 'Required scope: scrape:run or crawl:run or extract:run.'
+  test_request:
+    queryParams: {}
+  docs_url: https://help.rankability.com/api/api-crawler
+  added: '2026-11-09'
+- id: rankability.account.clients.list
+  capability: account.clients.list
+  platform: account
+  kind: account
+  method: GET
+  path: /clients
+  name: Business workspaces in your organization
+  summary: List business workspaces visible to your organization.
+  input:
+    queryParams:
+      limit:
+        type: int
+        required: false
+        note: Max results (default 50, max 100)
+        example: 1
+      offset:
+        type: int
+        required: false
+        note: Pagination offset (default 0)
+    note: 'Required scope: clients:read or copywriter:read or reporter:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-getting-started
+  added: '2026-11-09'
+- id: rankability.web.rank_tracking.projects.list
+  capability: web.rank_tracking.projects.list
+  platform: web
+  kind: data
+  method: GET
+  path: /reporter/projects
+  name: Saved search and AI tracking reports
+  summary: List saved tracking reports with their keyword, platforms and latest status.
+  input:
+    queryParams:
+      limit:
+        type: int
+        required: false
+        note: Maximum number of saved records to return.
+        example: 1
+    note: 'Required scope: reporter:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-reporter-getting-started
+  added: '2026-11-09'
+- id: rankability.web.rank_tracking.summary
+  capability: web.rank_tracking.summary
+  platform: web
+  kind: data
+  method: GET
+  path: /reporter/summary
+  name: Saved search visibility overview
+  summary: Summarize saved tracking coverage, search performance scores and top movers.
+  input:
+    queryParams: {}
+    note: 'Required scope: reporter:read.'
+  test_request:
+    queryParams: {}
+  docs_url: https://help.rankability.com/api/api-reporter-getting-started
+  added: '2026-11-09'
+- id: rankability.web.keyword_research.projects.list
+  capability: web.keyword_research.projects.list
+  platform: web
+  kind: account
+  method: GET
+  path: /researcher/projects
+  name: Saved keyword research projects
+  summary: List saved keyword research projects in your organization.
+  input:
+    queryParams:
+      limit:
+        type: int
+        required: false
+        note: Maximum number of saved records to return.
+        example: 1
+    note: 'Required scope: researcher:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-researcher
+  added: '2026-11-09'
+- id: rankability.web.page.audits.list
+  capability: web.page.audits.list
+  platform: web
+  kind: data
+  method: GET
+  path: /page-auditor/audits
+  name: Saved page audit reports
+  summary: List saved page audits with their status and scores.
+  input:
+    queryParams:
+      client_id:
+        type: string
+        required: false
+        note: Filter by client
+      status:
+        type: string
+        required: false
+        note: Filter by `pending`, `crawling`, `researching`, `scoring`, `complete`, or `error`
+        enum:
+        - pending
+        - crawling
+        - researching
+        - scoring
+        - complete
+        - error
+      limit:
+        type: int
+        required: false
+        note: Max 100
+        default: 50
+        example: 1
+      offset:
+        type: int
+        required: false
+        note: For pagination
+        default: 0
+      view:
+        type: string
+        required: false
+        note: '`compact` or `full`'
+        enum:
+        - compact
+        - full
+    note: 'Required scope: page_audit:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-page-auditor
+  added: '2026-11-09'
+- id: rankability.web.site_audits.list
+  capability: web.site_audits.list
+  platform: web
+  kind: data
+  method: GET
+  path: /site-auditor/projects
+  name: Saved technical site audit projects
+  summary: List saved site audit projects with their crawl status and issue counts.
+  input:
+    queryParams:
+      client_id:
+        type: string
+        required: false
+        note: Filter by client
+      status:
+        type: string
+        required: false
+        note: Filter by `pending`, `crawling`, `analyzing`, `completed`, `error`, or `cancelled`
+        enum:
+        - pending
+        - crawling
+        - analyzing
+        - completed
+        - error
+        - cancelled
+      limit:
+        type: int
+        required: false
+        note: Max 100
+        default: 50
+        example: 1
+      offset:
+        type: int
+        required: false
+        note: For pagination
+        default: 0
+    note: 'Required scope: site-auditor:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-site-auditor
+  added: '2026-11-09'
+- id: rankability.web.content.jobs.list
+  capability: web.content.jobs.list
+  platform: web
+  kind: account
+  method: GET
+  path: /copywriter/jobs
+  name: Saved content production jobs
+  summary: List saved content jobs with their status and workflow stage.
+  input:
+    queryParams:
+      client_id:
+        type: string
+        required: false
+        note: Filter by client
+      status:
+        type: string
+        required: false
+        note: Filter by status (e.g., `completed`, `researching`, `brief_ready`, `failed`). Raw internal statuses
+          (`complete`, `analyzing`, `error`, …) are accepted for back-compat.
+      limit:
+        type: int
+        required: false
+        note: Max results (default 50, max 100)
+        example: 1
+      offset:
+        type: int
+        required: false
+        note: Pagination offset (default 0)
+    note: 'Required scope: copywriter:read.'
+  test_request:
+    queryParams:
+      limit: 1
+  docs_url: https://help.rankability.com/api/api-creating-content-jobs
+  added: '2026-11-09'
