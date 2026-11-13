@@ -408,8 +408,13 @@
       if (e.message === "auth") { stop(); openGate("That token was refused. Paste the current TREG_ADMIN_TOKEN."); }
     }
   }
-  function start() { $("gate").classList.add("hidden"); $("hdr").classList.remove("hidden"); $("main").classList.remove("hidden"); tick(); timer = setInterval(tick, 5000); }
-  function stop() { if (timer) clearInterval(timer); $("hdr").classList.add("hidden"); $("main").classList.add("hidden"); }
+  let polling = false;
+  async function poll() {
+    await tick();
+    if (polling) timer = setTimeout(poll, 5000);
+  }
+  function start() { $("gate").classList.add("hidden"); $("hdr").classList.remove("hidden"); $("main").classList.remove("hidden"); if (!polling) { polling = true; poll(); } }
+  function stop() { polling = false; if (timer) clearTimeout(timer); timer = null; $("hdr").classList.add("hidden"); $("main").classList.add("hidden"); }
   function openGate(msg) { $("gate").classList.remove("hidden"); $("gate-err").textContent = msg || ""; }
 
   $("go").addEventListener("click", async () => {
