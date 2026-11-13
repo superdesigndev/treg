@@ -44,7 +44,7 @@ from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
 from . import admission, keyslots
-from .authorize import authorize_call, enforce_public_demo_limit
+from .authorize import authorize_call, enforce_public_demo_limit, return_daily_slot
 from .evidence import (
     _ERROR_BODY_SLICE,
     _ERROR_CALLER_BODY_MAX,
@@ -303,6 +303,8 @@ def _outcome(status_code: int, refused_by: str | None, *, answered: bool) -> str
 
 
 _CHILD_FAILURE_STATUSES = frozenset({401, 402, 403, 418, 429})
+# Refused before anything was spent, so the call slot `authorize_call` took is given back.
+_MEMBER_SPEND_REFUSALS = frozenset({"member_spend_cap_reached", "member_spend_cap_unavailable"})
 
 
 def _log_failed_child(*, org_id: int | None, call_ref: str, mk: MarketplaceCall, status: int,
@@ -1061,7 +1063,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.tool_name = tool.name
         mk.deferred = request.context.deferred_settles
     try:
-        await _await_before_reserve(
+        slot_day = await _await_before_reserve(
             authorize_call(
                 caller=caller,
                 tool=tool,
@@ -1359,9 +1361,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             _capture(pending)
             await _finish_cancelled_call(request, mk, call_ref, trusted_org_id=caller_org)
             raise
-        except CallFailure:
+        except CallFailure as exc:
             _capture(pending)
             request.state.call_cost_micro = 0
+            if exc.kind in _MEMBER_SPEND_REFUSALS:
+                await return_daily_slot(caller, slot_day)
             if keep_refusal:
                 raise refusal() from None
             raise
@@ -1435,6 +1439,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
                                        _ERROR_RESPONSE_MAX)))
+            if exc.kind in _MEMBER_SPEND_REFUSALS:
+                await return_daily_slot(caller, slot_day)
             raise
     body = b""
     task_answer: bytes | None = None
