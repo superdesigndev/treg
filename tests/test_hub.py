@@ -662,20 +662,12 @@ async def _live_tool_with_readme(clients, monkeypatch, price=0.01):
 
 
 async def test_a_failed_run_logs_one_call_error_line_for_the_run(
-        clients: AsyncClient, hub_on, platform_on, monkeypatch, caplog):
-    import logging
-    from treg.application.call import call_errors
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
     tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
     monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
-    caplog.set_level(logging.INFO, logger=call_errors.log.name)
-    call_errors.log.addHandler(caplog.handler)
-    try:
-        run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
-    finally:
-        call_errors.log.removeHandler(caplog.handler)
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
     assert run.status_code == 424
-    lines = [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
-             if r.name == call_errors.log.name]
+    lines = call_error_lines()
     (root,) = [line for line in lines if line["road"] == "hub"]
     assert (root["call_ref"], root["status"], root["kind"]) == (run.headers["X-Treg-Call-Id"], 424, "hub_run_failed")
     assert (root["by"], root["error_class"], root["step"]) == ("upstream", "upstream_error", None)
@@ -683,25 +675,16 @@ async def test_a_failed_run_logs_one_call_error_line_for_the_run(
 
 
 async def test_a_run_treg_crashed_logs_a_treg_error_not_an_upstream_one(
-        clients: AsyncClient, hub_on, platform_on, monkeypatch, caplog):
-    import logging
-    from treg.application.call import call_errors
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
     from treg.domain.hub import refs
 
     def boom(*_a, **_k):
         raise RuntimeError("a bug in treg")
     tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
     monkeypatch.setattr(refs, "resolve", boom)
-    caplog.set_level(logging.INFO, logger=call_errors.log.name)
-    call_errors.log.addHandler(caplog.handler)
-    try:
-        run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
-    finally:
-        call_errors.log.removeHandler(caplog.handler)
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
     assert run.status_code == 424 and run.json()["detail"]["error"] == "hub_run_crashed"
-    lines = [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
-             if r.name == call_errors.log.name]
-    (root,) = [line for line in lines if line["road"] == "hub"]
+    (root,) = [line for line in call_error_lines() if line["road"] == "hub"]
     assert (root["kind"], root["by"], root["error_class"]) == ("hub_run_crashed", "treg", "treg_error")
 
 
@@ -1770,10 +1753,8 @@ async def test_an_open_route_looks_up_a_key_once_a_minute(clients: AsyncClient, 
 
 
 async def test_a_for_each_runs_failed_items_log_as_its_steps_not_as_calls(
-        clients: AsyncClient, hub_on, platform_on, monkeypatch, caplog):
-    import logging
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
     import re
-    from treg.application.call import call_errors
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": ["a", "b", "c"]}'))
     await _own_supabase(clients)
     m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}},
@@ -1790,15 +1771,9 @@ async def test_a_for_each_runs_failed_items_log_as_its_steps_not_as_calls(
         seen.append(1)
         return await (first if len(seen) == 1 else rate_limited)(*a, **k)
     monkeypatch.setattr(call_service, "relay", relay)
-    caplog.set_level(logging.INFO, logger=call_errors.log.name)
-    call_errors.log.addHandler(caplog.handler)
-    try:
-        run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
-    finally:
-        call_errors.log.removeHandler(caplog.handler)
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
     assert run.status_code == 424, run.text
-    lines = [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
-             if r.name == call_errors.log.name]
+    lines = call_error_lines()
     (root,) = [line for line in lines if line["step"] is None]
     assert (root["road"], root["call_ref"]) == ("hub", run.headers["X-Treg-Call-Id"])
     items = [line for line in lines if line["step"] is not None]

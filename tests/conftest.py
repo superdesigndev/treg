@@ -13,6 +13,7 @@ import glob
 import hashlib
 import hmac
 import json
+import logging
 import os
 import socket
 import tempfile
@@ -659,6 +660,20 @@ def _reset_call_path_caches():
     _clear()
     yield
     _clear()
+
+
+@pytest.fixture
+def call_error_lines(caplog):
+    """`call_error_lines()` is every `call_error` line logged so far, parsed (call_errors.py)."""
+    from treg.application.call import call_errors
+
+    caplog.set_level(logging.INFO, logger=call_errors.log.name)
+    call_errors.log.addHandler(caplog.handler)
+    try:
+        yield lambda: [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+                       if r.name == call_errors.log.name and r.getMessage().startswith("call_error ")]
+    finally:
+        call_errors.log.removeHandler(caplog.handler)
 
 
 @pytest.fixture
