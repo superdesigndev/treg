@@ -658,7 +658,7 @@ async def test_a_domain_suffix_rule_goes_ahead_of_prefer_when(clients, enrichmen
 
 
 @pytest.mark.parametrize("rule", [
-    {"sent": ["q"], "prefer": "exa"}, {"sent": ["q"], "prefer": []}, {"sent": ["q"], "prefer": [None]},
+    {"sent": ["q"], "prefer": "exa"}, {"sent": ["q"], "prefer": [None]},
     {"sent": ["q"], "prefer": [""]}, {"sent": ["q"], "prefer": ["  "]}, {"sent": ["q"], "prefer": {"exa": 1}},
     {"sent": ["q"], "prefer": [1]}, {"sent": "q", "prefer": ["exa"]}, {"sent": [], "prefer": ["exa"]},
     {"sent": ["nope"], "prefer": ["exa"]}, {"sent": ["q"]}, {"sent": ["q"], "prefer": ["exa"], "x": 1}, "q",
@@ -4207,3 +4207,17 @@ async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clien
     r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Perth"})
     get_settings.cache_clear()
     assert [u["username"] for u in r.json()["output"]["users"]] == ["acct0", "acct1", "acct2"]
+
+
+def test_a_prefer_when_rule_naming_no_provider_stops_the_later_rules():
+    """`prefer: []` matches like any rule and leaves the order to cost per hit, so a broader rule
+    after it (here {q}) does not reorder that request."""
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                               "filters": {"title": {"type": "str"}},
+                               "prefer_when": [{"sent": ["q", "title"], "prefer": []},
+                                               {"sent": ["q"], "prefer": ["exa"]}]}}}
+    c = parse_contracts(doc)["y"]
+    assert c.prefer_for(["q", "title"]) == ()
+    assert c.prefer_for(["q"]) == ("exa",)
+
