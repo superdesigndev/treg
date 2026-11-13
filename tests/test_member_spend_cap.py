@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
@@ -9,7 +11,9 @@ from sqlmodel import select
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
-from treg.models import MemberSpend
+from treg.domain.governance import usage as usage_policy
+from treg.models import Hold, MemberSpend, Membership
+from treg.timeutil import utcnow_naive
 
 EP = "tikhub.tiktok.video.comments"   # $0.001 per successful call on treg's key
 EP_MICRO = 1_000
@@ -195,3 +199,39 @@ async def test_setting_the_team_default_replaces_member_limits_but_not_an_owners
         assert row["effective_daily_spend_cap_micro"] == EP_MICRO
     owner = await _member(clients, org_id, owner_id)
     assert owner["daily_spend_cap_micro"] == 7 * EP_MICRO, "the default never applies to an owner"
+
+
+async def test_an_expired_hold_does_not_keep_a_member_blocked(clients, platform_on):
+    org_id = await _org_id(clients)
+    agent = await _agent(clients, org_id, "rep-7", daily_spend_cap_micro=EP_MICRO)
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership).where(
+            Membership.org_id == org_id, Membership.user_id == agent["user_id"]))).scalar_one()
+        # A crashed call: its hold was never settled and is now past its lifetime.
+        call_id = await ledger.reserve(db, org_id, EP, EP_MICRO, member_id=member.id)
+        hold = await db.get(Hold, call_id)
+        hold.created_at = utcnow_naive() - timedelta(seconds=ledger.hold_ttl_s() + 60)
+        await db.commit()
+    r = await _call(clients, agent["token"], 1)
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        assert await db.get(Hold, call_id) is None, "the expired hold was released"
+
+
+async def test_a_slot_given_back_after_midnight_leaves_the_new_day_alone(clients):
+    org_id = await _org_id(clients)
+    agent = await _agent(clients, org_id, "rep-8", daily_call_cap=5)
+    today = utcnow_naive().date()
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership).where(
+            Membership.org_id == org_id, Membership.user_id == agent["user_id"]))).scalar_one()
+        assert await usage_policy.take_daily_slot(db, member.id, 5, today)
+        # The refused call took its slot yesterday; today's counter is another call's.
+        await usage_policy.return_daily_slot(db, member.id, today - timedelta(days=1))
+        await db.commit()
+        await db.refresh(member)
+        assert (member.calls_today, member.calls_today_day) == (1, today)
+        await usage_policy.return_daily_slot(db, member.id, today)
+        await db.commit()
+        await db.refresh(member)
+        assert member.calls_today == 0

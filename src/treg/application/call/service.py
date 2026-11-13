@@ -1063,7 +1063,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.tool_name = tool.name
         mk.deferred = request.context.deferred_settles
     try:
-        await _await_before_reserve(
+        slot_day = await _await_before_reserve(
             authorize_call(
                 caller=caller,
                 tool=tool,
@@ -1365,7 +1365,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             _capture(pending)
             request.state.call_cost_micro = 0
             if exc.kind in _MEMBER_SPEND_REFUSALS:
-                await return_daily_slot(caller)
+                await return_daily_slot(caller, slot_day)
             if keep_refusal:
                 raise refusal() from None
             raise
@@ -1440,7 +1440,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
                                        _ERROR_RESPONSE_MAX)))
             if exc.kind in _MEMBER_SPEND_REFUSALS:
-                await return_daily_slot(caller)
+                await return_daily_slot(caller, slot_day)
             raise
     body = b""
     task_answer: bytes | None = None

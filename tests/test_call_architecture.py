@@ -57,6 +57,8 @@ _DATAPLANE_DERIVED_WRITES = {
     "lazy_stale_hold_reap": (
         (money.reserve_in_transaction, "reap_stale_holds"),
         (money.reap_stale_holds, "release"),
+        # A member spend refusal reaps first, so a crashed call's expired hold cannot block them.
+        (reserve._enforce_member_spend_cap, "ledger.reap_stale_holds"),
     ),
     # Plan §4.1 / refactor plan §1.6 "platform-account capacity marks": a confirmed balance/quota
     # signature on treg's own key marks the provider exhausted in ratestore (the shared Ephemeral
@@ -179,6 +181,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "governance" / "usage.py": {"take_daily_slot"},
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
+        "ledger.reap_stale_holds",
     },
     _SRC / "application" / "call" / "settle.py": {
         "money_admission.admit", "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
@@ -296,6 +299,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("domain/governance/publicdemo.py", "enforce_public_demo_ip_cap", "ratestore.sweep"),
     ("domain/money/__init__.py", "reap_stale_holds", "release"),
     ("domain/money/__init__.py", "reserve_in_transaction", "reap_stale_holds"),
+    ("application/call/reserve.py", "_enforce_member_spend_cap", "ledger.reap_stale_holds"),
 }
 
 

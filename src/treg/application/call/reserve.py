@@ -177,6 +177,10 @@ async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSes
         return None
     try:
         spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
+        # A crashed call's expired hold still counts here. `reserve_in_transaction` reaps those, but
+        # only after this gate, so a refusal reaps first and reads again.
+        if spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
+            spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
     except Exception as exc:  # cannot verify the limit => do not spend
         logging.getLogger("treg.ledger").warning(
             "member spend-cap check failed for membership %s: %s", caller.membership.id, exc)
