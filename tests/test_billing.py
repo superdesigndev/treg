@@ -139,7 +139,7 @@ def test_amount_validation_accepts_the_minimum_and_above(amount):
 
 
 # ---- monthly cap validation ---------------------------------------------------------------------
-@pytest.mark.parametrize("amount", [-10, -1, float("inf"), float("-inf"), float("nan"), "abc", None, 10.5, 100001])
+@pytest.mark.parametrize("amount", [-10, -1, float("inf"), float("-inf"), float("nan"), "abc", None, 10.5, 1_000_000_001])
 def test_monthly_cap_validation_rejects_invalid_values(amount):
     """Monthly cap rejects negative, non-finite, fractional, non-numeric, or above-ceiling values."""
     with pytest.raises(billing.TopupRejected):
@@ -151,7 +151,8 @@ def test_monthly_cap_validation_rejects_invalid_values(amount):
     (2000, 2000),
     (5000, 5000),
     (50000, 50000),  # above single top-up limit, valid for monthly cap
-    (100000, 100000),  # maximum monthly cap
+    (100000, 100000),
+    (1_000_000_000, 1_000_000_000),  # the technical bound
 ])
 def test_monthly_cap_validation_accepts_valid_values(amount, expected):
     """Monthly cap accepts 0 (reset) and whole dollars up to the ceiling."""
@@ -174,7 +175,7 @@ async def test_monthly_cap_above_new_ceiling_is_rejected(c: AsyncClient, monkeyp
     org_id, owner = await _org(c)
     monkeypatch.setattr(billing, "_sdk", _no_sdk)
     base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
-    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 100001})
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 1_000_000_001})
     assert r.status_code == 422, r.text
     assert "maximum monthly cap" in r.text
 

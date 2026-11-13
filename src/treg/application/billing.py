@@ -37,6 +37,7 @@ import binascii
 import hashlib
 import json
 import logging
+import math
 import time
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
@@ -69,9 +70,9 @@ MICRO_PER_USD = 1_000_000
 # and "$5000" is one keystroke, and a card that big is likelier a mistake or a stolen number than a
 # customer. Raise it deliberately when someone asks.
 TOPUP_MAX_USD = 2_000
-# The monthly cap limits total automatic top-ups per calendar month. It can be much higher than a
-# single top-up because it accumulates many refills; $100k covers heavy enterprise usage.
-AUTOTOPUP_MONTHLY_CAP_MAX_USD = 100_000
+# The monthly cap is the team's own limit on its automatic top-ups, so treg sets no business ceiling on
+# it. This bound only keeps the micro-USD value exact in a float and inside the BIGINT column.
+AUTOTOPUP_MONTHLY_CAP_MAX_USD = 1_000_000_000
 # Tags Checkout sessions in the Stripe dashboard so this flow's conversion can be compared against
 # any other we add later (required suffix is 8 letters — see Stripe's integration_identifier docs).
 INTEGRATION_ID = "tregtopup-qwkmzhrb"
@@ -225,10 +226,8 @@ def validate_topup_usd(amount_usd) -> int:
 def validate_monthly_cap_usd(amount_usd) -> int:
     """Validate the auto top-up monthly cap. Returns whole dollars; raises `TopupRejected` on error.
 
-    Accepts 0 (resets to default), rejects negative or non-finite values. The ceiling is much higher
-    than a single top-up because the cap accumulates many refills over a month.
+    Accepts 0 (resets to default), rejects negative, non-finite or fractional values.
     """
-    import math
     try:
         value = float(amount_usd)
     except (TypeError, ValueError) as exc:

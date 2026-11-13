@@ -192,6 +192,11 @@ tierBonus(usd){ const t=this.billing&&this.billing.topup.bonus_tiers; if(!t||!us
       let pct=0; floors.forEach(k=>{ if((usd||0)>=k) pct=t[k]; });
       const k=floors.find(k=>k>(usd||0)&&t[k]>pct);
       return k===undefined?null:{usd:k, pct:t[k]}; },
+// The cap goes to the server only when the user changed it: re-sending the loaded value would store
+// the default as the team's own choice. An emptied field means the default (0).
+_autoCapChange(){ const v=this.autoMonthlyCap, loaded=Math.round(this.billing?.autotopup?.monthly_cap_usd);
+      if(v==='' || v==null) return 0;
+      return v===loaded ? null : v; },
 async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       // The mandate decision below reads this team's auto top-up state; billing from another team
       // (a switch whose loadBilling has not answered yet) must never decide it.
@@ -207,7 +212,7 @@ async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
           // saved card then arms it from the setup webhook. A failure here stops the payment too -
           // paying without the auto top-up the user just agreed to would be a silent downgrade.
           const armed=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
-            body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, per_hour:this.autoPerHour, monthly_cap_usd:this.autoMonthlyCap, setup_url:false})});
+            body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, per_hour:this.autoPerHour, monthly_cap_usd:this._autoCapChange(), setup_url:false})});
           if(this.activeOrgId===org) this.billing=armed;
         }
         // The request below carries the ACTIVE team; after a switch it would buy credit for the
@@ -222,7 +227,7 @@ async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       this.autoOpen=!this.autoOpen; if(!this.autoOpen) this.autoConsent=false; },
 async setAuto(on){ this.billingBusy=true; this.err='';
       try{ const out=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
-             body:JSON.stringify({enabled:on, consent:on, amount_usd:on?this.autoAmount:null, threshold_usd:on?this.autoThreshold:null, per_hour:on?this.autoPerHour:null, monthly_cap_usd:on?this.autoMonthlyCap:null})});
+             body:JSON.stringify({enabled:on, consent:on, amount_usd:on?this.autoAmount:null, threshold_usd:on?this.autoThreshold:null, per_hour:on?this.autoPerHour:null, monthly_cap_usd:on?this._autoCapChange():null})});
         // No card yet: consent is stored, and Stripe's hosted card page finishes the job. Auto top-up
         // arms itself from the setup_intent.succeeded webhook, so there's nothing more to click here.
         if(out.setup_url){ window.location.href=out.setup_url; return; }

@@ -538,9 +538,9 @@ low balance produces ONE charge.
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
   would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
-  below one refill is refused. The cap is validated by `validate_monthly_cap_usd`, which has its own
-  ceiling (`AUTOTOPUP_MONTHLY_CAP_MAX_USD`, $100,000) separate from the single-top-up limit, because
-  the cap accumulates many refills over a month.
+  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
+  `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
   charge, else an hour divided by the team's `autotopup_max_per_hour` (0 means
   `autotopup_default_per_hour`). The number is part of the mandate text.

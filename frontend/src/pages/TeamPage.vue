@@ -641,7 +641,7 @@ export default {
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
                           <span class="sub" style="margin:0">Monthly limit: $</span>
-                          <input class="msel" style="width:90px" type="number" min="0" max="100000" v-model.number="autoMonthlyCap" placeholder="2000"/>
+                          <input class="msel" style="width:90px" type="number" min="0" v-model.number="autoMonthlyCap" placeholder="2000"/>
                           <span class="sub" style="margin:0;color:var(--muted)">(0 = default ${{billing.topup.max_usd}})</span>
                         </div>
                         <p class="sub" style="margin:8px 0 0">
