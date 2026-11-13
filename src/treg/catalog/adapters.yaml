@@ -3666,8 +3666,7 @@ adapters:
     accepts: [[linkedin_url], [linkedin_handle], [full_name, domain]]
     in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, full_name: queryParams.name,
          domain: queryParams.domain}
-    out: {email: data.email.value, first_name: data.first_name, last_name: data.last_name,
-          verified: "data.email.status == 'valid'"}
+    out: {email: data.email.value, verified: "data.email.status == 'valid'"}
     miss: "data.email.value == null"
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
@@ -3675,6 +3674,12 @@ adapters:
     # `found` reports a hit, not a deliverability check; the body carries no verification status.
     out: {email: email}
     miss: "found == false"
+  crawl4ai.people.phone.find:
+    accepts: [[linkedin_url], [linkedin_handle], [email], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, email: queryParams.email,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {phone: data.phone.value, line_type: data.phone.line}
+    miss: "data.phone.value == null"
   blitzapi.people.phone.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}

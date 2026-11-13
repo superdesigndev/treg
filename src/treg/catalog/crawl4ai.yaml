@@ -5004,19 +5004,24 @@ endpoints:
     scope: any_account
     method: GET
     host: gate.crawl4ai.com
-    path: /lead/person
-    name: Work e-mail finder by LinkedIn or name
-    summary: 'Find a person''s e-mail from a LinkedIn profile (link or slug) or a name with the company domain. The
-      answer is the whole person record: the e-mail with its check status (valid, invalid, accept_all, unknown) and
-      whether the check is done, plus name, title, company and phone. A person not on record answers 404, free.
-      About 0.1 s.'
+    path: /lead/person/email
+    name: Work e-mail finder by e-mail, LinkedIn or name
+    summary: 'Find a person''s e-mail from a LinkedIn profile (link or slug), a name with the company domain, or a known
+      e-mail: the address with its check status and when it was checked. When Lead holds no address it builds the
+      likely one from the company''s e-mail pattern and the name, and serves it only once the check says valid.
+      No verified address answers 404, free. About 0.1 s.'
     input:
       queryParams:
+        email:
+          type: string
+          required: false
+          example: alex@example.com
+          note: one of email, linkedin, or name with domain
         linkedin:
           type: string
           required: false
           example: https://www.linkedin.com/in/alex-example
-          note: a LinkedIn profile link or slug; or name with domain
+          note: a LinkedIn profile link or slug
         name:
           type: string
           required: false
@@ -5038,18 +5043,76 @@ endpoints:
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-11-13'
       confidence: verified
-      note: 'treg''s account price: 0.95 credits per person found, also when the record holds no e-mail; a 404
-        (Lead has no such person) is free. The x-c4-cost header settles the actual charge.'
+      note: 'treg''s account price: 0.95 credits per e-mail found; a 404 (no verified address) is free. The x-c4-cost
+        header settles the actual charge.'
     miss:
       status: 404
-      means: "Lead has no record of this person — a normal outcome, and free"
+      means: "Lead has no verified address for this person — a normal outcome, and free"
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
       queryParams:
         linkedin: williamhgates
     verified: '2026-11-13'
-    added: '2026-11-13'
     example_response: examples/crawl4ai.people.email.find.json
+    added: '2026-11-13'
+
+  - id: crawl4ai.people.phone.find
+    async: false
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    host: gate.crawl4ai.com
+    path: /lead/person/phone
+    name: Phone finder by e-mail, LinkedIn or name
+    summary: 'Find a person''s phone from a LinkedIn profile (link or slug), a name with the company domain, or an
+      e-mail: the number in E.164, whether it is a direct line, and the line type, plus the company''s phone when Lead
+      has it. No phone on record answers 404, free. About 0.1 s.'
+    input:
+      queryParams:
+        email:
+          type: string
+          required: false
+          example: alex@example.com
+          note: one of email, linkedin, or name with domain
+        linkedin:
+          type: string
+          required: false
+          example: https://www.linkedin.com/in/alex-example
+          note: a LinkedIn profile link or slug
+        name:
+          type: string
+          required: false
+          example: Alex Example
+          note: the person's full name; send it with domain
+        domain:
+          type: string
+          required: false
+          example: example.com
+          note: the company's website, sent with name
+    strict_query: true
+    cost:
+      type: per_success
+      value: 0.95
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-11-13'
+      confidence: verified
+      note: 'treg''s account price: 0.95 credits per phone found; a 404 (no phone on record) is free. The x-c4-cost
+        header settles the actual charge.'
+    miss:
+      status: 404
+      means: "Lead has no phone for this person — a normal outcome, and free"
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      queryParams:
+        linkedin: williamhgates
+    verified: '2026-11-13'
+    example_response: examples/crawl4ai.people.phone.find.json
+    added: '2026-11-13'
 
   - id: crawl4ai.people.search
     async: false
