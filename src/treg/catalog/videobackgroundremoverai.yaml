@@ -1,0 +1,251 @@
+provider: videobackgroundremoverai
+source:
+  docs: https://videobackgroundremover.ai/video-background-remover-api
+  openapi: https://videobackgroundremover.ai/openapi.json
+  curated: '2026-11-13'
+pricing_url: https://videobackgroundremover.ai/pricing
+# Surface is the official OpenAPI 3.1 document (8 operations). Prices come from that
+# document and the public pricing page. No live billed call was made for this listing;
+# paid test_requests need a test key and a sample video URL, which will be sent privately
+# if maintainers leave an email. Do not put a key in this file.
+#
+# Billing (OpenAPI CreateRequest): ceil(max(5, seconds, frames/30) * 2) credits.
+# Omitting seconds reserves 600 credits at the default of 300 seconds. Failed jobs refund
+# credits. Actual probe settles the reservation. API and MCP use paid credits only;
+# there is no free API tier. The website free preview and first-5-seconds HD offer are
+# not available on the API (free, trim and split are rejected with paid_only).
+# At most two active paid jobs per account. Input: up to 300 seconds and 500 MB.
+# OpenAPI documents HTTP 429 on API-key requests; the numeric per-minute cap is not
+# published on the public pricing or developer pages, so it is not invented here.
+limits: "At most two active paid jobs per account. Input up to 300 seconds and 500 MB. OpenAPI documents HTTP 429 on API-key requests; the numeric per-minute cap is not published."
+proposed_capabilities:
+  video-background.estimate: Estimate credits for a clip length without charging
+  video-background.remove: Create a paid job that removes or replaces a video background
+  video-background.job.list: List the caller's recent video background jobs
+  video-background.job.get: Read a job's status and signed download URLs
+  video-background.job.cancel: Cancel an active job and refund unused credits
+  video-background.job.start: Start a job after a single PUT upload
+  video-background.export: Export a completed job in another format at no extra credits
+  video-background.file.get: Download a ready result file
+defaults:
+  provenance: {source: docs, source_url: 'https://videobackgroundremover.ai/openapi.json', checked: '2026-11-13', confidence: documented}
+endpoints:
+  - id: videobackgroundremoverai.video-background.estimate
+    kind: utility
+    capability: video-background.estimate
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /api/jobs/estimate
+    name: "Estimate credits for a video background job"
+    summary: "Return the credit charge for a clip length without creating a job or charging the account."
+    input:
+      body:
+        seconds: {type: number, required: true, min: 1, example: 5, note: "Clip length in seconds. Billing uses ceil(max(5, seconds, frames/30) * 2) credits."}
+        frames: {type: integer, required: false, min: 1, max: 10000000, note: "Optional frame count; frames/30 can raise the billable length."}
+        keep: {type: string, required: false, enum: [person, objects], default: objects}
+        split: {type: boolean, required: false, default: false, note: "Estimate only: maximum billable seconds 300, or 600 when true. Job creation rejects split."}
+      bodyType: json
+      note: "Anonymous calls return 200 with null balance/enough and needed = credits. With Bearer, needed = max(0, credits - balance). This route does not charge."
+    test_request:
+      body: {seconds: 5}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "Free. Official OpenAPI: Estimate credits without charging. An anonymous POST with seconds=5 returns HTTP 200."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.remove
+    capability: video-background.remove
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /api/jobs
+    async:
+      id_from: job.id
+      poll:
+        endpoint: videobackgroundremoverai.video-background.job.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [uploading, waiting, queued, running]
+        success: [done]
+        failure: [no_subject, failed, canceled]
+      result:
+        path: files
+        ttl_note: "24h"
+      interval: 10
+    name: "Create a video background removal job"
+    summary: "Start a paid job from a public HTTPS video URL, or reserve a single PUT upload."
+    input:
+      body:
+        video_url: {type: string, required: false, note: "Public HTTPS URL with Content-Length, at most 524288000 bytes. No credentials, private networks or nonstandard ports. Takes precedence over single. A sample URL will be provided privately with the test key."}
+        single: {type: boolean, required: false, note: "If true, reserve a one-time PUT upload; bytes is required. Call start after PUT."}
+        bytes: {type: integer, required: false, min: 1, max: 524288000, note: "Required with single."}
+        fileName: {type: string, required: false}
+        seconds: {type: number, required: false, min: 1, max: 300, default: 300, example: 5, note: "Omitting reserves 600 credits at the default of 300 seconds. Pass 5 for a cheap test."}
+        frames: {type: integer, required: false, min: 1, max: 10000000}
+        keep: {type: string, required: false, enum: [person, objects], default: objects}
+        format: {type: string, required: false, enum: [hevc_mov, prores, webm, green_mp4, bg_mp4, zip], default: webm}
+        max_credits: {type: number, required: false, note: "Reject with too_expensive if below the estimated reservation."}
+        background: {type: object, required: false, note: "Color or gradient replacement. Required when format is bg_mp4. Photo backgrounds require a separate browser upload and are outside this script API."}
+        spill: {type: number, required: false, min: 0, max: 100, default: 60}
+        screen: {type: string, required: false, enum: [green, blue]}
+      bodyType: json
+      note: "Provide video_url, or single+bytes. Paid API only; free, trim and split are rejected with paid_only. Response is {job} for a URL import, or {upload_id, job, upload} for a single PUT upload."
+    untestable: "Needs a public HTTPS sample video_url and a test key, which will be sent privately if maintainers leave an email. This file does not include a key or a sample URL. A cheap test must set seconds to 5 (the default of 300 reserves 600 credits)."
+    price:
+      value: '10'
+      currency: credit
+      per: 1
+      unit: call
+      note: "OpenAPI billing is ceil(max(5, seconds, frames/30) * 2) credits. A 5-second clip at up to 30 fps is 10 credits — the documented minimum. USD depends on the credit pack (see fx.yaml). Failed jobs refund credits; actual probe settles the reservation. Do not omit seconds: the default of 300 reserves 600 credits."
+    bill:
+      error: free
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.job.list
+    kind: utility
+    capability: video-background.job.list
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /api/jobs
+    name: "List recent video background jobs"
+    summary: "List the 20 most recent jobs for the authenticated key (this catalog's health probe)."
+    input:
+      note: "No parameters. The key rides in the Authorization Bearer header."
+    test_request: {queryParams: {}}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "Free. Official OpenAPI lists this as a non-charging read. A request with an unrecognized key returns HTTP 401 {error: unauthorized}; a request with no Authorization header returns HTTP 401 {error: signin}."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.job.get
+    kind: utility
+    capability: video-background.job.get
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /api/jobs/{id}
+    name: "Read a video background job"
+    summary: "Read job status, progress and fresh signed download URLs. Poll every 10–20 seconds."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Job id returned by POST /api/jobs."}
+    untestable: "Needs a live job id from a create call, which will be sent privately with the test key if maintainers leave an email."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "Free. Official OpenAPI: poll every 10–20 seconds. Ready files receive absolute signed links valid for 24 hours; results are retained for 7 days."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.job.cancel
+    kind: utility
+    capability: video-background.job.cancel
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: DELETE
+    path: /api/jobs/{id}
+    name: "Cancel a video background job"
+    summary: "Cancel an active job and refund unused credits."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Job id returned by POST /api/jobs."}
+    untestable: "Needs a live job id from a create call, which will be sent privately with the test key if maintainers leave an email."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "The cancel call itself is not billed as an extra credit charge. Official OpenAPI: cancel refunds unused credits from the job reservation."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.job.start
+    kind: utility
+    capability: video-background.job.start
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /api/jobs/{id}/start
+    name: "Start a job after a single PUT upload"
+    summary: "Verify the single PUT upload and enqueue the job. Only single-upload jobs in the uploading state can start. No request body."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Job id returned by POST /api/jobs with single+bytes."}
+      note: "No request body. Call this after the one-time PUT to the returned upload URL."
+    untestable: "Needs a live single-upload job id, which will be sent privately with the test key if maintainers leave an email."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "No extra credits. Credits were reserved at POST /api/jobs."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.export
+    kind: utility
+    capability: video-background.export
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /api/jobs/{id}/exports
+    name: "Export a completed job in another format"
+    summary: "Request another export format for a completed job. Returns one JobFile (possibly pending or failed), not a JobView."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Id of a completed job."}
+      body:
+        format: {type: string, required: true, enum: [hevc_mov, prores, webm, green_mp4, bg_mp4, zip], example: webm}
+        part: {type: integer, required: false, min: 1, default: 1, note: "Cannot exceed the job part count."}
+        background: {type: object, required: false, note: "Required when format is bg_mp4."}
+      bodyType: json
+    untestable: "Needs a live completed job id, which will be sent privately with the test key if maintainers leave an email."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "Official OpenAPI: no extra credits charged; daily encoding spend limits still apply."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api
+
+  - id: videobackgroundremoverai.video-background.file.get
+    kind: utility
+    capability: video-background.file.get
+    platform: video-background
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /api/jobs/{id}/files/{fileId}
+    name: "Download a ready result file"
+    summary: "Download a ready result (supports Range). Use Bearer, or the exp + sig query pair from GET /api/jobs/{id}."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Job id."}
+        fileId: {type: string, required: true, note: "fileId from the job's files list."}
+      queryParams:
+        exp: {type: string, required: false, note: "Expiry from a signed URL on GET /api/jobs/{id}. When used with sig, no Authorization header is required."}
+        sig: {type: string, required: false, note: "Signature from a signed URL on GET /api/jobs/{id}."}
+    untestable: "Needs a live job id and fileId, which will be sent privately with the test key if maintainers leave an email."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "Free to download a ready file. Signed URLs expire after 24 hours; results are kept for 7 days."
+    added: '2026-11-13'
+    docs_url: https://videobackgroundremover.ai/video-background-remover-api

@@ -2094,6 +2094,38 @@ TINYFISH = OAuthProvider(
     probe_path="/v1/wallet",
 )
 
+VIDEOBACKGROUNDREMOVERAI = OAuthProvider(
+    service="videobackgroundremoverai",
+    display_name="Video Background Remover (.ai)",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="vbr_sk_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://videobackgroundremover.ai/video-background-remover-api",
+    setup_action_label="Get your API key",
+    setup_steps=(
+        "Sign in at videobackgroundremover.ai with email or Google.",
+        "Open the developer page at https://videobackgroundremover.ai/video-background-remover-api.",
+        "Create an API key (it starts with vbr_sk_) and copy it.",
+    ),
+    setup_note=(
+        "API and MCP use paid credits only; there is no free API tier. "
+        "POST /api/jobs/estimate and GET /api/jobs do not charge. "
+        "The website offers a free preview of the whole clip and the first 5 seconds of HD "
+        "free once a day; those offers are not available on the API. Failed jobs refund credits."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Remove the background from a video and export transparent WebM/MOV, ProRes, green-screen MP4, a replaced background, or a PNG ZIP.",
+    base_url="https://videobackgroundremover.ai",
+    docs_url="https://videobackgroundremover.ai/video-background-remover-api",
+    probe_path="/api/jobs",
+    probe_method="GET",
+    probe_reject_statuses=(401, 403),
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -4285,7 +4317,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
-        REAPI, PIAPI, GOOGLE_AI, TINYFISH,
+        REAPI, PIAPI, GOOGLE_AI, TINYFISH, VIDEOBACKGROUNDREMOVERAI,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
