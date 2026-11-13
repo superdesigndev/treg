@@ -504,6 +504,31 @@ async def test_routed_children_count_one_root(clients, counter, enrichment_on, m
     assert logged["method"] == "POST" and logged["replay_of"] is None
     [row] = counter.snapshot()["top"]
     assert row["requests"] == row["completed"] == 1
+    assert logs(caplog, "call_child") == []
+
+
+async def test_failed_routed_child_logs_one_child_line(clients, counter, enrichment_on, monkeypatch,
+                                                       caplog):
+    from treg.application.call import service
+    from test_routing import _relay_by_provider, ROUTED
+
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"tomba": [(500, {"error": "upstream down"})], "*": [(404, {})] * 20}, seen))
+    response = await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert any(provider == "tomba" for provider, *_ in seen)
+    root_ref = response.headers["X-Treg-Call-Id"]
+    [root] = logs(caplog)
+    assert root["call_ref"] == root_ref and root["endpoint_id"] == ROUTED
+    [child] = logs(caplog, "call_child")
+    assert child["provider"] == "tomba" and child["status"] == 500
+    assert child["parent_ref"] == root_ref and child["call_ref"].startswith(root_ref + ":r")
+    assert child["step"].startswith("r") and child["credential_tier"] == "platform"
+    assert child["endpoint_id"].startswith("tomba.")
+    assert set(child) == {"worker_pid", "org_id", "call_ref", "parent_ref", "step", "endpoint_id",
+                          "provider", "credential_tier", "status", "upstream_ms", "duration_ms"}
+    [row] = counter.snapshot()["top"]
+    assert row["requests"] == row["completed"] == 1
 
 
 @pytest.mark.parametrize("path,tool,args", [
