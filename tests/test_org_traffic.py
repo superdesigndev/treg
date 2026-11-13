@@ -531,11 +531,13 @@ async def test_failed_routed_child_logs_one_child_line(clients, counter, enrichm
     assert row["requests"] == row["completed"] == 1
 
 
-@pytest.mark.parametrize("sent,logged", [(False, 0), (True, 1)])
+@pytest.mark.parametrize("on_send,error,logged", [
+    (False, "ConnectError", 0),  # refused before the send hook (an SSRF block, a failed injection)
+    (True, "PoolTimeout", 0),    # the hook fired, but no pool slot: the request never left
+    (True, "ReadTimeout", 1),    # sent; the vendor did not answer
+])
 async def test_child_failure_is_logged_only_once_the_request_left(
-        clients, counter, enrichment_on, monkeypatch, caplog, sent, logged):
-    """A failure before sending (an SSRF block, a failed injection) is treg's own; a timeout after
-    sending is the vendor's."""
+        clients, counter, enrichment_on, monkeypatch, caplog, on_send, error, logged):
     import httpx
     from treg.application.call import service
     from treg.infra.upstream import relay as relay_module
@@ -548,10 +550,9 @@ async def test_child_failure_is_logged_only_once_the_request_left(
         if "tomba" not in upstream_url:
             return await others(request, upstream_url, *args, **kwargs)
         tried.append(upstream_url)
-        if sent:
+        if on_send:
             relay_module.ON_SEND.get()()
-            raise httpx.ReadTimeout("vendor did not answer")
-        raise httpx.ConnectError("refused before sending")
+        raise getattr(httpx, error)("tomba attempt failed")
 
     monkeypatch.setattr(service, "relay", relay)
     await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})

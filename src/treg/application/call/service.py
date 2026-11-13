@@ -1136,6 +1136,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # when treg streams it on, until the headers arrive). Excludes token refresh, archive lookup, a
     # `retry-after` sleep and treg's own work. None when no request reached the provider.
     upstream_ms: int | None = None
+    never_left = False
 
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
@@ -1206,7 +1207,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 duration_ms=duration_ms, served_by=mk.endpoint_id,
                 archive_key_hash=archive_key_hash, archive_content_hash=archive_content_hash)
             _log_failed_child(org_id=audit_org_id, call_ref=call_ref, mk=mk, status=status_code,
-                              reached_provider=request.context.reached_provider,
+                              reached_provider=request.context.reached_provider and not never_left,
                               refused_by=refused_by, upstream_ms=upstream_ms,
                               duration_ms=duration_ms)
         props = _tool_called_props(
@@ -1752,6 +1753,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
+            # ON_SEND fires before httpx takes a pool slot, so a pool timeout never left.
+            never_left = isinstance(exc, httpx.PoolTimeout)
             raise _gateway_request_failure(exc) from exc
         finally:
             share_slot.release()
