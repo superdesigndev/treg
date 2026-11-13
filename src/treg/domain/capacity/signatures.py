@@ -126,6 +126,8 @@ _TABLE: list[Signature] = [
     # RATE_LIMIT_EXCEEDED bursts with X-RateLimit-* headers, never a period quota; the plan
     # allowance resets monthly at `cycleResetsAt` from GET /v1/credits.
     Signature("cloro", 403, r"insufficient_credits", "balance"),
+    Signature("datahyena", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
+    Signature("datahyena", 429, r"", "burst"),
     Signature("crawl4ai", 402, r"no_credit", "balance", tripwire=True),
     Signature("crawl4ai", 402, r"spend_cap|plan_cap", "quota"),
     Signature("crawl4ai", 429, r"", "burst"),
