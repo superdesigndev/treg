@@ -263,7 +263,7 @@ the provider.
 | Header | Meaning |
 |---|---|
 | `X-Treg-Call-Id` | On every relayed response and every refusal treg raises before the relay, including the saturation 503 (`_stamp_call_exit`); the audit row's join key. An unexpected fault is Starlette's bare 500 with no id, but the row and `tool_called` are still recorded. |
-| `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)) and for owned free polls. Absent on own-key and own-tool calls. |
+| `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)), for owned free polls, and for metered refusals raised before any hold (`money_admission_timeout`, `provider_capacity_unavailable`, `route_max_cost`, and other pre-reserve reservation failures). Absent on own-key and own-tool calls. |
 | `X-Treg-Error: 1` | treg's own refusal on `/call/`, `/catalog/call/`, `/table/`, so a caller can tell treg's 404 from the vendor's. Status and body untouched. |
 | `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |

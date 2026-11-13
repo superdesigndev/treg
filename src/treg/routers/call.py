@@ -35,7 +35,7 @@ from ..application.call.intake import (
     CallMeta,
     _parse_call_meta as parse_call_meta,
 )
-from ..application.call.types import CallerSnapshot, CallFailure, CallInput, UpstreamResponse
+from ..application.call.types import CallerSnapshot, CallFailure, CallInput, UpstreamResponse, cost_micro_for_failure
 from ..caller_metadata import _client_of
 from ..call_surface import split_call_path
 from ..config import get_settings
@@ -153,8 +153,13 @@ async def _enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
 
 
 def _translate_call_failure(exc: CallFailure) -> HTTPException:
-    headers = {"Retry-After": str(exc.retry_after_s)} if exc.retry_after_s is not None else None
-    return HTTPException(status_code=exc.status_code, detail=exc.detail, headers=headers)
+    headers: dict[str, str] = {}
+    if exc.retry_after_s is not None:
+        headers["Retry-After"] = str(exc.retry_after_s)
+    cost = cost_micro_for_failure(exc)
+    if cost is not None:
+        headers["X-Treg-Cost-Micro"] = str(cost)
+    return HTTPException(status_code=exc.status_code, detail=exc.detail, headers=headers or None)
 
 
 def _parse_call_meta(request: Request, caller: Caller | None = None) -> CallMeta:
@@ -246,19 +251,23 @@ async def _stamp_call_exit(
     call_ref = getattr(request.state, "call_ref", "") or uuid.uuid4().hex
     request.state.call_ref = call_ref
     resp.headers["X-Treg-Call-Id"] = call_ref
-    if (cost_micro := getattr(request.state, "call_cost_micro", None)) is not None:
+    cost_micro = getattr(request.state, "call_cost_micro", None)
+    if cost_micro is not None:
         resp.headers["X-Treg-Cost-Micro"] = str(cost_micro)
     if not getattr(request.state, "call_audited", False):
         org_id, email = getattr(request.state, "call_identity", (None, ""))
         key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
+        telemetry = {"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)}
+        if cost_micro is not None:
+            telemetry["cost_charged_micro"] = int(cost_micro)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
             client=_client_of(request), refused_by=_refusal_kind(status_code),
             api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
-            telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
+            telemetry=telemetry)
         if failure_kind:
             _capture_exceptional_call(
                 request, call_ref=call_ref, status_code=status_code, failure_kind=failure_kind)
@@ -422,6 +431,10 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
         raise HTTPException(status_code=exc.status_code, detail=exc.detail,
                             headers={"Retry-After": str(exc.retry_after_s)}) from exc
     except CallFailure as exc:
+        if context.cost_micro is None:
+            cost = cost_micro_for_failure(exc)
+            if cost is not None:
+                context.cost_micro = cost
         raise _translate_call_failure(exc) from exc
     except PoolTimeoutError:
         # The application-wide handler owns the typed 503 and its db_pool event.
