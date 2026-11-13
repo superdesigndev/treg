@@ -678,7 +678,7 @@ the hub's own steps are.
 
 The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
 this limit refuses the call, or cannot be checked, the call service gives that slot back
-(`usage.return_daily_slot`), so a member stopped by dollars, or retrying an unavailable check, does
+(`usage.return_daily_slot`), on the direct path and on an overflow-only call alike, so a member stopped by dollars, or retrying an unavailable check, does
 not also lose calls. `memberspend` has no foreign keys; team deletion clears it with the team. The first limit reached stops the member.
 
 The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
