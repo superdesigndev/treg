@@ -4273,6 +4273,31 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+PILOTERR = OAuthProvider(
+    service="piloterr",
+    display_name="Piloterr",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Piloterr API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.piloterr.com",
+    setup_action_label="Get your Piloterr API key",
+    setup_steps=(
+        "Sign in to Piloterr and open Settings → API → Keys.",
+        "Copy your API key.",
+    ),
+    setup_note="Each scrape spends credits (1-3 per call depending on the site); the usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Scrape 300+ websites (Amazon, Walmart, eBay, LinkedIn companies, Crunchbase, Zillow, Google) as structured JSON.",
+    base_url="https://api.piloterr.com",
+    docs_url="https://www.piloterr.com/library",
+    probe_path="/v2/usage",  # free; an invalid key gets 401 {"error": "Invalid API Key"}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4291,6 +4316,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        PILOTERR,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
