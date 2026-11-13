@@ -139,6 +139,9 @@ WORDY = re.compile(r"[a-z]{8,}")
 
 
 def looks_like_secret(match: str) -> bool:
+    # EVM addresses are public data identifiers, including in token and wallet test targets.
+    if re.fullmatch(r"0x[0-9a-fA-F]{40}", match):
+        return False
     if match.lower().startswith("bearer"):
         return True
     return any(

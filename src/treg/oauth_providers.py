@@ -1307,6 +1307,28 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+NANSEN = OAuthProvider(
+    service="nansen",
+    display_name="Nansen",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Nansen API key",
+    token_header="apikey",
+    token_format="{secret}",
+    setup_url="https://app.nansen.ai/auth/agent-setup",
+    setup_action_label="Get your Nansen API key",
+    setup_steps=("Sign in to Nansen and open the API page.",
+                 "Create an API key with Data permission and copy it."),
+    setup_note="Successful data calls spend credits; account and general/entity search are free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Analyze tokens, holders and flows, inspect wallet portfolios and track Smart Money.",
+    base_url="https://api.nansen.ai",
+    docs_url="https://docs.nansen.ai",
+    probe_path="/api/v1/account",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -4298,7 +4320,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
-        COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
+        NANSEN, COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
