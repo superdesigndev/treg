@@ -1,0 +1,51 @@
+name: PR Slack notice
+
+# Posts every newly opened pull request to Slack and flags authors outside the team.
+# The team is everyone with write access to this repository. Org membership here is private,
+# so `author_association` can report a member as CONTRIBUTOR.
+# `pull_request_target` lets fork PRs reach the webhook secret; this job never checks out PR code.
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Slack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_PR_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::SLACK_PR_WEBHOOK_URL is not set; no Slack notice sent"
+            exit 0
+          fi
+          author=$(jq -r .pull_request.user.login "$GITHUB_EVENT_PATH")
+          if [ "$(jq -r .pull_request.user.type "$GITHUB_EVENT_PATH")" = Bot ]; then
+            who=bot
+          else
+            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$author/permission" --jq .permission)
+            case "$permission" in admin | write) who=team ;; *) who=external ;; esac
+          fi
+          jq --arg who "$who" --arg repo "$GITHUB_REPOSITORY" '
+            def esc: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
+            .pull_request as $pr
+            | ($pr.author_association | IN("FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER")) as $first
+            | {
+                team: "*New PR*",
+                bot: ":robot_face: *Bot PR*",
+                external: ":warning: *External contributor\(if $first then ", first PR" else "" end)*"
+              }[$who] as $tag
+            | {
+                text: "\($tag) · <\($pr.html_url)|#\($pr.number) \($pr.title | esc)>\n"
+                  + "by <\($pr.user.html_url)|\($pr.user.login)> · \($repo)"
+                  + " · +\($pr.additions) -\($pr.deletions) in \($pr.changed_files) file\(if $pr.changed_files == 1 then "" else "s" end)"
+                  + (if $pr.draft then " · draft" else "" end),
+                unfurl_links: false
+              }
+          ' "$GITHUB_EVENT_PATH" | curl --fail-with-body -sS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
