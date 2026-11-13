@@ -3673,6 +3673,14 @@ adapters:
     in: {linkedin_url: body.person_linkedin_url}
     out: {phone: phone}
     miss: "found == false"
+  crawl4ai.people.enrich:
+    accepts: [[email], [linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {email: queryParams.email, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {full_name: data.name, first_name: data.first_name, last_name: data.last_name, title: data.title,
+          company: data.company.name, company_domain: data.company.domain, linkedin_url: data.linkedin_url,
+          location: "join(data.location.city, data.location.country_code)"}
+    miss: "data == null"
   blitzapi.people.enrich:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}

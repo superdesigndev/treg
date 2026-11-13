@@ -4937,6 +4937,66 @@ endpoints:
     verified: '2026-10-31'
     example_response: examples/crawl4ai.companies.enrich.json
     added: '2026-10-31'
+  - id: crawl4ai.people.enrich
+    async: false
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    host: gate.crawl4ai.com
+    path: /lead/person
+    name: Person enrichment by email, LinkedIn or name
+    summary: 'Enrich one person from a work or personal e-mail, a LinkedIn profile (link or slug), or a name with the
+      company domain: name, job title, LinkedIn profile, location, company (name, domain, industry, country), e-mail
+      with its check status (valid, invalid, accept_all, unknown) and whether the check is done, phone (number, direct
+      or company line), and seniority, department and decision role. A person not on record answers 404, free.
+      About 0.1 s.'
+    input:
+      queryParams:
+        email:
+          type: string
+          required: false
+          example: alex@example.com
+          note: one of email, linkedin, or name with domain
+        linkedin:
+          type: string
+          required: false
+          example: https://www.linkedin.com/in/alex-example
+          note: a LinkedIn profile link or slug
+        name:
+          type: string
+          required: false
+          example: Alex Example
+          note: the person's full name; send it with domain
+        domain:
+          type: string
+          required: false
+          example: example.com
+          note: the company's website, sent with name
+    strict_query: true
+    cost:
+      type: per_success
+      value: 0.95
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-11-13'
+      confidence: verified
+      note: 'treg''s account price: 0.95 credits per person found; a 404 (Lead has no such person) is free.
+        The x-c4-cost header settles the actual charge.'
+    miss:
+      status: 404
+      means: "Lead has no record of this person — a normal outcome, and free"
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      queryParams:
+        linkedin: williamhgates
+    verified: '2026-11-13'
+    added: '2026-11-13'
+    example_response: examples/crawl4ai.people.enrich.json
+
   - id: crawl4ai.people.search
     async: false
     capability: people.search
@@ -4974,7 +5034,7 @@ endpoints:
           note: default 10, up to 100
     cost:
       type: per_result
-      value: 0.35
+      value: 0.95
       currency: credit
       per: 1
       unit: record
@@ -4982,7 +5042,7 @@ endpoints:
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-11-12'
       confidence: verified
-      note: 'treg''s account price: 0.35 credits per person returned; an empty answer is free. The x-c4-cost header
+      note: 'treg''s account price: 0.95 credits per person returned; an empty answer is free. The x-c4-cost header
         settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
