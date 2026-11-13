@@ -53,6 +53,8 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    # PB's public marketplace contract reserves 402 for insufficient API credit; not live-forced.
+    Signature("prerenderbuddy", 402, r"", "balance"),
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("filtrat-finder", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),

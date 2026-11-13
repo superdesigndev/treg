@@ -53,3 +53,6 @@ services:
         sync: false
       - key: TREG_EMAIL_FROM
         value: registry <no-reply@registry.example.com>
+      # Optional funded standalone prompt checks. Scope must be marketplace only.
+      - key: TREG_PLATFORM_KEY_PRERENDERBUDDY
+        sync: false
