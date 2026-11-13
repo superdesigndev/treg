@@ -3662,6 +3662,13 @@ adapters:
 
   # BlitzAPI shares these lookup and search contracts. Its other routes need a company LinkedIn
   # URL, a provider-specific cascade, or a result shape that no current contract accepts.
+  crawl4ai.people.email.find:
+    accepts: [[linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, full_name: queryParams.name,
+         domain: queryParams.domain}
+    out: {email: data.email.value, first_name: data.first_name, last_name: data.last_name,
+          verified: "data.email.status == 'valid'"}
+    miss: "data.email.value == null"
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}

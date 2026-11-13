@@ -4997,6 +4997,60 @@ endpoints:
     added: '2026-11-13'
     example_response: examples/crawl4ai.people.enrich.json
 
+  - id: crawl4ai.people.email.find
+    async: false
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    host: gate.crawl4ai.com
+    path: /lead/person
+    name: Work e-mail finder by LinkedIn or name
+    summary: 'Find a person''s e-mail from a LinkedIn profile (link or slug) or a name with the company domain. The
+      answer is the whole person record: the e-mail with its check status (valid, invalid, accept_all, unknown) and
+      whether the check is done, plus name, title, company and phone. A person not on record answers 404, free.
+      About 0.1 s.'
+    input:
+      queryParams:
+        linkedin:
+          type: string
+          required: false
+          example: https://www.linkedin.com/in/alex-example
+          note: a LinkedIn profile link or slug; or name with domain
+        name:
+          type: string
+          required: false
+          example: Alex Example
+          note: the person's full name; send it with domain
+        domain:
+          type: string
+          required: false
+          example: example.com
+          note: the company's website, sent with name
+    strict_query: true
+    cost:
+      type: per_success
+      value: 0.95
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-11-13'
+      confidence: verified
+      note: 'treg''s account price: 0.95 credits per person found, also when the record holds no e-mail; a 404
+        (Lead has no such person) is free. The x-c4-cost header settles the actual charge.'
+    miss:
+      status: 404
+      means: "Lead has no record of this person — a normal outcome, and free"
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      queryParams:
+        linkedin: williamhgates
+    verified: '2026-11-13'
+    added: '2026-11-13'
+    example_response: examples/crawl4ai.people.email.find.json
+
   - id: crawl4ai.people.search
     async: false
     capability: people.search
