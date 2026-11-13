@@ -219,6 +219,10 @@ class Candidate:
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
+    p95_ms: int | None = None
+    # The short-window verdict (`routing.health`): `slow` asks it after the others of its tier,
+    # `failing` is kept only as a probe or when nothing else is left; `ok` changes nothing.
+    health: str = "ok"
 
     @property
     def expected_cost_per_hit(self) -> float:
@@ -246,6 +250,7 @@ class Candidate:
                 "expected_cost_per_hit_micro": (None if self.expected_cost_per_hit == float("inf") else int(self.expected_cost_per_hit)),
                 "hit_rate": self.hit_rate, "ok_rate": self.ok_rate, "p50_ms": self.p50_ms,
                 "confidence": self.confidence, "exhausted": self.exhausted, **({"note": self.note} if self.note else {}),
+                **({"health": self.health} if self.health != "ok" else {}),
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
@@ -258,10 +263,12 @@ class Plan:
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
+    health: dict[str, str] = field(default_factory=dict)  # endpoint id -> short-window verdict, when not ok
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
-                "plan": [c.view() for c in self.candidates], "dropped": self.dropped}
+                "plan": [c.view() for c in self.candidates], "dropped": self.dropped,
+                **({"health": self.health} if self.health else {})}
 
 
 def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,
@@ -279,7 +286,7 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -319,7 +326,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
         lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
-        return (tier, pref, *lead,
+        # A child failing or slow right now is asked after the healthy ones of its tier, whatever
+        # order a contract default or a published rule gives it. Only the caller's own prefer
+        # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
+        unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
+        order = (pref, unwell) if caller_prefer else (unwell, pref)
+        return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,
                 c.last_ok_days if c.last_ok_days is not None else 10**6, c.endpoint["id"])
     return sorted(keep, key=key)
