@@ -286,7 +286,7 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -326,10 +326,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
         lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
-        # A child failing or slow right now is asked after the healthy ones of its tier; the
-        # caller's own prefer order still stands, and a team's own key is never asked later for it.
+        # A child failing or slow right now is asked after the healthy ones of its tier, whatever
+        # order a contract default or a published rule gives it. Only the caller's own prefer
+        # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
         unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
-        return (tier, pref, unwell, *lead,
+        order = (pref, unwell) if caller_prefer else (unwell, pref)
+        return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,
                 c.last_ok_days if c.last_ok_days is not None else 10**6, c.endpoint["id"])
     return sorted(keep, key=key)

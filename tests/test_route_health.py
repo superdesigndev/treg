@@ -62,7 +62,7 @@ def test_rank_asks_slow_and_failing_children_after_healthy_ones_of_their_tier():
                    _cand("c", price=3), _cand("own", tier="credential", price=0)])
     assert [c.endpoint["provider"] for c in ranked] == ["own", "c", "b", "a"]
     # the caller's own prefer order still stands
-    ranked = rank([_cand("a", health="slow"), _cand("c")], prefer=["a"])
+    ranked = rank([_cand("a", health="slow"), _cand("c")], prefer=["a"], caller_prefer=True)
     assert [c.endpoint["provider"] for c in ranked] == ["a", "c"]
 
 
@@ -191,3 +191,38 @@ async def test_observe_mode_reports_but_never_skips(clients, enrichment_on, quic
     r = await clients.post(f"/call/{ROUTED}", json={"email": "a@example.com"}, headers=HEADERS)
     assert r.status_code == 200, r.text
     assert [s[0] for s in seen] == ["leadmagic", "tomba"]
+
+
+# ---- review fixes ----------------------------------------------------------------------------
+
+def test_an_async_child_has_no_time_bound_once_it_may_hold_an_accepted_task():
+    """A submission the provider accepted keeps its hold and answers 202 pending; cancelling the
+    child after acceptance would release a hold a live task still owns. The bridge bounds the wait."""
+    from treg.application.call import route as call_route
+    sync, task = _cand("a"), _cand("b")
+    task.endpoint["async"] = {"poll": {"endpoint": "b.poll"}}
+    assert call_route._child_timeout_s(sync) is not None
+    assert call_route._child_timeout_s(task) is None
+
+
+def test_only_the_callers_own_prefer_outranks_health():
+    """A contract default or a published rule names an order; a child judged slow or failing right
+    now is still asked after the healthy ones. Only an explicit caller prefer keeps it first."""
+    cands = [_cand("slow", health="slow", price=1), _cand("fine", price=2)]
+    assert [c.endpoint["provider"] for c in rank(cands, prefer=["slow"])] == ["fine", "slow"]
+    assert [c.endpoint["provider"] for c in rank(cands, prefer=["slow"], caller_prefer=True)] == ["slow", "fine"]
+
+
+async def test_a_failing_child_is_kept_when_it_is_the_only_one_within_the_ceiling(quick_trip):
+    from treg.application.call import route as call_route
+    failing, dear = _cand("leadmagic", price=6_250), _cand("tomba", price=8_900)
+    _fail(failing.endpoint["id"])
+    assert await route_health.probe(failing.endpoint["id"])   # the probe turn is taken
+    cands, dropped = [failing, dear], []
+    await call_route._apply_health(cands, dropped, probe=True, max_cost_micro=7_500)
+    assert failing in cands and failing.health == "failing" and dropped == []
+    # with room for the other, it is dropped as before
+    cands, dropped = [failing, dear], []
+    failing.health = "ok"
+    await call_route._apply_health(cands, dropped, probe=True, max_cost_micro=10_000)
+    assert cands == [dear] and dropped[0]["health"] == "failing"

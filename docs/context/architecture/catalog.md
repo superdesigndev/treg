@@ -1143,9 +1143,10 @@ an invalid extra never disables the primary.
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
   report agree; `limit` and contract defaults never count). An exhausted platform provider with an
   enabled overflow route stays a candidate at the overflow price; without one, or with no key on the
-  deployment, it is dropped and named in `dropped`. Within a tier and after the caller's prefer
-  order, a child whose short-window health is `slow` (or `failing` and kept) is asked after the
-  healthy ones (see "Child guards").
+  deployment, it is dropped and named in `dropped`. Within a tier, a child whose short-window health
+  is `slow` (or `failing` and kept) is asked after the healthy ones, ahead of the contract's default
+  order and any published rule; only the caller's own `X-Treg-Route-Prefer` outranks it (see
+  "Child guards").
 - **Execution** (`application/call/route.py`): each attempt is a full child `execute_call` with
   `call_ref` `{parent}:r{n}` and the ordinary hold, ladder, relay, settle, audit and cancellation.
   - Vendor 4xx (not 402/405/408/410/429) is usually the caller's fault, but scrapers answer 400 for
@@ -1188,16 +1189,20 @@ an invalid extra never disables the primary.
     hit, even when another failed on the way (5xx, timeout, an unreadable answer, a rejection).
     Such a miss says `_treg.incomplete: true` / `X-Treg-Route-Incomplete: true`, and every
     `error` attempt in it is unbilled (`route._unbill` marks its deferred hold to release), so the
-    caller pays for the misses only. Only a call where no provider answered a miss is 502
+    caller pays for the misses only. The same holds for the miss that ends a walk under
+    `X-Treg-Route-Waterfall: 0`. Only a call where no provider answered a miss is 502
     `route_failed`. A single outage turned every all-miss call into a 502 before, so one failing
     provider failed a whole high-volume capability.
   - **Child guards.** Two guards keep one failing child from stalling or failing a routed call.
-    *Time bound*: each child (`execute_child` and its body read, not the async bridge's polls) runs
+    *Time bound*: each synchronous child (`execute_child` and its body read) runs
     under `asyncio.timeout_at` in the parent's task, for `route_child_timeout_s`, or twice the
     child's measured `p95_ms` when longer, never past `call_timeout_s`
     (`health.child_timeout_s`; 0 turns it off). On expiry the child's own cancellation path
     releases its hold (a conditional claim, so once), any deferred hold it left is marked
-    unbillable, and the attempt is an `error` with status 504; the waterfall moves on.
+    unbillable, and the attempt is an `error` with status 504; the waterfall moves on. An `async`
+    child has no bound: once the provider accepts a submission, its task row and hold belong to
+    that task (202 pending, the worker settles), and cancelling it would release a hold a live task
+    owns. `ROUTED_ASYNC_WAIT_SECONDS` bounds its wait instead.
     *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
     anonymous child that reached its provider (never an archive hit, never a local refusal) counts
     as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or
@@ -1207,8 +1212,9 @@ an invalid extra never disables the primary.
     `route_health_min_calls` answers with `route_health_fail_pct` failed is `failing`, with
     `route_health_slow_pct` slow is `slow`. A failing child is dropped (`dropped` entry with
     `health: failing`) unless this call takes its probe turn (`kv.take`, one call per
-    `route_health_probe_s` fleet-wide; a plan preview never does) or no other askable candidate
-    would be left, in which case it is kept and asked last. A child recovers on its own: its
+    `route_health_probe_s` fleet-wide; a plan preview never does) or no other candidate the caller
+    did not exclude and the cost ceiling can start would be left, in which case it is kept and
+    asked last. A child recovers on its own: its
     failures age out of the window, and probes add fresh answers meanwhile. A team's own key is
     never counted, dropped or reordered. `route_health: observe` reports verdicts (the plan's
     `health`, the call event's route summary) without acting; `off` neither records nor reads. An

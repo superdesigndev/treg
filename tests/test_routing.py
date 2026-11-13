@@ -4244,3 +4244,29 @@ async def test_a_merged_instagram_answer_keeps_the_first_providers_details(clien
     r = await clients.post("/call/treg.instagram.search.users", json={"q": "coffee Perth"})
     get_settings.cache_clear()
     assert [u["username"] for u in r.json()["output"]["users"]] == ["acct0", "acct1", "acct2"]
+
+
+async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills_only_the_miss(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """With the waterfall off the walk ends on the first miss; a billed answer that failed before it
+    (an adapter that could not read it) is refunded there too, and the miss says it is incomplete."""
+    patched_cat = _patched_catalog_all_email_find_throw(catalog_store.load())
+    monkeypatch.setattr(catalog_store, 'load', lambda: patched_cat)
+    seen = []
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
+        'findymail': [(200, {'contact': None})],
+        '*': [(200, {'data': {'email': 'x@test.test'}})] * 5,
+    }, seen))
+    before = await _balance(clients)
+    r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'},
+                           headers={'X-Treg-Route-Waterfall': '0', 'X-Treg-Route-Prefer': 'tomba,findymail'})
+    assert r.status_code == 200, r.text
+    doc = r.json()['_treg']
+    assert [(t['provider'], t['outcome']) for t in doc['tried']] == [('tomba', 'error'), ('findymail', 'miss')]
+    assert doc['outcome'] == 'miss' and doc['incomplete'] is True
+    assert r.headers['X-Treg-Route-Incomplete'] == 'true'
+    assert doc['tried'][0]['charged_micro'] == 0
+    assert doc['charged_micro'] == doc['tried'][1]['charged_micro'] == before - await _balance(clients)
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []

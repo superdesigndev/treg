@@ -720,7 +720,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    health = await _apply_health(cands, dropped, probe=probe, exclude=options.exclude)
+    health = await _apply_health(cands, dropped, probe=probe, exclude=options.exclude,
+                                 max_cost_micro=options.max_cost_micro)
     decision = None
     if route_rules_app.enabled():
         input_type, meta, _ = call_events.segment(contract, identity_given)
@@ -734,7 +735,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
 
     def ordered(prefer):
         out = rank(cands, prefer=prefer, exclude=options.exclude,
-                   given=given, derive=contract.derive, one_subject=contract.one_subject)
+                   given=given, derive=contract.derive, one_subject=contract.one_subject,
+                   caller_prefer=bool(options.prefer))
         if options.complete:  # stable: price order within each group
             out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
                   [c for c in out if not _can_answer_fully(contract, c.adapter)]
@@ -759,7 +761,7 @@ _GUARDED_TIERS = ("platform", "anonymous")   # a team's own key is never skipped
 
 
 async def _apply_health(cands: list[Candidate], dropped: list[dict], *, probe: bool,
-                        exclude: list[str] = ()) -> dict[str, str]:
+                        exclude: list[str] = (), max_cost_micro: int | None = None) -> dict[str, str]:
     """Read the short-window health of every treg-paid child and act on it (`route_health`).
     `on`: a failing child is dropped unless it takes this call's probe turn or nothing else would
     be left, a slow one ranks after the healthy ones of its tier. `observe`: only reported.
@@ -768,6 +770,8 @@ async def _apply_health(cands: list[Candidate], dropped: list[dict], *, probe: b
     excluded = {p.lower() for p in exclude}
     askable = [c for c in cands if c.endpoint["provider"].lower() not in excluded and not c.exhausted]
     guarded = [c for c in askable if c.tier in _GUARDED_TIERS]
+    # "Something else to ask" counts only what the cost ceiling lets the walk start.
+    affordable = [c for c in askable if max_cost_micro is None or (c.price_micro or 0) <= max_cost_micro]
     if mode == "off" or not guarded:
         return {}
     tallies = await route_health.read([c.endpoint["id"] for c in guarded])
@@ -788,16 +792,17 @@ async def _apply_health(cands: list[Candidate], dropped: list[dict], *, probe: b
             c.health = v
     if not failing:
         return verdicts
-    kept = len(askable) - len(failing)
+    failing_ids = {id(c) for c, _ in failing}
+    kept = sum(1 for c in affordable if id(c) not in failing_ids)
     rest = []
     for c, tally in failing:
         if probe and await route_health.probe(c.endpoint["id"]):
             verdicts[c.endpoint["id"]] = "probe"   # asked where it ranks, to see whether it is back
-            kept += 1
+            kept += any(c is a for a in affordable)
         else:
             rest.append((c, tally))
     for c, tally in rest:
-        if kept == 0:
+        if kept == 0 and any(c is a for a in affordable):
             c.health = health_rules.FAILING        # nothing else to ask: kept, last
             continue
         cands.remove(c)
@@ -825,8 +830,23 @@ async def _bounded(deadline: float | None, awaitable):
 
 
 def _child_timeout_s(cand: Candidate) -> float | None:
+    """None for an async child: once the provider accepts a submission its task row and hold belong
+    to that task (202 pending, the worker settles), so the child must never be cancelled after it.
+    The async bridge's own wait bounds those."""
+    if cand.endpoint.get("async"):
+        return None
     s = get_settings()
     return health_rules.child_timeout_s(s.route_child_timeout_s, s.call_timeout_s, cand.p95_ms)
+
+
+def _refund_errors(errored: list, pending: list, spent: int) -> int:
+    """An incomplete miss bills the misses, never an answer that failed on the way: each billed
+    `error` attempt's deferred hold is released, and what is left charged is returned."""
+    for attempt, ref in errored:
+        if attempt.charged_micro and _unbill(pending, ref):
+            spent -= attempt.charged_micro
+            attempt.charged_micro = 0
+    return spent
 
 
 def _errored(errored: list, call_ref: str, attempt: Attempt) -> Attempt:
@@ -1505,11 +1525,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         outcome = "miss" if any(t.outcome == "miss" for t in tried) else "error"
         incomplete = outcome == "miss" and any(t.outcome == "error" for t in tried)
         if incomplete:
-            # The caller pays for the misses, never for an answer that failed on the way.
-            for attempt, ref in errored:
-                if attempt.charged_micro and _unbill(pending, ref):
-                    spent -= attempt.charged_micro
-                    attempt.charged_micro = 0
+            spent = _refund_errors(errored, pending, spent)
         if outcome == "miss":
             body_out = {"output": _empty_output(plan.contract), "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
@@ -1536,6 +1552,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     served = cand.endpoint["id"]
     winner_outcome = next(t.outcome for t in reversed(tried)
                           if t.endpoint_id == served and t.outcome in ("hit", "weak", "miss"))
+    incomplete = False
+    if winner_outcome == "miss" and any(t.outcome == "error" for t in tried):
+        # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
+        incomplete, spent = True, _refund_errors(errored, pending, spent)
     upgrade, provider = None, cand.endpoint["provider"]
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
@@ -1636,6 +1656,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
+                          **({"incomplete": True} if incomplete else {}),
                           **({"verification": verification} if verification is not None else {}),
                           **({"confirmation": confirmation} if confirmation is not None else {}),
                           **({"decision": decision} if decision is not None else {}),
@@ -1658,6 +1679,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                     if limit_exceeded else {}),
                                  **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
+                                 **({"X-Treg-Route-Incomplete": "true"} if incomplete else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),
                                  **({"X-Treg-Route-Decided": str(decision["decided"]).lower()} if decision else {}),
                                  **({"X-Treg-Route-Upgraded": str(upgrade["upgraded"]).lower()} if upgrade else {}),
