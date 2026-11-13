@@ -1,0 +1,70 @@
+name: PR Slack notice
+
+# Posts a pull request to Slack when it needs a reviewer: when its author requests a review, or
+# when it opens from someone outside the team, who cannot request one. Outside authors are flagged.
+# The team is everyone with write access to this repository. Org membership here is private,
+# so `author_association` can report a member as CONTRIBUTOR.
+# `pull_request_target` lets fork PRs reach the webhook secret; this job never checks out PR code.
+on:
+  pull_request_target:
+    types: [opened, review_requested]
+
+# Requesting several reviewers fires one event each; the wait below lets the last one cancel the
+# others, so the burst posts one message that lists every reviewer.
+concurrency:
+  group: pr-slack-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Slack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_PR_WEBHOOK_URL }}
+          ACTION: ${{ github.event.action }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::SLACK_PR_WEBHOOK_URL is not set; no Slack notice sent"
+            exit 0
+          fi
+          if [ "$ACTION" = review_requested ]; then sleep 15; fi
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER")
+          author=$(jq -r .user.login <<< "$pr")
+          if [ "$(jq -r .user.type <<< "$pr")" = Bot ]; then
+            who=bot
+          else
+            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$author/permission" --jq .permission)
+            case "$permission" in admin | write) who=team ;; *) who=external ;; esac
+          fi
+          if [ "$ACTION" = opened ] && [ "$who" = team ]; then
+            echo "A team member's PR waits for its author to request a review"
+            exit 0
+          fi
+          jq --arg action "$ACTION" --arg who "$who" --arg repo "$GITHUB_REPOSITORY" '
+            def esc: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
+            (.author_association | IN("FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER")) as $first
+            | {
+                team: "",
+                bot: ":robot_face: *Bot*",
+                external: ":warning: *External contributor\(if $first then ", first PR" else "" end)*"
+              }[$who] as $tag
+            | ([.requested_reviewers[].login] + [.requested_teams[] | "@" + .slug] | join(", ")) as $reviewers
+            | {
+                text: (if $action == "review_requested" then ":eyes: *Review requested*" else $tag end)
+                  + " · <\(.html_url)|#\(.number) \(.title | esc)>\n"
+                  + "by <\(.user.html_url)|\(.user.login)>"
+                  + (if $action == "review_requested" and $tag != "" then " (\($tag))" else "" end)
+                  + (if $reviewers != "" then " → \($reviewers)" else "" end)
+                  + " · \($repo) · +\(.additions) -\(.deletions) in \(.changed_files) file\(if .changed_files == 1 then "" else "s" end)"
+                  + (if .draft then " · draft" else "" end),
+                unfurl_links: false
+              }
+          ' <<< "$pr" | curl --fail-with-body -sS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
