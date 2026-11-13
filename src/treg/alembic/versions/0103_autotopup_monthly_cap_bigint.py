@@ -4,7 +4,7 @@ Revision ID: 0103
 Revises: 0102
 Create Date: 2026-11-13
 
-The monthly cap for auto top-up can be set much higher than a single top-up amount (up to $100k),
+The monthly cap for auto top-up can be set much higher than a single top-up amount (up to $1B),
 so the column must be BIGINT to hold values above $2,147.48 (the integer max in micro-USD).
 This was missed in revision 0093 which converted other money running totals.
 
