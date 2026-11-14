@@ -4459,3 +4459,20 @@ async def test_a_route_that_fails_only_on_treg_s_read_cap_is_logged_as_treg_s_li
     assert all("routed read" in t["detail"] for t in r.json()["detail"]["tried"])
     line = call_error_lines()[-1]
     assert line["error_class"] == "treg_error" and line["by"] == "treg", line
+
+
+async def test_a_route_cut_by_treg_s_read_cap_and_the_caller_s_skips_is_still_treg_s_limit(
+        clients: AsyncClient, enrichment_on, monkeypatch, call_error_lines):
+    """Candidates the caller's own max cost skipped were never asked: when the only attempts made were
+    cut by treg's routed read cap, the failure is still treg's limit, not an upstream error."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    assert (await clients.post("/secrets", json={"name": "tomba", "value": "OWN-TOMBA"})).status_code == 200
+    big = {"data": {"email": "patrick@stripe.com", "first_name": "x" * 600}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, big)] * 30}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba", "X-Treg-Route-Max-Cost": "0.000001"})
+    assert r.status_code == 502, r.text
+    outcomes = {t["outcome"] for t in r.json()["detail"]["tried"]}
+    assert "skipped" in outcomes and outcomes <= {"skipped", "error"}, r.json()["detail"]["tried"]
+    line = call_error_lines()[-1]
+    assert line["error_class"] == "treg_error" and line["by"] == "treg", line

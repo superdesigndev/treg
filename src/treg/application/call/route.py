@@ -1589,8 +1589,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "dropped": plan.dropped,
             "message": f"every candidate for {ep['id']} failed; nothing useful was charged" if spent == 0 else
                        f"every candidate for {ep['id']} failed"},
-            # every attempt was cut by treg's own read cap: treg's limit, as on a direct call
-            log_kind="response_buffer_limit" if tried and too_large == len(tried) else None)
+            # every attempt made was cut by treg's own read cap (the rest were skipped, never asked):
+            # treg's limit, as on a direct call
+            log_kind="response_buffer_limit"
+            if too_large and too_large == sum(t.outcome != "skipped" for t in tried) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
     winner_outcome = next(t.outcome for t in reversed(tried)
