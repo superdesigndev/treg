@@ -1009,8 +1009,13 @@ returned and never documented as stable. An output field may say where it lands 
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
+  `carried_by` names other identity keys that ask the same thing: a contract that maps a company's
+  `name` and `domain` to each other keeps a child that sends either for a `{name, domain}` request,
+  while a child that sends neither is still dropped. On a stand-in key (`q`) it works as described
+  under stand-ins below.
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
-  hit ignores time, so a contract may prefer a dearer but faster, more reliable provider.
+  hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
+  only children that express every filter the caller sent (see Ranking).
 - `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
@@ -1144,7 +1149,12 @@ an invalid extra never disables the primary.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
-  report agree; `limit` and contract defaults never count). An exhausted platform provider with an
+  report agree; `limit` and contract defaults never count). A contract's `prefer` or a published
+  rule never lifts such a child: it ranks as if unlisted, so specificity and price place it. Only
+  the caller's own `X-Treg-Route-Prefer` puts it first. A filter the adapter reaches only through
+  calls (`country_name(country)`, alone or nested in a larger value such as
+  `list(obj('country', country_name(country)))`) is ignored for a value every such call drops (a code
+  the provider cannot name). An exhausted platform provider with an
   enabled overflow route stays a candidate at the overflow price; without one, or with no key on the
   deployment, it is dropped and named in `dropped`. Within a tier, a child whose short-window health
   is `slow` (or `failing` and kept) is asked after the healthy ones, ahead of the contract's default

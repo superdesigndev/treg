@@ -4222,6 +4222,43 @@ async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills
         assert (await db.execute(select(Hold))).scalars().all() == []
 
 
+def test_carried_by_keeps_a_child_that_sends_a_key_naming_the_same_subject():
+    """A name and a domain name one company: with `carried_by` saying so, a child that sends either
+    answers a {name, domain} request. A title it never sends is still a different question."""
+    from treg.domain.catalog.routing import contracts as C
+    from treg.domain.catalog.routing.plan import unscoped
+
+    contract = C.parse_contracts({"contracts": {"x.jobs": {
+        "identity": [{"title": "str", "domain": "str"}, {"name": "str"}, {"domain": "str"}],
+        "scoping": ["title", "name", "domain"], "carried_by": {"name": ["domain"], "domain": ["name"]},
+        "output": {"jobs": {"type": "list", "required": True}}, "miss": "jobs == []"}}})["x.jobs"]
+    by_domain = C.parse_adapters({"adapters": {"p.jobs": {
+        "accepts": [["domain"]], "in": {"domain": "query.domain"}, "out": {"jobs": "jobs"},
+        "miss": "jobs == []"}}})["p.jobs"]
+    assert unscoped(by_domain, contract, {"name": "Ramp", "domain": "ramp.com"}) == ()
+    assert unscoped(by_domain, contract, {"title": "data engineer", "domain": "ramp.com"}) == ("title",)
+    plain = C.Contract(**{**contract.__dict__, "carried_by": {}})
+    assert unscoped(by_domain, plain, {"name": "Ramp", "domain": "ramp.com"}) == ("name",)
+
+
+def test_a_filter_nested_in_a_larger_value_is_unmappable_when_its_call_yields_nothing():
+    """`list(obj('country', country_name(country)))` drops a code the provider cannot name: the
+    planner must see it as not sent (disclosed, strict-dropped), while a nameable code is sent, a
+    field literal named like the key does not count, and a key also sent as given is mappable."""
+    from treg.domain.catalog.routing import contracts as C
+    from treg.domain.catalog.routing.plan import _unmappable
+
+    def adapter(expr):
+        return C.parse_adapters({"adapters": {"p.jobs": {
+            "accepts": [["title"]], "in": {"title": "body.title"}, "in_expr": {"body.geo": expr},
+            "out": {"jobs": "jobs"}, "miss": "jobs == []"}}})["p.jobs"]
+
+    nested = adapter("list(obj('country', country_name(country)))")
+    assert _unmappable(nested, "country", {"title": "x", "country": "UK"})
+    assert not _unmappable(nested, "country", {"title": "x", "country": "GB"})
+    assert not _unmappable(adapter("list(obj('country', country))"), "country", {"title": "x", "country": "UK"})
+
+
 async def test_a_routed_read_stops_at_eight_mib():
     """An anonymous or own-key child streams; the router must not hold an answer past 8 MiB."""
     async def body():
@@ -4236,6 +4273,21 @@ async def test_a_routed_read_stops_at_eight_mib():
     with pytest.raises(call_route._ChildTooLarge):
         await call_route._read(UpstreamResponse(200, (), body(), close))
     assert closed == [True]
+
+
+def test_ignoring_a_sent_filter_outranks_a_contract_prefer_but_not_the_callers():
+    """A contract's `prefer` (or a published rule) orders children that ask the real question; a
+    preferred child that drops a filter the caller sent answers a looser one, so it goes after. Only
+    the caller's own X-Treg-Route-Prefer may put it first."""
+    def cand(eid, ignored=()):
+        return Candidate(endpoint={"id": eid, "provider": eid.split(".")[0], "cost": {"type": "per_result"}},
+                         adapter=None, variant=("title",), tier="platform", price_micro=1_000, hit_rate=None,
+                         ok_rate=None, p50_ms=None, last_ok_days=None, ignored=ignored)
+    blind, aware = cand("a.jobs.search", ignored=("country",)), cand("b.jobs.search")
+    assert [c.endpoint["id"] for c in rank([blind, aware], prefer=["a"], given={"title", "country"})] == [
+        "b.jobs.search", "a.jobs.search"]
+    assert [c.endpoint["id"] for c in rank([blind, aware], prefer=["a"], given={"title", "country"},
+                                           caller_prefer=True)] == ["a.jobs.search", "b.jobs.search"]
 
 
 async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(
