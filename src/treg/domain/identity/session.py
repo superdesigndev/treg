@@ -187,3 +187,33 @@ def read_session(cookie: str) -> int | None:
     """Return the user id from a valid session. Token-version checks require a DB-aware caller."""
     claims = read_session_claims(cookie)
     return claims["uid"] if claims else None
+
+
+def looks_like_identity_token(token: str) -> bool:
+    """Does this bearer CLAIM to be one of our identity tokens? (No validation — a discriminator.)
+
+    The transport needs to tell "an expired/broken identity token" apart from "an OAuth access
+    token the OAuth path validates" or "a database-backed API key". This reads the unverified
+    payload's `aud` claim; a forger gains nothing by making an invalid token get a more honest
+    error response.
+
+    Recognizes:
+    - Typed identity tokens (`aud: "identity"`)
+    - Legacy untyped tokens that carry `uid` and `tv` but no `aud` (pre-audience migration)
+    """
+    if not token or "." not in token:
+        return False
+    try:
+        import base64
+        import json
+        p = token.split(".", 1)[0]
+        raw = base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))
+        data = json.loads(raw)
+        aud = data.get("aud")
+        if aud == IDENTITY_AUDIENCE:
+            return True
+        if aud is None and "uid" in data and "tv" in data:
+            return True
+        return False
+    except Exception:  # noqa: BLE001 — not even parseable → not our shape
+        return False
