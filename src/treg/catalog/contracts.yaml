@@ -764,7 +764,7 @@ contracts:
       - {domain: str}
     identity_notes:
       title: "job title words ('data engineer'); with name or domain, that role at that company"
-      name: "the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's whole open board, treg.companies.jobs takes the board itself"
+      name: "the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's own board, treg.companies.jobs takes the board itself: the whole board on Greenhouse, Ashby and Workable, up to `limit` (at most 100) on Lever and SmartRecruiters"
       domain: "the employer's website domain ('ramp.com')"
     # A title search answered without the title, or a company search answered without the company,
     # bills strangers' or the whole company's jobs as a hit. A name and a domain name one company,
