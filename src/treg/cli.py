@@ -1208,6 +1208,8 @@ def _run_catalog(cfg: dict, args) -> None:
     if tier == "platform":
         _kv("served", "on treg's key — you need no account with this provider")
         _kv("price", f"~${a.get('estimated_cost_usd', 0):g} per call, from your team balance")
+    elif tier == "anonymous":
+        _kv("served", "free, no key needed — a verified public route")
     elif tier in ("tool", "credential"):
         if a.get("metered"):
             # An oauth-billed provider (X): the credential is the team's, the upstream bill is
@@ -1219,9 +1221,12 @@ def _run_catalog(cfg: dict, args) -> None:
     else:
         _kv("served", "not yet")
         _dim(f"  {detail}")
-        _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
-             "own key. Connect one and this same call works:")
-        _cmd(f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        # an older server sends no connect_command; a keyless public API sends it empty: nothing to connect
+        connect = a.get("connect_command", f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        if connect:
+            _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
+                 "own key. Connect one and this same call works:")
+            _cmd(connect)
         return
 
     _section("③ Make the call")
