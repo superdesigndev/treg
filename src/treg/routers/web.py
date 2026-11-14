@@ -2718,10 +2718,11 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
         + "".join(
             f'<div class="c">$ treg call <em>{_esc_html(e["id"])}</em></div>'
-            f'<div class="cr"><i>✓ 200</i>'
-            + (f" · {_esc_html(pl)}"
-               if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
-            + "</div>"
+            + ('<div class="cr"><i>✗ refused</i> · not enabled on this server</div>' if public_off else
+               '<div class="cr"><i>✓ 200</i>'
+               + (f" · {_esc_html(pl)}"
+                  if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
+               + "</div>")
             for e in demo_eps)
         + '<div class="c" style="opacity:.55">$ _</div></div>'
         '<div class="ar">→</div>'
@@ -2774,7 +2775,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f"<pre>{_esc_html(prompt)}</pre></div>"
         '<h3>Run one directly</h3>'
         '<div class="sample"><div class="sbar">'
-        + ("a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
+        + ("a call this server refuses until it enables this provider" if public_off else
+           "a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
         f"<pre>{_esc_html(catalog_store.call_template(sample_eps[0]).replace('https://treg.to', base))}</pre></div>"
         "</div></section>")
 
@@ -2921,7 +2923,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
          "Anything that speaks MCP (Claude Code, Claude Desktop, ChatGPT, Codex, Cursor, Grok) "
          "and anything that can make an HTTP request (LangChain, CrewAI, LlamaIndex, plain code)."),
         (f"Is this the official {display} MCP server?",
-         f"No. treg.to relays {display}'s real public API: the request is the provider's own, no "
+         "No. " + ("Once this server enables it, " if public_off else "")
+         + f"treg.to relays {display}'s real public API: the request is the provider's own, no "
          f"credential is added, and the answer is relayed verbatim. The official {display} channels "
          "are linked above." if public else
          f"No. treg.to serves {display}'s real API through its own metered proxy: the request "
@@ -3034,7 +3037,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
              {"@type": "HowToStep", "position": 2, "name": "Or add the MCP server yourself",
               "text": f"claude mcp add --transport http treg {base}/mcp"},
              {"@type": "HowToStep", "position": 3, "name": f"Call {display}",
-              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP."}]},
+              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP"
+                      + (" once this server enables it." if public_off else ".")}]},
     ]
     return _page(title, _serp_desc(desc), f"/tools/{svc}", body, ld,
                  nav_current="/catalog", css="usecase.css")
