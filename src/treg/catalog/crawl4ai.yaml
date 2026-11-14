@@ -2441,8 +2441,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-profile
     name: Profile of an Instagram account
-    summary: 'Get one public Instagram account: full name, biography, follower, following and post counts, verified
-      flag and external link.'
+    summary: 'Get one public Instagram account: full name, follower and post counts and verified flag.'
+    note: 'biography and external_url are null on every answer: for the bio or link use treg.instagram.user.profile.'
     body_allowlist: true
     input:
       bodyType: json
