@@ -78,6 +78,9 @@ async def org_balance(
         ],
         "entries": {
             "limit": limit, "offset": offset,
+            # True when `items` is empty because the caller is below admin, so a client never reads a
+            # withheld ledger as "nothing has been spent"
+            "withheld": not detailed,
             "items": [] if not detailed else [
                 {"id": e.id, "kind": e.kind, "amount_micro": e.amount_micro,
                  "amount_usd": ledger.usd(e.amount_micro), "block_id": e.block_id,

@@ -4470,7 +4470,11 @@ def cmd_balance(args, cfg) -> None:
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
               f"fixing your card.{_R}")
-    items = (b.get("entries") or {}).get("items") or []
+    entries = b.get("entries") or {}
+    items = entries.get("items") or []
+    if not items and entries.get("withheld"):  # below admin: an empty list is withheld, not "nothing spent"
+        print(f"\n  {_M}the ledger is shown to team admins — `treg calls` lists this team's calls.{_R}\n")
+        return
     if not items:
         print(f"\n  {_M}no ledger activity yet — nothing has been spent.{_R}\n")
         return

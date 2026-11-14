@@ -593,7 +593,8 @@ cumulative target per block (the bonus target is `bonus * refunded // paid`).
 `_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
 invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
 holds (a machine identity must read the balance it spends, and every 402 already carries
-`balance_micro`); credit blocks and the ledger stay admin+.
+`balance_micro`); credit blocks and the ledger stay admin+, and `entries.withheld` says when an
+empty ledger was withheld rather than empty.
 
 `get_payment_history` builds top-up rows from our own `CreditBlock` rows, so history can never show a
 payment the balance disagrees with. Stripe is asked only for links, in two list calls (`Charge.list`
