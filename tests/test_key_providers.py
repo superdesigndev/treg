@@ -850,3 +850,36 @@ def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
     monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
     exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep)
     assert exc.log_kind == "platform_key_missing", exc.log_kind
+
+
+def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
+    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    nor blames a provider account it does not need."""
+    import dataclasses
+    from types import SimpleNamespace
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    demo = SimpleNamespace(public_demo=True, id=1)
+    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert exc.log_kind == "admission_denied", exc.log_kind
+    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+
+
+async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "has not enabled it" in r.text and "call its catalog tools directly" not in r.text
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "call its catalog tools directly" in r.text

@@ -352,8 +352,7 @@ async def start_oauth_connection(
             if provider.auth_kind == "public":
                 raise ConnectError(
                     "invalid_provider",
-                    f"{provider.display_name} is a public API with nothing to connect: call its "
-                    "catalog tools directly",
+                    _public_nothing_to_connect(provider),
                 )
             chosen_capability = capability or provider.connect_default_capability
             try:
@@ -608,6 +607,14 @@ async def _reselect_after_reconnect(
             await db.commit()
 
 
+
+def _public_nothing_to_connect(provider) -> str:
+    """A public provider has nothing to connect; say whether this server serves its tools."""
+    if get_settings().platform_provider_enabled(provider.service):
+        return f"{provider.display_name} is a public API with nothing to connect: call its catalog tools directly"
+    return (f"{provider.display_name} is a public API with nothing to connect, and this server has not "
+            "enabled it, so its tools are not callable here")
+
 async def connect_with_pasted_secret(
     *, provider_name: str, raw_token: str, org_id: int, owner: str, client_factory,
 ) -> dict:
@@ -615,8 +622,7 @@ async def connect_with_pasted_secret(
     if provider is not None and provider.auth_kind == "public":
         raise ConnectError(
             "invalid_token_provider",
-            f"{provider.display_name} is a public API with nothing to connect: call its "
-            "catalog tools directly",
+            _public_nothing_to_connect(provider),
         )
     if provider is None or not provider.uses_pasted_secret:
         raise ConnectError("invalid_token_provider", "this provider is connected by consent, not a token")

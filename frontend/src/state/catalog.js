@@ -389,6 +389,13 @@ usefulOf(e){ return e.reviews && e.reviews.share ? reviewSummary(e.reviews) : nu
 provRecord(service){ const d=this.mkToolData, own=d && d.provider && d.provider.service===service ? d.provider : null;
       return this.providers.find(p=>p.service===service) || (this.platData&&this.platData.providers||{})[service] || own || null; },
 mkOauth(service){ const p=this.providers.find(x=>x.service===service); return !!p && p.auth_kind==='oauth'; },
+// Is this call served with no provider key? The server's answer decides: a team key or tool, or
+// treg's key, is injected even on a keyless row; a keyless row nobody serves yet needs no key either.
+tryKeyless(ep, access){
+      const tier=access && access.tier;
+      if(tier==='anonymous') return true;
+      if(['tool','credential','platform','routed'].includes(tier)) return false;
+      return ep.platform_auth==='anonymous'; },
 // Why "Try it" cannot run a tool for this team: the server's own words first, a keyless public row's
 // refusal never reads as needing a key.
 tryUnavailableMessage(ep, access){

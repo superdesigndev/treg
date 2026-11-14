@@ -1109,7 +1109,7 @@ def _anonymous_refusal(ep: dict | None, org: Org | None) -> str:
             "free, read-only catalog tool is")
 
 
-def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
+def _capability_alternatives(ep: dict, *, limit: int = 3, org: Org | None = None) -> list[str]:
     """Other providers' endpoints for the same capability, best first — derived, never hand-written.
 
     A dead end that names only the provider the caller asked for is the reason one org spent 268
@@ -1139,7 +1139,8 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
         usd = cost.get("usd") if cost else None
         # "Servable" is the caller's real question: not "does another row exist" but "can treg
         # answer it for me right now". Both halves of tier 4, exactly as `_platform_offer` asks.
-        keyless = anonymous_served(alt) is not None  # a public row this deployment serves with no key
+        # a public row this deployment serves with no key — to this team, when the refusal knows it
+        keyless = anonymous_served(alt) is not None and (org is None or _anonymous_offer(alt, org) is not None)
         alt_provider = oauth_providers.get(alt["provider"])
         if not keyless and getattr(alt_provider, "auth_kind", "") == "public":
             continue  # a public API this server does not serve: no key or connection would help
@@ -1165,10 +1166,12 @@ def _marketplace_no_credential(
     if provider.auth_kind == "public":  # nothing to connect: say why the keyless relay refused
         lines = [f"{ep_id} {_anonymous_refusal(ep, org)}"]
         lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
-        lines.extend(_capability_alternatives(ep) if ep is not None else [])
+        lines.extend(_capability_alternatives(ep, org=org) if ep is not None else [])
+        demo = org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
         ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
         return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
-                                log_kind="platform_key_missing" if ours else None)
+                                log_kind="admission_denied" if demo  # treg's demo policy, no provider account
+                                else "platform_key_missing" if ours else None)
     lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
     lines.append(f"  connect one:  treg connections connect --provider {service}")
     if provider.uses_pasted_secret:

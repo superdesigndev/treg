@@ -75,3 +75,12 @@ test('the drawer offers nothing to copy or try for a tool this server refuses', 
   expect(catalogComputed.drawerNext.call(vm)).toBe('off')
   expect(catalogComputed.drawerNext.call({ ...vm, endpointAccessLabel: () => 'Free, no key' })).toBe('copy')
 })
+
+test('Try says no key is needed only when no key is injected', () => {
+  const keyless = { id: 'f.tickers', provider: 'f', platform_auth: 'anonymous' }
+  expect(catalog.tryKeyless(keyless, { tier: 'anonymous' })).toBe(true)
+  expect(catalog.tryKeyless(keyless, { tier: 'credential' })).toBe(false)   // the team's own key is used
+  expect(catalog.tryKeyless(keyless, { tier: 'tool' })).toBe(false)
+  expect(catalog.tryKeyless(keyless, { tier: 'none' })).toBe(true)          // refused: no key would help
+  expect(catalog.tryKeyless({ id: 'p.x', provider: 'p' }, { tier: 'platform' })).toBe(false)
+})

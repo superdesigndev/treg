@@ -44,7 +44,14 @@ test('the paused branch never throws when the provider has no pause message', as
 test('the Try dialog never says a credential is injected for a keyless tool', async () => {
   const epTry = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', call_template: 'treg call board.jobs' }
   const html = await renderDrawer({ epTry, epTryAccess: { tier: 'none', detail: 'board.jobs is a keyless public API that this server has not enabled' },
-    epTryTab: 'api', mkOauth: () => false, tryUnavailableMessage: () => 'refused' }, '../src/dialogs/TryEndpointDialog.vue')
+    epTryTab: 'api', mkOauth: () => false, tryUnavailableMessage: () => 'refused', tryKeyless: () => true }, '../src/dialogs/TryEndpointDialog.vue')
   expect(html).not.toContain('injects the credential')
   expect(html).not.toContain('the key is injected')
+})
+
+test('the Try dialog says the key is injected when the team\'s own key serves a keyless row', async () => {
+  const epTry = { id: 'f.tickers', provider: 'f', platform_auth: 'anonymous', call_template: 'treg call f.tickers' }
+  const html = await renderDrawer({ epTry, epTryAccess: { tier: 'credential' }, epTryTab: 'cli', mkOauth: () => false,
+    tryUnavailableMessage: () => '', tryKeyless: () => false }, '../src/dialogs/TryEndpointDialog.vue')
+  expect(html).not.toContain('no provider key is needed')
 })
