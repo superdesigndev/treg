@@ -160,6 +160,7 @@ Regenerate via `scripts/build-map.py`.
 | `scripts/build-dashboard.sh` | ops/deploy.md |
 | `scripts/build-web.sh` | ops/deploy.md |
 | `scripts/build_plugin.py` | interface/skill.md |
+| `scripts/call_events_actionable_errors.sql` | architecture/call-events.md |
 | `scripts/catalog_added.py` | architecture/catalog.md |
 | `scripts/catalog_backfill_added.py` | architecture/catalog.md |
 | `scripts/catalog_cost_provenance.py` | architecture/catalog.md |
@@ -296,6 +297,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/call/admission.py` | architecture/policy-extensions.md |
 | `src/treg/application/call/async_bridge.py` | architecture/catalog.md, architecture/money.md, architecture/org-endpoint-quota.md |
 | `src/treg/application/call/authorize.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/call_errors.py` | architecture/call-events.md |
 | `src/treg/application/call/cost.py` | architecture/money.md |
 | `src/treg/application/call/enrichlayer.py` | architecture/catalog.md |
 | `src/treg/application/call/evidence.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
@@ -712,6 +714,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_call_application_contract.py` | architecture/proxy-model.md |
 | `tests/test_call_architecture.py` | architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md |
 | `tests/test_call_cancellation.py` | architecture/proxy-model.md |
+| `tests/test_call_errors.py` | architecture/call-events.md |
 | `tests/test_call_events.py` | architecture/call-events.md |
 | `tests/test_call_response_limits.py` | architecture/proxy-model.md |
 | `tests/test_call_usage_rollup.py` | architecture/data-model.md |
@@ -843,7 +846,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
 | `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |
-| `architecture/call-events.md` | `call_events.py`, `call_events.py`, `segments.py`, `contracts.yaml`, `test_call_events.py`, `test_request_segments.py` |
+| `architecture/call-events.md` | `call_events.py`, `call_events.py`, `segments.py`, `contracts.yaml`, `call_errors.py`, `call_events_actionable_errors.sql`, `test_call_events.py`, `test_request_segments.py`, `test_call_errors.py` |
 | `architecture/catalog-schema.md` | `__init__.py`, `base.py`, `paths.py`, `common.py`, `legacy.py`, `v2.py`, `manifest.py`, `files.py`, `violations.py`, `violations.yaml`, `export.py`, `outcome.py`, `__init__.py`, `anyapi.py`, `catalog_schema.py`, `catalog_shrink_only.py`, `catalog_v2.py`, `test_catalog_schema.py`, `test_catalog_v2_codemod.py`, `test_anyapi.py` |
 | `architecture/catalog.md` | `__init__.py`, `store.py`, `stats.py`, `results.py`, `rankings.py`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `quality.py`, `health.py`, `synthetic.py`, `rankings.py`, `catalog_stats.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `route.py`, `route_health.py`, `async_bridge.py`, `octen.py`, `enrichlayer.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `route_quality.py`, `settlement.py`, `catalog.py`, `mcp.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `capabilities.yaml`, `aliases.yaml`, `fx.yaml`, `contracts.yaml`, `adapters.yaml`, `catalog_added.py`, `catalog_backfill_added.py`, `catalog_cost_provenance.py`, `catalog_drift.py`, `catalog_fx_update.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `catalog_verify.py`, `catalog_verify_extended.py`, `catalog-added.yml`, `catalog-drift.yml`, `test_aigc_pr_b.py`, `test_call_verdict.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_rankings.py`, `test_route_cost_ceiling.py`, `test_routing.py` |
 | `architecture/composition.md` | `bootstrap.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `worker.py`, `money_trace_runner.py`, `loop_stall.py`, `money_admission_reporting.py`, `call_surface.py`, `connect.py`, `mcp_oauth.py`, `session.py`, `admin.py`, `auth.py`, `billing.py`, `call.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `web.py`, `dump_surface.py`, `test_app_roles.py` |
