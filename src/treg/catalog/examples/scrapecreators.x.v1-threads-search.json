@@ -1,0 +1,246 @@
+{
+  "success": true,
+  "credits_remaining": 133860,
+  "credits_charged": 1,
+  "posts": [
+    {
+      "strong_id__": "3949144…",
+      "context__": {
+        "id": "3949144…",
+        "use_raw_logging_info_token": true,
+        "logging_info_token": "GCBiMTV…"
+      },
+      "user": {
+        "pk": "6308624…",
+        "profile_pic_url": "https:/…",
+        "friendship_status": null,
+        "username": "bisswis…",
+        "id": "6308624…",
+        "biography": "Ex @Bin…",
+        "full_name": "WISSEY",
+        "is_verified": false,
+        "text_app_cover_photo_url": null,
+        "text_app_biography": {
+          "text_fragments": {
+            "fragments": [
+              {
+                "fragment_type": "plainte…",
+                "link_fragment": null,
+                "mention_fragment": null,
+                "plaintext": "Ex ",
+                "looking_for_recs_fragment": null,
+                "cashtag_fragment": null,
+                "inline_sticker_fragment": null,
+                "linkified_web_url": null,
+                "linkified_in_app_url": null,
+                "styling_info": null
+              },
+              {
+                "fragment_type": "mention",
+                "link_fragment": null,
+                "mention_fragment": {
+                  "mentioned_user": {
+                    "username": "binance",
+                    "profile_pic_url": "https:/…",
+                    "id": "6326509…"
+                  }
+                },
+                "plaintext": "@Binanc…",
+                "looking_for_recs_fragment": null,
+                "cashtag_fragment": null,
+                "inline_sticker_fragment": null,
+                "linkified_web_url": null,
+                "linkified_in_app_url": null,
+                "styling_info": null
+              },
+              "… 3 mor…"
+            ]
+          }
+        },
+        "interop_messaging_user_fbid": "1790810…",
+        "is_meta_ai_bot": false,
+        "transparency_label": null,
+        "transparency_product": null,
+        "transparency_product_enabled": false,
+        "has_onboarded_to_text_post_app": true,
+        "…": "2 more field(s) truncated"
+      },
+      "audio": null,
+      "carousel_media": null,
+      "accessibility_caption": null,
+      "original_height": 1407,
+      "original_width": 1118,
+      "image_versions2": {
+        "candidates": [
+          {
+            "url": "https:/…",
+            "height": 1407,
+            "width": 1118
+          },
+          {
+            "url": "https:/…",
+            "height": 906,
+            "width": 720
+          },
+          "… 11 mo…"
+        ]
+      },
+      "video_versions": null,
+      "text_post_app_info": {
+        "share_info": {
+          "can_quote_attachment": "author_…",
+          "quoted_attachment_post": null,
+          "quoted_attachment_author_attribution_allowed": true,
+          "quoted_attachment_post_unavailable": false,
+          "quoted_post": null,
+          "reposted_post": null
+        },
+        "custom_feed_preview_info": null,
+        "platform_podcast_episode_info": null,
+        "platform_podcast_info": null,
+        "link_preview_response": null,
+        "linked_inline_media": null,
+        "community_emoji_update_attachment_info": null,
+        "community_champion_card_attachment_info": null,
+        "text_fragments": {
+          "fragments": [
+            {
+              "fragment_type": "plainte…",
+              "link_fragment": null,
+              "mention_fragment": null,
+              "plaintext": "The day…",
+              "looking_for_recs_fragment": null,
+              "cashtag_fragment": null,
+              "inline_sticker_fragment": null,
+              "linkified_web_url": null,
+              "linkified_in_app_url": null,
+              "styling_info": null
+            }
+          ]
+        },
+        "gen_ai_reply_bot_on_media_deny_reason": "UNAVAIL…",
+        "tag_header": null,
+        "reply_to_author": null,
+        "root_post_author": null,
+        "private_reply_partner": null,
+        "related_trends_info": null,
+        "show_header_follow": false,
+        "…": "37 more field(s) truncated"
+      },
+      "usertags": null,
+      "is_dash_eligible": null,
+      "number_of_qualities": null,
+      "video_dash_manifest": null,
+      "has_audio": null,
+      "…": "36 more field(s) truncated"
+    },
+    {
+      "strong_id__": "4023698…",
+      "context__": {
+        "id": "4023698…",
+        "use_raw_logging_info_token": true,
+        "logging_info_token": "GCBiMTV…"
+      },
+      "user": {
+        "pk": "6818571…",
+        "profile_pic_url": "https:/…",
+        "friendship_status": null,
+        "username": "cookies…",
+        "id": "6818571…",
+        "biography": "Ph.D in…",
+        "full_name": "| 188 C…",
+        "is_verified": false,
+        "text_app_cover_photo_url": null,
+        "text_app_biography": {
+          "text_fragments": {
+            "fragments": [
+              {
+                "fragment_type": "plainte…",
+                "link_fragment": null,
+                "mention_fragment": null,
+                "plaintext": "Ph.D in…",
+                "looking_for_recs_fragment": null,
+                "cashtag_fragment": null,
+                "inline_sticker_fragment": null,
+                "linkified_web_url": null,
+                "linkified_in_app_url": null,
+                "styling_info": null
+              }
+            ]
+          }
+        },
+        "interop_messaging_user_fbid": "1787853…",
+        "is_meta_ai_bot": false,
+        "transparency_label": null,
+        "transparency_product": null,
+        "transparency_product_enabled": false,
+        "has_onboarded_to_text_post_app": true,
+        "…": "2 more field(s) truncated"
+      },
+      "audio": null,
+      "carousel_media": null,
+      "accessibility_caption": null,
+      "original_height": 612,
+      "original_width": 612,
+      "image_versions2": {
+        "candidates": []
+      },
+      "video_versions": null,
+      "text_post_app_info": {
+        "share_info": {
+          "can_quote_attachment": "not_app…",
+          "quoted_attachment_post": null,
+          "quoted_attachment_author_attribution_allowed": true,
+          "quoted_attachment_post_unavailable": false,
+          "quoted_post": null,
+          "reposted_post": null
+        },
+        "custom_feed_preview_info": null,
+        "platform_podcast_episode_info": null,
+        "platform_podcast_info": null,
+        "link_preview_response": null,
+        "linked_inline_media": null,
+        "community_emoji_update_attachment_info": null,
+        "community_champion_card_attachment_info": null,
+        "text_fragments": {
+          "fragments": [
+            {
+              "fragment_type": "plainte…",
+              "link_fragment": null,
+              "mention_fragment": null,
+              "plaintext": "If you’…",
+              "looking_for_recs_fragment": null,
+              "cashtag_fragment": null,
+              "inline_sticker_fragment": null,
+              "linkified_web_url": null,
+              "linkified_in_app_url": null,
+              "styling_info": null
+            }
+          ]
+        },
+        "gen_ai_reply_bot_on_media_deny_reason": "UNAVAIL…",
+        "tag_header": {
+          "display_name": "Crypto",
+          "is_community": true,
+          "tag_cluster_name": "Crypto",
+          "id": "1827336…",
+          "community_favicon_url": "https:/…",
+          "community_emoji": "🚀"
+        },
+        "reply_to_author": null,
+        "root_post_author": null,
+        "private_reply_partner": null,
+        "related_trends_info": null,
+        "show_header_follow": false,
+        "…": "37 more field(s) truncated"
+      },
+      "usertags": null,
+      "is_dash_eligible": null,
+      "number_of_qualities": null,
+      "video_dash_manifest": null,
+      "has_audio": null,
+      "…": "36 more field(s) truncated"
+    },
+    "… 18 mo…"
+  ]
+}

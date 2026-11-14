@@ -1730,6 +1730,10 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {posts: data.searchResults.edges}
+  scrapecreators.x.v1-threads-search:
+    accepts: [[q]]
+    in:  {q: queryParams.query}
+    out: {posts: posts}
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   exa.instagram.search.users:
