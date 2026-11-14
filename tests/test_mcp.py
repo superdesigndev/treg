@@ -309,6 +309,20 @@ async def test_catalog_search_returns_priced_results(clients):
     assert "usd_per_call" in first and "no_key_needed" in first
 
 
+async def test_catalog_search_and_get_name_the_unit_of_a_per_row_price(clients):
+    """A $5-per-1,000-rows price is not $0.005 a call: search and get say what one unit buys."""
+    token = (await verified_signup(clients, json={"email": "perrow@superdesign.dev"})).json()["token"]
+    endpoint_id = "spyfu.google.domain.ranked_keywords"
+    async with mcp_session(clients) as c:
+        found = await _call_tool(c, "catalog_search", {"query": "spyfu domain ranked keywords"}, token=token)
+        got = await _call_tool(c, "catalog_get", {"endpoint_id": endpoint_id}, token=token)
+    row = next(r for r in found["results"] if r["endpoint_id"] == endpoint_id)
+    for out in (row, got):
+        assert out["usd_per_call"] is None, out
+        assert out["display_usd"] == 0.005 and out["display_unit"] == "row"
+    assert got["endpoint"]["cost"]["usd"] == 0.005
+
+
 async def test_no_key_needed_is_false_when_the_deploy_holds_no_key(clients):
     """`no_key_needed` must mean "THIS deploy will serve it on treg's key", not "the row is priced".
     The test env configures no platform keys at all, so every result — however eligible its price —

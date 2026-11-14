@@ -239,6 +239,27 @@ class Catalog:
         usd = cost.get("usd")
         return usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else None
 
+    def advertised_quote(self, cost: dict | None) -> dict:
+        """The quote catalog_search / catalog_get show, keyed by what one unit of it buys.
+
+        `usd_per_call` is read as the price of one call. A `per_result` row billed per row, profile
+        or record (SpyFu $5 per 1,000 rows, ContactOut $0.02 per profile) bills that slice times
+        the rows returned, so its unit price under `usd_per_call` made a 30-row call look 30x
+        over. Such a row quotes `usd_per_call: null` and the unit price as `display_usd` beside
+        `display_unit`. A started block (`round_up`) is the least a call bills and stays per call.
+        Billing is untouched: reserve and settlement still read `usd`.
+        """
+        usd = self.advertised_usd(cost)
+        if usd is None or not cost or cost.get("type") != "per_result":
+            return {"usd_per_call": usd}
+        display = cost.get("display") or {}
+        if display.get("round_up"):
+            return {"usd_per_call": usd}
+        unit = cost.get("display_unit") or cost.get("unit")
+        if not unit or unit == "call":
+            return {"usd_per_call": usd}
+        return {"usd_per_call": None, "display_usd": usd, "display_unit": str(unit)}
+
     def platform_eligible(self, endpoint: dict) -> bool:
         """May treg serve this endpoint with a PLATFORM key, billed to the caller's balance?
 

@@ -429,7 +429,9 @@ cost:
   shared key cannot buy several results under one hold.
 - **`cost.display`** flags (`unit`, `grouped`, `round_up`, `variable`, `value`, `maximum`) change only
   the advertised figure (`Catalog.advertised_usd`, `usd_per_call` in search and get); `usd` and
-  settlement are untouched. A grouped price needs a positive integer `per`; a table display must
+  settlement are untouched. A `per_result` price in a unit other than a call or a started block
+  quotes `usd_per_call: null` with `display_usd` and `display_unit` (`Catalog.advertised_quote`),
+  because it bills that unit times the rows returned. A grouped price needs a positive integer `per`; a table display must
   describe its maximum.
 - A scalar `unit: character` is request-priced: `_body_text_characters` counts the top-level JSON
   `text` string; invalid or empty input reserves one character, never zero.
