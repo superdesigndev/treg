@@ -30,7 +30,6 @@ from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
     _ClientNoticeMiddleware,
-    _GzipResponseMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -923,7 +922,6 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
-    app.add_middleware(_GzipResponseMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
