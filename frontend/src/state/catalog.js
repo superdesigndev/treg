@@ -240,7 +240,11 @@ verdictDate(d){ try{ const m=String(d).length===7;   // a review carries only it
       || (this.platData&&this.platData.providers||{})[service]; return (p&&p.auth_kind)||''; },
 endpointAccessLabel(e){
       if(e.kind==='routed') return 'Routed platform call';
-      if(e.platform_auth==='anonymous') return 'Free, no key';   // a keyless public row, never treg's key
+      if(e.platform_auth==='anonymous'){   // a keyless row: free with no key, or refused where not enabled
+        const r=this.provRecord(e.provider);
+        if(r && r.auth_kind==='public' && r.enabled===false) return 'Not enabled on this server';
+        if(!r || r.enabled!==false) return 'Free, no key';
+      }
       if(e.id==='fishaudio.voices.list') return 'Team voices + BYOK';
       const p=this.providers.find(p=>p.service===e.provider)
         || (this.platData&&this.platData.providers||{})[e.provider] || {};
@@ -380,6 +384,10 @@ usefulOf(e){ return e.reviews && e.reviews.share ? reviewSummary(e.reviews) : nu
     // public branch offers BYOK (which is true for every provider) rather than guessing Connect.
     mkKnown(service){ return this.providers.some(p=>p.service===service)
       || (this.publicCatalog && !!((this.platData&&this.platData.providers||{})[service])); },
+// A provider's record wherever the dashboard has one: the Connect listing, the open platform payload,
+// or the provider page's own record (a keyless public provider is only in the last two).
+provRecord(service){ const d=this.mkToolData, own=d && d.provider && d.provider.service===service ? d.provider : null;
+      return this.providers.find(p=>p.service===service) || (this.platData&&this.platData.providers||{})[service] || own || null; },
 mkOauth(service){ const p=this.providers.find(x=>x.service===service); return !!p && p.auth_kind==='oauth'; },
 // Why "Try it" cannot run a tool for this team: the server's own words first, a keyless public row's
 // refusal never reads as needing a key.

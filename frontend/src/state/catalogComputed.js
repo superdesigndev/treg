@@ -18,8 +18,9 @@ const COL_TIPS = {
 export default {
 mkProvider(){ const p=this.providers.find(p=>p.service===this.mkService); if(p) return p;
       // a keyless public provider is not in the Connect listing: its page reads the catalog's record
+      // a paused provider keeps the paused page (the Connect listing leaves paused providers out too)
       const d=this.mkToolData, c=d && d.provider;
-      return c && c.auth_kind==='public' ? {...c, configured:true} : null; },
+      return c && c.auth_kind==='public' && !this.mkPaused ? {...c, configured:true} : null; },
 mkPaused(){ return this.providerPaused(this.mkService); },
 mkAccounts(){ return this.connAccounts.filter(a=>a.service===this.mkService); },
 // Which capabilities ANY account here already holds — a page-level "you have this" summary,
@@ -245,7 +246,7 @@ drawerIds(){
       return e.platform_eligible===false ? 'key' : 'copy'; },
 // Everything else worth knowing, as one quiet line instead of a row of chips.
     drawerFacts(){ const e=this.drawerEp; if(!e) return '';
-      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
+      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed', 'Not enabled on this server':'not enabled on this server: calls are refused'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
       return [access, e.verified ? 'verified live '+this.verdictDate(e.verified) : 'not yet verified live',
               e.scope==='own_account' ? 'reads the account you connect' : e.scope==='any_account' ? 'any public account' : ''].filter(Boolean).join(' · '); },
 // A provider's tools by platform (GET /catalog/providers/<service>), for its provider page.

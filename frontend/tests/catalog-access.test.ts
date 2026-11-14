@@ -2,8 +2,11 @@ import { expect, test } from 'vitest'
 import catalog from '../src/state/catalog.js'
 import catalogComputed from '../src/state/catalogComputed.js'
 
-const label = (e: object, providers: object[]) =>
-  catalog.endpointAccessLabel.call({ providers, platData: null }, e)
+const label = (e: object, providers: object[], platData: object | null = null) => {
+  const vm: any = { providers, platData, mkToolData: null }
+  vm.provRecord = catalog.provRecord
+  return catalog.endpointAccessLabel.call(vm, e)
+}
 
 test('a keyless public row is free with no key, never treg\'s key', () => {
   const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true }
@@ -42,4 +45,19 @@ test('a keyless public provider has a provider page though it is not in the Conn
     mkTools: { service: 'nope', data: { provider: { service: 'nope' } } },
     get mkToolData(){ return catalogComputed.mkToolData.call(this) } }
   expect(catalogComputed.mkProvider.call(unknown)).toBeNull()
+})
+
+test('a public provider this server has not enabled is never labelled free', () => {
+  const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true }
+  const off = { providers: { board: { service: 'board', auth_kind: 'public', enabled: false } } }
+  expect(label(e, [], off)).toBe('Not enabled on this server')
+  const on = { providers: { board: { service: 'board', auth_kind: 'public', enabled: true } } }
+  expect(label(e, [], on)).toBe('Free, no key')
+})
+
+test('a paused public provider keeps the paused page', () => {
+  const tools = { service: 'board', data: { provider: { service: 'board', auth_kind: 'public' } } }
+  const vm = { providers: [], mkService: 'board', mkTools: tools, mkPaused: true,
+    get mkToolData(){ return catalogComputed.mkToolData.call(this) } }
+  expect(catalogComputed.mkProvider.call(vm)).toBeNull()
 })

@@ -184,7 +184,11 @@ async def test_the_provider_tools_record_marks_a_public_provider(clients: AsyncC
     from treg import oauth_providers
     monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
         oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
     rec = (await clients.get("/catalog/providers/financialdatasets")).json()["provider"]
-    assert rec["auth_kind"] == "public" and rec["display_name"]
+    assert rec["auth_kind"] == "public" and rec["display_name"] and rec["enabled"] is False
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert (await clients.get("/catalog/providers/financialdatasets")).json()["provider"]["enabled"] is True
     keyed = (await clients.get("/catalog/providers/hunter")).json()["provider"]
     assert "auth_kind" not in keyed

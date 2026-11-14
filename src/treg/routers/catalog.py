@@ -172,6 +172,8 @@ async def catalog_platform(slug: str, include_hidden: int = 0,
             service: {"service": service, "display_name": _provider_display(service),
                       **cat.provider_meta.get(service, {}),
                       "auth_kind": getattr(oauth_providers.get(service), "auth_kind", None),
+                      # whether this server serves the provider's keyless rows (its allow-list)
+                      "enabled": get_settings().platform_provider_enabled(service),
                       "metered": bool(getattr(oauth_providers.get(service), "platform_billed", False)
                                       and service in get_settings().oauth_billed_set)}
             for service in sorted({ep["provider"] for ep in eps})
@@ -213,7 +215,8 @@ async def catalog_provider(service: str) -> dict:
         "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {}),
                      # the dashboard's provider page reads a public provider from here: it is not in
                      # the Connect listing (there is nothing to connect)
-                     **({"auth_kind": "public", "summary": reg.summary or "", "docs_url": reg.docs_url or ""}
+                     **({"auth_kind": "public", "summary": reg.summary or "", "docs_url": reg.docs_url or "",
+                         "enabled": get_settings().platform_provider_enabled(service)}
                         if (reg := oauth_providers.get(service)) is not None and reg.auth_kind == "public"
                         else {})},
         "platforms": [
