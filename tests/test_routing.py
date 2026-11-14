@@ -4479,52 +4479,43 @@ async def test_a_route_cut_by_treg_s_read_cap_and_the_caller_s_skips_is_still_tr
 
 
 async def test_a_team_tool_on_a_row_s_own_host_is_planned_as_the_team_s_tool(clients: AsyncClient, monkeypatch):
-    """A row that declares its own host (a provider's second region) is the team's own tool when the
-    team registered a tool for THAT host: the router must see it, as a direct call does."""
-    import dataclasses
-    from treg import oauth_providers
+    """A row on an approved second host is the team's own tool when the team registered a tool for
+    THAT host (resolve calls it there): the router must see it, as a direct call does."""
     from treg.models import Org
-    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
-        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
     cat = catalog_store.load()
-    row = cat.by_id["financialdatasets.prices.snapshot"]
-    monkeypatch.setitem(row, "platform_auth", "anonymous")
-    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
-    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
-    monkeypatch.setattr(get_settings(), "platform_providers", "")
-    sid = (await clients.post("/secrets", json={"name": "eu-key", "value": "v"})).json()["id"]
-    r = await clients.post("/tools", json={"name": "our-eu", "base_url": "https://eu.financialdatasets.example",
+    sid = (await clients.post("/secrets", json={"name": "gate-key", "value": "v"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-gate", "base_url": "https://gate.crawl4ai.com",
                                            "secret_id": sid})
     assert r.status_code == 200, r.text
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:
         org = await db.get(Org, org_id)
-    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+    plan = await call_route.build_plan(cat.by_id["treg.people.email.find"],
+                                       {"full_name": "Patrick Collison", "domain": "stripe.com"},
                                        SimpleNamespace(org_id=org_id, org=org),
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
-    assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)
+    assert tiers.get("crawl4ai.people.email.find") == "tool", (tiers, plan.dropped)
 
 
 async def test_a_main_host_tool_does_not_hide_the_team_s_own_key_on_a_second_host_row(clients: AsyncClient, monkeypatch):
-    """A tool for a provider's main host covers only that host: a row on its second host must still
-    be served on the team's own key (own key always wins), never fall to treg's key or be dropped."""
+    """A tool for a provider's main host covers only that host: a row on its approved second host must
+    still be served on the team's own key (own key always wins), never fall to treg's key or be dropped."""
     from treg.models import Org
     cat = catalog_store.load()
-    row = cat.by_id["financialdatasets.prices.snapshot"]
-    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
-    sid = (await clients.post("/secrets", json={"name": "financialdatasets", "value": "OWN"})).json()["id"]
-    r = await clients.post("/tools", json={"name": "our-main", "base_url": "https://api.financialdatasets.ai",
+    sid = (await clients.post("/secrets", json={"name": "crawl4ai", "value": "OWN"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-main", "base_url": "https://api.crawl4ai.com",
                                            "secret_id": sid})
     assert r.status_code == 200, r.text
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:
         org = await db.get(Org, org_id)
-    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+    plan = await call_route.build_plan(cat.by_id["treg.people.email.find"],
+                                       {"full_name": "Patrick Collison", "domain": "stripe.com"},
                                        SimpleNamespace(org_id=org_id, org=org),
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
-    assert tiers.get("financialdatasets.prices.snapshot") == "credential", (tiers, plan.dropped)
+    assert tiers.get("crawl4ai.people.email.find") == "credential", (tiers, plan.dropped)
 
 
 async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
@@ -4569,3 +4560,27 @@ async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(mon
     plan.dropped = plan.dropped[:1]
     alone = call_route._no_candidate_refusal(ep, plan, options)
     assert alone.log_kind == "admission_denied" and alone.status_code == 422, alone.detail
+    # the caller's own exclude may have taken a provider open to the team: not demo policy alone
+    excluded = call_route._no_candidate_refusal(
+        ep, plan, call_route.RouteOptions.from_headers(lambda key: "b" if key.lower() == "x-treg-route-exclude" else None))
+    assert excluded.log_kind is None, excluded.detail
+
+
+async def test_a_host_the_provider_does_not_approve_does_not_move_the_router_s_tool_check(clients: AsyncClient, monkeypatch):
+    """resolve keeps a row on its provider's main host unless the provider approves the row's host, so
+    a main-host tool serves it and the router must plan it as that tool."""
+    from treg.models import Org
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "host", "other.financialdatasets.example")
+    sid = (await clients.post("/secrets", json={"name": "fd-key", "value": "v"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-fd", "base_url": "https://api.financialdatasets.ai",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)

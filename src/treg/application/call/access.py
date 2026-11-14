@@ -249,7 +249,7 @@ async def _direct_access(
     billed_note: str,
 ) -> dict | None:
     base = provider.base_url
-    if endpoint.get("host"):  # a row on another of the provider's hosts is probed at that host's base
+    if endpoint.get("host") and provider.catalog_targets:  # as resolve: only an approved second host moves the call
         try:
             base = provider.profile_for_catalog_host(endpoint["host"]).base_url
         except ValueError:

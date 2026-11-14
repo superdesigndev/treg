@@ -943,21 +943,23 @@ async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(mo
     assert out["tier"] == "routed" and "board.list" in out["detail"], out
 
 
-async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients, monkeypatch):
-    from treg.config import get_settings
-    from treg.domain.catalog import store as catalog_store
-    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
-        P.REGISTRY["financialdatasets"], auth_kind="public"))
-    row = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
-    monkeypatch.setitem(row, "platform_auth", "anonymous")
-    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
-    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
-    monkeypatch.setattr(get_settings(), "platform_providers", "")
-    sid = (await clients.post("/secrets", json={"name": "eu-key", "value": "v"})).json()["id"]
-    assert (await clients.post("/tools", json={"name": "our-eu", "base_url": "https://eu.financialdatasets.example",
+async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients):
+    """A row on an approved second host is called there, so the team's tool for that host serves it."""
+    sid = (await clients.post("/secrets", json={"name": "gate-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-gate", "base_url": "https://gate.crawl4ai.com",
                                                "secret_id": sid})).status_code == 200
-    out = (await clients.get("/catalog/endpoints/financialdatasets.prices.snapshot/access")).json()
+    out = (await clients.get("/catalog/endpoints/crawl4ai.people.email.find/access")).json()
     assert out["tier"] == "tool", out
+
+
+async def test_the_access_preview_keeps_a_provider_without_second_hosts_on_its_main_host(clients):
+    """A `host` on a provider that approves no second host does not move the call (resolve keeps it on
+    the main host), so the preview must not move either: a tool on that host is not what serves it."""
+    sid = (await clients.post("/secrets", json={"name": "ga-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "my-ga-admin", "base_url": "https://analyticsadmin.googleapis.com",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/google-analytics.x.analyticsadmin-accountsummaries-list/access")).json()
+    assert out["tier"] != "tool", out
 
 
 async def test_the_access_preview_probes_a_second_host_row_at_that_host_s_own_base(clients):

@@ -613,7 +613,7 @@ def _public_nothing_to_connect(provider) -> str:
     if get_settings().platform_provider_enabled(provider.service):
         return f"{provider.display_name} is a public API with nothing to connect: call its catalog tools directly"
     return (f"{provider.display_name} is a public API with nothing to connect, and this server has not "
-            "enabled it, so its tools are not callable here unless your team registers its own tool for it")
+            "enabled it, so its tools are not callable here unless your team registers its own tool for its host")
 
 async def connect_with_pasted_secret(
     *, provider_name: str, raw_token: str, org_id: int, owner: str, client_factory,

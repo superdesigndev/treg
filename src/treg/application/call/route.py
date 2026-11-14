@@ -668,8 +668,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
         tier = (
-            # a row declaring its own host (Lever EU) is the team's tool only on that host
-            "tool" if (e.get("host") in tool_hosts if e.get("host") else e["provider"] in own_tools) else
+            # a row on an approved second host (Lever EU) is the team's tool only on that host, as
+            # resolve calls it there; any other row is called on the provider's main host
+            "tool" if (e.get("host") in tool_hosts if _second_host(e) else e["provider"] in own_tools) else
             "credential" if e["provider"] in own else
             "anonymous" if anonymous else
             "platform"
@@ -1024,6 +1025,12 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     return response, spent
 
 
+def _second_host(e: dict) -> bool:
+    """A row resolve calls on another of its provider's hosts: a `host` the provider approves."""
+    prov = oauth_providers.get(e["provider"])
+    return bool(e.get("host") and prov is not None and prov.catalog_targets)
+
+
 def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFailed:
     """The refusal for a routed call whose plan kept no candidate, with who it is on."""
     # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
@@ -1034,7 +1041,8 @@ def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFa
                         for d in plan.dropped)
     # only treg's demo policy took every candidate: any strict, scope or filter drop beside it
     # is the caller's to fix, so it keeps its own message
-    policy_only = bool(plan.dropped) and all(d.get("policy") for d in plan.dropped)
+    policy_only = (bool(plan.dropped) and all(d.get("policy") for d in plan.dropped)
+                   and not options.exclude)  # the caller's exclude may have taken an open one
     strict_drop = [d for d in plan.dropped if d.get("strict")]
     scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
     return ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422,

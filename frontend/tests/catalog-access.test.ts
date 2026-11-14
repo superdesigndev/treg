@@ -68,7 +68,7 @@ test('a key provider\'s keyless row not served here falls back to its key labels
   expect(label(e, [{ service: 'p', auth_kind: 'key', enabled: true }])).toBe('Free, no key')
 })
 
-test('the drawer offers nothing to copy or try for a tool this server refuses', () => {
+test('the drawer offers Copy but nothing to try for a tool this server refuses', () => {
   const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true, call_template: 'x' }
   const vm = { drawerEp: e, providerPaused: () => false, catEndpointConnected: () => false,
     provAuthKind: () => 'public', endpointAccessLabel: () => 'Not enabled on this server' }

@@ -90,8 +90,13 @@ async def test_a_public_provider_page_never_asks_for_an_account(clients: AsyncCl
     import dataclasses
     from treg import oauth_providers
     from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
     monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
         oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    # a public provider has only keyless rows (the validator's rule): retire the keyed ones here
+    for e in catalog_store.load().endpoints:
+        if e["provider"] == "financialdatasets" and e.get("platform_auth") != "anonymous":
+            monkeypatch.setitem(e, "status", "retired")
     monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
     monkeypatch.setattr(get_settings(), "platform_providers", "")
     off = await clients.get("/tools/financialdatasets")
@@ -207,3 +212,25 @@ async def test_the_platform_payload_says_whether_this_server_serves_each_provide
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     on = (await clients.get("/catalog/platforms/stocks")).json()["providers"]["financialdatasets"]
     assert on["enabled"] is True
+
+
+async def test_a_key_provider_s_served_keyless_rows_are_counted_beside_its_own_account_rows(clients: AsyncClient, monkeypatch):
+    """Keyless rows are served with no key, so a key provider whose keyed rows treg cannot serve still
+    has a served surface: the page must count it, not read as own-account only."""
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    assert any(e["provider"] == "financialdatasets" and e.get("platform_auth") == "anonymous" for e in cat.endpoints)
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "k")
+    real = type(cat).platform_eligible
+    monkeypatch.setattr(type(cat), "platform_eligible",
+                        lambda self, e: False if e.get("provider") == "financialdatasets"
+                        and e.get("platform_auth") != "anonymous" else real(self, e))  # keyed rows only
+    page = await clients.get("/tools/financialdatasets")
+    assert page.status_code == 200
+    # the keyed rows need the team's own account; the served keyless rows are counted beside it
+    keyless = sum(1 for e in cat.endpoints if e["provider"] == "financialdatasets"
+                  and e.get("platform_auth") == "anonymous" and not e.get("status") and e.get("kind") != "routed")
+    import re as _re
+    assert f"your own account · never metered · {keyless} free, no key" in page.text, _re.findall(r"kicker\">([^<]*)", page.text)
