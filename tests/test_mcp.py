@@ -1795,3 +1795,14 @@ async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_even
     assert old["client"] == "mcp" and old["user_agent"].startswith("python-httpx/")
     assert old["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and old["mcp_client"] is None
     assert new["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and new["mcp_client"] == "test"
+
+
+async def test_review_publishes_the_reason_length_the_server_enforces(clients):
+    """`/reviews` takes a reason of 1-200 characters after trimming (the CLI checks the same), so
+    the MCP schema says so: an agent validates before calling instead of learning the limit from a
+    `string_too_long` body."""
+    from treg.mcp import mcp as server
+
+    schema = {t.name: t.input_schema for t in await server.list_tools()}["review"]
+    text = next(s for s in schema["properties"]["reason"]["anyOf"] if s.get("type") == "string")
+    assert (text.get("minLength"), text.get("maxLength")) == (1, 200)

@@ -19,6 +19,8 @@ FEEDBACK_DESCRIPTION = (
 
 ReviewUsefulness = Literal["useful", "partly", "not_useful", "not_sure"]
 REVIEW_USEFULNESS = get_args(ReviewUsefulness)
+# Stdlib only: the light CLI imports this module. The constrained type lives in domain.feedback.reviews.
+REVIEW_REASON_MAX = 200
 REVIEW_DESCRIPTION = (
     "Rate a catalog call after you have used its result; not_sure is fine when you cannot tell. "
     "The reason may be quoted on the endpoint's catalog page without naming your team, so write "

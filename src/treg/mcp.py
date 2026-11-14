@@ -66,6 +66,7 @@ from .capacity_notice import account_out_notice, is_admission_refusal, is_balanc
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
+from .domain.feedback.reviews import ReviewReason
 from .domain.catalog.stats import EndpointObservationReader
 from .infra import org_traffic
 
@@ -1140,7 +1141,7 @@ async def feedback(
     structured_output=True,
 )
 async def review(
-    call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None = None,
+    call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: ReviewReason | None = None,
 ) -> ReviewOut:
     return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE)
 

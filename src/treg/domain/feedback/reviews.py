@@ -1,8 +1,16 @@
 """The sole writer of callreview. The application owns the transaction."""
+from typing import Annotated
+
+from pydantic import StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from ...feedback_contract import REVIEW_REASON_MAX
 from ...models import CallReview
+
+# Trimmed before it is measured, as the CLI does; published in the MCP schema as minLength/maxLength.
+ReviewReason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
+                                                max_length=REVIEW_REASON_MAX)]
 
 
 def add(db: AsyncSession, **values) -> CallReview:

@@ -86,7 +86,7 @@ class ReviewIn(BaseModel):
 
     call_id: CallReference
     usefulness: ReviewUsefulness
-    reason: str | None = Field(default=None, min_length=1, max_length=200)
+    reason: reviews.ReviewReason | None = None
 
 
 @app.post("/reviews", status_code=201)
