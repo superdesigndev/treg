@@ -1,5 +1,5 @@
 {
- "version": 27,
+ "version": 28,
  "providers": [
   {
    "provider": "Google Ads",
@@ -815,6 +815,17 @@
     "shape": "bearer"
    },
    "probe": "inboxes"
+  },
+  {
+   "provider": "Shipmail",
+   "tokens": [
+    "SHIPMAIL"
+   ],
+   "base_url": "https://shipmail.to/api/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "capabilities"
   },
   {
    "provider": "Cloudflare",
