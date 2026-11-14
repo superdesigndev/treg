@@ -124,10 +124,11 @@ through `audit.py`: it drops rows past its queue bound and swallows exceptions.
 **Column width.** A Postgres `integer` holds at most $2,147.48 in micro-USD. Running totals and caps
 (`Org.balance_micro`, `daily_cap_micro`, the auto-top-up amounts, `CreditBlock.amount_micro` and
 `remaining_micro`, `Hold.amount_micro`, `TagBudget`'s caps, `spent_today_micro`) are `BIGINT`
-(revision 0093). Per-row journal amounts (`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`:
-one row holds one call's or one top-up's amount, which `billing.TOPUP_MAX_USD` keeps far below the
-limit, and changing a type there rewrites a very large table under an exclusive lock. A new column
-that sums or caps money is `BIGINT` from its first revision.
+(revision 0093); `autotopup_monthly_cap_micro` is `BIGINT` (revision 0103). Per-row journal amounts
+(`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`: one row holds one call's or one top-up's
+amount, which `billing.TOPUP_MAX_USD` keeps far below the limit, and changing a type there rewrites a
+very large table under an exclusive lock. A new column that sums or caps money is `BIGINT` from its
+first revision.
 
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
@@ -536,8 +537,10 @@ low balance produces ONE charge.
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
-  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD`; a cap below one
-  refill is refused.
+  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
+  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
+  `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
   charge, else an hour divided by the team's `autotopup_max_per_hour` (0 means
   `autotopup_default_per_hour`). The number is part of the mandate text.

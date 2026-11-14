@@ -1,0 +1,12 @@
+{
+  "email": "alex@example.com",
+  "status": "valid",
+  "confidence": 0.97,
+  "reasons": [
+    "smtp_ok"
+  ],
+  "provider": "google",
+  "mx_host": "aspmx.l.google.com",
+  "checked_at": "2026-11-14T07:30:00Z",
+  "suggestion": null
+}

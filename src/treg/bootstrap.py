@@ -30,7 +30,6 @@ from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
     _ClientNoticeMiddleware,
-    _GzipResponseMiddleware,
     _LegacyHostRedirectMiddleware,
     _SecurityHeadersMiddleware,
 )
@@ -323,6 +322,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/referrals/code', ('POST',), 'mint_referral_code'),
     ('/billing/stripe/webhook', ('POST',), 'billing_stripe_webhook'),
     ('/orgs/{org_id}/sso', ('GET',), 'sso_status'),
+    ('/orgs/{org_id}/sso/domains', ('GET',), 'sso_domains'),
     ('/orgs/{org_id}/sso/blocked', ('GET',), 'sso_blocked_members'),
     ('/orgs/{org_id}/sso/blocked/{user_id}/restore', ('POST',), 'sso_restore_member'),
     ('/orgs/{org_id}/sso/checkout', ('POST',), 'sso_checkout'),
@@ -922,7 +922,6 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_middleware(org_traffic.RequestLogMiddleware)
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
-    app.add_middleware(_GzipResponseMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
