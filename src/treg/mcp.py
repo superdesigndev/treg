@@ -999,7 +999,10 @@ async def _catalog_search_impl(
                 ep.get("kind") == "routed"
                 and any(get_settings().platform_key_for((cat.by_id.get(i) or {}).get("provider"))
                         for i in ep.get("routed_children") or [])
-                or bool(get_settings().platform_key_for(ep.get("provider")))),
+                or bool(get_settings().platform_key_for(ep.get("provider")))
+                # a verified public row needs only the provider allow-list, no key
+                or ep.get("platform_auth") == "anonymous"
+                and get_settings().platform_provider_enabled(ep.get("provider") or "")),
             "added": ep.get("added") or None,
             "score": None if page.judged or led else score,
             # The measured half of the answer, at the step where the agent is choosing.

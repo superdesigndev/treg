@@ -77,6 +77,8 @@ class OAuthProvider:
     #            is the natural unit (Slack): our app can't be installed into their workspace on
     #            their behalf, and a shared app would put treg between them and their own data.
     #            Setup is a form, not a redirect, so the provider carries the instructions.
+    # "public" — a keyless public API: nothing to connect or verify. Its catalog rows are served
+    #            only as `platform_auth: anonymous`; the provider is left out of the Connect listing.
     auth_kind: str = "oauth"
     token_label: str = ""  # "Bot token"
     token_placeholder: str = ""  # "xoxb-…"
@@ -4641,7 +4643,7 @@ def listing() -> list[dict]:
         # Grouped first, alphabetical within a shelf — so the dashboard can render the shelves by
         # walking the list once instead of re-sorting what the registry already knows.
         for p in sorted(
-            (p for p in REGISTRY.values() if not is_paused(p.service)),
+            (p for p in REGISTRY.values() if not is_paused(p.service) and p.auth_kind != "public"),
             key=lambda p: (
                 CATEGORY_ORDER.index(p.category) if p.category in CATEGORY_ORDER else len(CATEGORY_ORDER),
                 p.display_name,

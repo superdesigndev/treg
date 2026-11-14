@@ -325,4 +325,6 @@ key for its provider (`platform_key_for`, the same two halves as MCP's `no_key_n
 provider's page reads as own-key, and only platform prices inform the starting price. OAuth rows use
 account-connection language. The kicker reads `_observed_or_empty`. Own-account providers where
 search demand is for "<provider> mcp" (`_MCP_INTENT_PROVIDERS`) lead title and H1 with MCP.
+A public provider (`auth_kind: public`, keyless upstream) counts its `platform_auth: anonymous`
+rows as served once the provider is allow-listed, prices them as free and shows "Nothing to connect".
 `tests/test_provider_pages.py`.

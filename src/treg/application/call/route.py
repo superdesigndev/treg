@@ -653,6 +653,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             for service in services:
                 if service in own_tools:
                     continue
+                registered = oauth_providers.get(service)
+                if registered is not None and registered.auth_kind == "public":
+                    continue  # nothing to connect: a same-named secret is not its credential
                 if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
                     own.add(service)
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.

@@ -513,7 +513,10 @@ operations with `scope: any_account`, no authorization metadata and no shared as
 lifecycle. After the team-tool and team-credential tiers miss, `_anonymous_offer` builds a virtual
 tool with an empty binding list and tier `anonymous`; it needs only the provider allow-list
 (`platform_provider_enabled`). The call runtime holds no provider or path list. Routed ranking keeps
-own key first, anonymous second, paid platform third.
+own key first, anonymous second, paid platform third. A provider with no key at all registers with
+`auth_kind="public"`: it supplies `base_url` and nothing to connect, is left out of the Connect
+listing, and both connect paths refuse it; every one of its rows is anonymous. The anonymous tier is
+unmetered, so a 2xx streams to the caller unbuffered, whatever its size.
 
 ## Provider objects on treg's shared account
 

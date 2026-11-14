@@ -252,7 +252,8 @@ async def _direct_access(
                 }
             if exc.status_code != 404:
                 raise
-    if await _marketplace_secret(service, caller.org_id, db) is not None:
+    if getattr(provider, "auth_kind", "") != "public" and (
+            await _marketplace_secret(service, caller.org_id, db) is not None):
         return {
             "tier": "credential",
             "metered": bool(billed_note),
@@ -271,10 +272,13 @@ def _missing_access(
     capability = connection_authorization.connect_capability(
         registry_provider, endpoint, specification,
     )
-    connect = f"treg connections connect --provider {service}"
-    if capability:
+    public = getattr(registry_provider, "auth_kind", "") == "public"
+    connect = "" if public else f"treg connections connect --provider {service}"
+    if capability and not public:
         connect += f" --capability {capability}"
     hint = (
+        "it is a keyless public API that this server has not enabled"
+        if public else
         f"connect with: {connect}" if not provider.uses_pasted_secret else
         f"connect with: {connect}, or treg secret add {service} …"
     )

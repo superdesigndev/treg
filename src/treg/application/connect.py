@@ -349,6 +349,12 @@ async def start_oauth_connection(
                     f"`treg connections connect --provider {provider.service}` on an up-to-date "
                     "CLI (`treg update`), or via POST /connections/token",
                 )
+            if provider.auth_kind == "public":
+                raise ConnectError(
+                    "invalid_provider",
+                    f"{provider.display_name} is a public API with nothing to connect: call its "
+                    "catalog tools directly",
+                )
             chosen_capability = capability or provider.connect_default_capability
             try:
                 scopes = provider.scopes_for(chosen_capability)
@@ -606,6 +612,12 @@ async def connect_with_pasted_secret(
     *, provider_name: str, raw_token: str, org_id: int, owner: str, client_factory,
 ) -> dict:
     provider = oauth_providers.get(provider_name)
+    if provider is not None and provider.auth_kind == "public":
+        raise ConnectError(
+            "invalid_token_provider",
+            f"{provider.display_name} is a public API with nothing to connect: call its "
+            "catalog tools directly",
+        )
     if provider is None or not provider.uses_pasted_secret:
         raise ConnectError("invalid_token_provider", "this provider is connected by consent, not a token")
     _refuse_paused(provider_name)

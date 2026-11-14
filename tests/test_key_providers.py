@@ -587,3 +587,110 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_public_provider_has_nothing_to_connect(clients, monkeypatch):
+    """A keyless public API (auth_kind="public") serves only anonymous catalog rows: it is left out
+    of the Connect listing and both connect paths refuse it instead of storing a meaningless key."""
+    public = dataclasses.replace(P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public")
+    monkeypatch.setitem(P.REGISTRY, "public-demo", public)
+    assert "public-demo" not in {p["service"] for p in P.listing()}
+    started = await clients.post("/oauth/start", json={"provider": "public-demo"})
+    assert started.status_code == 422 and "nothing to connect" in started.text
+    pasted = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert pasted.status_code == 422
+
+
+@pytest.fixture
+def fd_public(monkeypatch):
+    """Financial Datasets made a keyless public provider: its anonymous rows are the public rows."""
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    return P.REGISTRY["financialdatasets"]
+
+
+async def test_public_provider_refusals_name_nothing_to_connect(clients, fd_public):
+    """Pasting a key for a public provider says there is nothing to connect, not "connected by
+    consent"; and the access preview offers no connect command for one."""
+    from tests.conftest import verified_signup
+    token = (await verified_signup(clients, json={"email": "keyless-paste@superdesign.dev"})).json()["token"]
+    pasted = await clients.post("/connections/token", json={"provider": "financialdatasets", "token": "x"},
+                                headers={"Authorization": f"Bearer {token}"})
+    assert pasted.status_code == 422 and "nothing to connect" in pasted.text, pasted.text
+
+    from treg.application.call.access import _missing_access
+    ep = {"id": "financialdatasets.prices.tickers", "provider": "financialdatasets"}
+    out = _missing_access(ep, fd_public, fd_public, (), "financialdatasets")
+    assert out["connect_command"] == "" and "keyless public API" in out["detail"]
+
+
+async def test_catalog_search_says_no_key_needed_for_an_allow_listed_anonymous_row(clients, monkeypatch):
+    """An anonymous row is served once its provider is allow-listed, with no key on this server:
+    catalog_search must say `no_key_needed: true` then, and false while the provider is not enabled."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    token = (await verified_signup(clients, json={"email": "keyless-search@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "financial datasets stock tickers", "limit": 8},
+                                   token=token)
+        anonymous = {e["id"] for e in catalog_store.load().endpoints if e.get("platform_auth") == "anonymous"}
+        rows = [r for r in out["results"] if r.get("endpoint_id") in anonymous]
+        assert rows, out["results"]
+        return {r["no_key_needed"] for r in rows}
+
+    assert await flag() == {False}
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert await flag() == {True}
+
+
+def _capture_relay(monkeypatch, seen: dict):
+    from test_marketplace_call import _fake_relay
+    from treg.application.call import service as call_service
+    fake = _fake_relay(200, b'{"tickers":["AAPL"]}')
+
+    async def capture(*args, **kwargs):
+        seen["bindings"], seen["secrets"] = args[2].bindings, args[3]
+        return await fake(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", capture)
+
+
+async def test_a_team_secret_named_like_a_public_provider_does_not_hijack_its_free_call(
+        clients: AsyncClient, monkeypatch, fd_public):
+    """A public provider has nothing to connect. A team secret that only shares its name (a vendor's
+    private-API key saved under it) is not its credential: the call still goes keyless, with no
+    binding and no secret, instead of injecting that secret."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    r = await clients.post("/secrets", json={"name": "financialdatasets", "value": "private-api-key"})
+    assert r.status_code == 200, r.text
+    seen = {}
+    _capture_relay(monkeypatch, seen)
+    called = await clients.get("/call/financialdatasets.prices.tickers")
+    assert called.status_code == 200, called.text
+    assert seen == {"bindings": [], "secrets": {}}, seen
+
+
+async def test_the_access_preview_never_offers_a_same_named_secret_for_a_public_provider(
+        clients: AsyncClient, monkeypatch, fd_public):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert (await clients.post("/secrets", json={"name": "financialdatasets", "value": "k"})).status_code == 200
+    r = await clients.get("/catalog/endpoints/financialdatasets.prices.tickers/access")
+    assert r.status_code == 200, r.text
+    assert r.json().get("tier") != "credential", r.json()
+
+
+async def test_a_public_provider_this_server_has_not_enabled_says_so_and_offers_no_connect(
+        clients, monkeypatch, fd_public):
+    """The dead end for a keyless API names the server's allow-list, not a credential to connect."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.get("/call/financialdatasets.prices.tickers")
+    assert r.status_code == 404, r.text
+    assert "keyless public API that this server has not enabled" in r.text, r.text
+    assert "connections connect" not in r.text and "secret add" not in r.text

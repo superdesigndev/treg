@@ -4220,3 +4220,29 @@ async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills
     assert doc['charged_micro'] == doc['tried'][1]['charged_micro'] == before - await _balance(clients)
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_a_same_named_secret_never_makes_a_public_provider_an_own_key_child(
+        clients: AsyncClient, monkeypatch):
+    """A public provider has nothing to connect, so the router plans its reader on the anonymous
+    tier even when the team saved a secret under the provider's name."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "platform_auth", "anonymous")
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "cost", {
+        "type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    assert (await clients.post("/secrets", json={"name": "financialdatasets", "value": "k"})).status_code == 200
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "anonymous", tiers

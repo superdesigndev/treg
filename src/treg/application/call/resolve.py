@@ -1139,6 +1139,11 @@ def _marketplace_no_credential(
 ) -> ResolutionFailed:
     """Tier 3: the actionable dead-end. Every line names a real command; a pasted-key provider
     gets the `secret add` route too (name it for the service so the ladder finds it)."""
+    if provider.auth_kind == "public":  # nothing to connect: only the deployment's allow-list
+        lines = [f"{ep_id} is a keyless public API that this server has not enabled"]
+        lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
+        lines.extend(_capability_alternatives(ep) if ep is not None else [])
+        return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines))
     lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
     lines.append(f"  connect one:  treg connections connect --provider {service}")
     if provider.uses_pasted_secret:
@@ -2342,7 +2347,10 @@ async def _resolve_marketplace_call(
                 if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
                     raise
 
-    secret = chosen_secret or await _marketplace_secret(service, caller.org_id, db)  # tier 2
+    # tier 2. A public provider has nothing to connect, so a team secret that merely shares its name
+    # (a vendor's private-API key saved as "greenhouse") is not its credential: the keyless relay serves it.
+    secret = None if provider.auth_kind == "public" else (
+        chosen_secret or await _marketplace_secret(service, caller.org_id, db))
     if secret is not None:
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=secret.owner,

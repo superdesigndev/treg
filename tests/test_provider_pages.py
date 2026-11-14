@@ -82,3 +82,24 @@ async def test_a_provider_page_offers_treg_s_key_only_where_this_deploy_holds_on
     finally:
         get_settings.cache_clear()
     assert "Platform + BYOK" in served or "NO SIGNUP" in served
+
+
+async def test_a_public_provider_page_never_asks_for_an_account(clients: AsyncClient, monkeypatch):
+    """A keyless provider has nothing to connect, enabled on this server or not; once enabled its
+    anonymous rows are served free with no key."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.config import get_settings
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    off = await clients.get("/tools/financialdatasets")
+    assert off.status_code == 200
+    assert "connect your own account" not in off.text and "Own connection required" not in off.text
+    assert "Nothing to connect" in off.text and "Not enabled on this server" in off.text
+    assert "your own account · never metered" not in off.text
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    on = await clients.get("/tools/financialdatasets")
+    assert "tools · free · $0.000 markup" in on.text and "Platform access" in on.text
+    assert "your own account · never metered" not in on.text

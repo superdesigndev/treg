@@ -2578,14 +2578,19 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
     # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
     served = bool(get_settings().platform_key_for(svc))
-    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
+    # An anonymous row needs no key, only the provider allow-list (`_anonymous_offer`).
+    public_ok = get_settings().platform_provider_enabled(svc)
+    platform_eps = [e for e in eps if cat.platform_eligible(e) and (
+        served or (public_ok and e.get("platform_auth") == "anonymous"))]
     byok_only = len(eps) - len(platform_eps)
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
     mixed = bool(platform_eps and byok_only and key_auth)
     prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
     # Published prices do not remove the OAuth account-connection requirement.
-    is_oauth = bool(reg and reg.auth_kind == "oauth") or not platform_eps
+    # A public provider has no account to connect even where this server has not enabled it.
+    public = bool(reg and reg.auth_kind == "public")
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
     cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
     verified = len([e for e in eps if e["verified"]])
     plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
@@ -2642,7 +2647,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             break
 
     kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
-              else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
+              else f"{len(eps)} tools · " + (f"from {_esc_html(cheapest)}" if cheapest else "free") + " · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
     mcp_intent = svc in _MCP_INTENT_PROVIDERS
@@ -2779,6 +2784,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
            '$1.00 free per new team, no card to start.</p></div>')
         + (f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
            "never metered. Your key always wins.</p></div>" if key_auth else
+           f'<div class="card"><h4>Nothing to connect</h4><p>{esc_d} is a public API: '
+           "no account, no key.</p></div>" if reg and reg.auth_kind == "public" else
            '<div class="card"><h4>Your account connection</h4><p>'
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Connect your account with the provider's supported authentication method.")
@@ -2798,7 +2805,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = served and cat.platform_eligible(e)
+            eligible = e in platform_eps
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
             elif key_auth:
@@ -2806,7 +2813,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                 if not eligible:
                     price = "No treg charge; upstream " + price
             else:
-                access = "Platform access" if eligible else "Own connection required"
+                access = ("Platform access" if eligible else
+                          "Not enabled on this server" if public else "Own connection required")
             kind = "account management" if e.get("kind") == "account" else ("helper" if e.get("kind") == "utility" else "")
             bits = [b for b in (access, kind, "live-verified" if e.get("verified") else "", _esc_html(price)) if b]
             lis.append(f"<li><b>{_esc_html(e['name'])}</b>"
