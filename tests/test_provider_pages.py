@@ -112,6 +112,7 @@ async def test_a_public_provider_page_never_asks_for_an_account(clients: AsyncCl
     assert "tools · free · $0.000 markup" in on.text and "Free, no key" in on.text
     assert "your own account · never metered" not in on.text
     assert "public API with no key: there is nothing to connect" in on.text
+    assert "Nothing to sign up for" not in on.text and "free treg.to account" in on.text
 
 
 async def test_a_key_providers_keyless_rows_are_never_called_treg_key(clients: AsyncClient, monkeypatch):
@@ -193,3 +194,16 @@ async def test_the_provider_tools_record_marks_a_public_provider(clients: AsyncC
     assert (await clients.get("/catalog/providers/financialdatasets")).json()["provider"]["enabled"] is True
     keyed = (await clients.get("/catalog/providers/hunter")).json()["provider"]
     assert "auth_kind" not in keyed
+
+
+async def test_the_platform_payload_says_whether_this_server_serves_each_provider(
+        clients: AsyncClient, monkeypatch):
+    """The dashboard labels a provider's keyless tools on a platform page from this payload's
+    `enabled`: without it a tool this server refuses would read as free."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    off = (await clients.get("/catalog/platforms/stocks")).json()["providers"]["financialdatasets"]
+    assert off["enabled"] is False
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    on = (await clients.get("/catalog/platforms/stocks")).json()["providers"]["financialdatasets"]
+    assert on["enabled"] is True

@@ -241,6 +241,8 @@ drawerIds(){
     // only your own key can call), or nothing, and the line can go to the agent as it is.
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
       if(this.providerPaused(e.provider)) return 'paused';
+      // a public provider this server has not enabled: nothing to copy or try, its calls are refused
+      if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'paused';
       if(this.catEndpointConnected(e)) return 'copy';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },

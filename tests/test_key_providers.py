@@ -792,3 +792,17 @@ def test_the_connect_listing_says_whether_this_server_serves_a_provider(monkeypa
     assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is False
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is True
+
+
+def test_every_public_providers_row_is_served_once_allow_listed(monkeypatch):
+    """A public provider has nothing to connect, so its pages and the dashboard read "allow-listed"
+    as "served". Every one of its rows must then really be served keyless (verified, free, eligible);
+    a row that is not would be refused while every surface calls it available."""
+    from treg.application.call.resolve import anonymous_served
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    public = sorted(s for s, p in P.REGISTRY.items() if p.auth_kind == "public")
+    monkeypatch.setattr(get_settings(), "platform_providers", ",".join(public))
+    cat = catalog_store.load()
+    unserved = [ep["id"] for ep in cat.endpoints if ep["provider"] in public and anonymous_served(ep) is None]
+    assert unserved == []
