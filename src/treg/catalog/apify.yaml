@@ -553,5 +553,201 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.youtube.video.captions
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: POST
+    path: /actors/herus13~youtube-transcript-scraper/run-sync-get-dataset-items
+    name: "Get a YouTube video's transcript with timestamps"
+    summary: "Transcript of any public YouTube video with no login or API key: full text and timed segments (optionally SRT or WebVTT), plus title, channel, duration, publish date and view count. Accepts video links, playlists and channels; prefers human captions over auto-generated ones"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 1}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.05}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. treg's key requires 256; your own key may set any size", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        video_urls: {type: "array[string]", required: true, note: "one per entry: a video link (watch?v=…, youtu.be/…, /shorts/…), a playlist or a channel; playlists and channels expand to their videos, capped by max_videos_per_source", example: ["https://www.youtube.com/watch?v=jNQXAC9IVRw"]}
+        language: {type: string, required: false, note: "caption language code such as en, es, ja or pt-BR; a short code also matches its regional variants", example: "en"}
+        prefer_manual: {type: boolean, required: false, note: "when a video has both human-written and auto-generated captions in the language, take the human ones. Default true", example: true}
+        language_fallback: {type: boolean, required: false, note: "when the video has no caption track in the asked language, return another language instead of nothing. Default false", example: false}
+        output_format: {type: string, required: false, note: "text (default) | srt | vtt; srt and vtt add the subtitle file text beside transcript_text and transcript_segments", example: "text"}
+        max_videos_per_source: {type: integer, required: false, note: "videos taken from each playlist or channel link; default 100", example: 10}
+        max_records: {type: integer, required: false, note: "ceiling on videos the whole run processes, counted after playlists and channels expand", example: 5}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. One row per video, billed whether or not the video has a transcript. Each row carries video_id, url, title, channel_id, channel_name, duration_seconds, published_at, view_count, language, transcript_text and transcript_segments (start, duration, text). Cap every call with maxTotalChargeUsd and max_records."
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 256, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {"video_urls": ["https://www.youtube.com/watch?v=jNQXAC9IVRw"], "language": "en"}
+    cost: {type: per_result, value: 0.003, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~youtube-transcript-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `transcript` event — one event per video processed, $0.003 each. The actor has no start event, so there is no call_fee. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.youtube.video.captions.json
+    docs_url: https://apify.com/herus13/youtube-transcript-scraper
+
+  - id: apify.reddit.search.posts
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/herus13~reddit-scraper/run-sync-get-dataset-items
+    name: "Search Reddit posts by keyword"
+    summary: "Search all of Reddit, or chosen subreddits, for posts matching a phrase: title, body, author, subreddit, score, upvote ratio, comment count, flair, media flags and timestamps, with no login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `search_posts` for this entry", example: "search_posts"}
+        queries: {type: "array[string]", required: true, note: "phrases to search, one per entry", example: ["web scraping"]}
+        search_in_subreddits: {type: "array[string]", required: false, note: "restrict every phrase to these subreddits; leave empty to search all of Reddit", example: ["programming"]}
+        sort: {type: string, required: false, note: "RELEVANCE | HOT | TOP | NEW | COMMENTS", example: "TOP"}
+        time_range: {type: string, required: false, note: "hour | day | week | month | year | all", example: "month"}
+        max_items_per_target: {type: integer, required: false, note: "posts per phrase; default 100", example: 25}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.reddit.search.posts, .subreddit.posts, .user.posts, .user.profile and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is one post (kind post)."
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.5, timeout: 90}
+      body: {"mode": "search_posts", "queries": ["web scraping"], "sort": "TOP", "time_range": "month", "max_items_per_target": 1}
+    cost: {type: per_result, value: 0.00199, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~reddit-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.00199 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the call pins memory=1024 for a $0.00005 start. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.reddit.search.posts.json
+    docs_url: https://apify.com/herus13/reddit-scraper
+
+  - id: apify.reddit.subreddit.posts
+    capability: reddit.subreddit.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/herus13~reddit-scraper/run-sync-get-dataset-items
+    name: "List a subreddit's posts"
+    summary: "Posts from a subreddit feed (hot, new, top, rising or controversial) with title, body, link, author, score, comment count, flair and timestamps, with no login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `subreddit_feed` for this entry", example: "subreddit_feed"}
+        subreddits: {type: "array[string]", required: true, note: "subreddit names or links, one per entry: programming, r/programming or a full URL", example: ["programming"]}
+        sort: {type: string, required: false, note: "HOT | NEW | TOP | CONTROVERSIAL; default NEW", example: "HOT"}
+        time_range: {type: string, required: false, note: "hour | day | week | month | year | all; applies to TOP and CONTROVERSIAL", example: "week"}
+        max_items_per_target: {type: integer, required: false, note: "posts per subreddit; default 100", example: 25}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.reddit.search.posts, .subreddit.posts, .user.posts, .user.profile and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is one post (kind post)."
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.5, timeout: 90}
+      body: {"mode": "subreddit_feed", "subreddits": ["programming"], "sort": "HOT", "max_items_per_target": 1}
+    cost: {type: per_result, value: 0.00199, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~reddit-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.00199 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the call pins memory=1024 for a $0.00005 start. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.reddit.subreddit.posts.json
+    docs_url: https://apify.com/herus13/reddit-scraper
+
+  - id: apify.reddit.user.posts
+    capability: reddit.user.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/herus13~reddit-scraper/run-sync-get-dataset-items
+    name: "List a Reddit user's recent posts"
+    summary: "A Reddit user's public posts with title, body, subreddit, score, comment count and timestamps, with no login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `user_posts` for this entry", example: "user_posts"}
+        users: {type: "array[string]", required: true, note: "user names or profile links, one per entry: spez, u/spez or a full URL", example: ["spez"]}
+        sort: {type: string, required: false, note: "NEW (default) | HOT", example: "NEW"}
+        max_items_per_target: {type: integer, required: false, note: "posts per user; default 100", example: 25}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.reddit.search.posts, .subreddit.posts, .user.posts, .user.profile and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is one post (kind post)."
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.5, timeout: 90}
+      body: {"mode": "user_posts", "users": ["spez"], "max_items_per_target": 1}
+    cost: {type: per_result, value: 0.00199, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~reddit-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.00199 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the call pins memory=1024 for a $0.00005 start. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.reddit.user.posts.json
+    docs_url: https://apify.com/herus13/reddit-scraper
+
+  - id: apify.reddit.user.profile
+    capability: reddit.user.profile
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/herus13~reddit-scraper/run-sync-get-dataset-items
+    name: "Get a Reddit user's public profile"
+    summary: "A Reddit user's public profile: username, id, display name, description, creation date and avatar, with no login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `profile` for this entry", example: "profile"}
+        users: {type: "array[string]", required: true, note: "user names or profile links, one per entry", example: ["spez"]}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.reddit.search.posts, .subreddit.posts, .user.posts, .user.profile and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is one profile (kind profile)."
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.5, timeout: 90}
+      body: {"mode": "profile", "users": ["spez"]}
+    cost: {type: per_result, value: 0.00199, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~reddit-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `profile` event — one event per profile returned, $0.00199 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the call pins memory=1024 for a $0.00005 start. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.reddit.user.profile.json
+    docs_url: https://apify.com/herus13/reddit-scraper
+
+  - id: apify.reddit.post.comments
+    capability: reddit.post.comments
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/herus13~reddit-scraper/run-sync-get-dataset-items
+    name: "List a Reddit post's comments"
+    summary: "The comment tree of a Reddit post, replies included, with text, author, score, depth, parent link and timestamps, ordered as you choose, with no login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `post_comments` for this entry", example: "post_comments"}
+        posts: {type: "array[string]", required: true, note: "post links or ids, one per entry", example: ["https://www.reddit.com/r/programming/comments/1xjiofl/how_curl_was_accidentally_turingcomplete_for_nine/"]}
+        comment_sort: {type: string, required: false, note: "CONFIDENCE (Reddit default) | TOP | NEW | OLD | CONTROVERSIAL | QA", example: "TOP"}
+        max_comments_per_post: {type: integer, required: false, note: "comments per post, replies included; default 500", example: 100}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.reddit.search.posts, .subreddit.posts, .user.posts, .user.profile and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is one comment (kind comment); a reply carries its parent_id and depth."
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.5, timeout: 90}
+      body: {"mode": "post_comments", "posts": ["https://www.reddit.com/r/programming/comments/1xjiofl/how_curl_was_accidentally_turingcomplete_for_nine/"], "max_comments_per_post": 1}
+    cost: {type: per_result, value: 0.0006, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~reddit-scraper', checked: '2026-10-30', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `comment` event — one event per comment or reply returned, $0.0006 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the call pins memory=1024 for a $0.00005 start. Read live 2026-10-30 from the actor pricingInfos (apifyMarginPercentage 0.20). The price is the published rate card, not an observed charge: Apify does not bill an owner for their own actor, so the first run on treg''s key is what verifies it'}
+    verified: 2026-10-30
+    added: '2026-10-30'
+    example_response: examples/apify.reddit.post.comments.json
+    docs_url: https://apify.com/herus13/reddit-scraper
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
