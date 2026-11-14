@@ -1,0 +1,70 @@
+{
+  "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8927168002",
+  "data_compliance": [
+    {
+      "type": "gdpr",
+      "requires_consent": false,
+      "requires_processing_consent": false,
+      "requires_retention_consent": false,
+      "retention_period": null,
+      "demographic_data_consent_applies": true
+    }
+  ],
+  "education": "education_optional",
+  "internal_job_id": 6577170002,
+  "location": {
+    "name": "San Francisco Bay Area"
+  },
+  "metadata": [
+    {
+      "id": 4105571002,
+      "name": "Featured on Website",
+      "value": [],
+      "value_type": "multi_select"
+    },
+    {
+      "id": 96196709002,
+      "name": "Careers Site Department",
+      "value": null,
+      "value_type": "single_select"
+    }
+  ],
+  "id": 8927168002,
+  "updated_at": "2026-11-13T15:34:47-05:00",
+  "requisition_id": "R-107471",
+  "title": "Account Executive, Mobile Gaming",
+  "pay_input_ranges": [
+    {
+      "min_cents": 27200000,
+      "max_cents": 30600000,
+      "currency_type": "USD",
+      "title": "On Target Earnings",
+      "blurb": "<p><em>This position is commission-based and is eligible for variable incentive. The On Target Earnings (OTE) range for this full-time position is listed below. This position will also be eligible for equity and benefits. Benefits include medical, dental, and vision insurance; a 401(k) plan; life and disability insurance; paid vacation, sick time, and holidays; and paid parental, medical, and caregiver leave. Our ranges are determined by role and level. Within the range, individual pay is determ… [818 chars total]"
+    }
+  ],
+  "company_name": "Discord",
+  "first_published": "2026-11-13T15:33:44-05:00",
+  "language": "en",
+  "application_deadline": null,
+  "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Discord has a highly engaged community of millions of daily active users who use the platform for many different reasons, but there’s one thing that nearly everyone does: &lt;strong&gt;play video games.&lt;/strong&gt; Discord plays a uniquely important role in the future of gaming, and we are focused on making it easier and more fun for people to hang out before, during, and after playing games.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;We&#39;re looking f… [6893 chars total]",
+  "departments": [
+    {
+      "id": 4099568002,
+      "name": "Advertising Solutions",
+      "child_ids": [],
+      "parent_id": 4109059002
+    }
+  ],
+  "offices": [
+    {
+      "id": 4000383002,
+      "name": "San Francisco, CA",
+      "location": "San Francisco, California, United States",
+      "child_ids": [],
+      "parent_id": null
+    }
+  ],
+  "ai_disclaimer": null,
+  "include_ai_disclaimer": false,
+  "ai_opt_out_request_url": "http://app2.greenhouse.io/ai_opt_out_request/job_post/8927168002/ai_opt_out"
+}

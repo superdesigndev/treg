@@ -1,0 +1,133 @@
+{
+  "_id": "66b393081444af562c634559",
+  "company_name": "Palantir Technologies",
+  "job_title": "Senior Front End Software Engineer - Application Development",
+  "description": "<p>Palantir Foundry is an end-to-end platform for data-driven decision-making. As a Senior Front End Software Engineer, you will be responsible for crafting tools used by thousands of users to build sophisticated applications. You will work on high-scale data-intensive APIs, developing interactive workflow UIs, and creating low-code/no-code WYSIWYG tools.</p><h2>Requirements</h2><ul><li>4+ years of frontend software engineering experience</li><li>Experience crafting complex user experiences (UX) with a strong intuition for good design and usability</li><li>Experience working with design systems such as Blueprint, Material-UI, or similar</li><li>Strong frontend coding skills using JavaScript/TypeScript</li><li>Familiarity with data structures, loading patterns, frontend frameworks, and other technical tools and concepts</li><li>Strong written and verbal communication skills</li></ul><h2>Benefits</h2><ul><li>Promoting health and well-being across all areas of Palantirians' lives</li><li>Multiple pathways to success at Palantir</li><li>Diversity, equity, and inclusion commitment</li><li>Reasonable accommodations for employees with disabilities</li></ul>",
+  "application_link": "https://jobs.lever.co/palantir/4e7d0732-f477-4c7a-aac9-abd62f8c9987",
+  "job_type": "Full Time",
+  "location_type": "Hybrid",
+  "date_posted": "2024-08-07",
+  "first_ingested": "2024-08-07T15:30:16",
+  "updated_at": 1793882244277,
+  "company_link": "https://jobs.lever.co/palantir",
+  "company_logo": "https://lever-client-logos.s3.us-west-2.amazonaws.com/b8300af6-ed1c-4d0b-8956-cee7839555b9-1599675095718.png",
+  "job_board": "lever",
+  "job_board_link": "https://jobs.lever.co/palantir",
+  "requirements_summary": "4+ years of frontend experience, UX expertise, and familiarity with design systems and technical tools",
+  "visa_sponsored": false,
+  "company_data": {
+    "description_summary": "Palantir offers data integration software aiding institutions in solving critical issues.",
+    "linkedin_link": "https://www.linkedin.com/company/palantir-technologies",
+    "size_range": {
+      "min": 1001,
+      "max": 5000
+    },
+    "industries": [
+      "Tech, Software & IT Services"
+    ],
+    "subindustries": [
+      "Enterprise Software & Solutions"
+    ]
+  },
+  "job_slug": "senior-front-end-software-engineer-application-development-1",
+  "company_slug": "palantir-technologies",
+  "locations": [
+    {
+      "city": "London",
+      "region": "England",
+      "country": "United Kingdom",
+      "coordinates": {
+        "type": "Point",
+        "coordinates": [
+          -0.1277653,
+          51.5074456
+        ]
+      },
+      "bbox": [
+        51.2867601,
+        51.6918741,
+        -0.5103751,
+        0.3340155
+      ],
+      "address": "London, Greater London, England, United Kingdom"
+    }
+  ],
+  "job_categories": [
+    "Software Engineer Jobs"
+  ],
+  "location_raw": "London, United Kingdom",
+  "expired": false,
+  "salary_range": null,
+  "offers_equity": null,
+  "equity": null,
+  "yoe_range": {
+    "min": 4.0,
+    "max": 4.0
+  },
+  "experience_level": null,
+  "description_raw": null,
+  "recruiter_agency": null,
+  "signals": [],
+  "technologies": null,
+  "technologies_tracked": [
+    {
+      "technology_id": "6adb014b4a893310d48c1765",
+      "technology_slug": "palantir-foundry",
+      "surface": "Palantir Foundry",
+      "start": 0,
+      "end": 16,
+      "in_title": false,
+      "section": "body",
+      "confidence": 0.891,
+      "self_mention": false
+    },
+    {
+      "technology_id": "6adb014b4a893310d48c0c33",
+      "technology_slug": "material-ui",
+      "surface": "Material-UI",
+      "start": 583,
+      "end": 594,
+      "in_title": false,
+      "section": "requirements",
+      "confidence": 0.9817,
+      "self_mention": false
+    },
+    {
+      "technology_id": "6adb014b4a893310d48c04f3",
+      "technology_slug": "javascript",
+      "surface": "JavaScript",
+      "start": 643,
+      "end": 653,
+      "in_title": false,
+      "section": "requirements",
+      "confidence": 0.9993,
+      "self_mention": false
+    },
+    {
+      "technology_id": "6adb014b4a893310d48c3047",
+      "technology_slug": "typescript",
+      "surface": "TypeScript",
+      "start": 654,
+      "end": 664,
+      "in_title": false,
+      "section": "requirements",
+      "confidence": 0.9993,
+      "self_mention": false
+    }
+  ],
+  "skills": null,
+  "education_level": null,
+  "team": null,
+  "benefits": null,
+  "contact_email": null,
+  "contact_phone": null,
+  "coolness_score": null,
+  "flexibility_score": null,
+  "compensation_value_score": null,
+  "benefits_score": null,
+  "impact_autonomy_score": null,
+  "prestige_score": null,
+  "growth_score": null,
+  "meta_completeness": false,
+  "meta_targetability": 0.4666666666666667
+}

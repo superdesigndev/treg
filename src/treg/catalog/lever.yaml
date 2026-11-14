@@ -1,0 +1,103 @@
+provider: lever
+source:
+  docs: https://github.com/lever/postings-api
+  openapi: null # Lever documents the Postings API in its GitHub README; no OpenAPI document is published
+  curated: '2026-11-14'
+# Keyless and free: every published posting is public, and no request carries a credential. The
+# EU instance (api.eu.lever.co) answers the same paths for companies hosted there; the two
+# instances are separate, so one site name can be a different board on each.
+limits: "No documented read rate limit. Responses take 1 to 7 seconds; a board's whole list is about 20 KB per posting."
+pricing_url: https://github.com/lever/postings-api
+
+defaults:
+  platform_auth: anonymous
+  domain: jobs
+  platform: companies
+  scope: any_account
+  method: GET
+  price: {value: '0', currency: USD, unit: call}
+  provenance: {source: observed, source_url: 'https://github.com/lever/postings-api', checked: '2026-11-14', confidence: verified}
+  miss:
+    status: [404]
+    when: {path: response.error, op: equals, value: Document not found}
+    means: "No such site, or no such published posting on this instance."
+  # Lever answers a list; an object at 200 ({"ok": false, "error": …}) is no answer.
+  error: {when: {path: response.ok, op: equals, value: false}}
+  docs_url: https://github.com/lever/postings-api#api-methods
+
+endpoints:
+  - id: lever.postings.list
+    capability: companies.jobs
+    path: /v0/postings/{site}
+    name: "A company's open jobs on Lever"
+    summary: "List a company's published job postings on its Lever careers site, with title, team, department, location, commitment, workplace type, full description and apply link."
+    input:
+      pathParams:
+        site: {type: string, required: true, note: "the company's Lever site name, the path segment in jobs.lever.co/<site>", example: spotify}
+      queryParams:
+        mode: {type: string, required: true, enum: [json], note: "json; without it Lever answers HTML", example: json}
+        limit: {type: integer, required: false, min: 1, note: "postings per page; no limit returns the whole board. Pass 100 or fewer on large boards", example: 5}
+        skip: {type: integer, required: false, min: 0, note: "postings to skip, for the next page"}
+        location: {type: "array[string]", required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
+        commitment: {type: "array[string]", required: false, note: "exact commitment such as Full-time (repeat to OR several; case-sensitive)"}
+        team: {type: "array[string]", required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
+        department: {type: "array[string]", required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
+        level: {type: string, required: false, note: "exact level name"}
+    test_request: {pathParams: {site: spotify}, queryParams: {mode: json, limit: 1}}
+    note: "Filters match the exact category text a posting carries: read it from categories in an unfiltered page first. The answer has no total count; page until a page is shorter than limit."
+    example_response: examples/lever.postings.list.json
+    verified: '2026-11-14'
+    added: '2026-11-14'
+
+  - id: lever.postings.get
+    capability: companies.jobs.detail
+    path: /v0/postings/{site}/{posting_id}
+    name: "One Lever job posting"
+    summary: "Get one published Lever job posting by its id, with title, categories, full description, lists, workplace type, pay range when published and apply link."
+    input:
+      pathParams:
+        site: {type: string, required: true, note: "the company's Lever site name", example: spotify}
+        posting_id: {type: string, required: true, note: "the posting's id, from lever.postings.list or the last segment of its jobs.lever.co URL"}
+    test_request: {pathParams: {site: spotify, posting_id: 2a55d6c9-c564-443a-be3e-a3851db5a93b}}
+    example_response: examples/lever.postings.get.json
+    verified: '2026-11-14'
+    added: '2026-11-14'
+
+  - id: lever.eu.postings.list
+    capability: companies.jobs
+    host: api.eu.lever.co
+    path: /v0/postings/{site}
+    name: "A company's open jobs on Lever EU"
+    summary: "List a company's published job postings on Lever's EU instance (jobs.eu.lever.co), with title, categories, full description and apply link."
+    input:
+      pathParams:
+        site: {type: string, required: true, note: "the company's site name, the path segment in jobs.eu.lever.co/<site>", example: leverdemo}
+      queryParams:
+        mode: {type: string, required: true, enum: [json], note: "json; without it Lever answers HTML", example: json}
+        limit: {type: integer, required: false, min: 1, note: "postings per page; no limit returns the whole board", example: 5}
+        skip: {type: integer, required: false, min: 0, note: "postings to skip, for the next page"}
+        location: {type: "array[string]", required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
+        commitment: {type: "array[string]", required: false, note: "exact commitment (repeat to OR several; case-sensitive)"}
+        team: {type: "array[string]", required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
+        department: {type: "array[string]", required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
+        level: {type: string, required: false, note: "exact level name"}
+    test_request: {pathParams: {site: leverdemo}, queryParams: {mode: json, limit: 1}}
+    note: "For sites hosted on jobs.eu.lever.co. The US and EU instances are separate: a name can be a different company's board on each, so use the instance the company's jobs page links to."
+    example_response: examples/lever.eu.postings.list.json
+    verified: '2026-11-14'
+    added: '2026-11-14'
+
+  - id: lever.eu.postings.get
+    capability: companies.jobs.detail
+    host: api.eu.lever.co
+    path: /v0/postings/{site}/{posting_id}
+    name: "One Lever EU job posting"
+    summary: "Get one published job posting from Lever's EU instance by its id, with full description and apply link."
+    input:
+      pathParams:
+        site: {type: string, required: true, note: "the company's site name on jobs.eu.lever.co", example: leverdemo}
+        posting_id: {type: string, required: true, note: "the posting's id, from lever.eu.postings.list"}
+    test_request: {pathParams: {site: leverdemo, posting_id: 33538a2f-d27d-4a96-8f05-fa4b0e4d940e}}
+    example_response: examples/lever.eu.postings.get.json
+    verified: '2026-11-14'
+    added: '2026-11-14'

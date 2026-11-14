@@ -1,0 +1,40 @@
+{
+  "id": "2b82e4ee-9d92-44a3-83ba-90bef23d5367",
+  "type": "salary_benchmark",
+  "state": "queued",
+  "progress": 0.0,
+  "created_at": "2026-11-14T00:16:53.842866",
+  "updated_at": "2026-11-14T00:16:53.842873",
+  "started_at": null,
+  "completed_at": null,
+  "user_id": "000000000000000000000000",
+  "error": null,
+  "error_code": null,
+  "retryable": null,
+  "worker_id": "surfra",
+  "priority": 0,
+  "notify": false,
+  "input": {
+    "job_title": "Data Scientist",
+    "salary_range": {
+      "min": 140000.0,
+      "max": 180000.0,
+      "currency": "USD",
+      "period": "yearly"
+    },
+    "geo_locations": [
+      {
+        "city": "New York",
+        "region": "New York",
+        "country": "United States"
+      }
+    ],
+    "days_ago": 90,
+    "include_expired": true,
+    "notify": false,
+    "job_titles": [
+      "Data Scientist"
+    ]
+  },
+  "result": null
+}

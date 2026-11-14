@@ -1,0 +1,88 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8927168002",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": true
+        }
+      ],
+      "education": "education_optional",
+      "internal_job_id": 6577170002,
+      "location": {
+        "name": "San Francisco Bay Area"
+      },
+      "metadata": [
+        {
+          "id": 4105571002,
+          "name": "Featured on Website",
+          "value": [],
+          "value_type": "multi_select"
+        },
+        {
+          "id": 96196709002,
+          "name": "Careers Site Department",
+          "value": null,
+          "value_type": "single_select"
+        }
+      ],
+      "id": 8927168002,
+      "updated_at": "2026-11-13T15:34:47-05:00",
+      "requisition_id": "R-107471",
+      "title": "Account Executive, Mobile Gaming",
+      "company_name": "Discord",
+      "first_published": "2026-11-13T15:33:44-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8917177002",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": true
+        }
+      ],
+      "education": "education_optional",
+      "internal_job_id": 6572884002,
+      "location": {
+        "name": "San Francisco Bay Area or Remote (U.S.)"
+      },
+      "metadata": [
+        {
+          "id": 4105571002,
+          "name": "Featured on Website",
+          "value": [],
+          "value_type": "multi_select"
+        },
+        {
+          "id": 96196709002,
+          "name": "Careers Site Department",
+          "value": null,
+          "value_type": "single_select"
+        }
+      ],
+      "id": 8917177002,
+      "updated_at": "2026-11-09T09:48:09-05:00",
+      "requisition_id": "R-107469",
+      "title": "Associate Commercial Counsel",
+      "company_name": "Discord",
+      "first_published": "2026-11-03T11:27:16-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    "… 24 more item(s) truncated"
+  ],
+  "meta": {
+    "total": 26
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "departments": [
+    {
+      "id": 4074069002,
+      "name": "Accounting",
+      "parent_id": 4094262002,
+      "child_ids": [],
+      "jobs": [
+        {
+          "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8907804002",
+          "data_compliance": [
+            {
+              "type": "gdpr",
+              "requires_consent": false,
+              "requires_processing_consent": false,
+              "requires_retention_consent": false,
+              "retention_period": null,
+              "demographic_data_consent_applies": true
+            }
+          ],
+          "internal_job_id": 6568553002,
+          "location": {
+            "name": "San Francisco Bay Area"
+          },
+          "metadata": [
+            {
+              "id": 4105571002,
+              "name": "Featured on Website",
+              "value": [],
+              "value_type": "multi_select"
+            },
+            {
+              "id": 96196709002,
+              "name": "Careers Site Department",
+              "value": null,
+              "value_type": "single_select"
+            }
+          ],
+          "id": 8907804002,
+          "updated_at": "2026-11-09T09:48:09-05:00",
+          "requisition_id": "R-107465",
+          "title": "Senior Manager, Global Indirect Tax",
+          "company_name": "Discord",
+          "first_published": "2026-11-03T18:32:06-05:00",
+          "language": "en",
+          "application_deadline": null
+        }
+      ]
+    },
+    {
+      "id": 4074061002,
+      "name": "Activities Platform",
+      "parent_id": 4135582002,
+      "child_ids": [],
+      "jobs": []
+    },
+    "… 56 more item(s) truncated"
+  ]
+}

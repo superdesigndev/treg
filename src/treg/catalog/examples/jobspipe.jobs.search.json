@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 2,
+    "total_companies": null,
+    "truncated_companies": 0,
+    "next_cursor": "eyJwIjoiMjAyNi0xMS0xMyAyMzoxNjozMSIsImsiOiI1MzQzOTY0NjI1MzczMzI4NTUyIiwidiI6MiwidyI6IjIwMjYtMTEtMTMgMjM6NTg6MzEifQ",
+    "next_delta_cursor": null,
+    "credits_charged": 2,
+    "jobs_already_paid": 0,
+    "credits_remaining": 569,
+    "credits_allowance": 1000
+  },
+  "data": [
+    {
+      "id": "23e9b4d3e84b0dcb",
+      "job_title": "Data Engineering Solution Lead - Remote",
+      "company": "Mindex",
+      "company_domain": "mindex.com",
+      "url": "https://www.indeed.com/viewjob?jk=23e9b4d3e84b0dcb",
+      "final_url": "https://apply.workable.com/j/0B945F033E",
+      "date_posted": "2026-11-13T23:16:55+00:00",
+      "discovered_at": "2026-11-13T23:36:30+00:00",
+      "status": "active",
+      "location": "Rochester, NY 14607",
+      "country_code": "US",
+      "remote": false,
+      "work_arrangement": null,
+      "seniority": "director",
+      "min_annual_salary_usd": 105000,
+      "max_annual_salary_usd": 155000,
+      "salary_currency": "USD",
+      "estimated_avg_annual_salary_usd": 120393,
+      "occupation_code": "2512",
+      "occupation_label": "Software Developers",
+      "technology_slugs": [
+        "snowflake",
+        "azure",
+        "sql",
+        "mongodb",
+        "python",
+        "sql-server"
+      ],
+      "description": "Mindex is looking for a Data Engineering Solution Lead to head a focused team migrating Informatica pipelines into Maia (Matillion) and Snowflake. You’ll own the technical design for roughly 1,500-1,7…",
+      "sources": [
+        {
+          "provider": "indeed",
+          "url": "https://www.indeed.com/viewjob?jk=23e9b4d3e84b0dcb",
+          "seen_at": "2026-11-13T23:36:30.151343+00:00"
+        }
+      ],
+      "last_seen_at": "2026-11-14 00:02:04",
+      "ghost_score": 0
+    }
+  ]
+}

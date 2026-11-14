@@ -443,6 +443,20 @@ async def _blitzapi(c, key):
                     f"per-endpoint limit {rps if type(rps) is int else 'unknown'} requests/s"}
 
 
+async def _hirebase(c, key):
+    # Free: GET /v2/billing/usage/summary spends nothing and answers 401 for a bad key. The jobs meter
+    # backs the jobs routes only: companies, insights and benchmarks have their own meters. So the count
+    # is always informational; a spent meter locks just its endpoint through the 429 signature.
+    d = await _get(c, "https://api.hirebase.org/v2/billing/usage/summary", headers={"x-api-key": key})
+    meters = d.get("meters") if isinstance(d, dict) else None
+    jobs = next((m for m in meters or [] if isinstance(m, dict) and m.get("event_name") == "m_jobs_api_calls"), None)
+    left = _finite(jobs.get("remaining")) if jobs else None
+    if left is None:
+        raise ValueError("Hirebase returned no jobs meter")
+    return {"value": max(left, 0), "unit": "jobs left this period", "informational": True,
+            "note": f"jobs meter, overage_mode {jobs.get('overage_mode')}; 429 limit_exceeded at the cap when block"}
+
+
 async def _mobiusengine_jobs(c, key):
     # Free: GET /v1/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
     # dollars; an account on a monthly plan answers mode "plan" and no balance, which is not a usable slot.
@@ -992,6 +1006,19 @@ async def _theirstack(c, key):
     return {"value": max(total - used, 0), "unit": "API credits", "note": "Available API credits"}
 
 
+async def _jobspipe(c, key):
+    # GET /v1/account does not count spend from the one-time free grant; the free export estimate
+    # answers the spendable balance (and 401 for a bad key).
+    r = await c.post("https://api.jobspipe.dev/v1/jobs/export/estimate",
+                     headers={"Authorization": f"Bearer {key}"}, json={"job_id_or": ["treg-balance-probe"]})
+    r.raise_for_status()
+    d = r.json()
+    credits = d.get("balance") if isinstance(d, dict) else None
+    if type(credits) is not int or credits < 0:
+        raise ValueError("JobsPipe returned no valid credit balance")
+    return {"value": credits, "unit": "credits", "note": "spendable credits from the free export estimate"}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1076,6 +1103,7 @@ BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
+    "jobspipe": _jobspipe,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,
@@ -1132,6 +1160,7 @@ BALANCE_ROUTES = {
     "leadocean": _leadocean,
     "blitzapi": _blitzapi,
     "mobiusengine_jobs": _mobiusengine_jobs,
+    "hirebase": _hirebase,
     "prospeo": _prospeo,
     "aiark": _aiark,
     "wiza": _wiza,

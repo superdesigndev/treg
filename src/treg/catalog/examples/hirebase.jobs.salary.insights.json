@@ -1,0 +1,306 @@
+{
+  "headline": {
+    "total_count": 1806,
+    "sample_size": 500,
+    "median_salary": 210000.0,
+    "salary_currency": "USD",
+    "pct_disclosing_salary": 67.8,
+    "pct_remote": 5.2,
+    "top_company": "Fonzi AI",
+    "top_technology": "Python",
+    "dominant_experience_level": "Senior",
+    "new_this_week": 231
+  },
+  "salary": {
+    "count": 337,
+    "avg": 216721.06409495548,
+    "p25": 182500.0,
+    "p50": 210000.0,
+    "p75": 242000.0,
+    "p90": 283500.0,
+    "min": 18000.0,
+    "max": 445000.0,
+    "currency": "USD",
+    "histogram": [
+      {
+        "lower": 80000.0,
+        "upper": 100000.0,
+        "count": 3
+      },
+      {
+        "lower": 100000.0,
+        "upper": 120000.0,
+        "count": 3
+      },
+      "… 11 more item(s) truncated"
+    ],
+    "fitted_normal": {
+      "mu": 216721.06409495548,
+      "sigma": 61923.835470502825
+    }
+  },
+  "salary_by_level": [
+    {
+      "key": "Entry-Level",
+      "count": 14,
+      "p25": 98820.0,
+      "p50": 133990.0,
+      "p75": 161200.0
+    },
+    {
+      "key": "Junior / Associate",
+      "count": 22,
+      "p25": 138562.5,
+      "p50": 174935.0,
+      "p75": 182500.0
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "salary_by_location_type": [
+    {
+      "key": "Hybrid",
+      "count": 160,
+      "p25": 192250.0,
+      "p50": 217500.0,
+      "p75": 250875.0
+    },
+    {
+      "key": "On-site",
+      "count": 161,
+      "p25": 182000.0,
+      "p50": 200000.0,
+      "p75": 231000.0
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "level_breakdown": [
+    {
+      "key": "Entry-Level",
+      "count": 21,
+      "percent": 4.2
+    },
+    {
+      "key": "Junior / Associate",
+      "count": 34,
+      "percent": 6.8
+    },
+    "… 4 more item(s) truncated"
+  ],
+  "location_type_split": [
+    {
+      "key": "On-site",
+      "count": 252,
+      "percent": 50.4
+    },
+    {
+      "key": "Hybrid",
+      "count": 222,
+      "percent": 44.4
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "job_type_split": [
+    {
+      "key": "Full Time",
+      "count": 496,
+      "percent": 99.2
+    },
+    {
+      "key": "Internship",
+      "count": 4,
+      "percent": 0.8
+    }
+  ],
+  "top_locations": [
+    {
+      "label": "California, United States",
+      "region": "California",
+      "country": "United States",
+      "count": 437,
+      "percent": 87.4
+    },
+    {
+      "label": "New York, United States",
+      "region": "New York",
+      "country": "United States",
+      "count": 25,
+      "percent": 5.0
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "top_companies": [
+    {
+      "company_name": "Fonzi AI",
+      "company_slug": "fonziai",
+      "company_logo": "https://logos.hirebase.org/f51be65a-cd32-45b8-9f5d-d5ff0205b7dc/fonziai-320x320-q95.jpg",
+      "count": 24,
+      "percent": 4.8
+    },
+    {
+      "company_name": "Roblox",
+      "company_slug": "roblox",
+      "company_logo": "https://logos.hirebase.org/f323c9cd-59a7-4b2a-905f-9920095cb795/roblox-320x320-q95.jpg",
+      "count": 19,
+      "percent": 3.8
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "top_technologies": [
+    {
+      "key": "Python",
+      "count": 218,
+      "percent": 43.6
+    },
+    {
+      "key": "TypeScript",
+      "count": 114,
+      "percent": 22.8
+    },
+    "… 23 more item(s) truncated"
+  ],
+  "top_skills": [
+    {
+      "key": "Distributed systems",
+      "count": 32,
+      "percent": 6.4
+    },
+    {
+      "key": "API design",
+      "count": 24,
+      "percent": 4.8
+    },
+    "… 23 more item(s) truncated"
+  ],
+  "top_benefits": [
+    {
+      "key": "Relocation assistance",
+      "count": 36,
+      "percent": 7.2
+    },
+    {
+      "key": "401(k)",
+      "count": 36,
+      "percent": 7.2
+    },
+    "… 13 more item(s) truncated"
+  ],
+  "education_split": [
+    {
+      "key": "Bachelor's degree",
+      "count": 112,
+      "percent": 22.4
+    },
+    {
+      "key": "Master's degree",
+      "count": 2,
+      "percent": 0.4
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "company_size_split": [
+    {
+      "key": "Startup (51-250)",
+      "count": 127,
+      "percent": 25.4
+    },
+    {
+      "key": "Enterprise (1001-5000)",
+      "count": 116,
+      "percent": 23.2
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "industry_split": [
+    {
+      "key": "Tech, Software & IT Services",
+      "count": 371,
+      "percent": 74.2
+    },
+    {
+      "key": "Corporate Services",
+      "count": 93,
+      "percent": 18.6
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "subindustry_split": [
+    {
+      "key": "AI & ML",
+      "count": 248,
+      "percent": 49.6
+    },
+    {
+      "key": "Software Development & Engineering",
+      "count": 154,
+      "percent": 30.8
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "visa_sponsorship_rate": 7.6,
+  "recruiter_agency_rate": 16.8,
+  "yoe_median": 5.0,
+  "freshness": {
+    "histogram": [
+      {
+        "lower": 0.0,
+        "upper": 2.0,
+        "count": 32
+      },
+      {
+        "lower": 2.0,
+        "upper": 4.0,
+        "count": 86
+      },
+      "… 7 more item(s) truncated"
+    ],
+    "avg_days_posted": 8.114,
+    "new_this_week": 231,
+    "new_this_month": 500
+  },
+  "scores": [
+    {
+      "name": "novelty_score",
+      "mean": null,
+      "stdev": null,
+      "count": 0
+    },
+    {
+      "name": "flexibility_score",
+      "mean": 5.510450819672132,
+      "stdev": 0.5710624501853078,
+      "count": 488
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "scores_by_level": [
+    {
+      "level": "Entry-Level",
+      "scores": {
+        "flexibility_score": 4.657,
+        "compensation_value_score": 6.024,
+        "benefits_score": 4.381,
+        "impact_autonomy_score": 6.676,
+        "prestige_score": 5.99,
+        "growth_score": 5.967,
+        "coolness_score": 6.043
+      },
+      "count": 21
+    },
+    {
+      "level": "Junior / Associate",
+      "scores": {
+        "flexibility_score": 5.494,
+        "compensation_value_score": 7.227,
+        "benefits_score": 6.533,
+        "impact_autonomy_score": 7.873,
+        "prestige_score": 6.758,
+        "growth_score": 7.018,
+        "coolness_score": 7.285
+      },
+      "count": 34
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "cached": true,
+  "generated_at": "2026-11-13T23:20:10.307239"
+}

@@ -1,0 +1,40 @@
+provider: ashby
+source:
+  docs: https://developers.ashbyhq.com/docs/public-job-posting-api
+  openapi: null
+  curated: '2026-11-14'
+limits: "No documented rate limit. One call returns a company's whole board: there is no paging, filter or way to leave out descriptions."
+pricing_url: https://developers.ashbyhq.com/docs/public-job-posting-api
+
+# Ashby's Job Postings API is public: no key, no account, no charge. Its only route is the board
+# read below; the authenticated Ashby API is a customer's own recruiting data and is not listed.
+# The row relays anonymously (no credential exists), so it is served only where the deployment's
+# provider allow-list names `ashby`. A 2xx on the anonymous tier is neither metered nor archived,
+# so the relay streams it whole: a board larger than the 8 MiB evidence buffer still arrives intact.
+defaults:
+  provenance: {source: docs, source_url: 'https://developers.ashbyhq.com/docs/public-job-posting-api', checked: '2026-11-14', confidence: verified}
+
+endpoints:
+  - id: ashby.companies.jobs
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /posting-api/job-board/{board}
+    name: "A company's open jobs on Ashby"
+    summary: "List every open job on a company's Ashby job board, with title, department, team, locations, remote and workplace type, employment type, publish date, apply link, the full description as HTML and plain text, and the posted pay range when asked for."
+    note: "The answer is the whole board in one response, about 17 KB per job: OpenAI's board of over 800 jobs is about 14 MB. Over MCP that whole board is one tool result; for a large board call /call/ over HTTP and save the answer to a file."
+    input:
+      pathParams:
+        board: {type: string, required: true, note: "the board name, the last part of the company's jobs.ashbyhq.com URL (jobs.ashbyhq.com/ramp is `ramp`); case-insensitive", example: ramp}
+      queryParams:
+        includeCompensation: {type: boolean, required: false, default: false, note: "true adds each job's `compensation` (salary, equity and bonus tiers with currency, interval, min and max) where the employer publishes pay; it adds about 5% to the size", example: true}
+    test_request: {pathParams: {board: ramp}, queryParams: {includeCompensation: true}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "No Ashby job board has that name; the body is the plain text `Not Found`."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/ashby.companies.jobs.json
+    docs_url: https://developers.ashbyhq.com/docs/public-job-posting-api
