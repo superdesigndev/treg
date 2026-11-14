@@ -1178,7 +1178,7 @@ def _marketplace_no_credential(
         lines.append(f"  or add a key: treg secret add {service} --env-var {service.upper().replace('-', '_')}_API_KEY")
     lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
     if ep is not None:
-        lines.extend(_capability_alternatives(ep))
+        lines.extend(_capability_alternatives(ep, org=org))
     ours = ep is not None and _platform_key_missing(ep, provider)
     return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
                             log_kind="platform_key_missing" if ours else None)

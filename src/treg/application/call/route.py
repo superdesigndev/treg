@@ -1113,6 +1113,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     tried: list[Attempt] = []
     spent = 0
     errors = 0
+    too_large = 0  # attempts cut by treg's own routed-read cap, not a provider failing
     rejected_by: set[str] = set()  # providers that answered a vendor 4xx
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
@@ -1270,6 +1271,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             # candidate answers. The endpoint itself streams it when called directly.
             _unbill(pending, child.call_ref)
             errors += 1
+            too_large += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, 0,
                                  f"{exc}; call {cand.endpoint['id']} directly, it streams"[:160]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1586,7 +1588,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "route_failed", "endpoint_id": ep["id"], "tried": [t.view() for t in tried], "charged_micro": spent,
             "dropped": plan.dropped,
             "message": f"every candidate for {ep['id']} failed; nothing useful was charged" if spent == 0 else
-                       f"every candidate for {ep['id']} failed"})
+                       f"every candidate for {ep['id']} failed"},
+            # every attempt was cut by treg's own read cap: treg's limit, as on a direct call
+            log_kind="response_buffer_limit" if tried and too_large == len(tried) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
     winner_outcome = next(t.outcome for t in reversed(tried)

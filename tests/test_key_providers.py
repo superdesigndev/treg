@@ -883,3 +883,31 @@ async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeyp
     monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
     r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
     assert r.status_code == 422 and "call its catalog tools directly" in r.text
+
+
+def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(monkeypatch):
+    """Both refusal branches judge alternatives for this team: a demo team is refused keyless tools,
+    so a key provider's refusal never lists one as callable."""
+    from types import SimpleNamespace
+    from treg.application.call import resolve as R
+    free = {"id": "board.jobs", "provider": "board", "capability": "x.y", "platform_auth": "anonymous"}
+    asked = {"id": "hunter.x", "provider": "hunter", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, free]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is free else None)
+    monkeypatch.setattr(R, "_anonymous_offer", lambda ep, org: None)  # refused to this (demo) team
+    monkeypatch.setattr(R, "_platform_key_missing", lambda ep, provider: False)
+    exc = R._marketplace_no_credential("hunter", asked["id"], P.REGISTRY["hunter"], asked,
+                                       SimpleNamespace(public_demo=True, id=1))
+    assert "callable now, no key needed" not in str(exc.detail), exc.detail

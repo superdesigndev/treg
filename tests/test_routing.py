@@ -4445,3 +4445,17 @@ async def test_a_key_providers_keyless_row_is_never_called_a_keyless_public_api(
     assert why and "keyless public API" not in why, plan.dropped
     skip = _quote_skip(row, cat) or ""
     assert skip and "keyless public API" not in skip, skip
+
+
+async def test_a_route_that_fails_only_on_treg_s_read_cap_is_logged_as_treg_s_limit(
+        clients: AsyncClient, enrichment_on, monkeypatch, call_error_lines):
+    """When every candidate's answer is cut by treg's routed read cap, no provider failed: the call is
+    logged as treg's buffer limit (as on a direct call), never as an upstream error."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    big = {"data": {"email": "patrick@stripe.com", "first_name": "x" * 600}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, big)] * 30}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"})
+    assert r.status_code == 502 and r.json()["detail"]["error"] == "route_failed", r.text
+    assert all("routed read" in t["detail"] for t in r.json()["detail"]["tried"])
+    line = call_error_lines()[-1]
+    assert line["error_class"] == "treg_error" and line["by"] == "treg", line
