@@ -1,0 +1,25 @@
+{
+  "mode": "fast",
+  "answers": {
+    "has_api": {"type": "noul", "noul": 0.99},
+    "product_type": {
+      "type": "choice",
+      "choice": "web_api",
+      "probabilities": {"web_api": 0.95, "desktop_app": 0.05},
+      "confidence": 0.91
+    },
+    "documentation_level": {
+      "type": "score",
+      "score": 1.8,
+      "legend": {"0": "No public documentation", "1": "Partial documentation", "2": "Detailed documentation"},
+      "probabilities": {"0": 0.0, "1": 0.2, "2": 0.8},
+      "confidence": 0.86
+    },
+    "unanswerable": {"type": "refusal"}
+  },
+  "usage": {"input_tokens": 1200, "output_tokens": 0},
+  "citations": [
+    {"url": "https://example.com/docs", "title": "Example documentation", "excerpts": ["Example excerpt."]}
+  ],
+  "decision_id": "decisions_00000000000000000000000000000000"
+}
