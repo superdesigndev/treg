@@ -4289,7 +4289,7 @@ TCGDETECT = OAuthProvider(
         "Create a key. It starts with tcgdev_live_ and is shown once.",
         "Catalog search, card details, and single-card prices are free. Photo identification is free, 20 per day.",
     ),
-    setup_note="Grading reports, PSA population, batch prices, and report PDFs spend a prepaid USD wallet, not Detect Tokens. The account check is free.",
+    setup_note="Grading reports, PSA population ($0.01 per success, including a miss), batch prices, and report PDFs spend a prepaid USD wallet, not Detect Tokens. The account check is free.",
     auth_uri="", token_uri="",
     scopes={},
     client_id_setting="", client_secret_setting="",

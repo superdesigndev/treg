@@ -408,7 +408,7 @@ class Settings(BaseSettings):
     platform_key_twelvedata: str = ""   # FREE Basic key (800/day TOTAL) — trial pool, 20 calls/team/day
     platform_key_tiingo: str = ""       # FREE Starter key (1,000/day total) — trial pool, 20 calls/team/day
     platform_key_financialdatasets: str = ""  # X-API-KEY; prepaid Credits with vendor auto-reload
-    platform_key_tcgdetect: str = ""  # Bearer tcgdev_live_…; prepaid USD wallet. Per-success USD prices; catalog search, card details, single prices, and photo ID (20/day) are $0.
+    platform_key_tcgdetect: str = ""  # Bearer tcgdev_live_…; prepaid USD wallet. PSA population is $0.01 per success (a miss is still charged). Catalog search, card details, single prices, and photo ID (20/day) are $0.
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key

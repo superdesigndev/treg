@@ -140,7 +140,7 @@ endpoints:
         card_id: {type: string, required: true, note: "Catalog UUID", example: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
     test_request:
       queryParams: {card_id: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
-    cost: {type: per_call, value: 0.005, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "A 200 is charged even when available is false. A 404 is free. Live hit: HTTP 200, available true, usage_charge.amount_micro_usd 5000."}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, bills_miss: true, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "Rate card population.get is $0.01 per successful lookup. A 200 with no stored population is still charged. A missing card id is not charged."}
     added: '2026-11-14'
     docs_url: https://tcgdetect.com/developers
   - id: tcgdetect.grading.report
