@@ -60,7 +60,8 @@ async def catalog_endpoint_access(
         )
     except ValueError as exc:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail=str(exc),
+            "catalog_parameter_invalid", status_code=400, rule="authorization_method",
+            detail=str(exc),
         ) from None
     provider = (
         registry_provider.profile_for_authorization(methods[0])

@@ -36,7 +36,7 @@ def estimate(rule: dict, document: dict) -> int:
 def enforce(ep: dict, document: dict, query) -> None:
     def require(ok, message):
         if not ok:
-            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
                 "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                 "message": message + " Use your own Sumble key for other documented options.",
             })

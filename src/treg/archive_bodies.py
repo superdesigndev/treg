@@ -443,17 +443,17 @@ async def _read_object(pointer, path, report):
             outcomes["read_retry_" + path + "_" + reason] += 1
             delay = min(random.uniform(0.05, 0.1), total_timeout * 0.05)
             await asyncio.sleep(min(delay, max(0, deadline - asyncio.get_running_loop().time())))
-        report["fallback_reason"] = reason
-        if reason in {"not_found", "hash_mismatch"}:
-            _uploaded.pop(pointer.content_hash, None)
-        outcomes["read_fallback_" + path] += 1
-        outcomes["read_fallback_" + path + "_" + reason] += 1
-        level = logging.ERROR if reason in {"permission_denied", "hash_mismatch", "too_large"} else logging.WARNING
-        # NULL markers include intentionally hash-only history; a miss is not proof of loss.
-        if reason == "not_found" and pointer.storage is None:
-            level = logging.INFO
-        _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s exception_type=%s",
-                 path, reason, round((time.monotonic() - started) * 1000, 3), error_type)
-        return None
     finally:
         report["r2_read_ms"] = round((time.monotonic() - started) * 1000, 3)
+    report["fallback_reason"] = reason
+    if reason in {"not_found", "hash_mismatch"}:
+        _uploaded.pop(pointer.content_hash, None)
+    outcomes["read_fallback_" + path] += 1
+    outcomes["read_fallback_" + path + "_" + reason] += 1
+    level = logging.ERROR if reason in {"permission_denied", "hash_mismatch", "too_large"} else logging.WARNING
+    # NULL markers include intentionally hash-only history; a miss is not proof of loss.
+    if reason == "not_found" and pointer.storage is None:
+        level = logging.INFO
+    _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s exception_type=%s",
+             path, reason, report["r2_read_ms"], error_type)
+    return None

@@ -129,8 +129,8 @@ def _whole(value: object, top: int | None, low: int = 1) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and low <= value and (top is None or value <= top)
 
 
-def _invalid(ep: dict, parameter: str, message: str) -> ResolutionFailed:
-    return ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+def _invalid(ep: dict, parameter: str, rule: str, message: str) -> ResolutionFailed:
+    return ResolutionFailed("catalog_parameter_invalid", status_code=400, rule=rule, detail={
         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
         "message": message})
 
@@ -146,12 +146,12 @@ def require_request(ep: dict, request_data: dict) -> None:
             spec = declared.get(name)
             if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
                     and spec.get("type") != "list":
-                raise _invalid(ep, name, f"{ep['id']} takes {name} once")
+                raise _invalid(ep, name, "repeat", f"{ep['id']} takes {name} once")
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and rule.get("param"):
         found = select(rule["param"], request_document(ep, request_data, defaults=False))
         if found and found[0] is not None and not _whole(found[0], int(rule["max"])):
-            raise _invalid(ep, rule["param"],
+            raise _invalid(ep, rule["param"], "range",
                            f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
@@ -160,7 +160,8 @@ def require_rows(ep: dict, request_data: dict) -> None:
     before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and _rows(rule, request_document(ep, request_data, defaults=False)) is None:
-        raise _invalid(ep, rule["param"], f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
+        raise _invalid(ep, rule["param"], "required",
+                       f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
 def require_rates(ep: dict, cat) -> None:
@@ -205,7 +206,7 @@ def require_entities(ep: dict, request_data: dict) -> None:
         return
     top = int(rule.get("max") or 10_000)
     if _entity_total(rule, request_document(ep, request_data, defaults=False)) > top:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
             "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
             "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
                        "request or connect your own key"})

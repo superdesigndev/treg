@@ -878,6 +878,7 @@ async def test_read_fallback_reason_level_and_diagnostics(r2, monkeypatch, caplo
     assert archive_bodies.outcomes['read_fallback_' + path] == before + 1
     record = [r for r in caplog.records if 'archive R2 read fallback' in r.message][-1]
     assert record.levelname == level and f'path={path}' in record.message
+    assert f"elapsed_ms={diagnostics['cache_r2_read_ms']} " in record.message
     assert reason in record.message and RAW.decode() not in record.message
     assert p.content_hash not in record.message
 

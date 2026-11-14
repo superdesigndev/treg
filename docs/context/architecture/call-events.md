@@ -6,8 +6,11 @@ sources:
   - src/treg/application/call_events.py
   - src/treg/domain/catalog/routing/segments.py
   - src/treg/catalog/contracts.yaml
+  - src/treg/application/call/call_errors.py
+  - scripts/call_events_actionable_errors.sql
   - tests/test_call_events.py
   - tests/test_request_segments.py
+  - tests/test_call_errors.py
 ---
 
 # Call events
@@ -68,9 +71,9 @@ through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 ## Linking
 
 `call_ref` is the call's `X-Treg-Call-Id`. A child's ref is its parent's plus a step
-(`:rN` waterfall attempt N, `:v` the check, `:pN` a routed poll, `:sN` a hub step, `:sN.M` item M
-of a hub `for_each` step); events carry
-`parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
+(`:rN` waterfall attempt N, `:v` the check, `:u` the upgrade, `:pN` a routed poll, `:sN` a hub
+step, `:sN.M` item M of a hub `for_each` step); events carry `parent_ref`, `step` and
+`waterfall_position` parsed from it. An async task's submission
 (`async_submit`) and its outcome (`async_terminal`) share the submission's `call_ref`; the terminal
 event carries `hit`, `verdict`, `cost_charged_micro` (what the task settled at; the submission's
 is null), `async_outcome` (`success`, `failure`, `billed_failure`,
@@ -209,3 +212,51 @@ value: names, company names, descriptions, `about` text, follower counts, lists.
 Normalization before hashing: emails lower-cased; domains without scheme, path or `www.`;
 LinkedIn URLs and handles reduced to the lower-cased handle; other text case-folded with spaces
 collapsed. So a find's `answer_keys['email']` equals a later verify's `input_keys['email']`.
+
+## Failed calls
+
+Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
+logger: `call_error` followed by JSON. `call_errors.emit` runs where an attempt's outcome is final,
+so each attempt logs once; the router's fallback covers a root nothing audited and `execute_call`
+a child. It is a log line, not a column.
+
+| Field | Value |
+| --- | --- |
+| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child, `s1.0` on a hub `for_each` item (null on a root) |
+| `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
+| `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
+| `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
+| `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
+| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other` |
+| `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
+| `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
+| `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
+
+`call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
+`refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`
+is its table. A provider account error belongs to whoever holds the account: an upstream 401/403 is
+`caller_provider_account` on the `credential` and `tool` tiers, and a credit error (a 402 or an
+out-of-credit answer) is the caller's only when the caller pays the provider, so treg's own key and
+its pay-per-use OAuth app are `our_provider_account`.
+
+No request or answer value, header, credential or message text is logged. The answer is read only
+for its documented error code, and a parameter is named only when the endpoint declares every part
+of it: a field name the caller made up is request content.
+
+A default error view leaves `caller_side` out. A routed call or hub run logs its parent and each
+failed child, so a count of calls keeps only root lines (`step` empty); a direct attempt that
+overflow served is still a root line. In Loki, with the deployment's own stream selector:
+
+```logql
+sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
+  | pattern "call_error <payload>" | line_format "{{.payload}}" | json | __error__=""
+  | step="" | caller_side="false" [1h]))
+```
+
+The full count drops `| caller_side="false"`; a count of attempts drops `| step=""`.
+
+`scripts/call_events_actionable_errors.sql` is the same view over the events. An event has only
+`status_code`, `refused_by` and `credential_tier`, so the query's class is coarser where a failure
+kind or a documented error code decides; its header lists where. Own tools write no event, so their
+errors are only in the log line.

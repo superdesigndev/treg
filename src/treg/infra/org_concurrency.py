@@ -35,7 +35,8 @@ class AdmissionRejected(Exception):
             "retry_after_s": retry_after_s,
             "config_version": version,
         }
-        super().__init__(self.detail["error"])
+        self.kind = self.detail["error"]
+        super().__init__(self.kind)
 
 
 async def _join_cleanup(task: asyncio.Task):
