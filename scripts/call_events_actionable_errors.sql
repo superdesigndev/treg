@@ -62,13 +62,15 @@ classified AS (
 )
 SELECT CASE WHEN grouping(endpoint_id) = 1 THEN 'total' ELSE 'endpoint' END AS level,
        error_class,
-       error_class IN ('caller_balance_or_cap', 'caller_policy', 'caller_provider_account') AS caller_side,
+       error_class IN ('caller_auth', 'caller_balance_or_cap', 'caller_policy',
+                       'caller_provider_account') AS caller_side,
        refuser, credential_tier, provider, endpoint_id,
        count(*) AS calls,
        count(*) FILTER (WHERE parent_ref IS NULL) AS root_calls
 FROM classified, params
 WHERE params.include_caller_side
-   OR error_class NOT IN ('caller_balance_or_cap', 'caller_policy', 'caller_provider_account')
+   OR error_class NOT IN ('caller_auth', 'caller_balance_or_cap', 'caller_policy',
+                          'caller_provider_account')
 GROUP BY GROUPING SETS ((error_class, refuser),
                         (error_class, refuser, credential_tier, provider, endpoint_id))
 ORDER BY level DESC, calls DESC

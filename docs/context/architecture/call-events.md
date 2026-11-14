@@ -228,7 +228,7 @@ a child. It is a log line, not a column.
 | `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
 | `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other` |
-| `caller_side` | `true` for `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
+| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
 | `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
@@ -241,8 +241,9 @@ out-of-credit answer) is the caller's only when the caller pays the provider, so
 its pay-per-use OAuth app are `our_provider_account`.
 
 No request or answer value, header, credential or message text is logged. The answer is read only
-for its documented error code, and a parameter is named only when the endpoint declares every part
-of it: a field name the caller made up is request content.
+for its documented error code. A parameter is named only when every part looks like a field name
+or a short index, so an email or a long number used as a field name logs as `undeclared`; a name
+shaped like a word is logged even when the caller made it up.
 
 A default error view leaves `caller_side` out. A routed call or hub run logs its parent and each
 failed child, so a count of calls keeps only root lines (`step` empty); a direct attempt that

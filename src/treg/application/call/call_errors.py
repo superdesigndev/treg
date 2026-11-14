@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import functools
 import json
-from typing import Mapping
+import re
 from urllib.parse import urlsplit
 
 from ... import oauth_providers
@@ -49,10 +49,9 @@ _CLASS_OF_STATUS = {
     404: "not_found", 410: "not_found", 408: "timeout", 504: "timeout", 429: "rate_limit",
 }
 
-CALLER_SIDE = frozenset({"caller_balance_or_cap", "caller_policy", "caller_provider_account"})
+CALLER_SIDE = frozenset({
+    "caller_auth", "caller_balance_or_cap", "caller_policy", "caller_provider_account"})
 _UPSTREAM_ANSWERS = frozenset({"route_caller_fault", "route_not_found"})
-_LOCATIONS = {"query": "queryParams", "path": "pathParams"}
-_FLAT = ("pathParams", "queryParams")
 
 
 def classify(status: int, *, tier: str | None, refused_by: str | None = None,
@@ -79,60 +78,16 @@ def classify(status: int, *, tier: str | None, refused_by: str | None = None,
     return by, cls
 
 
-def _scopes(spec: object) -> list[Mapping]:
-    """Where a declared field's own fields are declared: its `properties`, or its items'."""
-    if not isinstance(spec, Mapping):
-        return []
-    items = spec.get("items")
-    found = (spec.get("properties"), items.get("properties") if isinstance(items, Mapping) else None)
-    return [scope for scope in found if isinstance(scope, Mapping)]
+_NAME_PART = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,39}|[0-9]{1,4}")
 
 
-_INDEX_DIGITS = 4
-
-
-def _is_array(spec: object) -> bool:
-    if not isinstance(spec, Mapping):
-        return False
-    kind = spec.get("type")
-    kinds = kind if isinstance(kind, list) else [kind]
-    return "items" in spec or any(k in ("array", "list") for k in kinds)
-
-
-def _parameter(endpoint_id: str | None, name: str | None, rule: str | None = None) -> str | None:
-    """The parameter a refusal names when every part of it is declared by the endpoint (a short
-    index only into a declared array); `undeclared` otherwise, since a name the caller made up is
-    request content and never logged. A JSON key may itself hold dots, so a refusal of an
-    undeclared field is never read as a path. A path placeholder may be declared with the query
-    parameters."""
+def _parameter(name: str | None) -> str | None:
+    """The parameter a refusal names when every part looks like a field name or a short index;
+    `undeclared` otherwise, so an email or a long number used as a field name is not logged. A
+    name shaped like a word is logged even when the caller made it up."""
     if not name:
         return None
-    if rule == "undeclared":
-        return "undeclared"
-    inputs = (catalog_store.load().by_id.get(endpoint_id or "") or {}).get("input") or {}
-    head, _, rest = name.partition(".")
-    location = _LOCATIONS.get(head, head)
-    if location in _FLAT:
-        flat = {key for where in _FLAT if isinstance(inputs.get(where), Mapping)
-                for key in inputs[where]}
-        return name if not rest or rest in flat else "undeclared"
-    declared = inputs.get(location)
-    if not isinstance(declared, Mapping):
-        return name if any(isinstance(d, Mapping) and name in d for d in inputs.values()) \
-            else "undeclared"
-    scopes = [declared, *_scopes(declared)]
-    spec: object = None
-    for part in rest.split(".") if rest else ():
-        if part.isdigit():
-            if len(part) > _INDEX_DIGITS or not _is_array(spec):
-                return "undeclared"
-            spec = spec.get("items")
-            continue
-        spec = next((scope[part] for scope in scopes if part in scope), None)
-        if spec is None:
-            return "undeclared"
-        scopes = _scopes(spec)
-    return name
+    return name if all(_NAME_PART.fullmatch(part) for part in name.split(".")) else "undeclared"
 
 
 @functools.cache
@@ -178,8 +133,7 @@ def emit(status: int, *, org_id: int | None, call_ref: str | None, road: str,
             "endpoint_id": endpoint_id, "provider": provider, "tier": tier, "status": status,
             "by": by, "refused_by": refused_by, "error_class": cls, "caller_side": cls in CALLER_SIDE,
             "kind": kind, "signal": signal,
-            "parameter": _parameter(endpoint_id, getattr(failure, "parameter", None),
-                                    getattr(failure, "rule", None)),
+            "parameter": _parameter(getattr(failure, "parameter", None)),
             "rule": getattr(failure, "rule", None),
         }, separators=(",", ":")))
     except Exception:  # noqa: BLE001 - a log line must never surface into a call

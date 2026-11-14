@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
+from pathlib import Path
 
 import httpx
 import pytest
@@ -70,6 +72,12 @@ async def _answering(status: int, doc: dict) -> None:
 ])
 def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
+
+
+def test_the_sql_view_leaves_out_the_same_caller_side_classes():
+    sql = (Path(__file__).parents[1] / "scripts/call_events_actionable_errors.sql").read_text()
+    lists = re.findall(r"error_class (?:NOT )?IN \(([^)]*)\)", sql)
+    assert [set(re.findall(r"'(\w+)'", found)) for found in lists] == [call_errors.CALLER_SIDE] * 2
 
 
 async def test_a_balance_refusal_logs_the_caller_side_line(clients: AsyncClient, platform_on,
@@ -145,33 +153,26 @@ async def test_a_missing_required_parameter_logs_its_name_and_rule(clients: Asyn
     assert (line["parameter"], line["rule"]) == ("queryParams.aweme_id", "required")
 
 
-@pytest.mark.parametrize(("endpoint_id", "parameter", "rule", "logged"), [
-    (EP, "queryParams.aweme_id", "type", "queryParams.aweme_id"),
-    (EP, "queryParams.someone@example.com", "type", "undeclared"),
-    (EP, "aweme_id", "type", "aweme_id"),
-    (EP, "query.count", "type", "query.count"),
-    (EP, "someone@example.com", "type", "undeclared"),
-    (EP, "queryParams.aweme_id.someone@example.com", "type", "undeclared"),
-    ("coingecko.coins.get", "pathParams.coin_id", "required", "pathParams.coin_id"),
-    ("coingecko.coins.get", "pathParams.coin_id.someone@example.com", "required", "undeclared"),
-    ("cloro.ai-search.chatgpt.shopping", "body", "required", "body"),
-    ("cloro.ai-search.chatgpt.shopping", "body.include.ads", "required", "body.include.ads"),
-    ("cloro.ai-search.chatgpt.shopping", "body.include.someone@example.com", "required", "undeclared"),
-    ("cloro.ai-search.chatgpt.shopping", "body.include.ads.someone@example.com", "required",
-     "undeclared"),
-    ("cloro.ai-search.chatgpt.shopping", "body.include.0", "required", "undeclared"),
-    ("cloro.ai-search.chatgpt.shopping", "body.15551234567", "required", "undeclared"),
-    ("anyapi.google.serp.maps", "body.categoryFilterWords.0", "required", "body.categoryFilterWords.0"),
-    # A JSON key may hold dots: a field refused as undeclared is never read as a path.
-    ("litescrape.web.fetch.post", "body.set_cookies.15551234567", "undeclared", "undeclared"),
-    ("litescrape.web.fetch.post", "body.set_cookies.15551234567", "repeat", "undeclared"),
-    ("litescrape.web.fetch.post", "body.set_cookies.2", "type", "body.set_cookies.2"),
+@pytest.mark.parametrize(("parameter", "rule", "logged"), [
+    ("queryParams.aweme_id", "type", "queryParams.aweme_id"),
+    ("headers.X-Api-Version", "required", "headers.X-Api-Version"),
+    ("body", "required", "body"),
+    ("body.include.ads", "required", "body.include.ads"),
+    ("body.model", "undeclared", "body.model"),
+    ("body.set_cookies.2", "type", "body.set_cookies.2"),
+    ("body.urls.12345", "type", "undeclared"),
+    ("body.15551234567", "undeclared", "undeclared"),
+    ("body.set_cookies.15551234567", "undeclared", "undeclared"),
+    ("queryParams.someone@example.com", "type", "undeclared"),
+    ("queryParams.aweme_id.someone@example.com", "type", "undeclared"),
+    ("someone@example.com", "type", "undeclared"),
+    ("body.token_0123456789abcdef0123456789abcdef0123456789ab", "undeclared", "undeclared"),
 ])
-def test_a_refused_parameter_is_named_only_when_every_part_is_declared(
-        call_error_lines, endpoint_id, parameter, rule, logged):
+def test_a_refused_parameter_is_named_only_when_every_part_looks_like_a_name(
+        call_error_lines, parameter, rule, logged):
     failure = ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter=parameter,
                                rule=rule, detail=CALLER_INPUT)
-    call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=endpoint_id,
+    call_errors.emit(400, org_id=1, call_ref="x", road="catalog", endpoint_id=EP,
                      provider="p", tier="platform", refused_by="request", failure=failure,
                      answered=False)
     (line,) = call_error_lines()
@@ -198,11 +199,11 @@ def test_operator_flow_control_is_not_a_spend_cap(call_error_lines):
         "org_concurrency_limit", "treg_policy", False)
 
 
-async def test_a_bad_treg_token_is_its_own_class(clients: AsyncClient, call_error_lines):
+async def test_a_bad_treg_token_is_a_caller_side_auth_error(clients: AsyncClient, call_error_lines):
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Token": "nope"})
     assert r.status_code == 401, r.text
     (line,) = call_error_lines()
-    assert (line["error_class"], line["caller_side"], line["by"]) == ("caller_auth", False, "treg")
+    assert (line["error_class"], line["caller_side"], line["by"]) == ("caller_auth", True, "treg")
 
 
 @pytest.mark.parametrize("encoding", ["", "gzip"])
