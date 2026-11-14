@@ -4378,3 +4378,45 @@ async def test_a_keyless_child_not_served_is_dropped_and_quoted_with_the_true_re
     assert "not enabled" in why and "key on this deployment" not in why, plan.dropped
     skip = _quote_skip(row, cat) or ""
     assert "not enabled" in skip and "key on this deployment" not in skip, skip
+
+
+async def test_a_keyless_child_answers_a_routed_call_with_no_credential_hold_or_charge(
+        clients: AsyncClient, monkeypatch):
+    """A public provider's row is a routed child on the anonymous tier: no credential is sent, nothing
+    is held or charged, and the child's own answer comes back unchanged."""
+    import dataclasses
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from treg import oauth_providers
+    from treg.api import app
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public", base_url="http://upstream"))
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    seen = []
+    answer = {"snapshot": {"ticker": "AAPL", "price": 190.5}}
+
+    async def snapshot(request):
+        seen.append((request.url.path, request.query_params.get("ticker"),
+                     request.headers.get("authorization"), request.headers.get("x-api-key")))
+        return JSONResponse(answer)
+
+    before = await _balance(clients)
+    upstream_app = Starlette(routes=[Route("/prices/snapshot", snapshot)])
+    async with AsyncClient(transport=httpx.ASGITransport(app=upstream_app), base_url="http://upstream") as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "aapl"},
+                               headers={"X-Treg-Route-Prefer": "financialdatasets"})
+    assert r.status_code == 200, r.text
+    doc = r.json()["_treg"]
+    assert doc["served_by"] == "financialdatasets.prices.snapshot" and doc["tier"] == "anonymous", doc
+    assert doc["charged_micro"] == 0 and await _balance(clients) == before
+    assert seen == [("/prices/snapshot", "AAPL", None, None)], seen
+    assert r.json()["raw"] == answer
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []

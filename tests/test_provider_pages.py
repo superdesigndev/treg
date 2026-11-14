@@ -112,3 +112,15 @@ async def test_a_public_provider_page_never_asks_for_an_account(clients: AsyncCl
     assert "tools · free · $0.000 markup" in on.text and "Free, no key" in on.text
     assert "your own account · never metered" not in on.text
     assert "public API with no key: there is nothing to connect" in on.text
+
+
+async def test_a_key_providers_keyless_rows_are_never_called_treg_key(clients: AsyncClient, monkeypatch):
+    """A key provider with keyless rows, allow-listed but with no key on this server: those rows run
+    with no key at all, so the page labels them free and never counts them as treg's platform key."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    page = (await clients.get("/tools/financialdatasets")).text
+    assert "Free, no key" in page
+    assert "Platform + BYOK" not in page and "support treg's platform key" not in page
+    assert "connect your own account" not in page

@@ -2580,16 +2580,21 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     served = bool(get_settings().platform_key_for(svc))
     # An anonymous row needs no key, only the provider allow-list (`anonymous_served`).
     from ..application.call.resolve import anonymous_served
-    platform_eps = [e for e in eps if cat.platform_eligible(e) and (served or anonymous_served(e) is not None)]
-    byok_only = len(eps) - len(platform_eps)
+    public = bool(reg and reg.auth_kind == "public")
+    # Keyless rows run with no key at all (resolve tries them before treg's key), so they are never
+    # counted as treg's key; for a public provider they are its whole served surface.
+    keyless_eps = [e for e in eps if anonymous_served(e) is not None]
+    platform_eps = (keyless_eps if public else
+                    [e for e in eps if e not in keyless_eps and cat.platform_eligible(e) and served])
+    byok_only = len(eps) - len(platform_eps) - (0 if public else len(keyless_eps))
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
     mixed = bool(platform_eps and byok_only and key_auth)
     prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
     # Published prices do not remove the OAuth account-connection requirement.
-    # A public provider has no account to connect even where this server has not enabled it.
-    public = bool(reg and reg.auth_kind == "public")
-    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
+    # A public provider has no account to connect even where this server has not enabled it, and a
+    # key provider with keyless rows serves those with nothing connected.
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public and not keyless_eps)
     cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
     verified = len([e for e in eps if e["verified"]])
     plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
@@ -2666,7 +2671,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
     if mixed:
-        kicker = f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+        kicker = (f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+                  + (f" · {len(keyless_eps)} free, no key" if keyless_eps else ""))
         h1_text = f"{esc_d}: {len(eps)} tools, platform or your own key"
         lede = (f"{_esc_html(blurb)} {len(platform_eps)} tools support treg's platform key. "
                 f"All {len(eps)} support your own {esc_d} key; {byok_only} require it. "
@@ -2817,6 +2823,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             eligible = e in platform_eps
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
+            elif key_auth and e in keyless_eps:
+                access = "Free, no key"
             elif key_auth:
                 access = "Platform + BYOK" if eligible else "BYOK only"
                 if not eligible:
