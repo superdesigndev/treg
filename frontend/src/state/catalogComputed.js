@@ -241,14 +241,14 @@ drawerIds(){
     // only your own key can call), or nothing, and the line can go to the agent as it is.
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
       if(this.providerPaused(e.provider)) return 'paused';
+      if(this.catEndpointConnected(e)) return 'copy';
       // a public provider this server has not enabled: nothing to copy or try, its calls are refused
       if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'off';
-      if(this.catEndpointConnected(e)) return 'copy';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },
 // Everything else worth knowing, as one quiet line instead of a row of chips.
     drawerFacts(){ const e=this.drawerEp; if(!e) return '';
-      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed', 'Not enabled on this server':'not enabled on this server: calls are refused'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
+      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed', 'Not enabled on this server':'not enabled on this server: refused unless your team registered its own tool'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
       return [access, e.verified ? 'verified live '+this.verdictDate(e.verified) : 'not yet verified live',
               e.scope==='own_account' ? 'reads the account you connect' : e.scope==='any_account' ? 'any public account' : ''].filter(Boolean).join(' · '); },
 // A provider's tools by platform (GET /catalog/providers/<service>), for its provider page.

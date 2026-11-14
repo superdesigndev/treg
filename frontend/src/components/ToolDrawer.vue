@@ -46,7 +46,7 @@ export default {
     <!-- Paused on this deployment: say so in place of the call line and the buttons that lead to it. -->
     <p v-if="drawerNext==='paused'" class="mk-notice">{{(providerPaused(drawerEp.provider)||{}).message}}</p>
     <!-- A public provider this server has not enabled: its calls are refused, so nothing to copy or try. -->
-    <p v-else-if="drawerNext==='off'" class="mk-notice">This server has not enabled {{drawerEp.provider_display||drawerEp.provider}}, so its calls are refused.</p>
+    <p v-else-if="drawerNext==='off'" class="mk-notice">This server has not enabled {{drawerEp.provider_display||drawerEp.provider}}, so its calls are refused unless your team registered its own tool for it.</p>
     <div v-else-if="drawerEp.call_template" class="pl-code"><code>{{drawerEp.call_template}}</code></div>
     <div class="td-act">
       <button v-if="drawerNext==='connect'" class="pl-btn" @click="catalogConnect(drawerEp)">{{endpointConnectLabel(drawerEp)}}</button>

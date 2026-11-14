@@ -395,7 +395,9 @@ tryKeyless(ep, access){
       const tier=access && access.tier;
       if(tier==='anonymous') return true;
       if(['tool','credential','platform','routed'].includes(tier)) return false;
-      return ep.platform_auth==='anonymous'; },
+      // refused: only a public provider's row has no key to give; a key provider's row takes the team's key
+      const r=this.provRecord(ep.provider);
+      return ep.platform_auth==='anonymous' && !!r && r.auth_kind==='public'; },
 // Why "Try it" cannot run a tool for this team: the server's own words first, a keyless public row's
 // refusal never reads as needing a key.
 tryUnavailableMessage(ep, access){

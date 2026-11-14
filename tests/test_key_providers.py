@@ -911,3 +911,33 @@ def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(
     exc = R._marketplace_no_credential("hunter", asked["id"], P.REGISTRY["hunter"], asked,
                                        SimpleNamespace(public_demo=True, id=1))
     assert "callable now, no key needed" not in str(exc.detail), exc.detail
+
+
+async def test_a_paused_public_provider_s_key_paste_says_it_is_paused(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    monkeypatch.setattr(get_settings(), "paused_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert "call its catalog tools directly" not in r.text and "paused" in r.text.lower(), (r.status_code, r.text)
+
+
+async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(monkeypatch):
+    """A child gated on a real value (a board system) is not reached by placeholder identities; the
+    preview must still find it from the child's own verified test identity."""
+    from types import SimpleNamespace
+    from treg.application.call import access as A
+    sample = {"ats": "board-system", "board": "acme"}
+    route = {"id": "treg.x", "capability": "x.y", "routed_children": ["board.list"], "test_request": {"body": {}}}
+
+    async def fake_plan(ep, identity, caller, options):
+        hit = identity == sample
+        cand = SimpleNamespace(tier="anonymous", endpoint={"id": "board.list", "provider": "board"}, price_micro=0,
+                               variant=("ats", "board"), view=lambda: {"endpoint_id": "board.list", "tier": "anonymous"})
+        return SimpleNamespace(candidates=[cand] if hit else [], dropped=[], variant=("ats", "board"))
+    monkeypatch.setattr(A, "build_plan", fake_plan)
+    catalog = SimpleNamespace(contracts={"x.y": SimpleNamespace(identity=[["ats", "board"]])},
+                              adapters={"board.list": SimpleNamespace(test_identity=sample)})
+    out = await A._routed_access(route, SimpleNamespace(org_id=1, org=None), catalog)
+    assert out["tier"] == "routed" and "board.list" in out["detail"], out

@@ -620,6 +620,7 @@ async def connect_with_pasted_secret(
 ) -> dict:
     provider = oauth_providers.get(provider_name)
     if provider is not None and provider.auth_kind == "public":
+        _refuse_paused(provider_name)  # a paused provider says so first, as every other path does
         raise ConnectError(
             "invalid_token_provider",
             _public_nothing_to_connect(provider),

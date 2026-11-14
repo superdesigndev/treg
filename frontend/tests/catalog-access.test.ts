@@ -78,9 +78,20 @@ test('the drawer offers nothing to copy or try for a tool this server refuses', 
 
 test('Try says no key is needed only when no key is injected', () => {
   const keyless = { id: 'f.tickers', provider: 'f', platform_auth: 'anonymous' }
-  expect(catalog.tryKeyless(keyless, { tier: 'anonymous' })).toBe(true)
-  expect(catalog.tryKeyless(keyless, { tier: 'credential' })).toBe(false)   // the team's own key is used
-  expect(catalog.tryKeyless(keyless, { tier: 'tool' })).toBe(false)
-  expect(catalog.tryKeyless(keyless, { tier: 'none' })).toBe(true)          // refused: no key would help
-  expect(catalog.tryKeyless({ id: 'p.x', provider: 'p' }, { tier: 'platform' })).toBe(false)
+  const pub = { provRecord: () => ({ service: 'f', auth_kind: 'public' }) }
+  const key = { provRecord: () => ({ service: 'f', auth_kind: 'key' }) }
+  const k = (vm: object, ep: object, access: object) => catalog.tryKeyless.call(vm, ep, access)
+  expect(k(pub, keyless, { tier: 'anonymous' })).toBe(true)
+  expect(k(pub, keyless, { tier: 'credential' })).toBe(false)   // the team's own key is used
+  expect(k(pub, keyless, { tier: 'tool' })).toBe(false)
+  expect(k(pub, keyless, { tier: 'none' })).toBe(true)           // a public API: no key to give
+  expect(k(key, keyless, { tier: 'none' })).toBe(false)          // a key provider: the team's key serves it
+  expect(k(key, { id: 'p.x', provider: 'p' }, { tier: 'platform' })).toBe(false)
+})
+
+test('a team that has its own tool for a not-enabled provider can still copy and try it', () => {
+  const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true }
+  const vm = { drawerEp: e, providerPaused: () => false, catEndpointConnected: () => true,
+    provAuthKind: () => 'public', endpointAccessLabel: () => 'Not enabled on this server' }
+  expect(catalogComputed.drawerNext.call(vm)).toBe('copy')
 })

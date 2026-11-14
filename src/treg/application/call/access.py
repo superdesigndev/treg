@@ -182,6 +182,18 @@ async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
                 plan = trial
                 break
     if not plan.candidates:
+        # a placeholder value cannot reach a child gated on a real one (a derive on a known board
+        # system): ask with each child's own verified test identity too
+        for child_id in endpoint.get("routed_children") or []:
+            adapter = catalog.adapters.get(child_id)
+            sample = dict(getattr(adapter, "test_identity", None) or {})
+            if not sample:
+                continue
+            trial = await build_plan(endpoint, sample, caller, options)
+            if trial.candidates:
+                plan = trial
+                break
+    if not plan.candidates:
         return {
             "tier": "none",
             "detail": (
