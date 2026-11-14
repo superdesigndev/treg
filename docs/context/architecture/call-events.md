@@ -242,7 +242,8 @@ its pay-per-use OAuth app are `our_provider_account`.
 
 No request or answer value, header, credential or message text is logged. The answer is read only
 for its documented error code. A parameter is named only when every part looks like a field name
-or a short index: an email, a phone number or a key used as a field name is request content.
+or a short index, so an email or a long number used as a field name logs as `undeclared`; a name
+shaped like a word is logged even when the caller made it up.
 
 A default error view leaves `caller_side` out. A routed call or hub run logs its parent and each
 failed child, so a count of calls keeps only root lines (`step` empty); a direct attempt that

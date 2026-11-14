@@ -83,8 +83,8 @@ _NAME_PART = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,39}|[0-9]{1,4}")
 
 def _parameter(name: str | None) -> str | None:
     """The parameter a refusal names when every part looks like a field name or a short index;
-    `undeclared` otherwise, since an email, a phone number or a key used as a field name is request
-    content and never logged."""
+    `undeclared` otherwise, so an email or a long number used as a field name is not logged. A
+    name shaped like a word is logged even when the caller made it up."""
     if not name:
         return None
     return name if all(_NAME_PART.fullmatch(part) for part in name.split(".")) else "undeclared"
