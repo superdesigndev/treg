@@ -264,8 +264,8 @@ endpoints:
   summary: Run a Google web search and get the organic results (title, link, snippet, position) as clean
     JSON. Returns about 10 results per call - Google stopped honoring bulk result counts in September
     2025, so a limit above 10 is accepted but returns no more than a page. Send page 2, 3, ... to walk
-    further, or use google.search_100 for up to 100 ranked results in one call, which is cheaper past
-    roughly 20 results.
+    further, or use google.search_100 for up to 100 ranked results in one call at a higher flat
+    charge.
   input:
     body:
       autocorrect:
@@ -300,7 +300,7 @@ endpoints:
           after the call, so nextCursor always continues exactly where this response ended. To go
           deeper, send page (about 10 results per page, each billed as a request) or use
           google.search_100, which returns up to 100 ranked results in a single call for one flat
-          charge and is cheaper past roughly 20 results. Price is flat per request.'
+          charge that costs more than ten pages here. Price is flat per request.'
         default: 10
         min: 1
         max: 100
