@@ -56,9 +56,12 @@ setup, else catalog. After a first human `treg login`, `_maybe_offer_onboarding`
 
 - **catalog** needs no team, secret or tool. It asks `/catalog/endpoints/<id>/access` how that
   exact call would be served and branches on the answer instead of hardcoding an endpoint: treg's
-  key (price shown and confirmed), the team's own credential (not metered), or a dead-end naming
-  the command that fixes it, with nothing called. A server with no platform providers enabled
-  (`TREG_PLATFORM_PROVIDERS` empty, the default) sends every user without a key to the dead-end.
+  key (price shown and confirmed), the team's own credential (not metered), a verified keyless
+  public route (free, called), or a dead-end with nothing called. The dead-end names the command
+  that fixes it from the access answer's `connect_command` (an older server that sends none gets
+  `treg connections connect --provider <p>`); a keyless public API this server has not enabled sends
+  it empty, so the dead-end gives only the server's reason. A server with no platform providers
+  enabled (`TREG_PLATFORM_PROVIDERS` empty, the default) sends every user without a key there.
 - **setup** imports the cwd `.env` and the chosen skill folders in one pass deduped by skill name.
   "This project" is hidden when the cwd is `/`, `$HOME` or its parent (`_is_rootish`), so setup
   never sweeps a whole account.

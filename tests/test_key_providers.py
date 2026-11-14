@@ -587,3 +587,393 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_public_provider_has_nothing_to_connect(clients, monkeypatch):
+    """A keyless public API (auth_kind="public") serves only anonymous catalog rows: it is left out
+    of the Connect listing and both connect paths refuse it instead of storing a meaningless key."""
+    public = dataclasses.replace(P.REGISTRY["financialdatasets"], service="public-demo", auth_kind="public")
+    monkeypatch.setitem(P.REGISTRY, "public-demo", public)
+    assert "public-demo" not in {p["service"] for p in P.listing()}
+    started = await clients.post("/oauth/start", json={"provider": "public-demo"})
+    assert started.status_code == 422 and "nothing to connect" in started.text
+    pasted = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert pasted.status_code == 422
+
+
+@pytest.fixture
+def fd_public(monkeypatch):
+    """Financial Datasets made a keyless public provider: its anonymous rows are the public rows."""
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    return P.REGISTRY["financialdatasets"]
+
+
+async def test_public_provider_refusals_name_nothing_to_connect(clients, fd_public):
+    """Pasting a key for a public provider says there is nothing to connect, not "connected by
+    consent"; and the access preview offers no connect command for one."""
+    from tests.conftest import verified_signup
+    token = (await verified_signup(clients, json={"email": "keyless-paste@superdesign.dev"})).json()["token"]
+    pasted = await clients.post("/connections/token", json={"provider": "financialdatasets", "token": "x"},
+                                headers={"Authorization": f"Bearer {token}"})
+    assert pasted.status_code == 422 and "nothing to connect" in pasted.text, pasted.text
+
+    from treg.application.call.access import _missing_access
+    ep = {"id": "financialdatasets.prices.tickers", "provider": "financialdatasets"}
+    out = _missing_access(ep, fd_public, fd_public, (), "financialdatasets")
+    assert out["connect_command"] == "" and "keyless public API" in out["detail"]
+
+
+async def test_catalog_search_says_no_key_needed_for_an_allow_listed_anonymous_row(clients, monkeypatch):
+    """An anonymous row is served once its provider is allow-listed, with no key on this server:
+    catalog_search must say `no_key_needed: true` then, and false while the provider is not enabled."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    token = (await verified_signup(clients, json={"email": "keyless-search@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "financial datasets stock tickers", "limit": 8},
+                                   token=token)
+        anonymous = {e["id"] for e in catalog_store.load().endpoints if e.get("platform_auth") == "anonymous"}
+        rows = [r for r in out["results"] if r.get("endpoint_id") in anonymous]
+        assert rows, out["results"]
+        return {r["no_key_needed"] for r in rows}
+
+    assert await flag() == {False}
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert await flag() == {True}
+
+
+def _capture_relay(monkeypatch, seen: dict):
+    from test_marketplace_call import _fake_relay
+    from treg.application.call import service as call_service
+    fake = _fake_relay(200, b'{"tickers":["AAPL"]}')
+
+    async def capture(*args, **kwargs):
+        seen["bindings"], seen["secrets"] = args[2].bindings, args[3]
+        return await fake(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", capture)
+
+
+async def test_a_team_secret_named_like_a_public_provider_does_not_hijack_its_free_call(
+        clients: AsyncClient, monkeypatch, fd_public):
+    """A public provider has nothing to connect. A team secret that only shares its name (a vendor's
+    private-API key saved under it) is not its credential: the call still goes keyless, with no
+    binding and no secret, instead of injecting that secret."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    r = await clients.post("/secrets", json={"name": "financialdatasets", "value": "private-api-key"})
+    assert r.status_code == 200, r.text
+    seen = {}
+    _capture_relay(monkeypatch, seen)
+    called = await clients.get("/call/financialdatasets.prices.tickers")
+    assert called.status_code == 200, called.text
+    assert seen == {"bindings": [], "secrets": {}}, seen
+
+
+async def test_the_access_preview_never_offers_a_same_named_secret_for_a_public_provider(
+        clients: AsyncClient, monkeypatch, fd_public):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert (await clients.post("/secrets", json={"name": "financialdatasets", "value": "k"})).status_code == 200
+    r = await clients.get("/catalog/endpoints/financialdatasets.prices.tickers/access")
+    assert r.status_code == 200, r.text
+    assert r.json().get("tier") != "credential", r.json()
+
+
+async def test_a_public_provider_this_server_has_not_enabled_says_so_and_offers_no_connect(
+        clients, monkeypatch, fd_public):
+    """The dead end for a keyless API names the server's allow-list, not a credential to connect."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.get("/call/financialdatasets.prices.tickers")
+    assert r.status_code == 404, r.text
+    assert "keyless public API that this server has not enabled" in r.text, r.text
+    assert "connections connect" not in r.text and "secret add" not in r.text
+
+
+async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_not_served(
+        clients, monkeypatch, fd_public):
+    """"Not enabled" is said only when the provider is not allow-listed. Allow-listed, a row that is
+    not a verified free anonymous row, or a demo team, is refused for that reason instead."""
+    from types import SimpleNamespace
+    from treg.application.call.access import _missing_access
+    from treg.application.call.resolve import _marketplace_no_credential
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    ep_id = "financialdatasets.prices.snapshot"  # a paid row: never served keyless
+    r = await clients.get(f"/call/{ep_id}?ticker=AAPL")
+    assert r.status_code == 404, r.text
+    assert "not served keyless here" in r.text and "has not enabled" not in r.text, r.text
+    access = await clients.get(f"/catalog/endpoints/{ep_id}/access")
+    assert "not served keyless here" in access.json()["detail"], access.json()
+
+    from treg.domain.catalog import store as catalog_store
+    tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
+    demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
+    refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
+    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
+    assert "demo and sandbox teams" in preview["detail"], preview
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
+                                                org=demo)["detail"]
+
+
+async def test_a_routed_tool_with_a_keyless_child_is_quoted_and_listed_as_needing_no_key(clients, monkeypatch, fd_public):
+    """A routed child served on the anonymous tier is available, free and ranked as the router ranks
+    it (ahead of treg's key); the routed tool reads `no_key_needed: true` because of it alone."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    kid = "financialdatasets.prices.snapshot"
+    monkeypatch.setitem(cat.by_id[kid], "platform_auth", "anonymous")
+    monkeypatch.setitem(cat.by_id[kid], "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    plan = (await clients.get("/catalog/endpoints/treg.stocks.quote.live")).json()["routing"]["plan"]
+    assert plan[0]["endpoint_id"] == kid and plan[0]["usd"] == 0 and "skipped" not in plan[0], plan
+    assert all("skipped" in row for row in plan[1:]), plan
+
+    token = (await verified_signup(clients, json={"email": "keyless-routed@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "live stock quote price", "limit": 25},
+                                   token=token)
+        rows = [r for r in out["results"] if r.get("endpoint_id") == "treg.stocks.quote.live"]
+        assert rows, [r.get("endpoint_id") for r in out["results"]]
+        return rows[0]["no_key_needed"]
+
+    assert await flag() is True
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert await flag() is False
+
+
+def test_a_refusal_names_a_keyless_alternative_as_callable_with_no_key(monkeypatch):
+    """The dead-end's alternatives list must not tell an agent a keyless public row needs a credential."""
+    from treg.application.call import resolve as R
+
+    keyless = {"id": "freeboard.jobs", "provider": "freeboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, keyless, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "freeboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is keyless else None)
+    lines = R._capability_alternatives(asked)
+    free_line = next(line for line in lines if "freeboard.jobs" in line)
+    assert "no key needed" in free_line and "credential" not in free_line, lines
+    assert any("paidindex.jobs" in line and "needs your own paidindex credential" in line for line in lines), lines
+
+
+def test_the_connect_listing_says_whether_this_server_serves_a_provider(monkeypatch):
+    """The dashboard labels a key provider's keyless rows from this listing: it must carry the
+    allow-list, or a row this server does not serve keyless reads as free."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is False
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is True
+
+
+def test_every_public_providers_row_is_served_once_allow_listed(monkeypatch):
+    """A public provider has nothing to connect, so its pages and the dashboard read "allow-listed"
+    as "served". Every one of its rows must then really be served keyless (verified, free, eligible);
+    a row that is not would be refused while every surface calls it available."""
+    from treg.application.call.resolve import anonymous_served
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    public = sorted(s for s, p in P.REGISTRY.items() if p.auth_kind == "public")
+    monkeypatch.setattr(get_settings(), "platform_providers", ",".join(public))
+    cat = catalog_store.load()
+    unserved = [ep["id"] for ep in cat.endpoints if ep["provider"] in public and anonymous_served(ep) is None]
+    assert unserved == []
+
+
+def test_a_refusal_never_lists_a_public_api_this_server_does_not_serve(monkeypatch):
+    """Nothing the caller can connect or add would make it callable, so it is not an alternative."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    monkeypatch.setitem(P.REGISTRY, "offboard", dataclasses.replace(P.REGISTRY["financialdatasets"],
+                                                                     service="offboard", auth_kind="public"))
+    off = {"id": "offboard.jobs", "provider": "offboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, off, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "offboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: None)
+    lines = R._capability_alternatives(asked)
+    assert not any("offboard.jobs" in line for line in lines), lines
+    assert any("paidindex.jobs" in line for line in lines), lines
+
+
+def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
+    """Not allow-listed is this deployment's switch, not the caller's missing credential."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep)
+    assert exc.log_kind == "platform_key_missing", exc.log_kind
+
+
+def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
+    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    nor blames a provider account it does not need."""
+    import dataclasses
+    from types import SimpleNamespace
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    demo = SimpleNamespace(public_demo=True, id=1)
+    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert exc.log_kind == "admission_denied", exc.log_kind
+    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+    # not enabled on this server: the message says so first, and the log names the same reason
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    off = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert "has not enabled" in str(off.detail) and off.log_kind == "platform_key_missing", (off.log_kind, off.detail)
+
+
+async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "has not enabled it" in r.text and "call its catalog tools directly" not in r.text
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "call its catalog tools directly" in r.text
+
+
+def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(monkeypatch):
+    """Both refusal branches judge alternatives for this team: a demo team is refused keyless tools,
+    so a key provider's refusal never lists one as callable."""
+    from types import SimpleNamespace
+    from treg.application.call import resolve as R
+    free = {"id": "board.jobs", "provider": "board", "capability": "x.y", "platform_auth": "anonymous"}
+    asked = {"id": "hunter.x", "provider": "hunter", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, free]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is free else None)
+    monkeypatch.setattr(R, "_anonymous_offer", lambda ep, org: None)  # refused to this (demo) team
+    monkeypatch.setattr(R, "_platform_key_missing", lambda ep, provider: False)
+    exc = R._marketplace_no_credential("hunter", asked["id"], P.REGISTRY["hunter"], asked,
+                                       SimpleNamespace(public_demo=True, id=1))
+    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+
+
+async def test_a_paused_public_provider_s_key_paste_says_it_is_paused(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    monkeypatch.setattr(get_settings(), "paused_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert "call its catalog tools directly" not in r.text and "paused" in r.text.lower(), (r.status_code, r.text)
+
+
+async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(monkeypatch):
+    """A child gated on a real value (a board system) is not reached by placeholder identities; the
+    preview must still find it from the child's own verified test identity."""
+    from types import SimpleNamespace
+    from treg.application.call import access as A
+    sample = {"ats": "board-system", "board": "acme"}
+    route = {"id": "treg.x", "capability": "x.y", "routed_children": ["board.list"], "test_request": {"body": {}}}
+
+    async def fake_plan(ep, identity, caller, options):
+        hit = identity == sample
+        cand = SimpleNamespace(tier="anonymous", endpoint={"id": "board.list", "provider": "board"}, price_micro=0,
+                               variant=("ats", "board"), view=lambda: {"endpoint_id": "board.list", "tier": "anonymous"})
+        return SimpleNamespace(candidates=[cand] if hit else [], dropped=[], variant=("ats", "board"))
+    monkeypatch.setattr(A, "build_plan", fake_plan)
+    catalog = SimpleNamespace(contracts={"x.y": SimpleNamespace(identity=[["ats", "board"]])},
+                              adapters={"board.list": SimpleNamespace(test_identity=sample)})
+    out = await A._routed_access(route, SimpleNamespace(org_id=1, org=None), catalog)
+    assert out["tier"] == "routed" and "board.list" in out["detail"], out
+
+
+async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients):
+    """A row on an approved second host is called there, so the team's tool for that host serves it."""
+    sid = (await clients.post("/secrets", json={"name": "gate-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-gate", "base_url": "https://gate.crawl4ai.com",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/crawl4ai.people.email.find/access")).json()
+    assert out["tier"] == "tool", out
+
+
+async def test_the_access_preview_keeps_a_provider_without_second_hosts_on_its_main_host(clients):
+    """A `host` on a provider that approves no second host does not move the call (resolve keeps it on
+    the main host), so the preview must not move either: a tool on that host is not what serves it."""
+    sid = (await clients.post("/secrets", json={"name": "ga-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "my-ga-admin", "base_url": "https://analyticsadmin.googleapis.com",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/google-analytics.x.analyticsadmin-accountsummaries-list/access")).json()
+    assert out["tier"] != "tool", out
+
+
+async def test_the_access_preview_probes_a_second_host_row_at_that_host_s_own_base(clients):
+    """A row on another approved host is called at that host's base URL (its own path), so a team
+    tool registered there must be what the preview finds."""
+    from treg.domain.catalog import store as catalog_store
+    row = catalog_store.load().by_id["diffbot.x.extract-analyze"]
+    base = P.REGISTRY["diffbot"].profile_for_catalog_host(row["host"]).base_url.rstrip("/")
+    base += "/" + row["path"].lstrip("/").split("/")[0]  # a tool on the row's first path segment there
+    sid = (await clients.post("/secrets", json={"name": "db-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-db", "base_url": base, "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/diffbot.x.extract-analyze/access")).json()
+    assert out["tier"] == "tool", (base, out)

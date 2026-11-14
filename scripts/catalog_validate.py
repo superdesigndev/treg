@@ -634,6 +634,14 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
         fail(errors, where, "platform_auth anonymous cannot create or retrieve shared async resources")
 
 
+def check_public_provider_row(ep: dict, provider, where: str, errors: list[str]) -> None:
+    """A public provider (`auth_kind="public"`) has nothing to connect, so a row it does not serve
+    keyless is unreachable: every one is `platform_auth: anonymous` (and so, by `check_platform_auth`,
+    a verified free read-only GET)."""
+    if getattr(provider, "auth_kind", "") == "public" and ep.get("platform_auth") != "anonymous":
+        fail(errors, where, "a public provider's every row must be platform_auth: anonymous")
+
+
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
                      provider: str | None = None, *, needs_default: bool = True) -> None:
     """Validate a first-match AIGC price table and its explicit reserve upper bound. A v2 table
@@ -1789,6 +1797,7 @@ def main(argv: list[str]) -> int:
             check_strict_body(ep, where, errors)
             check_body_allowlist(ep, where, errors)
             check_platform_auth(ep, where, errors)
+            check_public_provider_row(ep, REGISTRY.get(service), where, errors)
             if "platform_request" in ep:
                 check_platform_request(ep["platform_request"], inp, where, errors)
             if "team_label" in ep:

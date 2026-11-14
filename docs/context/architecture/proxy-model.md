@@ -71,7 +71,8 @@ comparing hosts, so two providers sharing one API host (Facebook and Instagram o
 `graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
 A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
-credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+credential still wins, except that a public provider (`auth_kind="public"`) has no credential: a
+same-named team secret is never used for it, and only a team tool does. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
 and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
 rewrites no caller header. The catalog price is free only when the caller supplies no provider
 credential header. No provider-specific anonymous path rules exist in the resolver or relay.

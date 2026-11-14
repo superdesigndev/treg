@@ -2578,14 +2578,25 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
     # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
     served = bool(get_settings().platform_key_for(svc))
-    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
-    byok_only = len(eps) - len(platform_eps)
+    # An anonymous row needs no key, only the provider allow-list (`anonymous_served`).
+    from ..application.call.resolve import anonymous_served
+    public = bool(reg and reg.auth_kind == "public")
+    # Keyless rows run with no key at all (resolve tries them before treg's key), so they are never
+    # counted as treg's key; for a public provider they are its whole served surface.
+    keyless_eps = [e for e in eps if anonymous_served(e) is not None]
+    platform_eps = (keyless_eps if public else
+                    [e for e in eps if e not in keyless_eps and cat.platform_eligible(e) and served])
+    byok_only = len(eps) - len(platform_eps) - (0 if public else len(keyless_eps))
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
     mixed = bool(platform_eps and byok_only and key_auth)
     prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
     # Published prices do not remove the OAuth account-connection requirement.
-    is_oauth = bool(reg and reg.auth_kind == "oauth") or not platform_eps
+    # A public provider has no account to connect even where this server has not enabled it. A key
+    # provider without its key reads as own-key, as on main; its keyless rows carry their own label.
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
+    # A public provider this server has not allow-listed: nothing to connect, but nothing callable either.
+    public_off = public and not platform_eps
     cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
     verified = len([e for e in eps if e["verified"]])
     plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
@@ -2641,8 +2652,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         if len(demo_eps) == 3:
             break
 
-    kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
-              else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
+    kicker = (f"{len(eps)} tools · not enabled on this server" if public_off
+              else f"{len(eps)} tools · your own account · never metered"
+              + (f" · {len(keyless_eps)} free, no key" if keyless_eps else "") if is_oauth
+              else f"{len(eps)} tools · " + (f"from {_esc_html(cheapest)}" if cheapest else "free") + " · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
     mcp_intent = svc in _MCP_INTENT_PROVIDERS
@@ -2652,6 +2665,12 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
+            f"{_esc_html(blurb)} {esc_d} is a public API with no key and nothing to connect; this server "
+            "has not enabled it, so its tools are not callable here unless your team registers its own tool for its host."
+            if public_off else
+            f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key. {esc_d} is a "
+            "public API: free, no key, nothing to connect."
+            if public else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
             f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
     h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
@@ -2659,7 +2678,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
     if mixed:
-        kicker = f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+        kicker = (f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+                  + (f" · {len(keyless_eps)} free, no key" if keyless_eps else ""))
         h1_text = f"{esc_d}: {len(eps)} tools, platform or your own key"
         lede = (f"{_esc_html(blurb)} {len(platform_eps)} tools support treg's platform key. "
                 f"All {len(eps)} support your own {esc_d} key; {byok_only} require it. "
@@ -2688,21 +2708,25 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         "</div></div>")
 
     flow = (
-        '<section id="flow"><div class="wrap"><div class="seclab">What your agent can now do</div>'
+        '<section id="flow"><div class="wrap"><div class="seclab">'
+        + ("What your agent could do once this server enables it" if public_off else "What your agent can now do")
+        + "</div>"
         f"<h2>{esc_d}, one prompt away</h2>"
         '<div class="fx">'
         '<div class="fp"><div class="tag">AGENT</div>'
         f'<div class="agrow">{_agent_ptiles()}</div>'
-        + "".join(f'<div class="t"><span>{_esc_html(t)}</span><i>✓</i></div>' for t in task_lines)
+        + "".join(f'<div class="t"><span>{_esc_html(t)}</span>' + ("" if public_off else "<i>✓</i>") + "</div>"
+                  for t in task_lines)
         + "</div>"
         '<div class="ar">→</div>'
         '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
         + "".join(
             f'<div class="c">$ treg call <em>{_esc_html(e["id"])}</em></div>'
-            f'<div class="cr"><i>✓ 200</i>'
-            + (f" · {_esc_html(pl)}"
-               if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
-            + "</div>"
+            + ('<div class="cr"><i>✗ refused</i> · not enabled on this server</div>' if public_off else
+               '<div class="cr"><i>✓ 200</i>'
+               + (f" · {_esc_html(pl)}"
+                  if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
+               + "</div>")
             for e in demo_eps)
         + '<div class="c" style="opacity:.55">$ _</div></div>'
         '<div class="ar">→</div>'
@@ -2712,7 +2736,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f'<b>{esc_d}</b><span class="bdg">{badge}</span></div>'
         f'<div class="sm">{_esc_html(blurb) or esc_d + " through one treg.to token."}</div>'
         f'<div class="ct">⚒ {len(eps)} TOOLS'
-        + (" · platform + BYOK" if mixed else ("" if is_oauth else " · metered per call")) + "</div></div>"
+        + (" · platform + BYOK" if mixed else "" if is_oauth else " · not enabled on this server" if public_off else " · free, no key" if public
+           else " · metered per call") + "</div></div>"
         "</div>"
         + (f'<p style="font-size:12.5px;color:var(--muted);margin-top:12px">{_esc_html(category)}'
            f"{' · ' if category and base_api else ''}<code>{_esc_html(base_api)}</code></p>"
@@ -2754,7 +2779,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f"<pre>{_esc_html(prompt)}</pre></div>"
         '<h3>Run one directly</h3>'
         '<div class="sample"><div class="sbar">'
-        + ("a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
+        + ("a call this server refuses until it enables this provider" if public_off else
+           "a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
         f"<pre>{_esc_html(catalog_store.call_template(sample_eps[0]).replace('https://treg.to', base))}</pre></div>"
         "</div></section>")
 
@@ -2767,18 +2793,34 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         + ("<div class=\"card\"><h4>Your account, held safely</h4><p>Connect once; treg.to keeps the "
            "credential server-side and injects it per call. No key on any machine.</p></div>"
            if is_oauth else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools need no key: "
+           "there is nothing to connect.</p></div>"
+           if public_off else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools are free and need no key: "
+           "there is nothing to connect.</p></div>"
+           if public else
            f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Eligible tools run on treg.to's key, "
            "metered per call from a prepaid balance.</p></div>")
-        + '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
-        'markup. <a href="/pricing">How billing works</a>.</p></div>'
+        + ('<div class="card"><h4>Not enabled here</h4><p>This server has not enabled these tools, '
+           'so calls are refused unless your team registers its own tool for its host.</p></div>' if public_off else
+           '<div class="card"><h4>Free</h4><p>No charge per call and no markup.</p></div>' if public else
+           '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
+           'markup. <a href="/pricing">How billing works</a>.</p></div>')
         + ('<div class="card"><h4>Account billing</h4><p>'
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Calls through your own connection are not metered by treg.")
            + '</p></div>' if is_oauth else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Once this server enables it, a free '
+           'treg.to account is all it takes: no card, and no account with the provider.</p></div>'
+           if public_off else
+           '<div class="card"><h4>No subscription, no seats</h4><p>A free treg.to account is all it '
+           'takes: no card, and no account with the provider.</p></div>' if public else
            '<div class="card"><h4>No subscription, no seats</h4><p>Platform calls are charged per call. '
            '$1.00 free per new team, no card to start.</p></div>')
         + (f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
            "never metered. Your key always wins.</p></div>" if key_auth else
+           f'<div class="card"><h4>Nothing to connect</h4><p>{esc_d} is a public API: '
+           "no account, no key.</p></div>" if public else
            '<div class="card"><h4>Your account connection</h4><p>'
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Connect your account with the provider's supported authentication method.")
@@ -2798,15 +2840,18 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = served and cat.platform_eligible(e)
+            eligible = e in platform_eps
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
+            elif key_auth and e in keyless_eps:
+                access = "Free, no key"
             elif key_auth:
                 access = "Platform + BYOK" if eligible else "BYOK only"
                 if not eligible:
                     price = "No treg charge; upstream " + price
             else:
-                access = "Platform access" if eligible else "Own connection required"
+                access = ("Free, no key" if eligible and public else "Platform access" if eligible else
+                          "Not enabled on this server" if public else "Own connection required")
             kind = "account management" if e.get("kind") == "account" else ("helper" if e.get("kind") == "utility" else "")
             bits = [b for b in (access, kind, "live-verified" if e.get("verified") else "", _esc_html(price)) if b]
             lis.append(f"<li><b>{_esc_html(e['name'])}</b>"
@@ -2850,6 +2895,14 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
              f"Yes. This is an own-account connection: you sign in to {display} once and your "
              "agent uses that connection through your treg.to token. Calls on it are never metered."),
         ]
+    elif public:
+        faq_items = [
+            (f"Do I need a {display} account?",
+             f"No. {display} is a public API with no key: there is nothing to connect."),
+            ("What does a call cost?", "Nothing. treg.to does not charge for these calls."
+             if not public_off else "This server has not enabled these tools, so calls are refused unless "
+             "your team registers its own tool for the provider's host."),
+        ]
     else:
         faq_items = [
             (f"Do I need a {display} account?",
@@ -2878,6 +2931,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
          "Anything that speaks MCP (Claude Code, Claude Desktop, ChatGPT, Codex, Cursor, Grok) "
          "and anything that can make an HTTP request (LangChain, CrewAI, LlamaIndex, plain code)."),
         (f"Is this the official {display} MCP server?",
+         "No. " + ("Once this server enables it, " if public_off else "")
+         + f"treg.to relays {display}'s real public API: the request is the provider's own, no "
+         f"credential is added, and the answer is relayed verbatim. The official {display} channels "
+         "are linked above." if public else
          f"No. treg.to serves {display}'s real API through its own metered proxy: the request "
          f"is the provider's own, the credential is injected server-side, and the answer is "
          f"relayed verbatim. The official {display} channels are linked above."),
@@ -2915,6 +2972,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                 "reads both products' public pages side by side: billing, keys, access and limits. "
                 f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
                 "</div></section>")
+    if public_off:  # nothing here is callable until this server enables it: no prompt to try
+        tryit = ""
     body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
             + faq + copy_js)
 
@@ -2937,7 +2996,12 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             # Both branches must be shorter than the primary; the H1 still starts with `display`.
             title = (f"{display}: from {cheapest} | treg.to" if cheapest
                      else f"{display} | treg.to")
-        desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
+        desc = (f"{display} public API with no key and nothing to connect; not enabled on this server."
+                if public_off else
+                f"{display} public API, free, with no key and nothing to connect: {len(eps)} tools through one "
+                f"treg.to key or MCP server{', ' + measured if measured else ''}. Use it from Claude Code, "
+                "ChatGPT or any agent." if public else
+                f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
                 f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
                 f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
 
@@ -2983,7 +3047,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
              {"@type": "HowToStep", "position": 2, "name": "Or add the MCP server yourself",
               "text": f"claude mcp add --transport http treg {base}/mcp"},
              {"@type": "HowToStep", "position": 3, "name": f"Call {display}",
-              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP."}]},
+              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP"
+                      + (" once this server enables it." if public_off else ".")}]},
     ]
     return _page(title, _serp_desc(desc), f"/tools/{svc}", body, ld,
                  nav_current="/catalog", css="usecase.css")

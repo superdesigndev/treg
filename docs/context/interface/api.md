@@ -254,7 +254,8 @@ cannot shadow the catalog endpoint; from the credential ladder on it is the same
 A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
 (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
-relays through a virtual tool with no bindings when no team credential exists: no platform key, no
+relays through a virtual tool with no bindings when no team credential exists (a public provider has
+none: a same-named team secret is ignored): no platform key, no
 balance entry, caller headers preserved, so a caller-supplied provider key can still be charged by
 the provider.
 

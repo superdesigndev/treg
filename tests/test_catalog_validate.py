@@ -1501,3 +1501,14 @@ def test_a_respelt_row_fails_unless_the_migration_label_allows_it(tmp_path, monk
         in capsys.readouterr().out.splitlines()
     assert validator.main(["--base", "main", "--allow-respelling", "tikhub"]) == 0
     assert f"WARN {line} (catalog-migration)" in capsys.readouterr().out.splitlines()
+
+
+def test_a_public_providers_every_row_is_anonymous():
+    from types import SimpleNamespace
+    public, key = SimpleNamespace(auth_kind="public"), SimpleNamespace(auth_kind="key")
+    errors = []
+    validator.check_public_provider_row({"platform_auth": "anonymous"}, public, "ok", errors)
+    validator.check_public_provider_row({}, key, "keyed", errors)
+    assert errors == []
+    validator.check_public_provider_row({}, public, "bad", errors)
+    assert errors == ["bad: a public provider's every row must be platform_auth: anonymous"]

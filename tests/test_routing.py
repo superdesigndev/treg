@@ -3725,8 +3725,6 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     from treg.domain.catalog.routing.plan import bills_miss, cost_at
 
     reported_zero = {
-        "blitzapi.companies.search": "fair_usage.records_used; empty pages use zero records",
-        "blitzapi.people.search": "fair_usage.records_used; empty pages use zero records",
         "crawl4ai.people.search": "x-c4-cost header; an empty answer charges 0",
         "crustdata.companies.jobs.search": "X-Credits-Used header; empty results consume none",
         "crustdata.companies.search": "X-Credits-Used header; charged per company returned",
@@ -3739,9 +3737,6 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "leadmagic.x.employee-finder": "credits_consumed; free if no results",
         "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
         "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
-        "oceanio.companies.lookalike": "creditsUsed; charged per result",
-        "oceanio.companies.search": "creditsUsed; charged per result",
-        "oceanio.people.search": "creditsUsed; charged per result",
         "quickenrich.companies.search": "meta.credits_used; empty results free",
         "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
         "sumble.organizations": "credits_used; unmatched inputs free",
@@ -3755,7 +3750,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     for rec in fixtures.generate():
         eid = rec["endpoint_id"]
         cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
-        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
+        # a row that settles on the provider's reported charge pays what it reports, 0 for an empty page
+        if (not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero
+                or cost.get("reported_charge")):
             continue
         line = engine.replay(rec)
         if (line.get("routing") or {}).get("kind") != "miss":
@@ -4220,3 +4217,384 @@ async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills
     assert doc['charged_micro'] == doc['tried'][1]['charged_micro'] == before - await _balance(clients)
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+def test_carried_by_keeps_a_child_that_sends_a_key_naming_the_same_subject():
+    """A name and a domain name one company: with `carried_by` saying so, a child that sends either
+    answers a {name, domain} request. A title it never sends is still a different question."""
+    from treg.domain.catalog.routing import contracts as C
+    from treg.domain.catalog.routing.plan import unscoped
+
+    contract = C.parse_contracts({"contracts": {"x.jobs": {
+        "identity": [{"title": "str", "domain": "str"}, {"name": "str"}, {"domain": "str"}],
+        "scoping": ["title", "name", "domain"], "carried_by": {"name": ["domain"], "domain": ["name"]},
+        "output": {"jobs": {"type": "list", "required": True}}, "miss": "jobs == []"}}})["x.jobs"]
+    by_domain = C.parse_adapters({"adapters": {"p.jobs": {
+        "accepts": [["domain"]], "in": {"domain": "query.domain"}, "out": {"jobs": "jobs"},
+        "miss": "jobs == []"}}})["p.jobs"]
+    assert unscoped(by_domain, contract, {"name": "Ramp", "domain": "ramp.com"}) == ()
+    assert unscoped(by_domain, contract, {"title": "data engineer", "domain": "ramp.com"}) == ("title",)
+    plain = C.Contract(**{**contract.__dict__, "carried_by": {}})
+    assert unscoped(by_domain, plain, {"name": "Ramp", "domain": "ramp.com"}) == ("name",)
+
+
+def test_a_filter_nested_in_a_larger_value_is_unmappable_when_its_call_yields_nothing():
+    """`list(obj('country', country_name(country)))` drops a code the provider cannot name: the
+    planner must see it as not sent (disclosed, strict-dropped), while a nameable code is sent, a
+    field literal named like the key does not count, and a key also sent as given is mappable."""
+    from treg.domain.catalog.routing import contracts as C
+    from treg.domain.catalog.routing.plan import _unmappable
+
+    def adapter(expr):
+        return C.parse_adapters({"adapters": {"p.jobs": {
+            "accepts": [["title"]], "in": {"title": "body.title"}, "in_expr": {"body.geo": expr},
+            "out": {"jobs": "jobs"}, "miss": "jobs == []"}}})["p.jobs"]
+
+    nested = adapter("list(obj('country', country_name(country)))")
+    assert _unmappable(nested, "country", {"title": "x", "country": "UK"})
+    assert not _unmappable(nested, "country", {"title": "x", "country": "GB"})
+    assert not _unmappable(adapter("list(obj('country', country))"), "country", {"title": "x", "country": "UK"})
+    # beside another place key in the same value: a nameable city does not carry an unnameable country
+    multi = adapter("list(obj('city', city, 'country', country_name(country)))")
+    assert _unmappable(multi, "country", {"title": "x", "city": "London", "country": "UK"})
+    assert not _unmappable(multi, "country", {"title": "x", "city": "London", "country": "GB"})
+
+
+async def test_a_routed_read_stops_at_eight_mib():
+    """An anonymous or own-key child streams; the router must not hold an answer past 8 MiB."""
+    async def body():
+        for _ in range(9):
+            yield b"x" * (1024 * 1024)
+
+    closed = []
+
+    async def close():
+        closed.append(True)
+
+    with pytest.raises(call_route._ChildTooLarge):
+        await call_route._read(UpstreamResponse(200, (), body(), close))
+    assert closed == [True]
+
+
+def test_ignoring_a_sent_filter_outranks_a_contract_prefer_but_not_the_callers():
+    """A contract's `prefer` (or a published rule) orders children that ask the real question; a
+    preferred child that drops a filter the caller sent answers a looser one, so it goes after. Only
+    the caller's own X-Treg-Route-Prefer may put it first."""
+    def cand(eid, ignored=()):
+        return Candidate(endpoint={"id": eid, "provider": eid.split(".")[0], "cost": {"type": "per_result"}},
+                         adapter=None, variant=("title",), tier="platform", price_micro=1_000, hit_rate=None,
+                         ok_rate=None, p50_ms=None, last_ok_days=None, ignored=ignored)
+    blind, aware = cand("a.jobs.search", ignored=("country",)), cand("b.jobs.search")
+    assert [c.endpoint["id"] for c in rank([blind, aware], prefer=["a"], given={"title", "country"})] == [
+        "b.jobs.search", "a.jobs.search"]
+    assert [c.endpoint["id"] for c in rank([blind, aware], prefer=["a"], given={"title", "country"},
+                                           caller_prefer=True)] == ["a.jobs.search", "b.jobs.search"]
+
+
+async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """Only an unmetered child (own key or anonymous) streams unbuffered, so only it can pass the
+    routed read's bound in production. Past it, the answer is that child's error: nothing billed, it
+    counts toward the error allowance, and the next candidate answers the call."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    assert (await clients.post("/secrets", json={"name": "tomba", "value": "OWN-TOMBA"})).status_code == 200
+    seen, own = [], []
+    relay = _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 90, "first_name": "x" * 600,
+                                  "verification": {"status": "valid"}}})],
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, seen)
+
+    async def spy(request, upstream_url, tool, secrets, *args, **kwargs):
+        if "tomba" in upstream_url:
+            own.append(sorted(getattr(x, "name", "") for x in secrets.values()))
+        return await relay(request, upstream_url, tool, secrets, *args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", spy)
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,findymail"})
+    assert r.status_code == 200, r.text
+    doc = r.json()["_treg"]
+    assert [(t["provider"], t["outcome"]) for t in doc["tried"]] == [("tomba", "error"), ("findymail", "hit")]
+    detail = doc["tried"][0]["detail"]
+    # the dedicated branch, not the generic read failure: it names the direct call that streams
+    assert doc["tried"][0]["charged_micro"] == 0 and "routed read" in detail
+    assert "directly, it streams" in detail and not detail.startswith("failed to read"), detail
+    assert own == [["tomba"]], own  # asked on the team's own key, so unmetered
+    assert doc["served_by"].startswith("findymail.")
+    assert doc["charged_micro"] == doc["tried"][1]["charged_micro"] == before - await _balance(clients)
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_a_same_named_secret_never_makes_a_public_provider_an_own_key_child(
+        clients: AsyncClient, monkeypatch):
+    """A public provider has nothing to connect, so the router plans its reader on the anonymous
+    tier even when the team saved a secret under the provider's name."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "platform_auth", "anonymous")
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "cost", {
+        "type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    assert (await clients.post("/secrets", json={"name": "financialdatasets", "value": "k"})).status_code == 200
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "anonymous", tiers
+
+
+async def test_a_keyless_child_not_served_is_dropped_and_quoted_with_the_true_reason(
+        clients: AsyncClient, monkeypatch):
+    """A keyless row the anonymous tier does not take (provider not allow-listed) is dropped by the
+    router and skipped by the quote as "not enabled" — never as a missing key nobody can connect."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    from treg.routers.catalog import _quote_skip
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    why = {d["endpoint_id"]: d["why"] for d in plan.dropped}.get("financialdatasets.prices.snapshot", "")
+    assert "not enabled" in why and "key on this deployment" not in why, plan.dropped
+    skip = _quote_skip(row, cat) or ""
+    assert "not enabled" in skip and "key on this deployment" not in skip, skip
+
+
+async def test_a_keyless_child_answers_a_routed_call_with_no_credential_hold_or_charge(
+        clients: AsyncClient, monkeypatch):
+    """A public provider's row is a routed child on the anonymous tier: no credential is sent, nothing
+    is held or charged, and the child's own answer comes back unchanged."""
+    import dataclasses
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from treg import oauth_providers
+    from treg.api import app
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public", base_url="http://upstream"))
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    seen = []
+    answer = {"snapshot": {"ticker": "AAPL", "price": 190.5}}
+
+    async def snapshot(request):
+        seen.append((request.url.path, request.query_params.get("ticker"),
+                     request.headers.get("authorization"), request.headers.get("x-api-key")))
+        return JSONResponse(answer)
+
+    before = await _balance(clients)
+    upstream_app = Starlette(routes=[Route("/prices/snapshot", snapshot)])
+    async with AsyncClient(transport=httpx.ASGITransport(app=upstream_app), base_url="http://upstream") as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "aapl"},
+                               headers={"X-Treg-Route-Prefer": "financialdatasets"})
+    assert r.status_code == 200, r.text
+    doc = r.json()["_treg"]
+    assert doc["served_by"] == "financialdatasets.prices.snapshot" and doc["tier"] == "anonymous", doc
+    assert doc["charged_micro"] == 0 and await _balance(clients) == before
+    assert seen == [("/prices/snapshot", "AAPL", None, None)], seen
+    assert r.json()["raw"] == answer
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_a_key_providers_keyless_row_is_never_called_a_keyless_public_api(
+        clients: AsyncClient, monkeypatch):
+    """Only a public provider has nothing to connect. A key provider's keyless row not served here
+    is refused for its key, which a team's own key would satisfy — never as a keyless public API."""
+    from treg.models import Org
+    from treg.routers.catalog import _quote_skip
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    why = {d["endpoint_id"]: d["why"] for d in plan.dropped}.get("financialdatasets.prices.snapshot", "")
+    assert why and "keyless public API" not in why, plan.dropped
+    skip = _quote_skip(row, cat) or ""
+    assert skip and "keyless public API" not in skip, skip
+
+
+async def test_a_route_that_fails_only_on_treg_s_read_cap_is_logged_as_treg_s_limit(
+        clients: AsyncClient, enrichment_on, monkeypatch, call_error_lines):
+    """When every candidate's answer is cut by treg's routed read cap, no provider failed: the call is
+    logged as treg's buffer limit (as on a direct call), never as an upstream error."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    big = {"data": {"email": "patrick@stripe.com", "first_name": "x" * 600}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, big)] * 30}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"})
+    assert r.status_code == 502 and r.json()["detail"]["error"] == "route_failed", r.text
+    assert all("routed read" in t["detail"] for t in r.json()["detail"]["tried"])
+    line = call_error_lines()[-1]
+    assert line["error_class"] == "treg_error" and line["by"] == "treg", line
+
+
+async def test_a_route_cut_by_treg_s_read_cap_and_the_caller_s_skips_is_still_treg_s_limit(
+        clients: AsyncClient, enrichment_on, monkeypatch, call_error_lines):
+    """Candidates the caller's own max cost skipped were never asked: when the only attempts made were
+    cut by treg's routed read cap, the failure is still treg's limit, not an upstream error."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    assert (await clients.post("/secrets", json={"name": "tomba", "value": "OWN-TOMBA"})).status_code == 200
+    big = {"data": {"email": "patrick@stripe.com", "first_name": "x" * 600}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, big)] * 30}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba", "X-Treg-Route-Max-Cost": "0.000001"})
+    assert r.status_code == 502, r.text
+    outcomes = {t["outcome"] for t in r.json()["detail"]["tried"]}
+    assert "skipped" in outcomes and outcomes <= {"skipped", "error"}, r.json()["detail"]["tried"]
+    line = call_error_lines()[-1]
+    assert line["error_class"] == "treg_error" and line["by"] == "treg", line
+
+
+async def test_a_team_tool_on_a_row_s_own_host_is_planned_as_the_team_s_tool(clients: AsyncClient, monkeypatch):
+    """A row on an approved second host is the team's own tool when the team registered a tool for
+    THAT host (resolve calls it there): the router must see it, as a direct call does."""
+    from treg.models import Org
+    cat = catalog_store.load()
+    sid = (await clients.post("/secrets", json={"name": "gate-key", "value": "v"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-gate", "base_url": "https://gate.crawl4ai.com",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.people.email.find"],
+                                       {"full_name": "Patrick Collison", "domain": "stripe.com"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("crawl4ai.people.email.find") == "tool", (tiers, plan.dropped)
+
+
+async def test_a_main_host_tool_does_not_hide_the_team_s_own_key_on_a_second_host_row(clients: AsyncClient, monkeypatch):
+    """A tool for a provider's main host covers only that host: a row on its approved second host must
+    still be served on the team's own key (own key always wins), never fall to treg's key or be dropped."""
+    from treg.models import Org
+    cat = catalog_store.load()
+    sid = (await clients.post("/secrets", json={"name": "crawl4ai", "value": "OWN"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-main", "base_url": "https://api.crawl4ai.com",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.people.email.find"],
+                                       {"full_name": "Patrick Collison", "domain": "stripe.com"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("crawl4ai.people.email.find") == "credential", (tiers, plan.dropped)
+
+
+async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
+        clients: AsyncClient, monkeypatch, call_error_lines):
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    route_ep = cat.by_id["treg.stocks.quote.live"]
+    for e in cat.endpoints:  # only the keyless child answers this capability
+        if e.get("capability") == route_ep["capability"] and e["id"] not in (
+                route_ep["id"], "financialdatasets.prices.snapshot"):
+            monkeypatch.setitem(e, "capability", "test.elsewhere")
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.public_demo = True
+        await db.commit()
+    r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "AAPL"})
+    assert r.status_code == 422 and "demo" in r.text, (r.status_code, r.json()["detail"]["dropped"])
+    line = call_error_lines()[-1]
+    assert line["kind"] == "admission_denied" and line["error_class"] == "treg_policy", line
+    # not enabled on this server: that is the reason given, so it is not demo policy
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "AAPL"})
+    assert r.status_code == 503 and "has not enabled" in r.text, (r.status_code, r.text[:300])
+
+
+async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(monkeypatch):
+    """Demo policy speaks for the refusal only when it took every candidate."""
+    plan = SimpleNamespace(candidates=[], variant=("symbol",), route_rule=None, health=None, dropped=[
+        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but demo and sandbox teams do not call it",
+         "policy": True},
+        {"endpoint_id": "b.paid", "why": "ignores country", "strict": True}])
+
+    ep = catalog_store.load().by_id["treg.stocks.quote.live"]
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    mixed = call_route._no_candidate_refusal(ep, plan, options)
+    assert mixed.log_kind is None and "Strict-Filters" in mixed.detail["message"], mixed.detail
+    plan.dropped = plan.dropped[:1]
+    alone = call_route._no_candidate_refusal(ep, plan, options)
+    assert alone.log_kind == "admission_denied" and alone.status_code == 422, alone.detail
+    # children that never take this identity were never open to the call: policy still speaks alone
+    only_policy = plan.dropped
+    plan.dropped = only_policy + [{"endpoint_id": "c.other", "why": "needs {domain}"}]
+    with_needs = call_route._no_candidate_refusal(ep, plan, options)
+    assert with_needs.log_kind == "admission_denied", with_needs.detail
+    # a child that takes the identity but caps a filter was open to the call: not demo policy alone
+    plan.dropped = only_policy + [{"endpoint_id": "e.other", "why": "needs limit <= 100"}]
+    capped = call_route._no_candidate_refusal(ep, plan, options)
+    assert capped.log_kind is None, capped.detail
+    plan.dropped = only_policy
+    # the caller's own exclude may have taken a provider open to the team: not demo policy alone
+    excluded = call_route._no_candidate_refusal(
+        ep, plan, call_route.RouteOptions.from_headers(lambda key: "b" if key.lower() == "x-treg-route-exclude" else None))
+    assert excluded.log_kind is None, excluded.detail
+
+
+async def test_a_host_the_provider_does_not_approve_does_not_move_the_router_s_tool_check(clients: AsyncClient, monkeypatch):
+    """resolve keeps a row on its provider's main host unless the provider approves the row's host, so
+    a main-host tool serves it and the router must plan it as that tool."""
+    from treg.models import Org
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.by_id["financialdatasets.prices.snapshot"], "host", "other.financialdatasets.example")
+    sid = (await clients.post("/secrets", json={"name": "fd-key", "value": "v"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-fd", "base_url": "https://api.financialdatasets.ai",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)

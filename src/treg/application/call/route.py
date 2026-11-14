@@ -88,13 +88,15 @@ from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
 )
+from ... import oauth_providers
+from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_health
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _host_of, _marketplace_secret
+from .resolve import _anonymous_offer, _anonymous_refusal, _host_of, _marketplace_secret
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -633,9 +635,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     stats = await _observed_stats(ids)
     own: set[str] = set()
     own_tools: set[str] = set()
+    tool_hosts: set[str] = set()  # hosts the team registered a tool for (a row on another host is not covered)
     if ids:
         from sqlalchemy import select as _select
-        from ... import oauth_providers
         from ...models import Tool
         async with session_maker() as db:
             services = {e["provider"] for e, _, _ in raw}
@@ -647,12 +649,16 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                     prov = oauth_providers.get(service)
                     if prov is not None and prov.base_url:
                         hosts.setdefault(_host_of(prov.base_url), service)
-                if hosts:
-                    tools = (await db.execute(_select(Tool.host).where(Tool.org_id == caller.org_id))).scalars().all()
-                    own_tools = {hosts[h] for h in tools if h in hosts}
+                if hosts or any(e.get("host") for e, _, _ in raw):
+                    tool_hosts = set((await db.execute(
+                        _select(Tool.host).where(Tool.org_id == caller.org_id))).scalars().all())
+                    own_tools = {hosts[h] for h in tool_hosts if h in hosts}
             for service in services:
-                if service in own_tools:
-                    continue
+                # no skip for a provider with a team tool: a row on another of its hosts is not
+                # covered by that tool, so the team's own key must still be found for it
+                registered = oauth_providers.get(service)
+                if registered is not None and registered.auth_kind == "public":
+                    continue  # nothing to connect: a same-named secret is not its credential
                 if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
                     own.add(service)
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
@@ -662,7 +668,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
         tier = (
-            "tool" if e["provider"] in own_tools else
+            # a row on an approved second host (Lever EU) is the team's tool only on that host, as
+            # resolve calls it there; any other row is called on the provider's main host
+            "tool" if (e.get("host") in tool_hosts if _second_host(e) else e["provider"] in own_tools) else
             "credential" if e["provider"] in own else
             "anonymous" if anonymous else
             "platform"
@@ -691,6 +699,15 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                       ignored=ignored_filters(ad, contract, identity, given), miss_micro=miss)
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
+            continue
+        if (tier == "platform" and e.get("platform_auth") == "anonymous"
+                and getattr(oauth_providers.get(e["provider"]), "auth_kind", "") == "public"):
+            # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
+            # demo policy only where it is the reason given: a provider not enabled here is capacity
+            demo = (get_settings().platform_provider_enabled(e["provider"]) and caller.org is not None
+                    and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo))
+            dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
+                            **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})
@@ -912,11 +929,25 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                      client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only)
 
 
+# A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
+# anonymous or own-key child would otherwise stream any size into memory.
+ROUTED_BODY_MAX = 8 * 1024 * 1024
+
+
+class _ChildTooLarge(Exception):
+    """A child's answer passed `ROUTED_BODY_MAX`: no answer from this child, nothing billed."""
+
+
 async def _read(response: UpstreamResponse) -> bytes:
-    chunks = []
-    async for chunk in response.body_stream:
-        chunks.append(chunk)
-    await response.close()
+    chunks, size = [], 0
+    try:
+        async for chunk in response.body_stream:
+            size += len(chunk)
+            if size > ROUTED_BODY_MAX:
+                raise _ChildTooLarge(f"answer is over treg's {ROUTED_BODY_MAX >> 20} MiB routed read")
+            chunks.append(chunk)
+    finally:
+        await response.close()
     return b"".join(chunks)
 
 
@@ -996,6 +1027,47 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     return response, spent
 
 
+def _second_host(e: dict) -> bool:
+    """A row resolve calls on another of its provider's hosts: a `host` the provider approves."""
+    prov = oauth_providers.get(e["provider"])
+    return bool(e.get("host") and prov is not None and prov.catalog_targets)
+
+
+def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFailed:
+    """The refusal for a routed call whose plan kept no candidate, with who it is on."""
+    # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
+    # caller's own choice, and a provider that cannot send a key the caller gave never will,
+    # so both answer 422 (nothing was charged either way)
+    capacity_drop = any(not d.get("strict") and not d.get("policy")
+                        and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
+                        for d in plan.dropped)
+    # only treg's demo policy took every candidate: any strict, scope or filter drop beside it
+    # is the caller's to fix, so it keeps its own message
+    # children that never take this identity ("needs {…}") were never open to the call, so they do
+    # not stand beside the policy drop; a filter cap ("needs limit <= …") is a child that was
+    live = [d for d in plan.dropped if not str(d.get("why", "")).startswith("needs {")]
+    policy_only = (bool(live) and all(d.get("policy") for d in live)
+                   and not options.exclude)  # the caller's exclude may have taken an open one
+    strict_drop = [d for d in plan.dropped if d.get("strict")]
+    scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
+    return ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422,
+                           log_kind="admission_denied" if policy_only else None, detail={
+        "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
+        "dropped": plan.dropped,
+        "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
+                    f"no provider for {ep['id']} is open to this team: "
+                    + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in plan.dropped if d.get("policy"))
+                    if policy_only else
+                    f"no provider for {ep['id']} can send every key you sent together"
+                    + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
+                       if options.exclude else "; send fewer keys")
+                    if scope_drop and not strict_drop else
+                    f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
+                    f"no provider for {ep['id']} can honour every filter you sent for this identity "
+                    f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
+                    + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
+
+
 async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
                       execute_child, pending: list, *, audit_client: str = "") -> tuple[UpstreamResponse, int]:
     try:
@@ -1060,25 +1132,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
     _summarize(parent, route_rule=plan.route_rule, **({"health": plan.health} if plan.health else {}))
     if not plan.candidates:
-        # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
-        # caller's own choice, and a provider that cannot send a key the caller gave never will,
-        # so both answer 422 (nothing was charged either way)
-        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
-                            for d in plan.dropped)
-        strict_drop = [d for d in plan.dropped if d.get("strict")]
-        scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
-        raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422, detail={
-            "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
-            "dropped": plan.dropped,
-            "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
-                        f"no provider for {ep['id']} can send every key you sent together"
-                        + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
-                           if options.exclude else "; send fewer keys")
-                        if scope_drop and not strict_drop else
-                        f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
-                        f"no provider for {ep['id']} can honour every filter you sent for this identity "
-                        f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
-                        + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
+        raise _no_candidate_refusal(ep, plan, options)
     # On a search, rank() puts specificity ahead of price, so candidates[0] can cost more than a
     # later one. Refuse only when none of them fit the ceiling, and name the true minimum.
     if options.max_cost_micro is not None and all(
@@ -1091,6 +1145,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     tried: list[Attempt] = []
     spent = 0
     errors = 0
+    too_large = 0  # attempts cut by treg's own routed-read cap, not a provider failing
     rejected_by: set[str] = set()  # providers that answered a vendor 4xx
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
@@ -1240,6 +1295,17 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", 504, 0,
                                  f"answer not finished within {cancel_s:g} s; moved on"))
+            if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
+                break
+            continue
+        except _ChildTooLarge as exc:
+            # Too big to wrap, not the provider failing: unbilled, no health strike, and the next
+            # candidate answers. The endpoint itself streams it when called directly.
+            _unbill(pending, child.call_ref)
+            errors += 1
+            too_large += 1
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, 0,
+                                 f"{exc}; call {cand.endpoint['id']} directly, it streams"[:160]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
                 break
             continue
@@ -1554,7 +1620,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "route_failed", "endpoint_id": ep["id"], "tried": [t.view() for t in tried], "charged_micro": spent,
             "dropped": plan.dropped,
             "message": f"every candidate for {ep['id']} failed; nothing useful was charged" if spent == 0 else
-                       f"every candidate for {ep['id']} failed"})
+                       f"every candidate for {ep['id']} failed"},
+            # every attempt made was cut by treg's own read cap (the rest were skipped, never asked):
+            # treg's limit, as on a direct call
+            log_kind="response_buffer_limit"
+            if too_large and too_large == sum(t.outcome != "skipped" for t in tried) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
     winner_outcome = next(t.outcome for t in reversed(tried)

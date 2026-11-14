@@ -212,7 +212,8 @@ one mistake. treg does not switch providers on a direct call; only you know whic
 **How a catalog call is served**, in this order:
 
 1. the team registered its own tool for that provider: that tool and its key;
-2. the team stored a key for the provider: that key;
+2. the team stored a key for the provider: that key (never for a keyless public API, which has
+   nothing to connect);
 3. neither, and the tool has a verified public route: no key, free;
 4. otherwise treg's own account, billed to the team's balance.
 

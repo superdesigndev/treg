@@ -240,6 +240,11 @@ verdictDate(d){ try{ const m=String(d).length===7;   // a review carries only it
       || (this.platData&&this.platData.providers||{})[service]; return (p&&p.auth_kind)||''; },
 endpointAccessLabel(e){
       if(e.kind==='routed') return 'Routed platform call';
+      if(e.platform_auth==='anonymous'){   // a keyless row: free with no key only where this server serves it
+        const r=this.provRecord(e.provider);
+        if(r && r.enabled===false){ if(r.auth_kind==='public') return 'Not enabled on this server'; }
+        else return 'Free, no key';
+      }
       if(e.id==='fishaudio.voices.list') return 'Team voices + BYOK';
       const p=this.providers.find(p=>p.service===e.provider)
         || (this.platData&&this.platData.providers||{})[e.provider] || {};
@@ -379,7 +384,27 @@ usefulOf(e){ return e.reviews && e.reviews.share ? reviewSummary(e.reviews) : nu
     // public branch offers BYOK (which is true for every provider) rather than guessing Connect.
     mkKnown(service){ return this.providers.some(p=>p.service===service)
       || (this.publicCatalog && !!((this.platData&&this.platData.providers||{})[service])); },
+// A provider's record wherever the dashboard has one: the Connect listing, the open platform payload,
+// or the provider page's own record (a keyless public provider is only in the last two).
+provRecord(service){ const d=this.mkToolData, own=d && d.provider && d.provider.service===service ? d.provider : null;
+      return this.providers.find(p=>p.service===service) || (this.platData&&this.platData.providers||{})[service] || own || null; },
 mkOauth(service){ const p=this.providers.find(x=>x.service===service); return !!p && p.auth_kind==='oauth'; },
+// Is this call served with no provider key? The server's answer decides: a team key or tool, or
+// treg's key, is injected even on a keyless row; a keyless row nobody serves yet needs no key either.
+tryKeyless(ep, access){
+      const tier=access && access.tier;
+      if(tier==='anonymous') return true;
+      if(['tool','credential','platform','routed'].includes(tier)) return false;
+      // refused: only a public provider's row has no key to give; a key provider's row takes the team's key
+      const r=this.provRecord(ep.provider);
+      return ep.platform_auth==='anonymous' && !!r && r.auth_kind==='public'; },
+// Why "Try it" cannot run a tool for this team: the server's own words first, a keyless public row's
+// refusal never reads as needing a key.
+tryUnavailableMessage(ep, access){
+      if(access && access.missing_message) return access.missing_message;
+      if(ep.platform_auth==='anonymous') return (access && access.detail) || 'This free public API is not served here.';
+      return this.mkOauth(ep.provider) ? 'Can\'t run this here yet — connect '+(ep.provider_display||ep.provider)+' first, then Run.'
+        : 'This endpoint needs a key. Use the AI Agent / CLI / API tab, or bring your own.'; },
 // `providers` comes from /connections, which needs a session. On a public catalog URL there is
     // none, so fall back to the display name the OPEN catalog response already carries — otherwise
     // every provider on a public shelf would render as its bare slug.

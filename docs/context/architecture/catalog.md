@@ -513,7 +513,10 @@ operations with `scope: any_account`, no authorization metadata and no shared as
 lifecycle. After the team-tool and team-credential tiers miss, `_anonymous_offer` builds a virtual
 tool with an empty binding list and tier `anonymous`; it needs only the provider allow-list
 (`platform_provider_enabled`). The call runtime holds no provider or path list. Routed ranking keeps
-own key first, anonymous second, paid platform third.
+own key first, anonymous second, paid platform third. A provider with no key at all registers with
+`auth_kind="public"`: it supplies `base_url` and nothing to connect, is left out of the Connect
+listing, and both connect paths refuse it; every one of its rows is anonymous. The anonymous tier is
+unmetered, so a 2xx streams to the caller unbuffered, whatever its size.
 
 ## Provider objects on treg's shared account
 
@@ -1006,8 +1009,13 @@ returned and never documented as stable. An output field may say where it lands 
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
+  `carried_by` names other identity keys that ask the same thing: a contract that maps a company's
+  `name` and `domain` to each other keeps a child that sends either for a `{name, domain}` request,
+  while a child that sends neither is still dropped. On a stand-in key (`q`) it works as described
+  under stand-ins below.
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
-  hit ignores time, so a contract may prefer a dearer but faster, more reliable provider.
+  hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
+  only children that express every filter the caller sent (see Ranking).
 - `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
@@ -1121,7 +1129,9 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
+  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
+  quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
   request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
@@ -1141,7 +1151,12 @@ an invalid extra never disables the primary.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
-  report agree; `limit` and contract defaults never count). An exhausted platform provider with an
+  report agree; `limit` and contract defaults never count). A contract's `prefer` or a published
+  rule never lifts such a child: it ranks as if unlisted, so specificity and price place it. Only
+  the caller's own `X-Treg-Route-Prefer` puts it first. A filter the adapter reaches only through
+  calls (`country_name(country)`, alone or nested in a larger value such as
+  `list(obj('country', country_name(country)))`) is ignored for a value every such call drops (a code
+  the provider cannot name). An exhausted platform provider with an
   enabled overflow route stays a candidate at the overflow price; without one, or with no key on the
   deployment, it is dropped and named in `dropped`. Within a tier, a child whose short-window health
   is `slow` (or `failing` and kept) is asked after the healthy ones, ahead of the contract's default
@@ -1179,6 +1194,17 @@ an invalid extra never disables the primary.
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
     Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
     alone, are compared with `N`, so the walk stops once the union reaches it.
+  - **The routed read is bounded.** The router parses each child's answer, so it reads at most
+    `ROUTED_BODY_MAX` (8 MiB) of it, as settlement does. An anonymous or own-key child streams
+    without that bound (a public listing can be larger); past it the attempt is an unbilled `error`
+    whose detail names the endpoint to call directly, no health strike, and the next candidate
+    answers. When every non-skipped attempt was cut there, the failure is logged as treg's
+    (`response_buffer_limit`), not the provider's.
+  - **A team's own tool and key, per row.** A child is the team's tool when the team registered a
+    tool for the host the call goes to: the row's own `host` where the provider approves it in
+    `catalog_targets` (as resolve calls it there), else the provider's main host. A tool on one
+    host never stands in for another, and the team's own key is still looked up for every row, so a
+    second-host row a main-host tool does not cover is served on that key (non-negotiable 1).
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a
     balance covering each child in turn would 402 mid-waterfall. **A billed child never settles its
     own hold**: it leaves a `settle.DeferredSettle` and `run_routed` closes every one exactly once at
@@ -1255,6 +1281,12 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
+  key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
+  treg's demo policy alone took every candidate that could take the identity (a child dropped as
+  `needs {…}`, which never takes it, does not count; a filter cap or any other drop does), it
+  answers 422 naming that policy, logged as `admission_denied`; not
+  under `X-Treg-Route-Exclude`, whose excluded providers may have been open to the team.
 - **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
   child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every
   row and an honest `count` stay, and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` name

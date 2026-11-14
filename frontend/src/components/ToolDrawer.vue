@@ -44,8 +44,11 @@ export default {
     <!-- The primary button is the next step to your agent using this tool (`drawerNext`): connect the
          account or add the key it needs, else hand it the line. Trying it here is optional. -->
     <!-- Paused on this deployment: say so in place of the call line and the buttons that lead to it. -->
-    <p v-if="drawerNext==='paused'" class="mk-notice">{{providerPaused(drawerEp.provider).message}}</p>
-    <div v-else-if="drawerEp.call_template" class="pl-code"><code>{{drawerEp.call_template}}</code></div>
+    <p v-if="drawerNext==='paused'" class="mk-notice">{{(providerPaused(drawerEp.provider)||{}).message}}</p>
+    <!-- A public provider this server has not enabled: refused unless the team registered its own tool,
+         so nothing to try here; the line can still go to an agent whose team has one. -->
+    <p v-if="drawerNext==='off'" class="mk-notice">This server has not enabled {{drawerEp.provider_display||drawerEp.provider}}, so its calls are refused unless your team registered its own tool for its host.</p>
+    <div v-if="drawerEp.call_template && drawerNext!=='paused'" class="pl-code"><code>{{drawerEp.call_template}}</code></div>
     <div class="td-act">
       <button v-if="drawerNext==='connect'" class="pl-btn" @click="catalogConnect(drawerEp)">{{endpointConnectLabel(drawerEp)}}</button>
       <button v-else-if="drawerNext==='key'" class="pl-btn" @click="catalogByok(drawerEp.provider, drawerEp)">Add your {{drawerEp.provider_display||drawerEp.provider}} key</button>
