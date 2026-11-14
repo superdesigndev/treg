@@ -4504,3 +4504,49 @@ async def test_a_team_tool_on_a_row_s_own_host_is_planned_as_the_team_s_tool(cli
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
     assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)
+
+
+async def test_a_main_host_tool_does_not_hide_the_team_s_own_key_on_a_second_host_row(clients: AsyncClient, monkeypatch):
+    """A tool for a provider's main host covers only that host: a row on its second host must still
+    be served on the team's own key (own key always wins), never fall to treg's key or be dropped."""
+    from treg.models import Org
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
+    sid = (await clients.post("/secrets", json={"name": "financialdatasets", "value": "OWN"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-main", "base_url": "https://api.financialdatasets.ai",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "credential", (tiers, plan.dropped)
+
+
+async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(clients: AsyncClient, monkeypatch):
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    route_ep = cat.by_id["treg.stocks.quote.live"]
+    for e in cat.endpoints:  # only the keyless child answers this capability
+        if e.get("capability") == route_ep["capability"] and e["id"] not in (
+                route_ep["id"], "financialdatasets.prices.snapshot"):
+            monkeypatch.setitem(e, "capability", "test.elsewhere")
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.public_demo = True
+        await db.commit()
+    r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "AAPL"})
+    assert r.status_code == 422 and "demo" in r.text, (r.status_code, r.json()["detail"]["dropped"])

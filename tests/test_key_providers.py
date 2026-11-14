@@ -958,3 +958,16 @@ async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients,
                                                "secret_id": sid})).status_code == 200
     out = (await clients.get("/catalog/endpoints/financialdatasets.prices.snapshot/access")).json()
     assert out["tier"] == "tool", out
+
+
+async def test_the_access_preview_probes_a_second_host_row_at_that_host_s_own_base(clients):
+    """A row on another approved host is called at that host's base URL (its own path), so a team
+    tool registered there must be what the preview finds."""
+    from treg.domain.catalog import store as catalog_store
+    row = catalog_store.load().by_id["diffbot.x.extract-analyze"]
+    base = P.REGISTRY["diffbot"].profile_for_catalog_host(row["host"]).base_url.rstrip("/")
+    base += "/" + row["path"].lstrip("/").split("/")[0]  # a tool on the row's first path segment there
+    sid = (await clients.post("/secrets", json={"name": "db-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-db", "base_url": base, "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/diffbot.x.extract-analyze/access")).json()
+    assert out["tier"] == "tool", (base, out)

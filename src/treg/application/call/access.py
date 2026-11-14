@@ -249,8 +249,11 @@ async def _direct_access(
     billed_note: str,
 ) -> dict | None:
     base = provider.base_url
-    if endpoint.get("host"):  # a row on another of the provider's hosts (Lever EU) is probed there
-        base = urlsplit(base)._replace(netloc=endpoint["host"]).geturl()
+    if endpoint.get("host"):  # a row on another of the provider's hosts is probed at that host's base
+        try:
+            base = provider.profile_for_catalog_host(endpoint["host"]).base_url
+        except ValueError:
+            base = urlsplit(base)._replace(netloc=endpoint["host"]).geturl()
     probe = base.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
     for url in provider.tool_lookup_urls(probe):
         try:

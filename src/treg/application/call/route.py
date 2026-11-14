@@ -89,6 +89,7 @@ from ...domain.catalog.routing.plan import (
     sampled_provider_allowed, unscoped,
 )
 from ... import oauth_providers
+from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_health
@@ -653,8 +654,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                         _select(Tool.host).where(Tool.org_id == caller.org_id))).scalars().all())
                     own_tools = {hosts[h] for h in tool_hosts if h in hosts}
             for service in services:
-                if service in own_tools:
-                    continue
+                # no skip for a provider with a team tool: a row on another of its hosts is not
+                # covered by that tool, so the team's own key must still be found for it
                 registered = oauth_providers.get(service)
                 if registered is not None and registered.auth_kind == "public":
                     continue  # nothing to connect: a same-named secret is not its credential
@@ -701,7 +702,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if (tier == "platform" and e.get("platform_auth") == "anonymous"
                 and getattr(oauth_providers.get(e["provider"]), "auth_kind", "") == "public"):
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
-            dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}"})
+            demo = caller.org is not None and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo)
+            dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
+                            **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})
@@ -1088,14 +1091,20 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
         # caller's own choice, and a provider that cannot send a key the caller gave never will,
         # so both answer 422 (nothing was charged either way)
-        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
+        capacity_drop = any(not d.get("strict") and not d.get("policy")
+                            and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
                             for d in plan.dropped)
+        policy_only = not capacity_drop and any(d.get("policy") for d in plan.dropped)
         strict_drop = [d for d in plan.dropped if d.get("strict")]
         scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
-        raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422, detail={
+        raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422,
+                               log_kind="admission_denied" if policy_only else None, detail={
             "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
             "dropped": plan.dropped,
             "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
+                        f"no provider for {ep['id']} is open to this team: "
+                        + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in plan.dropped if d.get("policy"))
+                        if policy_only else
                         f"no provider for {ep['id']} can send every key you sent together"
                         + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
                            if options.exclude else "; send fewer keys")
