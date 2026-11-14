@@ -323,6 +323,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/referrals/code', ('POST',), 'mint_referral_code'),
     ('/billing/stripe/webhook', ('POST',), 'billing_stripe_webhook'),
     ('/orgs/{org_id}/sso', ('GET',), 'sso_status'),
+    ('/orgs/{org_id}/sso/domains', ('GET',), 'sso_domains'),
     ('/orgs/{org_id}/sso/blocked', ('GET',), 'sso_blocked_members'),
     ('/orgs/{org_id}/sso/blocked/{user_id}/restore', ('POST',), 'sso_restore_member'),
     ('/orgs/{org_id}/sso/checkout', ('POST',), 'sso_checkout'),
