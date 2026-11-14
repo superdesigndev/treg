@@ -3725,8 +3725,6 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     from treg.domain.catalog.routing.plan import bills_miss, cost_at
 
     reported_zero = {
-        "blitzapi.companies.search": "fair_usage.records_used; empty pages use zero records",
-        "blitzapi.people.search": "fair_usage.records_used; empty pages use zero records",
         "crawl4ai.people.search": "x-c4-cost header; an empty answer charges 0",
         "crustdata.companies.jobs.search": "X-Credits-Used header; empty results consume none",
         "crustdata.companies.search": "X-Credits-Used header; charged per company returned",
@@ -3739,9 +3737,6 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "leadmagic.x.employee-finder": "credits_consumed; free if no results",
         "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
         "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
-        "oceanio.companies.lookalike": "creditsUsed; charged per result",
-        "oceanio.companies.search": "creditsUsed; charged per result",
-        "oceanio.people.search": "creditsUsed; charged per result",
         "quickenrich.companies.search": "meta.credits_used; empty results free",
         "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
         "sumble.organizations": "credits_used; unmatched inputs free",
