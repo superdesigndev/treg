@@ -94,7 +94,7 @@ from . import route_health
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _host_of, _marketplace_secret
+from .resolve import _anonymous_offer, _anonymous_refusal, _host_of, _marketplace_secret
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -694,6 +694,10 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                       ignored=ignored_filters(ad, contract, identity, given), miss_micro=miss)
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
+            continue
+        if tier == "platform" and e.get("platform_auth") == "anonymous":
+            # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
+            dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}"})
             continue
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})

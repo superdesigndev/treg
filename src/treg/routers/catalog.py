@@ -221,11 +221,13 @@ async def catalog_provider(service: str) -> dict:
 
 def _quote_skip(ep: dict, cat) -> str | None:
     """Why the router would not call this child on treg's key, in `route.py`'s words; None if it would."""
-    from ..application.call.resolve import anonymous_served
+    from ..application.call.resolve import _anonymous_refusal, anonymous_served
     if catalog_store.paused(ep):
         return f"{ep['provider']} is paused on this deployment"
     if anonymous_served(ep) is not None:  # the keyless tier: free, no key on this deployment needed
         return None
+    if ep.get("platform_auth") == "anonymous":  # keyless but not served here: the true reason, not "no key"
+        return f"{ep['provider']} {_anonymous_refusal(ep, None)}"
     if not cat.platform_eligible(ep):
         return "not platform-eligible and no own key"
     if not get_settings().platform_key_for(ep["provider"]):

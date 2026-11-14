@@ -4315,7 +4315,10 @@ async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answe
     assert r.status_code == 200, r.text
     doc = r.json()["_treg"]
     assert [(t["provider"], t["outcome"]) for t in doc["tried"]] == [("tomba", "error"), ("findymail", "hit")]
-    assert doc["tried"][0]["charged_micro"] == 0 and "routed read" in doc["tried"][0]["detail"]
+    detail = doc["tried"][0]["detail"]
+    # the dedicated branch, not the generic read failure: it names the direct call that streams
+    assert doc["tried"][0]["charged_micro"] == 0 and "routed read" in detail
+    assert "directly, it streams" in detail and not detail.startswith("failed to read"), detail
     assert own == [["tomba"]], own  # asked on the team's own key, so unmetered
     assert doc["served_by"].startswith("findymail.")
     assert doc["charged_micro"] == doc["tried"][1]["charged_micro"] == before - await _balance(clients)
@@ -4347,3 +4350,31 @@ async def test_a_same_named_secret_never_makes_a_public_provider_an_own_key_chil
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
     assert tiers.get("financialdatasets.prices.snapshot") == "anonymous", tiers
+
+
+async def test_a_keyless_child_not_served_is_dropped_and_quoted_with_the_true_reason(
+        clients: AsyncClient, monkeypatch):
+    """A keyless row the anonymous tier does not take (provider not allow-listed) is dropped by the
+    router and skipped by the quote as "not enabled" — never as a missing key nobody can connect."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    from treg.routers.catalog import _quote_skip
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    why = {d["endpoint_id"]: d["why"] for d in plan.dropped}.get("financialdatasets.prices.snapshot", "")
+    assert "not enabled" in why and "key on this deployment" not in why, plan.dropped
+    skip = _quote_skip(row, cat) or ""
+    assert "not enabled" in skip and "key on this deployment" not in skip, skip
