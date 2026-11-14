@@ -1801,7 +1801,7 @@ adapters:
       queryParams.limit: limit
     max: {limit: 100}
     # Priced per 1,000 jobs, billed per job: the plan's block rounding would quote 1,000 jobs.
-    cost_units: "coalesce(limit, 20)"
+    cost_units: "coalesce(limit, 1)"
     out: {jobs: jobs, next_cursor: next_cursor}
   jobspipe.jobs.search:
     # Title searches only: company_name_or is a prefix match ('Nationwide' also finds Nationwide

@@ -1009,10 +1009,10 @@ returned and never documented as stable. An output field may say where it lands 
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
-  `carried_by` names other identity keys that ask the same thing: `companies.jobs.search` maps
-  `name` and `domain` to each other, so a `{name, domain}` request keeps a child that sends either,
-  while a title search answered by company alone, or a company search answered by title alone, is
-  still dropped. On a stand-in key (`q`) it works as described under stand-ins below.
+  `carried_by` names other identity keys that ask the same thing: a contract that maps a company's
+  `name` and `domain` to each other keeps a child that sends either for a `{name, domain}` request,
+  while a child that sends neither is still dropped. On a stand-in key (`q`) it works as described
+  under stand-ins below.
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
   only children that express every filter the caller sent (see Ranking).
@@ -1062,11 +1062,6 @@ returned and never documented as stable. An output field may say where it lands 
   the answer is their deduped union in attempt order, so an earlier provider's row for an account
   (with its follower count) leads and a later provider's own repeats count once. Rows from every child carry the account's profile `url`,
   which the merge dedupes on.
-- A `derive` target need not be an identity key: `companies.jobs` derives `greenhouse_board`,
-  `lever_board` and the rest from `{ats, board}` with `choose(lower(ats) == 'greenhouse', board,
-  null)`, and each board reader accepts only its own key, so the board a caller names reaches that
-  system's reader alone and treg never tries a slug on another system. A caller cannot send a
-  derived-only key; the plan's `dropped` names it as what the other readers need.
 - `identity_notes` maps an identity key to what to put in it (`people.search`'s `q`: describe the
   people in words). The routed endpoint shows it beside the key, which otherwise reads only "identity".
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
