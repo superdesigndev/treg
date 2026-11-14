@@ -101,5 +101,14 @@ async def test_a_public_provider_page_never_asks_for_an_account(clients: AsyncCl
     assert "your own account · never metered" not in off.text
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     on = await clients.get("/tools/financialdatasets")
-    assert "tools · free · $0.000 markup" in on.text and "Platform access" in on.text
+    # Nothing is metered and no credential is injected: the metered-provider copy must not appear.
+    for page in (off.text, on.text):
+        for stale in (" · metered per call", "run on treg.to&#x27;s key", "run on treg.to's key",
+                      "metered per call from a prepaid balance", "Platform calls are charged per call",
+                      "that key always wins", "those calls are never metered", "billed per call",
+                      "credential is injected server-side", "its own metered proxy",
+                      "pricing at the provider&#x27;s own rate", "Price before the call"):
+            assert stale not in page, stale
+    assert "tools · free · $0.000 markup" in on.text and "Free, no key" in on.text
     assert "your own account · never metered" not in on.text
+    assert "public API with no key: there is nothing to connect" in on.text
