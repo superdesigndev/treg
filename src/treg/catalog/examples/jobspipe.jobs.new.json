@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 1,
+    "total_companies": null,
+    "truncated_companies": 0,
+    "next_cursor": null,
+    "next_delta_cursor": "ZGMxOjIwMjYtMTEtMTQgMDA6MDk6MDB",
+    "credits_charged": 1,
+    "jobs_already_paid": 0,
+    "credits_remaining": 564,
+    "credits_allowance": 1000
+  },
+  "data": [
+    {
+      "id": "034bab5a564d68c7",
+      "job_title": "Machine Learning Engineer",
+      "company": "Autodesk",
+      "company_domain": "autodesk.com",
+      "url": "https://www.indeed.com/viewjob?jk=034bab5a564d68c7",
+      "final_url": "https://jobs.autodesk.com/careers/job/1443154327924",
+      "date_posted": "2026-11-13T06:00:00+00:00",
+      "discovered_at": "2026-11-13T23:20:05+00:00",
+      "status": "active",
+      "location": "Berlin",
+      "country_code": "DE",
+      "remote": false,
+      "work_arrangement": null,
+      "seniority": null,
+      "min_annual_salary_usd": null,
+      "max_annual_salary_usd": null,
+      "salary_currency": null,
+      "estimated_avg_annual_salary_usd": 96985,
+      "occupation_code": "2512",
+      "occupation_label": "Software Developers",
+      "technology_slugs": [
+        "python"
+      ],
+      "description": "Job ID\n\n26WD100298\n\nJob Requisition ID #\n\n26WD100298\n\nOur Team\n\nThe NavPack team develops intelligent capabilities that help customers accelerate complex design, engineering, and simulation workflows.…",
+      "sources": [
+        {
+          "provider": "indeed",
+          "url": "https://www.indeed.com/viewjob?jk=034bab5a564d68c7",
+          "seen_at": "2026-11-13T23:20:05.574950+00:00"
+        }
+      ],
+      "last_seen_at": "2026-11-14 00:06:47",
+      "ghost_score": 25
+    }
+  ]
+}

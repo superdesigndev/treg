@@ -236,6 +236,19 @@ def test_the_same_status_with_another_body_is_no_capacity_signal(provider, statu
     assert S.classify(provider, status, {}, other) is None
 
 
+def test_jobspipe_spent_credits_lock_but_a_plan_gate_and_a_rate_limit_do_not():
+    spent = S.classify("jobspipe", 402, {"retry-after": "1296000"},
+                       b'{"error":"Monthly request quota exceeded","message":"Upgrade to continue.",'
+                       b'"upgrade_url":"https://jobspipe.dev/pricing"}')
+    assert spent.kind == "balance" and S.is_exhausting(spent)
+    gate = S.classify("jobspipe", 402, {}, b'{"error":"Monitors need the Builder package or above '
+                                           b'(they deliver to webhooks)"}')
+    assert gate.kind == "unknown" and not S.is_exhausting(gate)
+    for headers in ({"retry-after": "1"}, {}):
+        burst = S.classify("jobspipe", 429, headers, b'{"error":"Rate limit exceeded"}')
+        assert burst.kind == "burst" and not S.is_exhausting(burst)
+
+
 def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
     sig = S.classify("dropcontact", 403, {}, b'{"error":true,"reason":"You submitted 5 valid items but only have 2 credits left"}')
     assert not S.is_exhausting(sig)

@@ -1,0 +1,324 @@
+provider: hirebase
+source:
+  docs: https://www.hirebase.org/docs
+  llms: https://www.hirebase.org/docs/llms.txt
+  # No OpenAPI is published (/openapi.json and /docs/openapi.json answer 404); rows follow the docs pages.
+  openapi: null
+  curated: '2026-11-14'
+pricing_url: https://www.hirebase.org/pricing
+# Monthly meters, each billed by what the answer returns: jobs (one per job record), companies (one per
+# company record), insights (one per call), salary benchmarks (one per request, refunded when the task
+# fails). An empty page bills nothing. Every metered answer carries running totals in Hirebase-Usage-*
+# headers (Included-Used, Total-Used); they are period totals, not this call's charge, so job and company
+# rows settle by counting the records returned, which is exactly how the meter moves.
+# Probe: GET /v2/billing/usage/summary is free; a bad key answers 401 {"detail": "Invalid API key"}.
+limits: "100 requests per 60 s per key (429 with Retry-After); task reads have their own 600 per 60 s. At most 100 jobs per page. A spent monthly allowance on a capped plan answers 429 with X-Billing-Code: limit_exceeded."
+proposed_capabilities:
+  jobs.match: "Find open jobs that match a resume or candidate profile"
+  companies.jobs.expired: "List job postings that closed since a date"
+  jobs.task.status: "Read an asynchronous job-data task's state and result"
+defaults:
+  provenance: {source: docs, source_url: 'https://www.hirebase.org/docs/api-reference/billing/usage-headers.md', checked: '2026-11-14', confidence: verified}
+
+endpoints:
+  # --- Jobs ---------------------------------------------------------------------------------
+  - id: hirebase.jobs.search
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.search.json
+    capability: companies.jobs.search
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/search
+    name: Search job postings
+    summary: "Search open jobs read from employers' own career pages by title, keyword, place, remote, salary, experience, company, funding or posted date. Each job has its description, posted pay, locations, skills, apply link and a company profile."
+    input:
+      bodyType: json
+      body:
+        job_titles: {type: "array[string]", required: false, note: "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude", example: ["software engineer"]}
+        keywords: {type: "array[string]", required: false, note: "ranked against description, skills and technologies; prefix - to exclude", example: ["kubernetes"]}
+        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}] with full names; a city matches its metro area", example: [{country: "United States"}]}
+        location_types: {type: "array[string]", required: false, note: "Remote, Hybrid or In-Person", example: ["Remote"]}
+        experience: {type: "array[string]", required: false, note: "Entry, Junior, Mid, Senior or Executive"}
+        job_types: {type: "array[string]", required: false, note: "Full Time, Part Time, Contract or Internship"}
+        salary: {type: object, required: false, note: "{min, max} in currency"}
+        currency: {type: string, required: false, example: "USD"}
+        company_name: {type: string, required: false, note: "the whole name of one Hirebase company, case ignored: 'Ramp' never finds LiveRamp or Kramp. A company listed twice is two names ('Palantir' and 'Palantir Technologies' hold different jobs); company_slug names one exactly", example: "Ramp"}
+        company_slug: {type: "array[string]", required: false, note: "Hirebase company slugs; resolve one with hirebase.companies.search", example: ["palantir-technologies"]}
+        funding_types: {type: "array[string]", required: false, example: ["Series A"]}
+        days_ago: {type: integer, required: false, example: 7}
+        ingested_after: {type: string, required: false, note: "ISO-8601; only jobs Hirebase first saw at or after this time. For polling new jobs, with sort_by first_ingested"}
+        job_board: {type: "array[string]", required: false, example: ["greenhouse"]}
+        exclude_job_board: {type: "array[string]", required: false, note: "[\"linkedin\"] keeps only jobs read from career pages"}
+        return_raw_description: {type: string, required: false, enum: ["true", "false"], note: "\"true\" adds description_raw, the full HTML from the job system"}
+        sort_by: {type: string, required: false, enum: [relevance, date_posted, first_ingested, salary, yoe]}
+        sort_order: {type: string, required: false, enum: [desc, asc], default: desc}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "jobs per page, and the price: each job returned is charged", example: 1}
+      note: "Unknown fields answer 422. A multi-location posting comes back as one row per location."
+    test_request: {body: {company_name: "Ramp", limit: 1}}
+    price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.jobs}}
+    miss: {when: {path: response.jobs, op: empty}}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/search-post
+
+  - id: hirebase.jobs.search.count
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.search.count.json
+    kind: utility
+    capability: companies.jobs.search.count
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/estimate
+    name: Count jobs a search would return
+    summary: "Count the jobs a hirebase.jobs.search body matches, for free: with limit 0 the total, otherwise what that page would cost."
+    input:
+      bodyType: json
+      body:
+        job_titles: {type: "array[string]", required: false, example: ["software engineer"]}
+        keywords: {type: "array[string]", required: false}
+        geo_locations: {type: "array[object]", required: false, example: [{country: "United States"}]}
+        location_types: {type: "array[string]", required: false}
+        company_slug: {type: "array[string]", required: false, example: ["palantir-technologies"]}
+        days_ago: {type: integer, required: false, example: 7}
+        limit: {type: integer, required: false, default: 10, min: 0, note: "0 returns the total match count"}
+      note: "Takes every hirebase.jobs.search field."
+    test_request: {body: {job_titles: ["software engineer"], geo_locations: [{country: "United States"}], days_ago: 7, limit: 0}}
+    price: {value: '0', currency: USD, unit: call, note: "Free, also once a monthly allowance is spent."}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/estimate
+
+  - id: hirebase.jobs.match
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.match.json
+    capability: jobs.match
+    platform: jobs
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/neural-search
+    name: Match open jobs to a candidate profile
+    summary: "Rank open jobs by meaning against a free-text candidate profile or a set of job ids (more like these), optionally inside the usual title, place, remote and date filters."
+    input:
+      bodyType: json
+      body:
+        vector: {type: object, required: false, note: "{query: profile text} or {job_ids: [_id, ...]} for jobs like these", example: {query: "Backend engineer, 6 years of Go and Postgres at fintech startups, wants remote work"}}
+        lexical: {type: object, required: false, note: "the hirebase.jobs.search filters (job_titles, geo_locations, location_types, days_ago, ...). A misspelled field inside is ignored, not refused", example: {location_types: ["Remote"], days_ago: 14}}
+        score_threshold: {type: number, required: false, min: 0, max: 1}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "each job returned is charged", example: 3}
+      note: "Answers take 15-25 s. Results carry no similarity score, and one role posted per country can fill several rows."
+    test_request: {body: {vector: {query: "Backend engineer, 6 years of Go and Postgres at fintech startups, wants remote work"}, lexical: {location_types: ["Remote"], days_ago: 14}, limit: 2}}
+    price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.jobs}}
+    miss: {when: {path: response.jobs, op: empty}}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/neural-search-post
+
+  - id: hirebase.jobs.get
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.get.json
+    capability: companies.jobs.detail
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/{job_id}
+    name: Get one job posting
+    summary: "One job posting by its Hirebase _id: description and raw HTML, posted pay, locations, skills, technologies, benefits, scores, apply link and company profile."
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the 24-character _id from a search", example: "66b393081444af562c634559"}
+    test_request: {pathParams: {job_id: "66b393081444af562c634559"}}
+    price: {value: '1', currency: credit, unit: record, note: "One credit per job; an unknown id (404) is free."}
+    not_found: {status: [404], means: "no job has this id"}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/get-by-id
+
+  - id: hirebase.jobs.expired
+    added: '2026-11-14'
+    example_response: examples/hirebase.jobs.expired.json
+    capability: companies.jobs.expired
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/expired-jobs
+    name: List jobs closed since a date
+    summary: "Ids of jobs removed from employers' career pages since a date in the last 14 days, with company slug, job slug and the day each closed. Free."
+    input:
+      queryParams:
+        since: {type: string, required: true, note: "YYYY-MM-DD or an ISO datetime within the last 14 days; older answers 400", example: "2026-11-13"}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 1}
+    untestable: "since must fall within the last 14 days, so any fixed test date stops working; verified live by hand."
+    price: {value: '0', currency: USD, unit: call, note: "Free: the feed returns identifiers only."}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/expired-jobs
+
+  # --- Companies ----------------------------------------------------------------------------
+  - id: hirebase.companies.search
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.companies.search.json
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /hirebase/companies/search
+    name: Search companies and resolve a company slug
+    summary: "Find companies by name, text, industry, size, headquarters or funding, with each company's Hirebase slug, website, LinkedIn page, size, industries and description. The slug is what hirebase.companies.jobs takes."
+    input:
+      bodyType: json
+      body:
+        company_name: {type: string, required: false, example: "Palantir"}
+        query: {type: string, required: false, note: "free text over name, description and services"}
+        company_link: {type: string, required: false, note: "website domain, e.g. palantir.com"}
+        linkedin_link: {type: string, required: false}
+        industries: {type: "array[string]", required: false}
+        company_types: {type: "array[string]", required: false, note: "headcount buckets: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10000+"}
+        hq_geolocations: {type: "array[object]", required: false, note: "[{city, region, country}]"}
+        funding_types: {type: "array[string]", required: false}
+        sort_by: {type: string, required: false, enum: [hottest, size, newest], default: hottest}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "each company returned is charged", example: 3}
+      note: "Name search is fuzzy and returns the best matches, never an empty list: check company_link before using a slug."
+    test_request: {body: {company_name: "Palantir", limit: 3}}
+    price: {value: '0.005', currency: USD, unit: record, note: "Per company returned; an empty page is free. treg holds limit companies (10 when omitted)."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.companies}}
+    miss: {when: {path: response.companies, op: empty}}
+    docs_url: https://www.hirebase.org/docs/api-reference/companies/search-companies
+
+  - id: hirebase.companies.jobs
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.companies.jobs.json
+    capability: companies.jobs
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /hirebase/companies/{company_slug}/jobs
+    name: List a company's open jobs
+    summary: "A company's open jobs by its Hirebase slug, with description, posted pay, locations, apply link and job board, plus total_count for the whole board."
+    input:
+      pathParams:
+        company_slug: {type: string, required: true, note: "Hirebase's slug, not the website: palantir is a different company from palantir-technologies. Resolve it with hirebase.companies.search", example: "palantir-technologies"}
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "each job returned is charged", example: 2}
+        job_category: {type: string, required: false, example: "Engineering Jobs"}
+      note: "An unknown slug answers 200 with no jobs."
+    test_request: {pathParams: {company_slug: "palantir-technologies"}, queryParams: {limit: 2}}
+    price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
+    reserve: {rows: {param: query.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.jobs}}
+    miss: {when: {path: response.jobs, op: empty}}
+    docs_url: https://www.hirebase.org/docs/api-reference/companies/get-company-jobs
+
+  # --- Salary -------------------------------------------------------------------------------
+  - id: hirebase.jobs.salary.insights
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.salary.insights.json
+    capability: jobs.salary.benchmark
+    platform: jobs
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/insights
+    name: Salary percentiles and market stats for a job search
+    summary: "Posted-pay percentiles (p25, p50, p75, p90), a histogram and pay by level and work arrangement for any job search, with remote share, top companies, skills and technologies. Answers in about 2 s."
+    input:
+      bodyType: json
+      body:
+        job_titles: {type: "array[string]", required: false, example: ["software engineer"]}
+        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}] with full names", example: [{city: "San Francisco", region: "California", country: "United States"}]}
+        location_types: {type: "array[string]", required: false}
+        experience: {type: "array[string]", required: false}
+        keywords: {type: "array[string]", required: false}
+        company_slug: {type: "array[string]", required: false}
+        industry: {type: "array[string]", required: false}
+        days_ago: {type: integer, required: false, example: 90}
+        top_companies_limit: {type: integer, required: false, default: 10, min: 1, max: 50}
+      note: "Takes every hirebase.jobs.search filter. Statistics come from at most 500 matching jobs (headline.sample_size), and only jobs that post pay count toward salary (salary.count)."
+    test_request: {body: {job_titles: ["software engineer"], geo_locations: [{city: "San Francisco", region: "California", country: "United States"}], days_ago: 90}}
+    price: {value: '0.01', currency: USD, unit: call, note: "Every answered call counts, an empty cohort included."}
+    bill: {miss: charged}
+    miss: {when: {path: response.headline.total_count, op: equals, value: 0}}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/insights
+
+  - id: hirebase.jobs.salary.benchmark
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.jobs.salary.benchmark.json
+    terminal_example_response: examples/hirebase.tasks.get.json
+    capability: jobs.salary.benchmark
+    platform: jobs
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/salary-benchmark
+    name: Benchmark a role's salary against the market
+    summary: "Benchmark a role's posted salary from a job title and place, or a posting URL: percentiles over open and recently closed jobs, the typical posted floor and ceiling, a monthly trend, a confidence grade, sample listings and where a proposed range sits."
+    input:
+      bodyType: json
+      body:
+        job_title: {type: string, required: false, note: "required unless public_url is given", example: "Software Engineer"}
+        public_url: {type: string, required: false, note: "a job posting URL; its title and place are read from the posting and win over the other fields"}
+        geo_locations: {type: "array[object]", required: false, example: [{city: "San Francisco", region: "California", country: "United States"}]}
+        yoe_range: {type: object, required: false, note: "{min, max} years of experience"}
+        salary_range: {type: object, required: false, note: "{min, max, currency, period}: the range to rank against the market", example: {min: 160000, max: 200000, currency: USD, period: yearly}}
+        location_types: {type: "array[string]", required: false}
+        industry: {type: "array[string]", required: false}
+        days_ago: {type: integer, required: false, default: 90, min: 1, max: 365}
+        include_expired: {type: boolean, required: false, default: true}
+      note: "Answers with a task; the report is in the finished task's result after about 1-2 minutes. Follow it with hirebase.tasks.get."
+    test_request: {body: {job_title: "Software Engineer", geo_locations: [{city: "San Francisco", region: "California", country: "United States"}], salary_range: {min: 160000, max: 200000, currency: USD, period: yearly}, days_ago: 90}}
+    price: {value: '0.25', currency: USD, unit: call, note: "Charged when the report finishes; a failed task is free."}
+    expect: {path: response.id, op: present}
+    async:
+      id_from: id
+      poll:
+        endpoint: hirebase.tasks.get
+        param: {in: pathParams, name: task_id}
+      status:
+        path: state
+        success: [finished]
+        failure: [failed, canceled]
+        progress: [queued, processing]
+      result:
+        path: result.market.salary
+      interval: 15
+      max_age: 3600
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/salary-benchmark
+
+  - id: hirebase.tasks.get
+    added: '2026-11-14'
+    verified: '2026-11-14'
+    example_response: examples/hirebase.tasks.get.json
+    kind: utility
+    capability: jobs.task.status
+    platform: jobs
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /tasks/{task_id}
+    name: Check a Hirebase task
+    summary: "Read a salary benchmark task's state (queued, processing, finished, failed) and, once finished, its report in result."
+    resource_ownership:
+      requires: {kind: "poll:hirebase.tasks.get", param: task_id}
+    input:
+      pathParams:
+        task_id: {type: string, required: true, note: "the id hirebase.jobs.salary.benchmark answered", example: "2b82e4ee-9d92-44a3-83ba-90bef23d5367"}
+    test_request: {pathParams: {task_id: "2b82e4ee-9d92-44a3-83ba-90bef23d5367"}}
+    price: {value: '0', currency: USD, unit: call, note: "Reading a task is free."}
+    not_found: {status: [404], means: "no task has this id"}
+    docs_url: https://www.hirebase.org/docs/api-reference/tasks/get-task-status

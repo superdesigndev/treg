@@ -1,0 +1,127 @@
+{
+  "as_of": "2026-09-25 18:41:45",
+  "company": {
+    "id": "9898028827652544258",
+    "name": "Stripe",
+    "domain": "stripe.com",
+    "url": "https://stripe.com",
+    "logo": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_200_200/B56ZlyKwpUKIAI-/0/1758557047806/stripe_logo?e=2147483647&v=beta&t=En4Hm6NDGbDTYCoOQ0Ko5Ne2gylx0WRb0yL2GlOeXBQ",
+    "linkedin_url": "https://www.linkedin.com/company/stripe"
+  },
+  "num_jobs": 3278,
+  "num_technologies": 35,
+  "data": [
+    {
+      "technology": {
+        "slug": "sql",
+        "name": "SQL",
+        "category": "Programming languages",
+        "category_slug": "programming-languages",
+        "parent_category": "Programming languages",
+        "kind": "language",
+        "logo": null
+      },
+      "confidence": "high",
+      "tier": "confirmed",
+      "jobs": 632,
+      "jobs_last_7_days": 21,
+      "jobs_last_30_days": 134,
+      "jobs_last_180_days": 534,
+      "first_date_found": "2023-10-20",
+      "last_date_found": "2026-11-13",
+      "rank_within_category": 1,
+      "relative_occurrence_within_category": 0.3452,
+      "required_jobs": 357,
+      "preferred_jobs": 274,
+      "mentioned_jobs": 7,
+      "recency": "active",
+      "share": 0.1928,
+      "occupations": [
+        "3359",
+        "2421",
+        "1330",
+        "1219",
+        "2120",
+        "3322",
+        "3512",
+        "2412",
+        "2519",
+        "2413",
+        "1221",
+        "2434"
+      ],
+      "countries": [
+        "LU",
+        "IE",
+        "IN",
+        "CA",
+        "AU",
+        "VN",
+        "GB",
+        "BR",
+        "JP",
+        "MX",
+        "SG",
+        "US"
+      ]
+    },
+    {
+      "technology": {
+        "slug": "python",
+        "name": "Python",
+        "category": "Programming languages",
+        "category_slug": "programming-languages",
+        "parent_category": "Programming languages",
+        "kind": "language",
+        "logo": "https://jobspipe.dev/tech-icons/python.svg"
+      },
+      "confidence": "high",
+      "tier": "confirmed",
+      "jobs": 344,
+      "jobs_last_7_days": 12,
+      "jobs_last_30_days": 75,
+      "jobs_last_180_days": 303,
+      "first_date_found": "2023-11-01",
+      "last_date_found": "2026-11-13",
+      "rank_within_category": 2,
+      "relative_occurrence_within_category": 0.1879,
+      "required_jobs": 205,
+      "preferred_jobs": 131,
+      "mentioned_jobs": 12,
+      "recency": "active",
+      "share": 0.1049,
+      "occupations": [
+        "1223",
+        "2512",
+        "1330",
+        "2523",
+        "2120",
+        "2529",
+        "2412",
+        "2519",
+        "1211",
+        "2423",
+        "2413",
+        "3359"
+      ],
+      "countries": [
+        "IE",
+        "IN",
+        "CA",
+        "AU",
+        "VN",
+        "GB",
+        "ES",
+        "RO",
+        "MX",
+        "SG",
+        "US",
+        "NL"
+      ]
+    }
+  ],
+  "metadata": {
+    "credits_remaining": 538,
+    "credits_allowance": 1000
+  }
+}

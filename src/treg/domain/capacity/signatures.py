@@ -64,7 +64,22 @@ _TABLE: list[Signature] = [
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
+    # Hirebase: a spent monthly meter is a 429 with `X-Billing-Code: limit_exceeded` and "You've reached your
+    # plan's included usage of N"; its rate-limit 429 says "Rate limit exceeded" with Retry-After. Meters are
+    # per operation (jobs, companies, insights, benchmarks), so lock the endpoint only. A request whose
+    # `limit` is larger than what is left ("... only M of your plan's included N remain") does not lock:
+    # a smaller request still runs.
+    Signature("hirebase", 429, r"only [1-9]\d* of your plan's included", "unknown"),
+    Signature("hirebase", 429, r"your plan's included usage|only 0 of your plan's included", "quota"),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
+    # JobsPipe (openapi ErrorResponse + auth.md + docs usage/rate-limits): spent credits are a 402
+    # {"error": "Monthly request quota exceeded", "message": ..., "upgrade_url": ...} with Retry-After
+    # to the next UTC month, also once the one-time free grant is gone. A plan-gated feature is a 402
+    # too ("Monitors need the Builder package or above"): no account signal. Its per-second and
+    # concurrency limits are a 429 "Rate limit exceeded" (Retry-After: 1, or retry_after_seconds: 2).
+    Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
+    Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
+    Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),

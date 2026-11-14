@@ -2631,6 +2631,24 @@ THEIRSTACK = OAuthProvider(
 )
 
 
+JOBSPIPE = OAuthProvider(
+    service="jobspipe", display_name="JobsPipe", auth_kind="key",
+    token_label="API key", token_placeholder="your JobsPipe API key (jp_live_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://jobspipe.dev/signup",
+    setup_action_label="Get your JobsPipe API key",
+    setup_steps=("Sign up at JobsPipe (new accounts get 1,000 free credits, once).",
+                 "Open the dashboard, create an API key and copy it."),
+    setup_note="Each job costs a credit the first time your account pulls it in a month; repeats, empty pages, counts and company suggestions are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search job postings with full descriptions and pay, poll for new ones, benchmark salaries by country and read company technologies.",
+    base_url="https://api.jobspipe.dev",
+    docs_url="https://jobspipe.dev/docs",
+    probe_path="/v1/account",  # free; a bad key gets 401
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -4335,6 +4353,34 @@ SMARTRECRUITERS = OAuthProvider(
 )
 
 
+HIREBASE = OAuthProvider(
+    service="hirebase",
+    display_name="Hirebase",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hb_...",
+    # The key rides in x-api-key; the header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://www.hirebase.org/signup",
+    setup_action_label="Get your Hirebase API key",
+    setup_steps=(
+        "Create an account at hirebase.org/signup.",
+        "Copy your key from Profile, then API Key (it starts with hb_).",
+        "The Free plan includes 500 jobs, 50 companies, 25 insights and 3 salary benchmarks a month; paid plans raise them.",
+    ),
+    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty answer is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search fresh job postings read from employers' own career pages, match jobs to a candidate profile, list a company's open jobs and get salary percentiles for a role and place.",
+    base_url="https://api.hirebase.org/v2",
+    docs_url="https://www.hirebase.org/docs",
+    probe_path="/billing/usage/summary",  # free; a bad key gets HTTP 401 {"detail": "Invalid API key"}
+)
+
+
 # Lever's Postings API serves every published posting without a key. The API key Lever documents
 # applies only to the application POST, which is not listed.
 LEVER = OAuthProvider(
@@ -4358,7 +4404,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, LEVER,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4370,7 +4416,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search

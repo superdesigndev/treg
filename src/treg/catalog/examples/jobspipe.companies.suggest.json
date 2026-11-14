@@ -1,0 +1,29 @@
+{
+  "query": "discord",
+  "candidates": [
+    {
+      "key": "10154656179566200712",
+      "name": "Discord",
+      "domain": "discord.com",
+      "jobs": 43,
+      "hq_country": null,
+      "verified": true
+    },
+    {
+      "key": "7146749032859267076",
+      "name": "DISCORDIA Transport & Logistics",
+      "domain": "discordia.eu",
+      "jobs": 3,
+      "hq_country": null,
+      "verified": true
+    },
+    {
+      "key": "3923983940290642196",
+      "name": "discord international",
+      "domain": null,
+      "jobs": 9,
+      "hq_country": null,
+      "verified": false
+    }
+  ]
+}
