@@ -4259,6 +4259,10 @@ def test_a_filter_nested_in_a_larger_value_is_unmappable_when_its_call_yields_no
     assert _unmappable(nested, "country", {"title": "x", "country": "UK"})
     assert not _unmappable(nested, "country", {"title": "x", "country": "GB"})
     assert not _unmappable(adapter("list(obj('country', country))"), "country", {"title": "x", "country": "UK"})
+    # beside another place key in the same value: a nameable city does not carry an unnameable country
+    multi = adapter("list(obj('city', city, 'country', country_name(country)))")
+    assert _unmappable(multi, "country", {"title": "x", "city": "London", "country": "UK"})
+    assert not _unmappable(multi, "country", {"title": "x", "city": "London", "country": "GB"})
 
 
 async def test_a_routed_read_stops_at_eight_mib():

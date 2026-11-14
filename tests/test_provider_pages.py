@@ -140,5 +140,17 @@ async def test_a_public_provider_not_enabled_never_promises_free_calls(clients: 
     page = (await clients.get("/tools/financialdatasets")).text
     assert "not enabled on this server" in page.lower() and "Nothing to connect" in page
     for false in ("No charge per call", "Nothing. treg.to does not charge", "Its tools are free",
-                  "free, no key, nothing to connect", "connect your own account"):
+                  "free, no key, nothing to connect", "connect your own account", "tools · free"):
         assert false not in page, false
+
+
+async def test_a_key_provider_with_its_key_counts_keyless_rows_apart(clients: AsyncClient, monkeypatch):
+    """With its key set, a key provider's keyed rows are platform + BYOK and its keyless rows are free:
+    never one count that swallows the other (a negative BYOK-only count)."""
+    import re
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "test-key")
+    page = (await clients.get("/tools/financialdatasets")).text
+    assert "Free, no key" in page and "Platform + BYOK" in page
+    assert not re.search(r"-\d+ BYOK only", page), "keyless rows counted as platform rows"

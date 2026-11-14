@@ -2592,8 +2592,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     mixed = bool(platform_eps and byok_only and key_auth)
     prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
     # Published prices do not remove the OAuth account-connection requirement.
-    # A public provider has no account to connect even where this server has not enabled it, and a
-    # key provider with keyless rows serves those with nothing connected.
+    # A public provider has no account to connect even where this server has not enabled it. A key
+    # provider without its key reads as own-key, as on main; its keyless rows carry their own label.
     is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
     # A public provider this server has not allow-listed: nothing to connect, but nothing callable either.
     public_off = public and not platform_eps
@@ -2652,7 +2652,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         if len(demo_eps) == 3:
             break
 
-    kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
+    kicker = (f"{len(eps)} tools · not enabled on this server" if public_off
+              else f"{len(eps)} tools · your own account · never metered" if is_oauth
               else f"{len(eps)} tools · " + (f"from {_esc_html(cheapest)}" if cheapest else "free") + " · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"

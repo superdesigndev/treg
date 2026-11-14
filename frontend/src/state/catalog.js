@@ -240,6 +240,7 @@ verdictDate(d){ try{ const m=String(d).length===7;   // a review carries only it
       || (this.platData&&this.platData.providers||{})[service]; return (p&&p.auth_kind)||''; },
 endpointAccessLabel(e){
       if(e.kind==='routed') return 'Routed platform call';
+      if(e.platform_auth==='anonymous') return 'Free, no key';   // a keyless public row, never treg's key
       if(e.id==='fishaudio.voices.list') return 'Team voices + BYOK';
       const p=this.providers.find(p=>p.service===e.provider)
         || (this.platData&&this.platData.providers||{})[e.provider] || {};
