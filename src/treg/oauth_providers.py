@@ -4272,7 +4272,7 @@ SPECSTREAM = OAuthProvider(
     ),
     setup_note=(
         "A find is billed per matching row (5 cents, 15 cents or $1) from your SpecStream balance, never "
-        "above the ceiling you set; a row left out costs nothing. New accounts start with $10 of work. "
+        "above the ceiling you set; a row left out costs nothing. New accounts start with $10 of credit. "
         "Connecting reads the balance, which spends nothing."
     ),
     auth_uri="", token_uri="",
