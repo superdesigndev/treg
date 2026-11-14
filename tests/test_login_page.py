@@ -75,7 +75,7 @@ async def test_landing_offers_dashboard_for_a_live_session(web):
     assert r.status_code == 200
     assert 'data-signed-in="true"' in r.text
     assert r.headers['cache-control'] == 'private, no-store'
-    assert r.headers['vary'] == 'Cookie, Accept-Encoding'
+    assert r.headers['vary'] == 'Cookie'
     web.cookies.set("treg_session", sess.make_session(uid, ttl=-1))  # expired session → landing again
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200
