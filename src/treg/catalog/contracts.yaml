@@ -776,7 +776,7 @@ contracts:
       location: {type: str, default: null, note: "free-text place of the job, finer than country ('Texas', 'New York, NY', 'Berlin'), passed to providers that take one"}
       remote: {type: bool, default: null, note: "true: remote jobs only. false or absent: no remote filter", analytics: value}
       posted_within_days: {type: int, min: 1, max: 365, default: null, note: "posted (or first seen) in the last N days. Absent, TheirStack still asks for the last 30 days: it has no open/closed flag", analytics: value}
-      limit: {type: int, default: 10, note: "rows to return — most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows"}
+      limit: {type: int, default: 10, note: "rows to return — most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. A board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"}
     output:
       jobs: {type: list, required: true}
       count: {type: int}
