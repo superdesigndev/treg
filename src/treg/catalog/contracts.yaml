@@ -755,17 +755,91 @@ contracts:
     idempotent: true
 
   companies.jobs.search:
-    summary: "Open job listings at a company, by name or domain — provider-native job rows in `jobs`"
+    summary: "Search open job postings by title across companies, or at one company by name or domain — provider-native job rows in `jobs`"
     identity:
+      - {title: str, domain: str}
+      - {title: str, name: str}
+      - {title: str}
       - {name: str}
       - {domain: str}
-    filters:
-      limit: {type: int, default: 10, note: "rows to return — most providers bill per row"}
+    identity_notes:
+      title: "job title words ('data engineer'); with name or domain, that role at that company"
+      name: "the employer's name ('Ramp'). Some job indexes match it as a prefix ('Nationwide' also finds Nationwide Legal): check each row's company. For one company's whole open board, treg.companies.jobs takes the board itself"
+      domain: "the employer's website domain ('ramp.com')"
+    # A title search answered without the title, or a company search answered without the company,
+    # bills strangers' or the whole company's jobs as a hit. A name and a domain name one company,
+    # so a child that sends either keeps a {name, domain} request.
+    scoping: [title, name, domain]
+    carried_by: {name: [domain], domain: [name]}
+    filters: &jobs_filters
+      country: {type: str, default: null, note: "ISO alpha-2 country of the job ('US', 'GB')", analytics: value}
+      location: {type: str, default: null, note: "free-text place of the job, finer than country ('Texas', 'New York, NY', 'Berlin'), passed to providers that take one"}
+      remote: {type: bool, default: null, note: "true: remote jobs only. false or absent: no remote filter", analytics: value}
+      posted_within_days: {type: int, min: 1, max: 365, default: null, note: "posted (or first seen) in the last N days. Absent, TheirStack still asks for the last 30 days: it has no open/closed flag", analytics: value}
+      limit: {type: int, default: 10, note: "rows to return — most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows"}
     output:
       jobs: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
     miss: "jobs == []"
+    idempotent: true
+    # The three with the fullest current postings at the lowest price per job; MobiusEngine takes
+    # title searches only (adapters.yaml), and Hirebase matches a company name exactly.
+    prefer: [mobiusengine-jobs, hirebase, jobspipe]
+
+  companies.jobs:
+    summary: "One company's current open job postings: from its own job board when you name it (ats + board), else from job indexes by name or domain — provider-native job rows in `jobs`"
+    identity:
+      - {ats: str, board: str}
+      - {domain: str}
+      - {name: str}
+    identity_notes:
+      ats: "the company's job system, read from its careers URL: greenhouse (job-boards.greenhouse.io/<board>), lever (jobs.lever.co/<board>), lever_eu (jobs.eu.lever.co/<board>), ashby (jobs.ashbyhq.com/<board>), smartrecruiters (careers.smartrecruiters.com/<board>), workable (apply.workable.com/<board>). The board is read free; add name or domain so a board treg cannot read answers from a job index"
+      board: "the board's name, the path segment after the host in that URL ('discord')"
+      name: "the employer's name ('Ramp'). The first indexes asked match the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent; a later fallback matches a substring: check each row's company"
+      domain: "the employer's website domain ('ramp.com')"
+    # The board named by `ats` reaches only that system's reader: treg never guesses a board on
+    # another system.
+    derive:
+      greenhouse_board: "choose(lower(ats) == 'greenhouse', board, null)"
+      lever_board: "choose(lower(ats) == 'lever', board, null)"
+      lever_eu_board: "choose(lower(ats) == 'lever_eu', board, null)"
+      ashby_board: "choose(lower(ats) == 'ashby', board, null)"
+      smartrecruiters_board: "choose(lower(ats) == 'smartrecruiters', board, null)"
+      workable_board: "choose(lower(ats) == 'workable', board, null)"
+    # The search's filters exactly: a job index's adapter serves both contracts
+    # (`additional_capabilities` needs equal filters).
+    filters: *jobs_filters
+    output:
+      jobs: {type: list, required: true}
+      count: {type: int}
+      next_cursor: {type: str}
+    miss: "jobs == []"
+    idempotent: true
+    # A name goes to the exact-name indexes (Hirebase, then TheirStack) before MobiusEngine's
+    # substring match; a domain keeps PredictLeads ahead of TheirStack, as its price puts it.
+    prefer: [hirebase, predictleads, theirstack]
+
+  jobs.salary.benchmark:
+    summary: "Posted-pay percentiles for a job title in a country or a city — treg picks the provider and names the one that served"
+    identity:
+      - {title: str}
+    identity_notes:
+      title: "the job title ('data engineer')"
+    filters:
+      country: {type: str, default: null, note: "ISO alpha-2 country ('US', 'GB'); every provider takes it", analytics: value}
+      region: {type: str, default: null, note: "state or province in full ('Texas', 'Ontario'); only a provider with sub-country pay data takes it", analytics: value}
+      city: {type: str, default: null, note: "city ('San Francisco', 'London'); only a provider with sub-country pay data takes it", analytics: value}
+      location: {type: str, default: null, note: "one city in plain words ('London'), the same as `city`, which wins when both are sent; a state or province goes in `region`, and a place in several parts ('Austin, Texas') is not sent as a city", analytics: value}
+    output:
+      p50: {type: float, required: true, note: "median annual posted pay, in `currency`", analytics: value}
+      p10: {type: float}
+      p25: {type: float}
+      p75: {type: float}
+      p90: {type: float}
+      currency: {type: str, note: "one provider always answers in USD, another in the place's own currency", analytics: value}
+      count: {type: int, note: "postings with pay the percentiles come from", analytics: value}
+    miss: "p50 == null"
     idempotent: true
 
   companies.news:
