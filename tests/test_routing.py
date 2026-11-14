@@ -4527,7 +4527,8 @@ async def test_a_main_host_tool_does_not_hide_the_team_s_own_key_on_a_second_hos
     assert tiers.get("financialdatasets.prices.snapshot") == "credential", (tiers, plan.dropped)
 
 
-async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(clients: AsyncClient, monkeypatch):
+async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
+        clients: AsyncClient, monkeypatch, call_error_lines):
     import dataclasses
     from treg import oauth_providers
     from treg.models import Org
@@ -4550,3 +4551,21 @@ async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
         await db.commit()
     r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "AAPL"})
     assert r.status_code == 422 and "demo" in r.text, (r.status_code, r.json()["detail"]["dropped"])
+    line = call_error_lines()[-1]
+    assert line["kind"] == "admission_denied" and line["error_class"] == "treg_policy", line
+
+
+async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(monkeypatch):
+    """Demo policy speaks for the refusal only when it took every candidate."""
+    plan = SimpleNamespace(candidates=[], variant=("symbol",), route_rule=None, health=None, dropped=[
+        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but demo and sandbox teams do not call it",
+         "policy": True},
+        {"endpoint_id": "b.paid", "why": "ignores country", "strict": True}])
+
+    ep = catalog_store.load().by_id["treg.stocks.quote.live"]
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    mixed = call_route._no_candidate_refusal(ep, plan, options)
+    assert mixed.log_kind is None and "Strict-Filters" in mixed.detail["message"], mixed.detail
+    plan.dropped = plan.dropped[:1]
+    alone = call_route._no_candidate_refusal(ep, plan, options)
+    assert alone.log_kind == "admission_denied" and alone.status_code == 422, alone.detail

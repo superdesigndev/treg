@@ -1024,6 +1024,37 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     return response, spent
 
 
+def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFailed:
+    """The refusal for a routed call whose plan kept no candidate, with who it is on."""
+    # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
+    # caller's own choice, and a provider that cannot send a key the caller gave never will,
+    # so both answer 422 (nothing was charged either way)
+    capacity_drop = any(not d.get("strict") and not d.get("policy")
+                        and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
+                        for d in plan.dropped)
+    # only treg's demo policy took every candidate: any strict, scope or filter drop beside it
+    # is the caller's to fix, so it keeps its own message
+    policy_only = bool(plan.dropped) and all(d.get("policy") for d in plan.dropped)
+    strict_drop = [d for d in plan.dropped if d.get("strict")]
+    scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
+    return ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422,
+                           log_kind="admission_denied" if policy_only else None, detail={
+        "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
+        "dropped": plan.dropped,
+        "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
+                    f"no provider for {ep['id']} is open to this team: "
+                    + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in plan.dropped if d.get("policy"))
+                    if policy_only else
+                    f"no provider for {ep['id']} can send every key you sent together"
+                    + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
+                       if options.exclude else "; send fewer keys")
+                    if scope_drop and not strict_drop else
+                    f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
+                    f"no provider for {ep['id']} can honour every filter you sent for this identity "
+                    f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
+                    + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
+
+
 async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
                       execute_child, pending: list, *, audit_client: str = "") -> tuple[UpstreamResponse, int]:
     try:
@@ -1088,31 +1119,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
     _summarize(parent, route_rule=plan.route_rule, **({"health": plan.health} if plan.health else {}))
     if not plan.candidates:
-        # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
-        # caller's own choice, and a provider that cannot send a key the caller gave never will,
-        # so both answer 422 (nothing was charged either way)
-        capacity_drop = any(not d.get("strict") and not d.get("policy")
-                            and not str(d.get("why", "")).startswith(("needs ", "cannot scope by "))
-                            for d in plan.dropped)
-        policy_only = not capacity_drop and any(d.get("policy") for d in plan.dropped)
-        strict_drop = [d for d in plan.dropped if d.get("strict")]
-        scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]
-        raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422,
-                               log_kind="admission_denied" if policy_only else None, detail={
-            "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
-            "dropped": plan.dropped,
-            "message": (f"no provider can serve {ep['id']} for this identity right now" if capacity_drop else
-                        f"no provider for {ep['id']} is open to this team: "
-                        + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in plan.dropped if d.get("policy"))
-                        if policy_only else
-                        f"no provider for {ep['id']} can send every key you sent together"
-                        + (f" among those {EXCLUDE_HEADER} leaves; check that list, or send fewer keys"
-                           if options.exclude else "; send fewer keys")
-                        if scope_drop and not strict_drop else
-                        f"no provider can serve {ep['id']} for this identity right now" if not strict_drop else
-                        f"no provider for {ep['id']} can honour every filter you sent for this identity "
-                        f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
-                        + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
+        raise _no_candidate_refusal(ep, plan, options)
     # On a search, rank() puts specificity ahead of price, so candidates[0] can cost more than a
     # later one. Refuse only when none of them fit the ceiling, and name the true minimum.
     if options.max_cost_micro is not None and all(
