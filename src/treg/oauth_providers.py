@@ -4369,7 +4369,7 @@ HIREBASE = OAuthProvider(
         "Copy your key from Profile, then API Key (it starts with hb_).",
         "The Free plan includes 500 jobs, 50 companies, 25 insights and 3 salary benchmarks a month; paid plans raise them.",
     ),
-    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty answer is free.",
+    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty job or company page is free; an insights call is counted even when it finds nothing.",
     auth_uri="", token_uri="",
     scopes={},
     client_id_setting="", client_secret_setting="",
