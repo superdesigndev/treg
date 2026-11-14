@@ -1403,6 +1403,34 @@ contracts:
     miss: "answer == null"
     idempotent: true
 
+  ai-search.chatgpt.scrape:
+    summary: "Get the answer that the live ChatGPT page shows a user for a prompt, from a chosen country: the answer text, its Markdown and its cited sources"
+    identity:
+      - {prompt: str}
+    filters:
+      country: {type: str, default: "US", note: "ISO 3166-1 alpha-2: where the prompt is asked from"}
+      language: {type: str, default: en}
+    output:
+      answer: {type: str, required: true, note: "the answer text; Markdown when the provider returns no plain text"}
+      markdown: {type: str, note: "the answer in Markdown"}
+      sources: {type: list, note: "the provider's own cited-source objects; raw is the same body"}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.gemini.scrape:
+    summary: "Get the answer that the live Gemini page shows a user for a prompt, from a chosen country: the answer text, its Markdown and its cited sources"
+    identity:
+      - {prompt: str}
+    filters:
+      country: {type: str, default: "US", note: "ISO 3166-1 alpha-2: where the prompt is asked from"}
+      language: {type: str, default: en}
+    output:
+      answer: {type: str, required: true, note: "the answer text; Markdown when the provider returns no plain text"}
+      markdown: {type: str, note: "the answer in Markdown"}
+      sources: {type: list, note: "the provider's own cited-source objects; raw is the same body"}
+    miss: "answer == null"
+    idempotent: true
+
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
     identity:

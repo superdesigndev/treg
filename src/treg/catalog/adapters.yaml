@@ -3019,6 +3019,36 @@ adapters:
     body_array: true
     out: {answer: "tasks[0].result[0].items[0].sections[0].text",
           sources: "tasks[0].result[0].items[0].sections[0].annotations", source_kind: "'model_api'"}
+  # ---- ai-search.chatgpt.scrape and ai-search.gemini.scrape: the live answer page ------------
+  # cloro gives Markdown only when include.markdown is set (free). DataForSEO gives no plain text.
+  cloro.ai-search.chatgpt.scrape:
+    accepts: [[prompt]]
+    in: {prompt: body.prompt}
+    in_expr: {body.country: "upper(country_code(country))"}
+    const: {body.include.markdown: true}
+    out: {answer: result.text, markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, '') == ''"
+  dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced:
+    accepts: [[prompt]]
+    in: {prompt: body.keyword}
+    in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
+  cloro.ai-search.gemini.scrape:
+    accepts: [[prompt]]
+    in: {prompt: body.prompt}
+    in_expr: {body.country: "upper(country_code(country))"}
+    const: {body.include.markdown: true}
+    out: {answer: result.text, markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, '') == ''"
+  dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced:
+    accepts: [[prompt]]
+    in: {prompt: body.keyword}
+    in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
   perplexity.web.search.fast:
     accepts: [[q]]
     in: {q: body.query}
