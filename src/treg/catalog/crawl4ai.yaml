@@ -5114,6 +5114,46 @@ endpoints:
     example_response: examples/crawl4ai.people.phone.find.json
     added: '2026-11-13'
 
+  - id: crawl4ai.people.email.verify
+    async: false
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    host: gate.crawl4ai.com
+    path: /verify
+    name: E-mail verifier
+    summary: 'Check whether an e-mail address receives mail, without sending any: valid, invalid, accept_all or
+      unknown, with confidence, reason words and the mail provider. Microsoft 365 catch-all domains get an
+      account check that resolves many accept_all answers.'
+    input:
+      queryParams:
+        email:
+          type: string
+          required: true
+          example: alex@example.com
+          note: the address to check
+    strict_query: true
+    cost:
+      type: per_success
+      value: 1.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-11-14'
+      confidence: verified
+      note: '1.5 credits per valid or invalid answer, 3 when a catch-all domain is still resolved; accept_all,
+        unknown and errors are free. The x-c4-cost header settles the actual charge.'
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      queryParams:
+        email: nobody@no-such-domain-c4test.com
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/crawl4ai.people.email.verify.json
+
   - id: crawl4ai.people.search
     async: false
     capability: people.search
