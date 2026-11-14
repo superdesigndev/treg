@@ -19,7 +19,7 @@ from treg.infra import kv
 
 from test_call_events import _flushed, events_on  # noqa: F401
 from test_marketplace_call import platform_on  # noqa: F401
-from test_routing import ROUTED, _first_providers, _relay_by_provider, enrichment_on  # noqa: F401
+from test_routing import ROUTED, _first_providers, _relay_by_provider, enrichment_on, people_search_on  # noqa: F401
 
 
 def envelope(version=1, rules=None, enabled=True, **config):
@@ -247,6 +247,68 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
     assert await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.de"}, n=1) != ["leadmagic"]
     header = await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"}, header="hunter", n=1)
     assert header == ["hunter"], "the caller's prefer header replaces published rules"
+
+
+@pytest.mark.parametrize("contents, first", [(True, "exa"), (False, "crawl4ai"), (None, "crawl4ai")])
+async def test_a_web_search_rule_on_contents_puts_exa_first_only_when_passages_are_asked(
+        clients, platform_on, monkeypatch, published, contents, first):
+    """What `prefer_when: {sent: [contents]}` did, as a published rule: `contents: true` goes to the
+    provider that returns passages; `false` or no flag keeps the snippet-only default."""
+    from treg.config import get_settings
+    for p in ("CRAWL4AI", "EXA"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa")
+    get_settings.cache_clear()
+    await published(envelope(version=2, rules=[
+        {"id": "web-search-contents", "capability": "web.search", "match": {"contents": "true"}, "order": ["exa"]}]))
+    body = {"q": "top B2B sales influencers on Instagram", **({} if contents is None else {"contents": contents})}
+    got = await _first_providers("treg.web.search", body, n=1)
+    get_settings.cache_clear()
+    assert got == [first]
+
+
+PEOPLE_SEARCH_RULES = [
+    # What people.search's prefer_when did, as published rules (treg-internal route rule set).
+    {"id": "q", "capability": "people.search", "match": {"input_type": "q", "title_class": "none"},
+     "order": ["exa", "parallel"]},
+    {"id": "q-open", "capability": "people.search",
+     "match": {"input_type": "q", "company_given": "false", "name_given": "false"}, "order": ["exa", "parallel"]},
+    {"id": "title", "capability": "people.search", "match": {"input_type": "title", "name_given": "false"},
+     "order": ["exa"]},
+]
+
+
+@pytest.mark.parametrize("identity, first, rule", [
+    ({"q": "head of tax in phoenix"}, ["exa", "parallel"], "q-open"),
+    ({"q": "executives", "company_domain": "openai.com"}, ["exa", "parallel"], "q"),
+    ({"q": "founder", "full_name": "Ann Lee"}, ["exa", "parallel"], "q"),
+    # {q, title}: prefer_when asked exa first for half the teams; the rule does it for all of them
+    # (parallel cannot send the title, so scoping leaves it out)
+    ({"q": "in phoenix", "title": "Head of Tax"}, ["exa", "parallel"], "q-open"),
+    ({"title": "Head of Tax", "location": "Phoenix"}, ["exa"], "title"),
+    # company or name scoped: prefer_when named no provider, so cost order, and no rule matches
+    ({"q": "in phoenix", "title": "Head of Tax", "company_domain": "openai.com"}, None, None),
+    ({"q": "in phoenix", "title": "Head of Tax", "full_name": "Ann Lee"}, None, None),
+    ({"title": "Head of Tax", "full_name": "Ann Lee"}, None, None),
+    ({"company_domain": "openai.com"}, None, None),
+])
+async def test_people_search_rules_route_what_prefer_when_did(
+        clients, people_search_on, published, identity, first, rule):
+    """The routed plan under the published replacement for people.search's prefer_when, shape by
+    shape: the rule each request matches, and the order build_plan() gives it."""
+    contract = catalog_store.load().contracts["people.search"]
+    parsed = R.parse(envelope(version=2, rules=PEOPLE_SEARCH_RULES))
+    R.check_against(parsed, catalog_store.load().contracts, reader_app._servers_of, ev.segment_checks)
+    input_type, meta, _ = ev.segment(contract, identity)
+    found = R.match(parsed, "people.search", {**meta, "input_type": input_type})
+    assert (found.id if found else None) == rule
+    without = await _first_providers("treg.people.search", identity, n=99)
+    await published(envelope(version=2, rules=PEOPLE_SEARCH_RULES))
+    got = await _first_providers("treg.people.search", identity, n=99)
+    # A rule only reorders: its providers that scoping lets answer go first, the rest keep their order.
+    lead = [p for p in first or () if p in without]
+    assert got == lead + [p for p in without if p not in lead]
+    assert sorted(got) == sorted(without)
 
 
 async def test_a_domain_written_with_the_dns_root_matches_its_tld(clients, enrichment_on, published):

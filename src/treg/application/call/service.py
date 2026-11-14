@@ -40,11 +40,12 @@ from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter as provider_limiter
 from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
 from ...infra.upstream import relay as relay_module
+from ...infra import org_traffic
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
 from . import admission, call_errors, keyslots
-from .authorize import authorize_call, enforce_public_demo_limit
+from .authorize import authorize_call, enforce_public_demo_limit, return_daily_slot
 from .evidence import (
     _ERROR_BODY_SLICE,
     _ERROR_CALLER_BODY_MAX,
@@ -332,6 +333,28 @@ def _outcome(status_code: int, refused_by: str | None, *, answered: bool) -> str
     if not answered:
         return "gateway_failed"
     return "ok" if status_code < 400 else "vendor_error"
+
+
+_CHILD_FAILURE_STATUSES = frozenset({401, 402, 403, 418, 429})
+# Refused before anything was spent, so the call slot `authorize_call` took is given back.
+_MEMBER_SPEND_REFUSALS = frozenset({"member_spend_cap_reached", "member_spend_cap_unavailable"})
+
+
+def _log_failed_child(*, org_id: int | None, call_ref: str, mk: MarketplaceCall, status: int,
+                      reached_provider: bool, refused_by: str | None, upstream_ms: int | None,
+                      duration_ms: int | None) -> None:
+    """A child attempt has no root request line, so one the vendor failed gets a `call_child`
+    line of its own. A failure before the request left (a refusal, an SSRF block, a failed
+    injection) is treg's, not the vendor's, and is left out; a timeout after sending is kept."""
+    parent_ref, step, _position = call_event_app.ref_parts(call_ref)
+    if parent_ref is None or not reached_provider or refused_by is not None:
+        return
+    if status < 500 and status not in _CHILD_FAILURE_STATUSES:
+        return
+    org_traffic.child_attempt(org_id=org_id, call_ref=call_ref, parent_ref=parent_ref, step=step,
+                              endpoint_id=mk.endpoint_id, provider=mk.provider,
+                              credential_tier=mk.tier, status=status,
+                              upstream_ms=upstream_ms, duration_ms=duration_ms)
 
 
 def _tool_called_props(request: _ApplicationRequest, *, tool_name: str, status_code: int,
@@ -1084,7 +1107,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.tool_name = tool.name
         mk.deferred = request.context.deferred_settles
     try:
-        await _await_before_reserve(
+        slot_day = await _await_before_reserve(
             authorize_call(
                 caller=caller,
                 tool=tool,
@@ -1159,6 +1182,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # when treg streams it on, until the headers arrive). Excludes token refresh, archive lookup, a
     # `retry-after` sleep and treg's own work. None when no request reached the provider.
     upstream_ms: int | None = None
+    never_left = False
 
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
@@ -1239,6 +1263,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 cost_charged_micro=charged_micro, upstream_ms=upstream_ms,
                 duration_ms=duration_ms, served_by=mk.endpoint_id,
                 archive_key_hash=archive_key_hash, archive_content_hash=archive_content_hash)
+            _log_failed_child(org_id=audit_org_id, call_ref=call_ref, mk=mk, status=status_code,
+                              reached_provider=request.context.reached_provider and not never_left,
+                              refused_by=refused_by, upstream_ms=upstream_ms,
+                              duration_ms=duration_ms)
         props = _tool_called_props(
             request, tool_name=audit_tool, status_code=status_code, call_ref=call_ref,
             own_tool=mk is None, refused_by=refused_by, answered=answered, duration_ms=duration_ms,
@@ -1390,9 +1418,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             _capture(pending)
             await _finish_cancelled_call(request, mk, call_ref, trusted_org_id=caller_org)
             raise
-        except CallFailure:
+        except CallFailure as exc:
             _capture(pending)
             request.state.call_cost_micro = 0
+            if exc.kind in _MEMBER_SPEND_REFUSALS:
+                await return_daily_slot(caller, slot_day)
             if keep_refusal:
                 raise refusal() from None
             raise
@@ -1466,6 +1496,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
                                        _ERROR_RESPONSE_MAX)))
+            if exc.kind in _MEMBER_SPEND_REFUSALS:
+                await return_daily_slot(caller, slot_day)
             raise
     body = b""
     task_answer: bytes | None = None
@@ -1784,6 +1816,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
+            # ON_SEND fires before httpx takes a pool slot, so a pool timeout never left.
+            never_left = isinstance(exc, httpx.PoolTimeout)
             raise _gateway_request_failure(exc) from exc
         finally:
             share_slot.release()

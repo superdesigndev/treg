@@ -171,10 +171,11 @@ _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "c
 _QUOTA_REFUSALS = frozenset({"org_endpoint_quota_exceeded"})
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_video",
                               "tag_spend_cap_reached", "platform_daily_cap_reached",
-                              "daily_cap_reached"})
+                              "member_spend_cap_reached", "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
-_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable"})
+_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable",
+                        "member_spend_cap_unavailable"})
 
 
 MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or budget read is busy
@@ -746,7 +747,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if options.prefer:
         ranked = ordered(options.prefer)
     else:
-        default = default_prefer(contract, identity, given, caller.org_id)
+        default = default_prefer(contract, identity)
         ranked = ordered(default)
         orders["default"] = _endpoints(ranked)
         if rule is not None:

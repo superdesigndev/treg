@@ -72,7 +72,8 @@ through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 
 `call_ref` is the call's `X-Treg-Call-Id`. A child's ref is its parent's plus a step
 (`:rN` waterfall attempt N, `:v` the check, `:u` the upgrade, `:pN` a routed poll, `:sN` a hub
-step, `:sN.M` item M of a hub `for_each` step); events carry `parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
+step, `:sN.M` item M of a hub `for_each` step); events carry `parent_ref`, `step` and
+`waterfall_position` parsed from it. An async task's submission
 (`async_submit`) and its outcome (`async_terminal`) share the submission's `call_ref`; the terminal
 event carries `hit`, `verdict`, `cost_charged_micro` (what the task settled at; the submission's
 is null), `async_outcome` (`success`, `failure`, `billed_failure`,

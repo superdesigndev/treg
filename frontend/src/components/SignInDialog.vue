@@ -64,9 +64,9 @@ export default {
         <button class="btn primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px" @click="emailVerify" :disabled="busy"><img src="/media/signin/mail.svg" alt="" aria-hidden="true" style="width:17px;height:17px;filter:invert(1)"/>{{busy?'Verifying…':'Sign in'}}</button>
       </div>
       <div class="sub" style="margin:14px 0 8px;text-align:center">or sign in with</div>
-      <button v-if="!emailStage" class="btn" style="width:100%;padding:11px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:9px" @click="setSsoMode(!ssoMode)"><img :src="ssoMode?'/media/signin/arrow-left.svg':'/media/signin/shield.svg'" alt="" aria-hidden="true" style="width:17px;height:17px"/>{{ssoMode?'Email sign-in code':'Company SSO'}}</button>
       <button v-if="meta.github" class="btn" style="width:100%;padding:11px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:9px" @click="githubLogin"><img src="/media/recruit/github.svg" alt="" aria-hidden="true" style="width:17px;height:17px"/>GitHub</button>
       <button v-if="meta.google" class="btn" style="width:100%;padding:11px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:9px" @click="googleLogin"><img src="/media/aeo/logos/google.svg" alt="" aria-hidden="true" style="width:17px;height:17px"/>Google</button>
+      <button v-if="!emailStage" class="btn" style="width:100%;padding:11px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:9px" @click="setSsoMode(!ssoMode)"><img :src="ssoMode?'/media/signin/arrow-left.svg':'/media/signin/shield.svg'" alt="" aria-hidden="true" style="width:17px;height:17px"/>{{ssoMode?'Email sign-in code':'Company SSO'}}</button>
       <details v-if="!oauthSignin" style="margin-top:12px;text-align:left">
         <summary class="sub" style="cursor:pointer;text-align:center">or paste an org token (agents &amp; CLI)</summary>
         <div class="field" style="margin-top:8px"><input v-model="tokenInput" type="password" placeholder="X-Treg-Token" @keyup.enter="addToken(tokenInput)"/></div>

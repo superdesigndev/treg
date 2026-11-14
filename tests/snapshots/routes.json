@@ -1933,6 +1933,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "sso_domains",
+    "path": "/orgs/{org_id}/sso/domains"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sso_blocked_members",
     "path": "/orgs/{org_id}/sso/blocked"
   },
@@ -2034,6 +2043,14 @@
     ],
     "name": "set_member_cap",
     "path": "/orgs/{org_id}/members/{user_id}/cap"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_member_spend_cap",
+    "path": "/orgs/{org_id}/members/{user_id}/spend-cap"
   },
   {
     "kind": "APIRoute",

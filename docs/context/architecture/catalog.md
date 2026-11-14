@@ -1015,19 +1015,17 @@ returned and never documented as stable. An output field may say where it lands 
 - A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
   the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
   deploy and, like them, only reorders.
-- `prefer_when` lists `{sent: [identity or filter keys], prefer: [providers]}` rules; the first whose keys the
-  caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
-  still wins. One order does not fit every question: `people.search` asks its semantic searches
-  first for a free-text `{q}`, and ranks company and name lookups, which they cannot scope, by
-  cost per hit. A rule may name no provider (`prefer: []`): it still matches first, so later,
-  broader rules do not reorder that request, and the order is left to cost per hit.
-  A rule may add `percent: 1-99`: it then applies only to that share of teams (`in_rollout`, a
-  stable sha256 bucket of capability and team id; a call with no team is never in it), and the
-  other teams fall through to the next rule. `people.search` uses it to ask exa first for a role
-  with no company or name (`{title}`, `{q, title}`) for half the teams, so the two orders are
-  compared on live calls before every team gets it.
-  `web.search` puts exa first when the caller sends `contents: true`: each result then carries the
-  page's passages that match `q`, at Exa's search price. A `false` value is not counted as sent. When
+- One order does not fit every kind of request (a free-text `{q}` is answered best by a semantic
+  search that a `{company_domain, title}` lookup can never reach), and an order for one kind is a
+  published route rule, never a contract field. `prefer_when`, the contract's old list of
+  `{sent, prefer}` orders, is retired. The runtime still loads a catalog that carries it (an older or
+  self-hosted one) but ignores it, so its orders no longer apply; the catalog validator
+  (`scripts/catalog_validate.py`, run in CI) refuses a contract that adds or keeps it. A rule is reviewed
+  by a person, observed after it goes live and reverted without a deploy; a contract field had
+  none of that, and its orders sat in this public file.
+  `web.search` `contents: true` asks a provider for each result's passages that match `q`, at its
+  search price; call events record `contents`, so a route rule can put exa first for it. A `false`
+  value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
   A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
   left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
@@ -1284,7 +1282,7 @@ an invalid extra never disables the primary.
   keeps its scoping guard, and the loader refuses a carried key the expression does not read.
   A stand-in covers none of the caller's keys in `rank`'s specificity, so its provider follows
   every provider that takes the caller's fields and enters earlier only through `prefer`,
-  `prefer_when`, the prefer header or a route rule. exa and parallel also fold `company_domain`
+  the prefer header or a route rule. exa and parallel also fold `company_domain`
   into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
   said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent

@@ -52,6 +52,25 @@ request line and counter. Adapter preflight exits and eager MCP 401 challenges l
 are not aggregated. Children (routing, verification, overflow, hub steps) never count as roots;
 direct `/hub/run`, provider-resource, arena and background work are out of scope.
 
+## Failed child attempts
+
+A child attempt has no request line of its own, so a vendor failing only behind a route would be
+invisible to anything that reads these logs. `service._audit` therefore emits one `call_child`
+line for a catalog child (any `call_ref` with a step: `:rN`, `:v`, `:pN`, `:sN`, `:sN.M` for a
+`for_each` item) whose request left for the vendor and was not refused by treg, and that got 5xx,
+401, 402, 403, 418 or 429. "Left" is `CallContext.reached_provider`, set by the relay's `ON_SEND`,
+except after an `httpx.PoolTimeout`: `ON_SEND` fires before httpx takes a connection-pool slot,
+so a pool timeout never left. A failure before sending (an SSRF block, a failed injection or token
+refresh, an exhausted local pool) is treg's own and emits nothing. A timeout after sending is the
+vendor's and is logged; its `upstream_ms` is null, or only the part measured before the timeout
+(the headers, when the body read timed out), so the whole wait is `duration_ms`. Successes,
+misses and other 4xx emit nothing, which keeps the
+volume to the failures. The line carries `org_id`, `call_ref`, `parent_ref`, `step`,
+`endpoint_id`, `provider`, `credential_tier`, `status`, `upstream_ms` and `duration_ms`, all
+scalars `_audit` already holds, under the same never-add list as request lines.
+It adds nothing to the window counters and is not a root. Overflow children are not audited this
+way and emit none.
+
 ## Window semantics
 
 `routers.call.enter_call` (from `run_call_surface`, and before a `/tasks/` poll) registers the

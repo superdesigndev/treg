@@ -52,6 +52,7 @@ async loadBilling(){ if(!this.canAdmin || !this.activeOrgId){ this.billing=null;
         this.autoAmount=Math.round(this.billing.autotopup.amount_usd);
         this.autoThreshold=Math.round(this.billing.autotopup.threshold_usd);
         this.autoPerHour=this.billing.autotopup.per_hour||5;
+        this.autoMonthlyCap=Math.round(this.billing.autotopup.monthly_cap_usd);
         if(this.bhistOrgId!==this.activeOrgId){
           this.bhistFilter='all'; this.bhistPage=0; this.bhistCursors=['']; this.bhistOrgId=this.activeOrgId; }
         this.loadBillingHistory(); }
@@ -60,6 +61,7 @@ async loadBilling(){ if(!this.canAdmin || !this.activeOrgId){ this.billing=null;
       if(!live()) return;
       this.capCfg=capCfg;
       if(this.capCfg){ this.capUsd=this.capCfg.daily_cap_micro ? (this.capCfg.daily_cap_micro/1e6).toFixed(2) : '';
+        this.memberCapUsd=this.usdField(this.capCfg.member_daily_spend_cap_micro);
         const k=await this.api(`/orgs/${org}/tag-keys`).catch(()=>null);
         if(!live()) return;
         this.budDims=[...new Set([...((k&&k.seen)||[]), ...(this.capCfg.budget_dims||[])])];
@@ -119,6 +121,25 @@ async saveCap(){ this.capBusy=true; this.capErr='';
       }catch(e){
         this.capErr=this._errMsg(e, 'could not save that limit');
       }finally{ this.capBusy=false; } },
+// A dollar figure on the wire is micro-USD; null (and -1, "no limit") shows as an empty field.
+usdField(micro){ return micro==null || micro<0 ? '' : (micro/1e6).toFixed(2); },
+// Empty = null; otherwise a whole number of micro-USD, or NaN for anything that is not a dollar amount.
+usdValue(text){ const t=String(text??'').trim().replace(/^\$/,''); if(!t) return null;
+      const n=Number(t); return Number.isFinite(n) && n>=0 ? Math.round(n*1e6) : NaN; },
+async saveMemberCap(){ this.memberCapErr='';
+      const t=String(this.memberCapUsd??'').trim();
+      if(t && !/^\d+$/.test(t)){ this.memberCapErr='Enter a whole dollar amount, or leave it empty for no limit.'; return; }
+      const micro=t ? Number(t)*1e6 : null;
+      this.memberCapBusy=true;
+      try{
+        this.capCfg=await this.api(`/orgs/${this.activeOrgId}/settings`,
+          {method:'PATCH', headers:{'content-type':'application/json'},
+           body:JSON.stringify({member_daily_spend_cap_micro:micro})});
+        this.memberCapUsd=this.usdField(this.capCfg.member_daily_spend_cap_micro);
+        this.memberCapOpen=false;
+        await this.loadOrgAdmin();
+      }catch(e){ this.memberCapErr=this._errMsg(e, 'could not save that limit');
+      }finally{ this.memberCapBusy=false; } },
 // Top-ups use our credit ledger; subscription invoices come from Stripe and never change balance.
     async loadBillingHistory(){ if(!this.canAdmin || !this.billing || !this.billing.configured){ this.bhist={items:[],loading:false,ok:true,invoicesOk:true,nextCursor:null,error:false}; return; }
       this.bhist={...this.bhist,loading:true,error:false}; const live=this.ticket('billingHistory');
@@ -171,6 +192,11 @@ tierBonus(usd){ const t=this.billing&&this.billing.topup.bonus_tiers; if(!t||!us
       let pct=0; floors.forEach(k=>{ if((usd||0)>=k) pct=t[k]; });
       const k=floors.find(k=>k>(usd||0)&&t[k]>pct);
       return k===undefined?null:{usd:k, pct:t[k]}; },
+// The cap goes to the server only when the user changed it: re-sending the loaded value would store
+// the default as the team's own choice. An emptied field means the default (0).
+_autoCapChange(){ const v=this.autoMonthlyCap, loaded=Math.round(this.billing?.autotopup?.monthly_cap_usd);
+      if(v==='' || v==null) return 0;
+      return v===loaded ? null : v; },
 async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       // The mandate decision below reads this team's auto top-up state; billing from another team
       // (a switch whose loadBilling has not answered yet) must never decide it.
@@ -186,7 +212,7 @@ async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
           // saved card then arms it from the setup webhook. A failure here stops the payment too -
           // paying without the auto top-up the user just agreed to would be a silent downgrade.
           const armed=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
-            body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, per_hour:this.autoPerHour, setup_url:false})});
+            body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, per_hour:this.autoPerHour, monthly_cap_usd:this._autoCapChange(), setup_url:false})});
           if(this.activeOrgId===org) this.billing=armed;
         }
         // The request below carries the ACTIVE team; after a switch it would buy credit for the
@@ -201,7 +227,7 @@ async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       this.autoOpen=!this.autoOpen; if(!this.autoOpen) this.autoConsent=false; },
 async setAuto(on){ this.billingBusy=true; this.err='';
       try{ const out=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
-             body:JSON.stringify({enabled:on, consent:on, amount_usd:on?this.autoAmount:null, threshold_usd:on?this.autoThreshold:null, per_hour:on?this.autoPerHour:null})});
+             body:JSON.stringify({enabled:on, consent:on, amount_usd:on?this.autoAmount:null, threshold_usd:on?this.autoThreshold:null, per_hour:on?this.autoPerHour:null, monthly_cap_usd:on?this._autoCapChange():null})});
         // No card yet: consent is stored, and Stripe's hosted card page finishes the job. Auto top-up
         // arms itself from the setup_intent.succeeded webhook, so there's nothing more to click here.
         if(out.setup_url){ window.location.href=out.setup_url; return; }
