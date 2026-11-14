@@ -213,6 +213,8 @@ A keyless public API registers with `auth_kind="public"`: nothing to paste or co
 left out of the Connect listing and both connect paths refuse it. Its catalog rows are all
 `platform_auth: anonymous` ([catalog](catalog.md)). Resolution and the router skip the credential
 tier for it, so a team secret that only shares its name never stands in for a credential; a team's own registered tool still wins.
+Its refusal names the true reason (`_anonymous_refusal`): "not enabled" only while the provider is off
+the allow-list; a demo or sandbox team, or a row that is not a verified free anonymous one, says so.
 
 The connect probe hits `base_url` + `probe_path` or an absolute `probe_url`, and is free unless
 declared otherwise. Many upstreams answer 200 to a bad key, so validity comes from declarative

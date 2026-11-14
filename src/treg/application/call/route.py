@@ -916,7 +916,7 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
 
 
 # A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
-# anonymous or own-key child would otherwise stream any size into memory (a large Ashby board).
+# anonymous or own-key child would otherwise stream any size into memory.
 ROUTED_BODY_MAX = 8 * 1024 * 1024
 
 

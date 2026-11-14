@@ -19,6 +19,7 @@ from ...domain.identity.access import Caller
 from .resolve import (
     _authorization_method,
     _anonymous_offer,
+    _anonymous_refusal,
     _enforce_catalog_status,
     _marketplace_pricing,
     _marketplace_secret,
@@ -147,7 +148,7 @@ async def catalog_endpoint_access(
             "estimated_cost_usd": ledger.usd(estimate),
             **({"estimated_cost_usd_min": low} if isinstance(low, (int, float)) else {}),
         }
-    return _missing_access(endpoint, registry_provider, provider, methods, service)
+    return _missing_access(endpoint, registry_provider, provider, methods, service, org=caller.org)
 
 
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
@@ -264,7 +265,7 @@ async def _direct_access(
 
 def _missing_access(
     endpoint: dict, registry_provider, provider, methods: tuple[str, ...], service: str,
-    *, existing: bool = False,
+    *, existing: bool = False, org=None,
 ) -> dict:
     specification = (
         connection_authorization.method_spec(registry_provider, methods[0]) if methods else None
@@ -277,12 +278,11 @@ def _missing_access(
     if capability and not public:
         connect += f" --capability {capability}"
     hint = (
-        "it is a keyless public API that this server has not enabled"
-        if public else
         f"connect with: {connect}" if not provider.uses_pasted_secret else
         f"connect with: {connect}, or treg secret add {service} …"
     )
     detail = (
+        f"{endpoint['id']} {_anonymous_refusal(endpoint, org)}" if public else
         f"the connected {service} authorization needs more access — reconnect with: {connect}"
         if existing else f"no {service} credential in this org yet — {hint}"
     )

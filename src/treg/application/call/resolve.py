@@ -1071,13 +1071,9 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
     return cat.cost_view(ep.get("cost"), ep["provider"]) or None
 
 
-def _anonymous_offer(ep: dict, org: Org) -> dict | None:
-    """A free catalog fallback that relays without any provider credential.
-
-    The team's own tool or credential is resolved before this function is reached, so the normal
-    own-key precedence remains intact. The deployment provider allow-list is still the kill switch.
-    Catalog validation confines this mode to verified, free, read-only endpoints.
-    """
+def anonymous_served(ep: dict) -> dict | None:
+    """The team-independent half of `_anonymous_offer`: this deployment serves `ep` keyless and
+    free (its cost view), or None. What an open quote or a catalog listing may say without a caller."""
     if ep.get("platform_auth") != "anonymous":
         return None
     cat = catalog_store.load()
@@ -1085,10 +1081,32 @@ def _anonymous_offer(ep: dict, org: Org) -> dict | None:
         return None
     if not get_settings().platform_provider_enabled(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
-        return None
     cost = cat.cost_view(ep.get("cost"), ep["provider"])
     return cost if cost and cost.get("type") == "free" else None
+
+
+def _anonymous_offer(ep: dict, org: Org) -> dict | None:
+    """A free catalog fallback that relays without any provider credential.
+
+    The team's own tool or credential is resolved before this function is reached, so the normal
+    own-key precedence remains intact. The deployment provider allow-list is still the kill switch.
+    Catalog validation confines this mode to verified, free, read-only endpoints.
+    """
+    cost = anonymous_served(ep)
+    if cost is None or demo_sandbox.is_sandbox(org) or org.public_demo:
+        return None
+    return cost
+
+
+def _anonymous_refusal(ep: dict | None, org: Org | None) -> str:
+    """Why a keyless public provider's row is not served to this team, in the same order of checks
+    as `_anonymous_offer`: only an un-allow-listed provider is "not enabled"."""
+    if ep is None or not get_settings().platform_provider_enabled(ep["provider"]):
+        return "is a keyless public API that this server has not enabled"
+    if org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo):
+        return "is a keyless public API, but demo and sandbox teams do not call it: use a signed-up team"
+    return ("is a keyless public API, but this tool is not served keyless here: only a verified, "
+            "free, read-only catalog tool is")
 
 
 def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
@@ -1135,12 +1153,12 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
 
 
 def _marketplace_no_credential(
-    service: str, ep_id: str, provider, ep: dict | None = None,
+    service: str, ep_id: str, provider, ep: dict | None = None, org: Org | None = None,
 ) -> ResolutionFailed:
     """Tier 3: the actionable dead-end. Every line names a real command; a pasted-key provider
     gets the `secret add` route too (name it for the service so the ladder finds it)."""
-    if provider.auth_kind == "public":  # nothing to connect: only the deployment's allow-list
-        lines = [f"{ep_id} is a keyless public API that this server has not enabled"]
+    if provider.auth_kind == "public":  # nothing to connect: say why the keyless relay refused
+        lines = [f"{ep_id} {_anonymous_refusal(ep, org)}"]
         lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
         lines.extend(_capability_alternatives(ep) if ep is not None else [])
         return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines))
@@ -2348,7 +2366,7 @@ async def _resolve_marketplace_call(
                     raise
 
     # tier 2. A public provider has nothing to connect, so a team secret that merely shares its name
-    # (a vendor's private-API key saved as "greenhouse") is not its credential: the keyless relay serves it.
+    # (a vendor's private-API key saved under the provider's name) is not its credential: the keyless relay serves it.
     secret = None if provider.auth_kind == "public" else (
         chosen_secret or await _marketplace_secret(service, caller.org_id, db))
     if secret is not None:
@@ -2467,7 +2485,7 @@ async def _resolve_marketplace_call(
                                probe_lock_id=probe_lock_id,
                                key_slot=key_slot, **{
             **common, "cost_type": str(cost.get("type") or "per_call")})
-    raise _marketplace_no_credential(service, ep["id"], provider, ep)
+    raise _marketplace_no_credential(service, ep["id"], provider, ep, caller.org)
 
 
 def _key_affinity(caller: Caller, headers) -> str:

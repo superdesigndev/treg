@@ -592,7 +592,7 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
 async def test_public_provider_has_nothing_to_connect(clients, monkeypatch):
     """A keyless public API (auth_kind="public") serves only anonymous catalog rows: it is left out
     of the Connect listing and both connect paths refuse it instead of storing a meaningless key."""
-    public = dataclasses.replace(P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public")
+    public = dataclasses.replace(P.REGISTRY["financialdatasets"], service="public-demo", auth_kind="public")
     monkeypatch.setitem(P.REGISTRY, "public-demo", public)
     assert "public-demo" not in {p["service"] for p in P.listing()}
     started = await clients.post("/oauth/start", json={"provider": "public-demo"})
@@ -694,3 +694,64 @@ async def test_a_public_provider_this_server_has_not_enabled_says_so_and_offers_
     assert r.status_code == 404, r.text
     assert "keyless public API that this server has not enabled" in r.text, r.text
     assert "connections connect" not in r.text and "secret add" not in r.text
+
+
+async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_not_served(
+        clients, monkeypatch, fd_public):
+    """"Not enabled" is said only when the provider is not allow-listed. Allow-listed, a row that is
+    not a verified free anonymous row, or a demo team, is refused for that reason instead."""
+    from types import SimpleNamespace
+    from treg.application.call.access import _missing_access
+    from treg.application.call.resolve import _marketplace_no_credential
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    ep_id = "financialdatasets.prices.snapshot"  # a paid row: never served keyless
+    r = await clients.get(f"/call/{ep_id}?ticker=AAPL")
+    assert r.status_code == 404, r.text
+    assert "not served keyless here" in r.text and "has not enabled" not in r.text, r.text
+    access = await clients.get(f"/catalog/endpoints/{ep_id}/access")
+    assert "not served keyless here" in access.json()["detail"], access.json()
+
+    from treg.domain.catalog import store as catalog_store
+    tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
+    demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
+    refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
+    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
+    assert "demo and sandbox teams" in preview["detail"], preview
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
+                                                org=demo)["detail"]
+
+
+async def test_a_routed_tool_with_a_keyless_child_is_quoted_and_listed_as_needing_no_key(clients, monkeypatch, fd_public):
+    """A routed child served on the anonymous tier is available, free and ranked as the router ranks
+    it (ahead of treg's key); the routed tool reads `no_key_needed: true` because of it alone."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    kid = "financialdatasets.prices.snapshot"
+    monkeypatch.setitem(cat.by_id[kid], "platform_auth", "anonymous")
+    monkeypatch.setitem(cat.by_id[kid], "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    plan = (await clients.get("/catalog/endpoints/treg.stocks.quote.live")).json()["routing"]["plan"]
+    assert plan[0]["endpoint_id"] == kid and plan[0]["usd"] == 0 and "skipped" not in plan[0], plan
+    assert all("skipped" in row for row in plan[1:]), plan
+
+    token = (await verified_signup(clients, json={"email": "keyless-routed@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "live stock quote price", "limit": 25},
+                                   token=token)
+        rows = [r for r in out["results"] if r.get("endpoint_id") == "treg.stocks.quote.live"]
+        assert rows, [r.get("endpoint_id") for r in out["results"]]
+        return rows[0]["no_key_needed"]
+
+    assert await flag() is True
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert await flag() is False

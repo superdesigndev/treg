@@ -4292,15 +4292,23 @@ def test_ignoring_a_sent_filter_outranks_a_contract_prefer_but_not_the_callers()
 
 async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(
         clients: AsyncClient, enrichment_on, monkeypatch):
-    """An answer past the routed read's bound is that child's error: its hold is released, it counts
-    toward the error allowance, and the next candidate answers the call."""
+    """Only an unmetered child (own key or anonymous) streams unbuffered, so only it can pass the
+    routed read's bound in production. Past it, the answer is that child's error: nothing billed, it
+    counts toward the error allowance, and the next candidate answers the call."""
     monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+    assert (await clients.post("/secrets", json={"name": "tomba", "value": "OWN-TOMBA"})).status_code == 200
+    seen, own = [], []
+    relay = _relay_by_provider({
         "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 90, "first_name": "x" * 600,
                                   "verification": {"status": "valid"}}})],
         "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
-    }, seen))
+    }, seen)
+
+    async def spy(request, upstream_url, tool, secrets, *args, **kwargs):
+        if "tomba" in upstream_url:
+            own.append(sorted(getattr(x, "name", "") for x in secrets.values()))
+        return await relay(request, upstream_url, tool, secrets, *args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", spy)
     before = await _balance(clients)
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
                            headers={"X-Treg-Route-Prefer": "tomba,findymail"})
@@ -4308,6 +4316,7 @@ async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answe
     doc = r.json()["_treg"]
     assert [(t["provider"], t["outcome"]) for t in doc["tried"]] == [("tomba", "error"), ("findymail", "hit")]
     assert doc["tried"][0]["charged_micro"] == 0 and "routed read" in doc["tried"][0]["detail"]
+    assert own == [["tomba"]], own  # asked on the team's own key, so unmetered
     assert doc["served_by"].startswith("findymail.")
     assert doc["charged_micro"] == doc["tried"][1]["charged_micro"] == before - await _balance(clients)
     async with session_maker() as db:

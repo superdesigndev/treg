@@ -1129,7 +1129,9 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
+  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
+  quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
   request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
@@ -1194,7 +1196,7 @@ an invalid extra never disables the primary.
     alone, are compared with `N`, so the walk stops once the union reaches it.
   - **The routed read is bounded.** The router parses each child's answer, so it reads at most
     `ROUTED_BODY_MAX` (8 MiB) of it, as settlement does. An anonymous or own-key child streams
-    without that bound (a public job board can be larger); past it the attempt is an unbilled `error`
+    without that bound (a public listing can be larger); past it the attempt is an unbilled `error`
     whose detail names the endpoint to call directly, no health strike, and the next candidate
     answers.
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a

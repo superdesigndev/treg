@@ -934,6 +934,7 @@ async def _catalog_search_impl(
     experiment's say over it, and the records. This layer resolves who is asking (the hub's lists
     and the experiment's log both need it) and shapes the rows for an agent. With a recently-added
     option the page is `search_app.added_page` instead: a date list, no judge, no experiment."""
+    from .application.call.resolve import anonymous_served
     cat = catalog_store.load()
     limit = max(1, min(limit, 25))
     try:
@@ -995,14 +996,13 @@ async def _catalog_search_impl(
             # the row is priceable, `platform_key_for` says this deploy actually holds an enabled
             # key; an eligible-but-keyless row would refuse at call time.
             # a routed row is servable when any child is: its children carry the keys
+            # a verified public row needs only the provider allow-list, no key (`anonymous_served`)
             "no_key_needed": ep.get("kind") == "hub" or cat.platform_eligible(ep) and (
                 ep.get("kind") == "routed"
-                and any(get_settings().platform_key_for((cat.by_id.get(i) or {}).get("provider"))
-                        for i in ep.get("routed_children") or [])
+                and any(get_settings().platform_key_for(kid.get("provider")) or anonymous_served(kid) is not None
+                        for i in ep.get("routed_children") or [] if (kid := cat.by_id.get(i)))
                 or bool(get_settings().platform_key_for(ep.get("provider")))
-                # a verified public row needs only the provider allow-list, no key
-                or ep.get("platform_auth") == "anonymous"
-                and get_settings().platform_provider_enabled(ep.get("provider") or "")),
+                or anonymous_served(ep) is not None),
             "added": ep.get("added") or None,
             "score": None if page.judged or led else score,
             # The measured half of the answer, at the step where the agent is choosing.

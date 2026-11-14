@@ -221,8 +221,11 @@ async def catalog_provider(service: str) -> dict:
 
 def _quote_skip(ep: dict, cat) -> str | None:
     """Why the router would not call this child on treg's key, in `route.py`'s words; None if it would."""
+    from ..application.call.resolve import anonymous_served
     if catalog_store.paused(ep):
         return f"{ep['provider']} is paused on this deployment"
+    if anonymous_served(ep) is not None:  # the keyless tier: free, no key on this deployment needed
+        return None
     if not cat.platform_eligible(ep):
         return "not platform-eligible and no own key"
     if not get_settings().platform_key_for(ep["provider"]):
@@ -665,6 +668,7 @@ async def catalog_endpoint(
         # The QUOTE (routing plan §3.5): the contract and the ranked children on treg's key, priced
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
+        from ..application.call.resolve import anonymous_served
         from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
@@ -673,11 +677,15 @@ async def catalog_endpoint(
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
             cv = cat.cost_view(k.get("cost"), k["provider"])
-            price = cost_at(cv, {}, ad)
-            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
+            # Tiered as `route.build_plan` tiers it for a team with no own key: keyless rows first, free.
+            anonymous = anonymous_served(k) is not None
+            price = 0 if anonymous else cost_at(cv, {}, ad)
+            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (),
+                                   "anonymous" if anonymous else "platform",
                                    price, st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
-                                   miss_micro=miss_charge_micro(cv, {}, ad, price) if price is not None else None))
+                                   miss_micro=0 if anonymous else
+                                   miss_charge_micro(cv, {}, ad, price) if price is not None else None))
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": {
                              # `analytics` is treg's own event mapping, not part of the answer.
