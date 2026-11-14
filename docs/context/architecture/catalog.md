@@ -1182,6 +1182,11 @@ an invalid extra never disables the primary.
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
     Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
     alone, are compared with `N`, so the walk stops once the union reaches it.
+  - **The routed read is bounded.** The router parses each child's answer, so it reads at most
+    `ROUTED_BODY_MAX` (8 MiB) of it, as settlement does. An anonymous or own-key child streams
+    without that bound (a public job board can be larger); past it the attempt is an unbilled `error`
+    whose detail names the endpoint to call directly, no health strike, and the next candidate
+    answers.
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a
     balance covering each child in turn would 402 mid-waterfall. **A billed child never settles its
     own hold**: it leaves a `settle.DeferredSettle` and `run_routed` closes every one exactly once at

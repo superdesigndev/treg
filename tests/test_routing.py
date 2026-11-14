@@ -4222,6 +4222,46 @@ async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills
         assert (await db.execute(select(Hold))).scalars().all() == []
 
 
+async def test_a_routed_read_stops_at_eight_mib():
+    """An anonymous or own-key child streams; the router must not hold an answer past 8 MiB."""
+    async def body():
+        for _ in range(9):
+            yield b"x" * (1024 * 1024)
+
+    closed = []
+
+    async def close():
+        closed.append(True)
+
+    with pytest.raises(call_route._ChildTooLarge):
+        await call_route._read(UpstreamResponse(200, (), body(), close))
+    assert closed == [True]
+
+
+async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(
+        clients: AsyncClient, enrichment_on, monkeypatch):
+    """An answer past the routed read's bound is that child's error: its hold is released, it counts
+    toward the error allowance, and the next candidate answers the call."""
+    monkeypatch.setattr(call_route, "ROUTED_BODY_MAX", 512)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "patrick@stripe.com", "score": 90, "first_name": "x" * 600,
+                                  "verification": {"status": "valid"}}})],
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,findymail"})
+    assert r.status_code == 200, r.text
+    doc = r.json()["_treg"]
+    assert [(t["provider"], t["outcome"]) for t in doc["tried"]] == [("tomba", "error"), ("findymail", "hit")]
+    assert doc["tried"][0]["charged_micro"] == 0 and "routed read" in doc["tried"][0]["detail"]
+    assert doc["served_by"].startswith("findymail.")
+    assert doc["charged_micro"] == doc["tried"][1]["charged_micro"] == before - await _balance(clients)
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
 async def test_a_same_named_secret_never_makes_a_public_provider_an_own_key_child(
         clients: AsyncClient, monkeypatch):
     """A public provider has nothing to connect, so the router plans its reader on the anonymous

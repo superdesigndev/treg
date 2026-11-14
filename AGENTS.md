@@ -70,7 +70,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
+   call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the

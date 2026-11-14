@@ -915,11 +915,25 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                      client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only)
 
 
+# A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
+# anonymous or own-key child would otherwise stream any size into memory (a large Ashby board).
+ROUTED_BODY_MAX = 8 * 1024 * 1024
+
+
+class _ChildTooLarge(Exception):
+    """A child's answer passed `ROUTED_BODY_MAX`: no answer from this child, nothing billed."""
+
+
 async def _read(response: UpstreamResponse) -> bytes:
-    chunks = []
-    async for chunk in response.body_stream:
-        chunks.append(chunk)
-    await response.close()
+    chunks, size = [], 0
+    try:
+        async for chunk in response.body_stream:
+            size += len(chunk)
+            if size > ROUTED_BODY_MAX:
+                raise _ChildTooLarge(f"answer is over treg's {ROUTED_BODY_MAX >> 20} MiB routed read")
+            chunks.append(chunk)
+    finally:
+        await response.close()
     return b"".join(chunks)
 
 
@@ -1243,6 +1257,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", 504, 0,
                                  f"answer not finished within {cancel_s:g} s; moved on"))
+            if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
+                break
+            continue
+        except _ChildTooLarge as exc:
+            # Too big to wrap, not the provider failing: unbilled, no health strike, and the next
+            # candidate answers. The endpoint itself streams it when called directly.
+            _unbill(pending, child.call_ref)
+            errors += 1
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, 0,
+                                 f"{exc}; call {cand.endpoint['id']} directly, it streams"[:160]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
                 break
             continue
