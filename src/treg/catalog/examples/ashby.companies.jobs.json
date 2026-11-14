@@ -1,0 +1,190 @@
+{
+  "jobs": [
+    {
+      "id": "34413f8d-26bf-4bbc-8ade-eb309a0e2245",
+      "title": " Software Engineer, Security, Cloud",
+      "department": "Engineering",
+      "team": "Backend",
+      "employmentType": "FullTime",
+      "location": "New York, NY (HQ)",
+      "shouldDisplayCompensationOnJobPostings": true,
+      "secondaryLocations": [
+        {
+          "location": "Remote (Canada)",
+          "address": {
+            "postalAddress": {
+              "addressCountry": "Canada"
+            }
+          }
+        },
+        {
+          "location": "Remote (US)",
+          "address": {
+            "postalAddress": {
+              "addressCountry": "United States"
+            }
+          }
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "publishedAt": "2026-04-07T17:12:35.753+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Hybrid",
+      "address": {
+        "postalAddress": {
+          "addressRegion": "NY",
+          "addressCountry": "USA",
+          "addressLocality": "New York City"
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245",
+      "applyUrl": "https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245/application",
+      "descriptionHtml": "<h1><strong>About Ramp</strong></h1><p style=\"min-height:1.5em\">Ramp is building the smart infrastructure for finance teams, embedded in the transaction flow of every dollar a business spends. We automate how over $275B in annualized spend flows in and out of 85,000+ companies: authorizing payments, flagging risk, categorizing spend, and closing books.</p><p style=\"min-height:1.5em\">The problems are high-stakes, data-dense, and unforgiving.</p><p style=\"min-height:1.5em\">We hire people with high… [7355 chars total]",
+      "descriptionPlain": "ABOUT RAMP\n\nRamp is building the smart infrastructure for finance teams, embedded in the transaction flow of every dollar a business spends. We automate how over $275B in annualized spend flows in and out of 85,000+ companies: authorizing payments, flagging risk, categorizing spend, and closing books.\n\nThe problems are high-stakes, data-dense, and unforgiving.\n\nWe hire people with high agency and high urgency. We look for slope over intercept. We care less about where you trained and more about … [4484 chars total]",
+      "compensation": {
+        "compensationTierSummary": "$211.4K – $290.6K • Offers Equity",
+        "scrapeableCompensationSalarySummary": "$211.4K - $290.6K",
+        "compensationTiers": [
+          {
+            "id": "5f7a903e-36e4-492c-ac09-f2745d717daa",
+            "tierSummary": "$211.4K – $290.6K • Offers Equity",
+            "title": null,
+            "additionalInformation": null,
+            "components": [
+              {
+                "id": "3481c194-45fd-4b89-8592-e8f4d4b51f20",
+                "summary": "$211.4K – $290.6K",
+                "compensationType": "Salary",
+                "interval": "1 YEAR",
+                "currencyCode": "USD",
+                "minValue": 211400,
+                "maxValue": 290600
+              },
+              {
+                "id": "feaef96f-559f-4df8-a38c-3eee072a8d74",
+                "summary": "Offers Equity",
+                "compensationType": "EquityPercentage",
+                "interval": "NONE",
+                "currencyCode": null,
+                "minValue": null,
+                "maxValue": null
+              }
+            ]
+          }
+        ],
+        "summaryComponents": [
+          {
+            "compensationType": "Salary",
+            "interval": "1 YEAR",
+            "currencyCode": "USD",
+            "minValue": 211400,
+            "maxValue": 290600
+          },
+          {
+            "compensationType": "EquityPercentage",
+            "interval": "NONE",
+            "currencyCode": null,
+            "minValue": null,
+            "maxValue": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "f564dcf9-9390-4a3f-896f-8047a5086040",
+      "title": "Software Engineer, Android",
+      "department": "Engineering",
+      "team": "Mobile",
+      "employmentType": "FullTime",
+      "location": "New York, NY (HQ)",
+      "shouldDisplayCompensationOnJobPostings": true,
+      "secondaryLocations": [
+        {
+          "location": "Remote (Canada)",
+          "address": {
+            "postalAddress": {
+              "addressCountry": "Canada"
+            }
+          }
+        },
+        {
+          "location": "San Francisco, CA",
+          "address": {
+            "postalAddress": {
+              "addressRegion": "California ",
+              "addressCountry": "USA",
+              "addressLocality": "San Fransisco"
+            }
+          }
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "publishedAt": "2025-07-31T21:58:34.674+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Hybrid",
+      "address": {
+        "postalAddress": {
+          "addressRegion": "NY",
+          "addressCountry": "USA",
+          "addressLocality": "New York City"
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/ramp/f564dcf9-9390-4a3f-896f-8047a5086040",
+      "applyUrl": "https://jobs.ashbyhq.com/ramp/f564dcf9-9390-4a3f-896f-8047a5086040/application",
+      "descriptionHtml": "<h1><strong>About Ramp</strong></h1><p style=\"min-height:1.5em\">Ramp is building the smart infrastructure for finance teams, embedded in the transaction flow of every dollar a business spends. We automate how over $275B in annualized spend flows in and out of 85,000+ companies: authorizing payments, flagging risk, categorizing spend, and closing books.</p><p style=\"min-height:1.5em\">The problems are high-stakes, data-dense, and unforgiving.</p><p style=\"min-height:1.5em\">We hire people with high… [7487 chars total]",
+      "descriptionPlain": "ABOUT RAMP\n\nRamp is building the smart infrastructure for finance teams, embedded in the transaction flow of every dollar a business spends. We automate how over $275B in annualized spend flows in and out of 85,000+ companies: authorizing payments, flagging risk, categorizing spend, and closing books.\n\nThe problems are high-stakes, data-dense, and unforgiving.\n\nWe hire people with high agency and high urgency. We look for slope over intercept. We care less about where you trained and more about … [4726 chars total]",
+      "compensation": {
+        "compensationTierSummary": "$189K – $330K • Offers Equity",
+        "scrapeableCompensationSalarySummary": "$189K - $330K",
+        "compensationTiers": [
+          {
+            "id": "0283497e-f83b-42ef-9a0a-6215891aa062",
+            "tierSummary": "$189K – $330K • Offers Equity",
+            "title": null,
+            "additionalInformation": null,
+            "components": [
+              {
+                "id": "8d3064c5-4a45-4c4a-b26c-157ec697171c",
+                "summary": "Offers Equity",
+                "compensationType": "EquityPercentage",
+                "interval": "NONE",
+                "currencyCode": null,
+                "minValue": null,
+                "maxValue": null
+              },
+              {
+                "id": "104095ff-c915-4e77-b3fa-5472d81297ef",
+                "summary": "$189K – $330K",
+                "compensationType": "Salary",
+                "interval": "1 YEAR",
+                "currencyCode": "USD",
+                "minValue": 189000,
+                "maxValue": 330000
+              }
+            ]
+          }
+        ],
+        "summaryComponents": [
+          {
+            "compensationType": "EquityPercentage",
+            "interval": "NONE",
+            "currencyCode": null,
+            "minValue": null,
+            "maxValue": null
+          },
+          {
+            "compensationType": "Salary",
+            "interval": "1 YEAR",
+            "currencyCode": "USD",
+            "minValue": 189000,
+            "maxValue": 330000
+          }
+        ]
+      }
+    },
+    "… 178 more item(s) truncated"
+  ],
+  "apiVersion": "1"
+}

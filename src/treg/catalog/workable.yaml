@@ -1,0 +1,37 @@
+provider: workable
+source:
+  docs: https://workable.readme.io/reference/jobs-1
+  openapi: null
+  curated: '2026-11-14'
+# Workable's public jobs API needs no key. The documented root, www.workable.com/api/accounts/{subdomain},
+# answers 302 to apply.workable.com/api/v1/widget/accounts/{subdomain} with the query kept; treg's relay
+# never follows a redirect, so the row targets the redirect's host and path directly.
+limits: "No key and no published rate limit. One call returns a company's whole public board; there is no paging."
+
+defaults:
+  provenance: {source: observed, source_url: 'https://workable.readme.io/reference/jobs-1', checked: '2026-11-14', confidence: verified}
+
+endpoints:
+  - id: workable.account.jobs
+    added: '2026-11-14'
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/v1/widget/accounts/{subdomain}
+    name: "A company's open jobs on Workable"
+    summary: "List every open job on a company's Workable careers page: title, department, locations, remote flag, employment type, published date and apply link, plus the full description with details=true."
+    input:
+      pathParams:
+        subdomain: {type: string, required: true, note: "the account name in the company's careers URL: apply.workable.com/<subdomain> or <subdomain>.workable.com", example: huggingface}
+      queryParams:
+        details: {type: boolean, required: false, default: false, note: "true adds each job's HTML description", example: true}
+    note: "A job open in several locations is listed once per location with the same shortcode: dedupe by shortcode to count jobs. An account with no open jobs answers 200 with an empty jobs list."
+    test_request: {pathParams: {subdomain: huggingface}, queryParams: {details: true}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "No Workable account has this subdomain; the body is the text Not Found."}
+    verified: '2026-11-14'
+    example_response: examples/workable.account.jobs.json
+    docs_url: https://workable.readme.io/reference/jobs-1

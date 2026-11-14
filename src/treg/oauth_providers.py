@@ -1391,6 +1391,21 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
 )
 
+# Keyless: the Job Board API answers every GET without authentication, so there is nothing to
+# connect or probe. Rows are `platform_auth: anonymous`; the EU host does not resolve (2026-11-14).
+GREENHOUSE = OAuthProvider(
+    service="greenhouse",
+    display_name="Greenhouse Job Board",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs, departments and offices from its Greenhouse job board, with pay ranges and application questions.",
+    base_url="https://boards-api.greenhouse.io/v1",
+    docs_url="https://docs.greenhouse.io/job-board.html",
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -4275,6 +4290,67 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+
+ASHBY = OAuthProvider(
+    service="ashby",
+    display_name="Ashby job boards",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Every open job on a company's Ashby job board, with full descriptions and posted pay.",
+    base_url="https://api.ashbyhq.com",
+    docs_url="https://developers.ashbyhq.com/docs/public-job-posting-api",
+)
+
+
+WORKABLE = OAuthProvider(
+    service="workable",
+    display_name="Workable",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs from its Workable careers page, with descriptions. Free, no key.",
+    # Workable documents www.workable.com/api/accounts/{subdomain}; that answers 302 to this host,
+    # and the relay never follows redirects, so the catalog targets the redirect's host directly.
+    base_url="https://apply.workable.com",
+    docs_url="https://workable.readme.io/reference/jobs-1",
+)
+
+
+SMARTRECRUITERS = OAuthProvider(
+    service="smartrecruiters",
+    display_name="SmartRecruiters",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Open job postings from employers hiring on SmartRecruiters: search one company's board and read full job ads. Free, no key.",
+    base_url="https://api.smartrecruiters.com",
+    docs_url="https://developers.smartrecruiters.com/docs/posting-api",
+)
+
+
+# Lever's Postings API serves every published posting without a key. The API key Lever documents
+# applies only to the application POST, which is not listed.
+LEVER = OAuthProvider(
+    service="lever",
+    display_name="Lever",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs on its Lever careers site, with full descriptions, or read one posting.",
+    base_url="https://api.lever.co",
+    catalog_targets=(CatalogTarget(host="api.eu.lever.co", base_url="https://api.eu.lever.co"),),
+    docs_url="https://github.com/lever/postings-api",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4282,7 +4358,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

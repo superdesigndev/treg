@@ -120,6 +120,7 @@ platforms:
   companies: {label: "Company data", category: "Enrichment", featured: 1, summary: "Enrich and search companies — firmographics, funding, tech stack, employees."}
   people: {label: "People & contact data", category: "Enrichment", featured: 2, summary: "Enrich people and find or verify work contact details — role, company, email, phone."}
   creators: {label: "Creators & influencers", category: "Enrichment", featured: 3, summary: "Find and enrich creators across Instagram, YouTube, TikTok, Twitch, X and OnlyFans — profile, audience, contact email, posts and lookalikes."}
+  jobs: {label: "Jobs & salaries", category: "Enrichment", summary: "Match open jobs to a candidate profile and benchmark salaries from posted pay."}
 
   ebay: {label: "eBay", category: "E-commerce", summary: "Product listings and search results from eBay."}
   walmart: {label: "Walmart", category: "E-commerce", summary: "Product listings and search results from Walmart."}
@@ -371,6 +372,7 @@ capabilities:
   companies.jobs.search: "Search indexed job listings across companies"
   companies.jobs.search.count: "Count job postings that match a search"
   companies.jobs.detail: "Get one job posting by ID"
+  jobs.salary.benchmark: "Salary range for a job title in a place, from posted pay"
   companies.news: "Recent news & signals about a company"
   companies.reviews: "Read employee reviews of a company"
   google-play.search.apps: "Search apps by keyword"
