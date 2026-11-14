@@ -294,6 +294,7 @@ capabilities:
 
   # --- Enrichment (B2B data) --------------------------------------------------------------------
   companies.enrich: "Enrich a company from its domain or name"
+  companies.autocomplete: "Autocomplete a company by partial domain or name"
   companies.search: "Search companies by industry, size or tech — account lists for lead generation"
   people.enrich: "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location"
   people.search: "Find people by role, company or location — lead lists and prospects (sales leads)"

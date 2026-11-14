@@ -4,8 +4,8 @@ source:
   openapi: null # Lever documents the Postings API in its GitHub README; no OpenAPI document is published
   curated: '2026-11-14'
 # Keyless and free: every published posting is public, and no request carries a credential. The
-# EU instance (api.eu.lever.co) answers the same paths for companies hosted there; a site lives on
-# exactly one instance and the other answers 404.
+# EU instance (api.eu.lever.co) answers the same paths for companies hosted there; the two
+# instances are separate, so one site name can be a different board on each.
 limits: "No documented read rate limit. Responses take 1 to 7 seconds; a board's whole list is about 20 KB per posting."
 pricing_url: https://github.com/lever/postings-api
 
@@ -82,7 +82,7 @@ endpoints:
         department: {type: "array[string]", required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
         level: {type: string, required: false, note: "exact level name"}
     test_request: {pathParams: {site: leverdemo}, queryParams: {mode: json, limit: 1}}
-    note: "Only for sites hosted on jobs.eu.lever.co; a site on jobs.lever.co answers 404 here."
+    note: "For sites hosted on jobs.eu.lever.co. The US and EU instances are separate: a name can be a different company's board on each, so use the instance the company's jobs page links to."
     example_response: examples/lever.eu.postings.list.json
     verified: '2026-11-14'
     added: '2026-11-14'

@@ -16,7 +16,6 @@ pricing_url: https://jobspipe.dev/pricing
 
 proposed_capabilities:
   companies.jobs.new: "New job postings for a saved search since the last check"
-  companies.autocomplete: "Autocomplete a company by partial domain or name"
 
 defaults:
   provenance: {source: observed, source_url: 'https://jobspipe.dev/pricing', checked: '2026-11-14', confidence: verified}

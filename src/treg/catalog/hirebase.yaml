@@ -2,7 +2,7 @@ provider: hirebase
 source:
   docs: https://www.hirebase.org/docs
   llms: https://www.hirebase.org/docs/llms.txt
-  # No OpenAPI is published (/openapi.json and /docs/openapi.json answer 404); rows follow the docs pages.
+  # No OpenAPI is published; rows follow the docs pages.
   openapi: null
   curated: '2026-11-14'
 pricing_url: https://www.hirebase.org/pricing
@@ -280,7 +280,7 @@ endpoints:
         industry: {type: "array[string]", required: false}
         days_ago: {type: integer, required: false, default: 90, min: 1, max: 365}
         include_expired: {type: boolean, required: false, default: true}
-      note: "Answers with a task; the report is in the finished task's result after about 1-2 minutes. Follow it with hirebase.tasks.get."
+      note: "Answers with a task; the report is in the finished task's result after about 1-2 minutes. Follow it with hirebase.tasks.get. The market's salary percentiles (p5-p95, histogram) are at result.market.salary; by place at result.salary_by_location."
     test_request: {body: {job_title: "Software Engineer", geo_locations: [{city: "San Francisco", region: "California", country: "United States"}], salary_range: {min: 160000, max: 200000, currency: USD, period: yearly}, days_ago: 90}}
     price: {value: '0.25', currency: USD, unit: call, note: "Charged when the report finishes; a failed task is free."}
     expect: {path: response.id, op: present}
