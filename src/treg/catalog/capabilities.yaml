@@ -154,6 +154,7 @@ platforms:
   crypto: {label: "Crypto Market Data", category: "Market data", featured: 1, summary: "Live and historical prices, market caps, trends and exchanges across 17,000+ coins."}
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
   markets: {label: "Other market data", category: "Market data", summary: "Foreign exchange, commodities, movers and prediction markets."}
+  tcg: {label: "Trading cards", category: "Market data", summary: "Catalog search, market prices, PSA population, photo identification, and AI grading for trading cards."}
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}

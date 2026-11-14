@@ -1,0 +1,206 @@
+provider: tcgdetect
+source:
+  docs: https://tcgdetect.com/developers
+  openapi: https://api.tcgdetect.com/v1/openapi.json
+  curated: '2026-11-14'
+limits: "Free catalog: 60/min and 1000/day per key. Photo identification: 10/min and 20/day per key. Reports: 10/min and 2 in flight."
+pricing_url: https://api.tcgdetect.com/pricing
+proposed_capabilities:
+  tcg.pricing.rate_card: "Read the current per-call prices for a trading-card API"
+  tcg.catalog.search: "Search a trading-card catalog by name or collector number"
+  tcg.catalog.card: "Look up one trading card by its catalog id"
+  tcg.prices.card: "Read the latest raw and graded prices for one trading card"
+  tcg.prices.batch: "Read prices for up to 50 trading cards in one call"
+  tcg.population.psa: "Read the PSA population for one trading card"
+  tcg.grading.report: "Grade a trading card from front and back photos"
+  tcg.grading.report.status: "Check whether a trading-card grade report is finished"
+  tcg.grading.report.pdf: "Download the PDF of a finished trading-card grade report"
+  tcg.identify.photo: "Identify a trading card from front and back photos"
+endpoints:
+  - id: tcgdetect.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/account
+    name: "Account balance"
+    summary: "Wallet balance and remaining trial reports for this key"
+    input: {}
+    test_request: {}
+    cost: &cost_free {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "A live 200 left the wallet unchanged (usage_charge.amount_micro_usd 0)."}
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.pricing.rate_card
+    capability: tcg.pricing.rate_card
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /pricing
+    name: "Rate card"
+    summary: "Current per-call prices and quotas. No key required."
+    input: {}
+    test_request: {}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.catalog.search
+    capability: tcg.catalog.search
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /v1/cards
+    name: "Search cards"
+    summary: "Search the catalog by name or collector number. Prices are not included."
+    input:
+      queryParams:
+        name: {type: string, required: false, note: "Card name", example: "Charizard"}
+        number: {type: string, required: false, note: "Collector number", example: "4/102"}
+        set_name: {type: string, required: false, note: "Set name", example: "Base Set"}
+    test_request:
+      queryParams: {name: "Charizard", number: "4/102"}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.catalog.card
+    capability: tcg.catalog.card
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /v1/cards/{id}
+    name: "Card details"
+    summary: "One catalog card by id. Prices are not included."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Catalog UUID from search", example: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    test_request:
+      pathParams: {id: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.prices.card
+    capability: tcg.prices.card
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /v1/prices
+    name: "Card prices"
+    summary: "Latest TCGplayer near-mint, PriceCharting ungraded, and graded prices for one card"
+    input:
+      queryParams:
+        card_id: {type: string, required: true, note: "Catalog UUID", example: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    test_request:
+      queryParams: {card_id: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.identify.photo
+    capability: tcg.identify.photo
+    platform: tcg
+    scope: any_account
+    method: POST
+    path: /v1/identify
+    name: "Identify a card"
+    summary: "Catalog match from a front photo. Not a grade. 20 per key per UTC day and 10 per minute."
+    input:
+      body:
+        front: {type: string, required: true, note: "JPEG, PNG, or WebP data URL, each side at least 250px", example: "data:image/jpeg;base64,/9j/4AAQ"}
+        back: {type: string, required: false, note: "Optional. Accepted but not used.", example: "data:image/jpeg;base64,/9j/4AAQ"}
+    test_request:
+      body: {front: "data:image/jpeg;base64,/9j/4AAQ", back: "data:image/jpeg;base64,/9j/4AAQ"}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.prices.batch
+    capability: tcg.prices.batch
+    platform: tcg
+    scope: any_account
+    method: POST
+    path: /v1/prices:batch
+    name: "Batch prices"
+    summary: "Prices for 1 to 50 cards. One charge per successful call."
+    input:
+      body:
+        card_ids: {type: array, required: true, note: "Catalog UUIDs, max 50", example: ["2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"]}
+    test_request:
+      body: {card_ids: ["2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"]}
+    cost: {type: per_success, value: 0.05, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "Rate card prices.batch is $0.05 per successful call, max 50 ids. Not live-replayed in the attached ledger, to avoid a second paid call on a $1 test wallet."}
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.population.psa
+    capability: tcg.population.psa
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /v1/population
+    name: "PSA population"
+    summary: "PSA population rows for one card. A card with no rows is still charged."
+    input:
+      queryParams:
+        card_id: {type: string, required: true, note: "Catalog UUID", example: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    test_request:
+      queryParams: {card_id: "2c386ad3-3af3-4bcd-8fa0-2cafa685aa52"}
+    cost: {type: per_call, value: 0.005, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "A 200 is charged even when available is false. A 404 is free. Live hit: HTTP 200, available true, usage_charge.amount_micro_usd 5000."}
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.grading.report
+    capability: tcg.grading.report
+    platform: tcg
+    scope: any_account
+    method: POST
+    path: /v1/reports
+    name: "Grade a card"
+    summary: "Full report from front and back photos. Includes centering, defects, prices, and PSA population."
+    input:
+      body:
+        front: {type: string, required: true, note: "JPEG, PNG, or WebP data URL, each side at least 250px", example: "data:image/jpeg;base64,/9j/4AAQ"}
+        back: {type: string, required: true, note: "JPEG, PNG, or WebP data URL, each side at least 250px", example: "data:image/jpeg;base64,/9j/4AAQ"}
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "Retry key. A retry without it can reserve twice.", example: "treg-report-1"}
+    test_request:
+      body: {front: "data:image/jpeg;base64,/9j/4AAQ", back: "data:image/jpeg;base64,/9j/4AAQ"}
+      headers: {Idempotency-Key: "treg-report-1"}
+    cost: {type: per_success, value: 0.30, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "List price is $0.30, or $0.25 when available wallet balance is at least $250. The first two successful reports after email confirmation are $0. Failed reports are released. HTTP 202; poll GET /v1/reports/{id}. Live create was 202 pending with trial true and amount_micro_usd 0, then poll completed."}
+    async:
+      id_from: id
+      poll:
+        endpoint: tcgdetect.grading.report.status
+        param: {in: pathParams, name: id}
+      status: {path: status, success: [completed], failure: [failed], progress: [pending, processing]}
+      result: {path: report, ttl_note: "assets.report_png and assets.slab_png expire after expires_in seconds (86400 observed)."}
+      interval: 5
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.grading.report.status
+    kind: utility
+    capability: tcg.grading.report.status
+    platform: tcg
+    scope: any_account
+    method: GET
+    path: /v1/reports/{id}
+    name: "Report status"
+    summary: "Poll a report. Not charged."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Report UUID from the grade call", example: "284f2c55-7acd-4fa4-afc0-c104a65e5820"}
+    test_request:
+      pathParams: {id: "284f2c55-7acd-4fa4-afc0-c104a65e5820"}
+    cost: *cost_free
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
+  - id: tcgdetect.grading.report.pdf
+    capability: tcg.grading.report.pdf
+    platform: tcg
+    scope: any_account
+    method: POST
+    path: /v1/reports/{id}/pdf
+    name: "Report PDF"
+    summary: "PDF of a completed report"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Report UUID", example: "284f2c55-7acd-4fa4-afc0-c104a65e5820"}
+    test_request:
+      pathParams: {id: "284f2c55-7acd-4fa4-afc0-c104a65e5820"}
+    cost: {type: per_success, value: 0.05, currency: USD, per: 1, unit: call, source: docs, source_url: https://api.tcgdetect.com/pricing, checked: '2026-11-14', confidence: documented, note: "Charged only when the PDF bytes are returned. Not live-replayed in the attached ledger, to avoid a second paid call on a $1 test wallet."}
+    added: '2026-11-14'
+    docs_url: https://tcgdetect.com/developers
