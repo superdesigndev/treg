@@ -175,3 +175,16 @@ async def test_a_mixed_key_providers_kicker_counts_its_free_rows(clients: AsyncC
     assert m, re.findall(r"\d+ tools · [^<]{0,90}", page)[:2]
     total, platform, byok, free = map(int, m.groups())
     assert platform + byok + free == total and byok >= 1 and free >= 1
+
+
+async def test_the_provider_tools_record_marks_a_public_provider(clients: AsyncClient, monkeypatch):
+    """The dashboard's provider page reads a public provider from /catalog/providers/<service>: it is
+    not in the Connect listing, so the record must say it is public."""
+    import dataclasses
+    from treg import oauth_providers
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    rec = (await clients.get("/catalog/providers/financialdatasets")).json()["provider"]
+    assert rec["auth_kind"] == "public" and rec["display_name"]
+    keyed = (await clients.get("/catalog/providers/hunter")).json()["provider"]
+    assert "auth_kind" not in keyed

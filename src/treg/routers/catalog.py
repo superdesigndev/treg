@@ -210,7 +210,12 @@ async def catalog_provider(service: str) -> dict:
                                "providers": len(compared[(plat, cap)]), "description": cat.capabilities.get(cap, "")}
         shelves.setdefault(plat, []).append(view)
     return {
-        "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {})},
+        "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {}),
+                     # the dashboard's provider page reads a public provider from here: it is not in
+                     # the Connect listing (there is nothing to connect)
+                     **({"auth_kind": "public", "summary": reg.summary or "", "docs_url": reg.docs_url or ""}
+                        if (reg := oauth_providers.get(service)) is not None and reg.auth_kind == "public"
+                        else {})},
         "platforms": [
             {"slug": slug, "label": cat.platforms.get(slug, {}).get("label", slug),
              "tools": sorted(tools, key=lambda v: (v["kind"] in catalog_store.HIDDEN_KINDS, v["name"] or v["summary"] or v["id"]))}

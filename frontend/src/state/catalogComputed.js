@@ -16,7 +16,10 @@ const COL_TIPS = {
 }
 
 export default {
-mkProvider(){ return this.providers.find(p=>p.service===this.mkService)||null; },
+mkProvider(){ const p=this.providers.find(p=>p.service===this.mkService); if(p) return p;
+      // a keyless public provider is not in the Connect listing: its page reads the catalog's record
+      const d=this.mkToolData, c=d && d.provider;
+      return c && c.auth_kind==='public' ? {...c, configured:true} : null; },
 mkPaused(){ return this.providerPaused(this.mkService); },
 mkAccounts(){ return this.connAccounts.filter(a=>a.service===this.mkService); },
 // Which capabilities ANY account here already holds — a page-level "you have this" summary,

@@ -29,3 +29,17 @@ test('Try it never tells a keyless public row it needs a key', () => {
   expect(msg(keyless, {})).not.toContain('needs a key')
   expect(msg({ id: 'p.x', provider: 'p' }, {})).toContain('needs a key')
 })
+
+test('a keyless public provider has a provider page though it is not in the Connect listing', () => {
+  const tools = { service: 'board', data: { provider: { service: 'board', display_name: 'Board', auth_kind: 'public' } } }
+  const vm = { providers: [{ service: 'other' }], mkService: 'board', mkTools: tools,
+    get mkToolData(){ return catalogComputed.mkToolData.call(this) } }
+  const p = catalogComputed.mkProvider.call(vm)
+  expect(p && p.display_name).toBe('Board')
+  expect(p.auth_kind).toBe('public')
+  // a provider that is neither listed nor public still has no page (unknown service)
+  const unknown = { providers: [{ service: 'other' }], mkService: 'nope',
+    mkTools: { service: 'nope', data: { provider: { service: 'nope' } } },
+    get mkToolData(){ return catalogComputed.mkToolData.call(this) } }
+  expect(catalogComputed.mkProvider.call(unknown)).toBeNull()
+})
