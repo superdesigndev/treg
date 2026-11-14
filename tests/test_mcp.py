@@ -309,6 +309,27 @@ async def test_catalog_search_returns_priced_results(clients):
     assert "usd_per_call" in first and "no_key_needed" in first
 
 
+async def test_catalog_search_and_get_do_not_quote_a_usage_bundle_as_per_call(clients):
+    """Fish S2.1 Pro bills $15 per 1M UTF-8 bytes. Search and get must not label that bundle
+    `usd_per_call`; they keep it as `display_usd` plus `display_unit`."""
+    token = (await verified_signup(clients, json={"email": "bundlequote@superdesign.dev"})).json()["token"]
+    async with mcp_session(clients) as c:
+        search = await _call_tool(c, "catalog_search", {
+            "query": "fishaudio.tts.s2-1-pro", "limit": 5,
+        }, token=token)
+        got = await _call_tool(c, "catalog_get", {
+            "endpoint_id": "fishaudio.tts.s2-1-pro",
+        }, token=token)
+    row = next(r for r in search["results"] if r["endpoint_id"] == "fishaudio.tts.s2-1-pro")
+    assert row["usd_per_call"] is None, row
+    assert row["display_usd"] == 15.0 and row["display_unit"] == "1M UTF-8 bytes"
+    assert got["usd_per_call"] is None, got
+    assert got["display_usd"] == 15.0 and got["display_unit"] == "1M UTF-8 bytes"
+    assert got["endpoint"]["cost"]["usd"] == 0.000015
+    assert got["endpoint"]["cost"]["display_usd"] == 15.0
+    assert got["endpoint"]["cost"]["display_unit"] == "1M UTF-8 bytes"
+
+
 async def test_no_key_needed_is_false_when_the_deploy_holds_no_key(clients):
     """`no_key_needed` must mean "THIS deploy will serve it on treg's key", not "the row is priced".
     The test env configures no platform keys at all, so every result — however eligible its price —

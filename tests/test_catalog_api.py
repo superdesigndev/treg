@@ -1248,6 +1248,57 @@ def test_generic_display_prices_match_web_and_cli():
     assert _platform_estimate_micro(job, {}) == 75_000
 
 
+def test_advertised_quote_withholds_a_presentation_bundle_from_usd_per_call():
+    """A grouped display without round_up is a readability bundle, not what one call bills.
+
+    MCP catalog_search/get used to copy `advertised_usd` into `usd_per_call`, so Fish S2.1 Pro
+    showed $15 per call instead of $15 per 1M UTF-8 bytes. `advertised_quote` withholds that
+    figure from `usd_per_call` and keeps the bundle next to its unit. A started block still
+    quotes as per-call, because that is the minimum a live successful call bills.
+    """
+    from treg.domain.catalog import store
+    cat = store.load()
+    cases = [
+        ("fishaudio.tts.s2-1-pro", 15.0, "1M UTF-8 bytes", 1.5e-05),
+        ("minimax.voice-gen.speech-2-8-turbo", 0.6, "10000 characters", 6e-05),
+        ("minimax.voice-gen.speech-2-8-hd", 1.0, "10000 characters", 0.0001),
+    ]
+    for endpoint_id, display_usd, display_unit, usd in cases:
+        endpoint = cat.by_id[endpoint_id]
+        cost = cat.cost_view(endpoint["cost"], endpoint["provider"])
+        assert cat.advertised_usd(cost) == display_usd
+        assert cost["usd"] == usd
+        assert cat.advertised_quote(cost) == {
+            "usd_per_call": None,
+            "display_usd": display_usd,
+            "display_unit": display_unit,
+        }
+
+    constructed = cat.cost_view(
+        {"type": "per_success", "currency": "USD", "value": 15, "per": 1_000_000,
+         "display": {"unit": "UTF-8 bytes", "grouped": True}},
+        "any-provider",
+    )
+    assert cat.advertised_quote(constructed) == {
+        "usd_per_call": None,
+        "display_usd": 15.0,
+        "display_unit": "1M UTF-8 bytes",
+    }
+
+    started = cat.cost_view(
+        {"type": "per_result", "currency": "USD", "value": 2.0, "per": 25,
+         "display": {"unit": "records", "grouped": True, "round_up": True}},
+        "any-provider",
+    )
+    assert started["display_unit"] == "started 25 records"
+    assert cat.advertised_quote(started) == {"usd_per_call": 2.0}
+
+    hunter = cat.by_id["hunter.companies.emails"]
+    hunter_cost = cat.cost_view(hunter["cost"], hunter["provider"])
+    assert hunter_cost["display_unit"].startswith("started ")
+    assert cat.advertised_quote(hunter_cost) == {"usd_per_call": cat.advertised_usd(hunter_cost)}
+
+
 _MOZ_ONE_ROW_PER_RETURNED = re.compile(r"1 row per returned", re.I)
 
 
