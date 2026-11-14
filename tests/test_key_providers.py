@@ -755,3 +755,30 @@ async def test_a_routed_tool_with_a_keyless_child_is_quoted_and_listed_as_needin
     assert await flag() is True
     monkeypatch.setattr(get_settings(), "platform_providers", "")
     assert await flag() is False
+
+
+def test_a_refusal_names_a_keyless_alternative_as_callable_with_no_key(monkeypatch):
+    """The dead-end's alternatives list must not tell an agent a keyless public row needs a credential."""
+    from treg.application.call import resolve as R
+
+    keyless = {"id": "freeboard.jobs", "provider": "freeboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, keyless, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "freeboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is keyless else None)
+    lines = R._capability_alternatives(asked)
+    free_line = next(line for line in lines if "freeboard.jobs" in line)
+    assert "no key needed" in free_line and "credential" not in free_line, lines
+    assert any("paidindex.jobs" in line and "needs your own paidindex credential" in line for line in lines), lines

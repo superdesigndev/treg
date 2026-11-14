@@ -1139,15 +1139,17 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
         usd = cost.get("usd") if cost else None
         # "Servable" is the caller's real question: not "does another row exist" but "can treg
         # answer it for me right now". Both halves of tier 4, exactly as `_platform_offer` asks.
-        servable = bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
-        ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable))
+        keyless = anonymous_served(alt) is not None  # a public row this deployment serves with no key
+        servable = keyless or bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
+        ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable, keyless))
     if not ranked:
         return []
     ranked.sort()
     lines = [f"another provider serves {capability}:"]
-    for _, _, alt_id, usd, servable in ranked[:limit]:
+    for _, _, alt_id, usd, servable, keyless in ranked[:limit]:
         price = "price unknown" if usd is None else ("free" if usd == 0 else f"~${usd:g}/call")
-        how = "callable now on treg's key" if servable else f"needs your own {alt_id.split('.')[0]} credential"
+        how = ("callable now, no key needed" if keyless else
+               "callable now on treg's key" if servable else f"needs your own {alt_id.split('.')[0]} credential")
         lines.append(f"  {alt_id}  {price}  ({how})")
     return lines
 
