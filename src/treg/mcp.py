@@ -440,6 +440,8 @@ class CatalogGetOut(TypedDict, total=False):
                                            # response is a list of records (brightdata datasets)
     hints: list[str] | None
     did_you_mean: list[str] | None         # real ids close to one that missed
+    access: dict[str, Any] | None          # this team's live /access decision (tier + detail);
+                                           # absent when unsigned or when the probe could not be read
     usd_per_call: float | None             # typical-call quote (display_usd when grouped; else usd)
     overflow_price_usd: float | None       # what a call bills when treg's own account is out and the
                                            # overflow relay serves it instead (absent = never relayed)
@@ -1273,14 +1275,53 @@ async def _catalog_request_impl(
     description=(
         "One endpoint in full: its parameters, the exact price per call, whether treg serves it on "
         "its own key, and the other providers that answer the same capability — with the success "
-        "rate and speed treg has measured across real calls. Read this BEFORE call() so you can "
-        "tell the human what it will cost."
+        "rate and speed treg has measured across real calls. `access` is this team's live decision: "
+        "a connected account, a team key, treg's key, or a missing credential (and how to connect). "
+        "Read this BEFORE call() so you can tell the human what it will cost and whether it can run."
     ),
     annotations=_READS,
     structured_output=True
 )
 async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
     return await _catalog_get_impl(endpoint_id, ctx, surface=_TEAM_SURFACE)
+
+
+_RUN_IT_HINT = "run it — key injected server-side"
+
+
+async def _endpoint_access(
+    client: httpx.AsyncClient, endpoint_id: str, headers: dict[str, str],
+) -> dict[str, Any] | None:
+    """This team's live access decision. Best-effort: catalog_get must still return the public
+    contract if /access cannot be read."""
+    try:
+        r = await client.get(f"/catalog/endpoints/{endpoint_id}/access", headers=headers)
+    except Exception:  # noqa: BLE001 — an access hint must never break the catalog page
+        return None
+    if r.status_code != 200:
+        return None
+    body = _body(r)
+    return body if isinstance(body, dict) and body.get("tier") is not None else None
+
+
+def _attach_endpoint_access(out: Any, access: dict[str, Any] | None) -> Any:
+    """Attach /access and, when a call would be refused, stop advertising it as immediately runnable."""
+    if not isinstance(out, dict) or not access:
+        return out
+    out["access"] = access
+    detail = access.get("detail")
+    if access.get("tier") not in ("none", "restricted") or not isinstance(detail, str) or not detail:
+        return out
+    hints = list(out["hints"]) if isinstance(out.get("hints"), list) else []
+    rewritten = False
+    for i, hint in enumerate(hints):
+        if isinstance(hint, str) and _RUN_IT_HINT in hint:
+            hints[i] = detail
+            rewritten = True
+    if not rewritten:
+        hints.insert(0, detail)
+    out["hints"] = hints
+    return out
 
 
 async def _catalog_get_impl(
@@ -1299,13 +1340,23 @@ async def _catalog_get_impl(
                    else _api(token, client_name=surface.client_name))
     async with api_context as client:
         headers = {}
-        if token and ep is not None and (ep.get("team_label") or ep.get("caller_email")):
-            # Name the team, so a person signed in to several teams still gets its own values
-            # (`your_values`): an identity token alone does not say which team is asking.
+        access_headers: dict[str, str] = {}
+        if token:
+            # /access requires require_member. An unpinned identity bearer has no team on
+            # the token, so without X-Treg-Org the route returns HTTP 400 "choose an org"
+            # even when this caller has a sole or active team `_resolve_org` could name.
+            # The public document only needs that header for team_label / caller_email
+            # (`your_values`); the access probe needs it regardless.
             _, slug, problem = await _resolve_org(client)
             if slug and not problem:
-                headers["X-Treg-Org"] = slug
+                access_headers["X-Treg-Org"] = slug
+                if ep is not None and (ep.get("team_label") or ep.get("caller_email")):
+                    headers["X-Treg-Org"] = slug
         r = await client.get(f"/catalog/endpoints/{endpoint_id}", headers=headers)
+        # CLI `catalog get` already asks /access how THIS caller would be served. MCP used to
+        # return only the public document, so a ready call_template plus "run it — key injected
+        # server-side" looked callable when the org had no credential and the call would 404.
+        access = await _endpoint_access(client, endpoint_id, access_headers) if token and r.status_code == 200 else None
     if r.status_code == 404:
         cat = catalog_store.load()
         return {"error": f"unknown endpoint {endpoint_id!r}",
@@ -1331,7 +1382,7 @@ async def _catalog_get_impl(
             out["overflow_via"] = ep.get("overflow_via")
     if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
         out.pop("siblings", None)
-    return out
+    return _attach_endpoint_access(out, access)
 
 
 # Everything below spends money or reads a team's data - all of it goes back through the API.
