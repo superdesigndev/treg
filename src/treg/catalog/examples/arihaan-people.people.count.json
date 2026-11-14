@@ -1,0 +1,16 @@
+{
+  "count": 12830,
+  "with_email": 7269,
+  "with_phone": 2749,
+  "with_linkedin": 12830,
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.014,
+    "charge_micro": 14000,
+    "events": {
+      "count_unit": 7
+    },
+    "count_units": 7,
+    "est_scan_usd": 0.009712
+  }
+}

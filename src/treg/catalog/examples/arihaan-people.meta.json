@@ -1,0 +1,171 @@
+{
+  "departments": [
+    "Executive & General Management",
+    "Sales",
+    "Operations & Logistics",
+    "Finance & Accounting",
+    "Software Engineering"
+  ],
+  "levels": [
+    "Owner / Founder",
+    "C-suite",
+    "VP",
+    "Director / Head",
+    "Manager"
+  ],
+  "company_sizes": [
+    "1-4",
+    "5-19",
+    "20-99",
+    "100-249",
+    "250-499"
+  ],
+  "revenue_bands": [
+    "<$1M",
+    "$1-10M",
+    "$10-50M",
+    "$50-100M",
+    "$100-500M"
+  ],
+  "industries": [
+    "IT Services and IT Consulting",
+    "Hospitals and Health Care",
+    "Financial Services",
+    "Software Development",
+    "Higher Education"
+  ],
+  "countries": [
+    "US",
+    "CA",
+    "FR",
+    "IN",
+    "DE"
+  ],
+  "filters": [
+    {
+      "name": "title",
+      "type": "list",
+      "description": "Job title keywords, OR'd: a person matches if their title contains ANY of them (case-insensitive), e.g. ['vp sales', 'head of sales'].",
+      "example": [
+        "head of sales"
+      ]
+    },
+    {
+      "name": "title_exclude",
+      "type": "list",
+      "description": "Drop people whose title contains ANY of these, e.g. ['assistant', 'intern'].",
+      "example": [
+        "assistant"
+      ]
+    },
+    {
+      "name": "title_whole_words",
+      "type": "bool",
+      "description": "Match title and title_exclude as whole words: 'cto' finds 'CTO' but not 'Director'. Short single-word values (4 letters or fewer) always match as whole words."
+    },
+    {
+      "name": "company",
+      "type": "list",
+      "description": "Company name contains ANY of these (case-insensitive), e.g. ['stripe'].",
+      "example": [
+        "stripe"
+      ]
+    },
+    {
+      "name": "company_exact",
+      "type": "bool",
+      "description": "Match company names exactly instead of 'contains', so 'meta' does not also find 'Metallica'."
+    }
+  ],
+  "card": {
+    "card": "payg",
+    "currency": "USD",
+    "unit": "micro-USD is 1/1,000,000 of a dollar; each price is also given in USD",
+    "prices": [
+      {
+        "id": "scan_unit",
+        "what": "search scan unit",
+        "micro_usd": 5000,
+        "usd": 0.005
+      },
+      {
+        "id": "count_unit",
+        "what": "count unit",
+        "micro_usd": 2000,
+        "usd": 0.002
+      },
+      {
+        "id": "person",
+        "what": "person returned",
+        "micro_usd": 400,
+        "usd": 0.0004
+      },
+      {
+        "id": "fetch_min",
+        "what": "fetch by id, minimum per call",
+        "micro_usd": 1000,
+        "usd": 0.001
+      },
+      {
+        "id": "hit_linkedin",
+        "what": "lookup hit by LinkedIn",
+        "micro_usd": 1000,
+        "usd": 0.001
+      },
+      {
+        "id": "hit_email",
+        "what": "lookup hit by email",
+        "micro_usd": 1000,
+        "usd": 0.001
+      },
+      {
+        "id": "hit_phone",
+        "what": "lookup hit by phone",
+        "micro_usd": 1000,
+        "usd": 0.001
+      },
+      {
+        "id": "miss",
+        "what": "lookup miss (key not found)",
+        "micro_usd": 300,
+        "usd": 0.0003
+      },
+      {
+        "id": "phone_found",
+        "what": "phone found",
+        "micro_usd": 1500,
+        "usd": 0.0015
+      }
+    ],
+    "formulas": {
+      "scan_units": "max(1, ceil(1.05 * (estimated_bigquery_usd + 0.0005) / 0.004)) per search",
+      "count_units": "max(1, ceil(1.05 * (estimated_bigquery_usd + 0.0005) / 0.0016)) per count",
+      "search_charge": "scan_units * scan_unit + people_returned * person",
+      "fetch_by_id_charge": "max(fetch_min, people_returned * person)",
+      "phones_charge": "max(fetch_min, phones_found * phone_found)",
+      "lookup_charge": "keys matched * hit price for the key type (up to 5 people per key included) + keys not found * miss"
+    },
+    "free": [
+      "/v2/meta",
+      "/v2/rates",
+      "/v2/balance",
+      "/v2/usage",
+      "/v2/openapi.json",
+      "/v2/people/estimate",
+      "every error"
+    ],
+    "notes": [
+      "A search that finds nobody is still charged its scan units.",
+      "A search or count too broad to run is refused before it runs and charged nothing.",
+      "A lookup key returns at most 5 people, all covered by its one hit."
+    ]
+  },
+  "paging": "Pass next_cursor back as cursor; null means the last page. limit 1-1000.",
+  "location": "city, state and country are the COMPANY headquarters, not where the person lives. The country/state/city filters filter by company location too. country and state are accepted as aliases of countries and states.",
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.0,
+    "charge_micro": 0,
+    "events": {}
+  }
+}

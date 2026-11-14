@@ -1,0 +1,39 @@
+{
+  "results": [
+    {
+      "key": "https://www.linkedin.com/in/alex-example",
+      "matches": [
+        {
+          "id": "example-0003",
+          "name": "Alex Example",
+          "title": "Head of Sales Development",
+          "department": "Sales",
+          "level": "Director / Head",
+          "company": {
+            "name": "Example Corp",
+            "website": "https://www.example.com",
+            "industry": "Financial Services",
+            "size": "20-99",
+            "revenue": "$1-10M"
+          },
+          "company_location": {
+            "city": "Dallas",
+            "state": "TX",
+            "country": "US"
+          },
+          "email": "alex.example@example.com",
+          "linkedin_url": "https://www.linkedin.com/in/alex-example"
+        }
+      ]
+    }
+  ],
+  "max_matches_per_key": 5,
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.001,
+    "charge_micro": 1000,
+    "events": {
+      "hit_linkedin": 1
+    }
+  }
+}

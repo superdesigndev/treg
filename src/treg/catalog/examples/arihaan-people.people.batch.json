@@ -1,0 +1,55 @@
+{
+  "people": [
+    {
+      "id": "example-0005",
+      "name": "Alex Example",
+      "title": "Head of Sales Development",
+      "department": "Sales",
+      "level": "Director / Head",
+      "company": {
+        "name": "Example Corp",
+        "website": "https://www.example.com",
+        "industry": "Financial Services",
+        "size": "20-99",
+        "revenue": "$1-10M"
+      },
+      "company_location": {
+        "city": "Dallas",
+        "state": "TX",
+        "country": "US"
+      },
+      "email": "alex.example@example.com",
+      "linkedin_url": "https://www.linkedin.com/in/alex-example"
+    },
+    {
+      "id": "example-0006",
+      "name": "Sam Sample",
+      "title": "Head of Sales Engineering, Asia Pacific & Japan (APJ)",
+      "department": "Sales",
+      "level": "Director / Head",
+      "company": {
+        "name": "Example Corp",
+        "website": "https://www.example.com",
+        "industry": "Technology, Information and Internet",
+        "size": "1,000-4,999",
+        "revenue": "$100-500M"
+      },
+      "company_location": {
+        "city": "Lehi",
+        "state": "UT",
+        "country": "US"
+      },
+      "email": "sam.sample@example.com",
+      "linkedin_url": "https://www.linkedin.com/in/sam-sample"
+    }
+  ],
+  "missing": [],
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.001,
+    "charge_micro": 1000,
+    "events": {
+      "fetch_min": 1
+    }
+  }
+}
