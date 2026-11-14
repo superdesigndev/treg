@@ -2832,16 +2832,32 @@ def test_oceanio_platform_person_enrich_refuses_separately_billed_reveals(field)
     assert exc.value.detail['parameter'] == f'body.{field}'
 
 
-@pytest.mark.parametrize('name', ['reveal_phone_number', 'webhook_url', 'poll_only',
-                                  'run_waterfall_email', 'run_waterfall_phone'])
-def test_apollo_platform_person_enrich_refuses_webhook_channels(name):
+@pytest.mark.parametrize('name,value', [
+    *[(n, v) for n in ('reveal_phone_number', 'poll_only', 'run_waterfall_email', 'run_waterfall_phone')
+      for v in ('true', '1', 'False', '')],
+    ('webhook_url', 'https://hooks.example/apollo'), ('webhook_url', 'false'),
+])
+def test_apollo_platform_person_enrich_refuses_webhook_channels(name, value):
     ep = catalog_store.load().by_id['apollo.people.enrich']
     call_resolution._enforce_platform_request(
         ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), ('reveal_personal_emails', 'true'))))
     with pytest.raises(ResolutionFailed) as exc:
         call_resolution._enforce_platform_request(
-            ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, 'false'))))
+            ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, value))))
     assert exc.value.detail['parameter'] == f'queryParams.{name}'
+
+
+@pytest.mark.parametrize('name', ['reveal_phone_number', 'poll_only',
+                                  'run_waterfall_email', 'run_waterfall_phone'])
+def test_apollo_platform_person_enrich_accepts_documented_false_default(name):
+    ep = catalog_store.load().by_id['apollo.people.enrich']
+    call_resolution._enforce_platform_request(
+        ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, 'false'))))
+    # A repeated name is judged per value, so a later `true` is still refused.
+    with pytest.raises(ResolutionFailed):
+        call_resolution._enforce_platform_request(
+            ep, b'', query=call_resolution.QueryValues(
+                (('email', 'a@stripe.com'), (name, 'false'), (name, 'true'))))
 
 
 @pytest.mark.parametrize('endpoint,credits,expected', [
