@@ -1,0 +1,126 @@
+provider: maildignity
+source:
+  docs: https://maildignity.com/docs
+  openapi: null
+  curated: 2026-10-28
+limits: "10 requests/second per key"
+pricing_url: https://maildignity.com/#pricing
+
+# MailDignity audits outgoing email drafts for tone, presumptuous phrasing, artificial flattery,
+# and aggressive sales tactics, providing structural verdicts, detected issues, and respectful rewrites.
+
+proposed_capabilities:
+  ai-judge.email.audit: "Audit an email draft for tone, pushiness, presumptions, and flattery, and suggest respectful rewrites"
+  ai-judge.email.check_fast: "Lightweight heuristic pre-flight check on an email draft to catch obvious red flags"
+
+endpoints:
+  - id: maildignity.ai-judge.email.audit
+    domain: email
+    capability: ai-judge.email.audit
+    platform: ai-judge
+    scope: any_account
+    method: POST
+    path: /check
+    name: "Audit email draft"
+    summary: "Comprehensive tone and dignity audit of an email draft with issue detection and suggested rewrites"
+    input:
+      bodyParams:
+        email_text:
+          type: string
+          required: true
+          note: "Draft text of the email to audit (up to 8,000 characters)"
+          example: "Hi Stefan, you're losing clients because your tools are a mess. We built a shared inbox for agency teams. Would a short overview be useful?"
+        mode:
+          type: string
+          required: false
+          note: "'full' (default, detailed analysis with rewrites) or 'fast' (quick heuristic scan)"
+          example: "full"
+        context:
+          type: string
+          required: false
+          note: "Outreach context: 'cold' (default) or 'personal'"
+          example: "cold"
+        prospect:
+          type: object
+          required: false
+          note: "Optional recipient details to help contextualize the tone audit (name, company, role)"
+          example:
+            name: "Stefan"
+            company: "Acme Agency"
+            role: "Founder"
+    test_request:
+      bodyParams:
+        email_text: "Hi Stefan, you're losing clients because your tools are a mess. We built a shared inbox for agency teams. Would a short overview be useful?"
+        mode: "full"
+        context: "cold"
+    cost:
+      type: per_success
+      value: 0.018
+      currency: USD
+      source: docs
+      source_url: https://maildignity.com/#pricing
+      checked: 2026-10-28
+      confidence: documented
+      note: "1 check consumed per request. Calculated from the Lite plan ($9/mo for 500 checks = $0.018/check; Starter is $19/mo for 2,000 checks = $0.0095/check)."
+    docs_url: https://maildignity.com/docs
+    added: '2026-10-28'
+
+  - id: maildignity.ai-judge.email.check_fast
+    domain: email
+    capability: ai-judge.email.check_fast
+    platform: ai-judge
+    scope: any_account
+    method: POST
+    path: /check
+    name: "Fast check email draft"
+    summary: "Fast heuristic pre-flight check returning a quick PASS/REVIEW/FAIL verdict"
+    input:
+      bodyParams:
+        email_text:
+          type: string
+          required: true
+          note: "Draft text of the email to scan"
+          example: "Quick question: can we meet tomorrow at 14:00?"
+        mode:
+          type: string
+          required: true
+          note: "Must be set to 'fast'"
+          example: "fast"
+    test_request:
+      bodyParams:
+        email_text: "Quick question: can we meet tomorrow at 14:00?"
+        mode: "fast"
+    cost:
+      type: per_success
+      value: 0.018
+      currency: USD
+      source: docs
+      source_url: https://maildignity.com/#pricing
+      checked: 2026-10-28
+      confidence: documented
+      note: "Consumes 1 check quota on the account."
+    docs_url: https://maildignity.com/docs
+    added: '2026-10-28'
+
+  - id: maildignity.account.usage
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /me
+    name: "Account quota and status"
+    summary: "Check authenticated account details, subscription plan, monthly quota, and checks used"
+    input: {}
+    test_request: {}
+    cost:
+      type: per_call
+      value: 0.0
+      currency: USD
+      source: docs
+      source_url: https://maildignity.com/docs
+      checked: 2026-10-28
+      confidence: documented
+      note: "Free status probe. Does not consume checks quota."
+    docs_url: https://maildignity.com/docs
+    added: '2026-10-28'

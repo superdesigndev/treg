@@ -4273,6 +4273,32 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+MAILDIGNITY = OAuthProvider(
+    service="maildignity",
+    display_name="MailDignity",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="md_live_…",
+    setup_url="https://maildignity.com/login",
+    setup_action_label="Get your MailDignity API key",
+    setup_steps=(
+        "Sign in to MailDignity and open Settings → API Keys.",
+        "Create or copy your live API key (md_live_...)",
+    ),
+    setup_note=(
+        "Email audits consume check credits (50 free trial checks, then plans starting from $9/mo). "
+        "Account status and probe checks are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Audit email drafts for pushiness, presumptions, and flattery, and generate respectful rewrites.",
+    base_url="https://maildignity.com/api/public/v1",
+    docs_url="https://maildignity.com/docs",
+    probe_path="/me",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4293,8 +4319,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        INFLUENCERSCLUB, VILLAGE, MAILDIGNITY,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
