@@ -1043,9 +1043,9 @@ def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFa
                         for d in plan.dropped)
     # only treg's demo policy took every candidate: any strict, scope or filter drop beside it
     # is the caller's to fix, so it keeps its own message
-    # children that never take this identity ("needs …", an unverified adapter) were never open
-    # to the call, so they do not stand beside the policy drop
-    live = [d for d in plan.dropped if not str(d.get("why", "")).startswith(("needs ", "adapter unverified"))]
+    # children that never take this identity ("needs {…}") were never open to the call, so they do
+    # not stand beside the policy drop; a filter cap ("needs limit <= …") is a child that was
+    live = [d for d in plan.dropped if not str(d.get("why", "")).startswith("needs {")]
     policy_only = (bool(live) and all(d.get("policy") for d in live)
                    and not options.exclude)  # the caller's exclude may have taken an open one
     strict_drop = [d for d in plan.dropped if d.get("strict")]

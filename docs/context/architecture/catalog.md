@@ -1283,8 +1283,9 @@ an invalid extra never disables the primary.
   503 stays reserved for capacity/key drops.
 - **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
   key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
-  treg's demo policy alone took every candidate that could take the identity (children that need
-  other keys do not count), it answers 422 naming that policy, logged as `admission_denied`; not
+  treg's demo policy alone took every candidate that could take the identity (a child dropped as
+  `needs {…}`, which never takes it, does not count; a filter cap or any other drop does), it
+  answers 422 naming that policy, logged as `admission_denied`; not
   under `X-Treg-Route-Exclude`, whose excluded providers may have been open to the team.
 - **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
   child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every

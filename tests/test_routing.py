@@ -4565,10 +4565,15 @@ async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(mon
     alone = call_route._no_candidate_refusal(ep, plan, options)
     assert alone.log_kind == "admission_denied" and alone.status_code == 422, alone.detail
     # children that never take this identity were never open to the call: policy still speaks alone
-    plan.dropped = plan.dropped + [{"endpoint_id": "c.other", "why": "needs {domain}"},
-                                   {"endpoint_id": "d.other", "why": "adapter unverified: pending"}]
+    only_policy = plan.dropped
+    plan.dropped = only_policy + [{"endpoint_id": "c.other", "why": "needs {domain}"}]
     with_needs = call_route._no_candidate_refusal(ep, plan, options)
     assert with_needs.log_kind == "admission_denied", with_needs.detail
+    # a child that takes the identity but caps a filter was open to the call: not demo policy alone
+    plan.dropped = only_policy + [{"endpoint_id": "e.other", "why": "needs limit <= 100"}]
+    capped = call_route._no_candidate_refusal(ep, plan, options)
+    assert capped.log_kind is None, capped.detail
+    plan.dropped = only_policy
     # the caller's own exclude may have taken a provider open to the team: not demo policy alone
     excluded = call_route._no_candidate_refusal(
         ep, plan, call_route.RouteOptions.from_headers(lambda key: "b" if key.lower() == "x-treg-route-exclude" else None))
