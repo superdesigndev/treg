@@ -1376,7 +1376,7 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     setup_url="https://jobs.mobiusengine.ai/login?utm_source=treg&utm_medium=connect",
     setup_action_label="Get your MobiusEngine.ai Jobs Data API key",
     setup_steps=(
-        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a $1 credit.",
+        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a 10 cent credit; add your LinkedIn profile on the account page, or the key answers 403 profile_required.",
         "Copy the API key shown on your first sign-in (it is shown once; more can be made under API keys).",
         "Add funds on your account page (jobs.mobiusengine.ai/app) when the credit is used: calls are charged per job from that balance.",
     ),
