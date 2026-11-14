@@ -871,6 +871,10 @@ def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_lo
     exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
     assert exc.log_kind == "admission_denied", exc.log_kind
     assert "callable now, no key needed" not in str(exc.detail), exc.detail
+    # not enabled on this server: the message says so first, and the log names the same reason
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    off = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert "has not enabled" in str(off.detail) and off.log_kind == "platform_key_missing", (off.log_kind, off.detail)
 
 
 async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeypatch):

@@ -1198,7 +1198,13 @@ an invalid extra never disables the primary.
     `ROUTED_BODY_MAX` (8 MiB) of it, as settlement does. An anonymous or own-key child streams
     without that bound (a public listing can be larger); past it the attempt is an unbilled `error`
     whose detail names the endpoint to call directly, no health strike, and the next candidate
-    answers.
+    answers. When every non-skipped attempt was cut there, the failure is logged as treg's
+    (`response_buffer_limit`), not the provider's.
+  - **A team's own tool and key, per row.** A child is the team's tool when the team registered a
+    tool for the host the call goes to: the row's own `host` where the provider approves it in
+    `catalog_targets` (as resolve calls it there), else the provider's main host. A tool on one
+    host never stands in for another, and the team's own key is still looked up for every row, so a
+    second-host row a main-host tool does not cover is served on that key (non-negotiable 1).
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a
     balance covering each child in turn would 402 mid-waterfall. **A billed child never settles its
     own hold**: it leaves a `settle.DeferredSettle` and `run_routed` closes every one exactly once at
@@ -1275,6 +1281,11 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
+  key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
+  treg's demo policy alone took every candidate that could take the identity (children that need
+  other keys do not count), it answers 422 naming that policy, logged as `admission_denied`; not
+  under `X-Treg-Route-Exclude`, whose excluded providers may have been open to the team.
 - **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
   child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every
   row and an honest `count` stay, and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` name

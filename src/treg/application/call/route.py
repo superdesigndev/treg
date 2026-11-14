@@ -703,7 +703,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if (tier == "platform" and e.get("platform_auth") == "anonymous"
                 and getattr(oauth_providers.get(e["provider"]), "auth_kind", "") == "public"):
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
-            demo = caller.org is not None and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo)
+            # demo policy only where it is the reason given: a provider not enabled here is capacity
+            demo = (get_settings().platform_provider_enabled(e["provider"]) and caller.org is not None
+                    and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo))
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
                             **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue
@@ -1041,7 +1043,10 @@ def _no_candidate_refusal(ep: dict, plan, options: RouteOptions) -> ResolutionFa
                         for d in plan.dropped)
     # only treg's demo policy took every candidate: any strict, scope or filter drop beside it
     # is the caller's to fix, so it keeps its own message
-    policy_only = (bool(plan.dropped) and all(d.get("policy") for d in plan.dropped)
+    # children that never take this identity ("needs …", an unverified adapter) were never open
+    # to the call, so they do not stand beside the policy drop
+    live = [d for d in plan.dropped if not str(d.get("why", "")).startswith(("needs ", "adapter unverified"))]
+    policy_only = (bool(live) and all(d.get("policy") for d in live)
                    and not options.exclude)  # the caller's exclude may have taken an open one
     strict_drop = [d for d in plan.dropped if d.get("strict")]
     scope_drop = [d for d in plan.dropped if str(d.get("why", "")).startswith("cannot scope by ")]

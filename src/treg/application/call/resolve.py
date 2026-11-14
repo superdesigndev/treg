@@ -1167,11 +1167,12 @@ def _marketplace_no_credential(
         lines = [f"{ep_id} {_anonymous_refusal(ep, org)}"]
         lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
         lines.extend(_capability_alternatives(ep, org=org) if ep is not None else [])
-        demo = org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
+        # attributed in `_anonymous_refusal`'s order, so the log names the reason the caller reads
         ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
+        demo = not ours and org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
         return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
-                                log_kind="admission_denied" if demo  # treg's demo policy, no provider account
-                                else "platform_key_missing" if ours else None)
+                                log_kind="platform_key_missing" if ours
+                                else "admission_denied" if demo else None)  # treg's demo policy
     lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
     lines.append(f"  connect one:  treg connections connect --provider {service}")
     if provider.uses_pasted_secret:

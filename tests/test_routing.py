@@ -4544,6 +4544,10 @@ async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
     assert r.status_code == 422 and "demo" in r.text, (r.status_code, r.json()["detail"]["dropped"])
     line = call_error_lines()[-1]
     assert line["kind"] == "admission_denied" and line["error_class"] == "treg_policy", line
+    # not enabled on this server: that is the reason given, so it is not demo policy
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.post("/call/treg.stocks.quote.live", json={"symbol": "AAPL"})
+    assert r.status_code == 503 and "has not enabled" in r.text, (r.status_code, r.text[:300])
 
 
 async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(monkeypatch):
@@ -4560,6 +4564,11 @@ async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(mon
     plan.dropped = plan.dropped[:1]
     alone = call_route._no_candidate_refusal(ep, plan, options)
     assert alone.log_kind == "admission_denied" and alone.status_code == 422, alone.detail
+    # children that never take this identity were never open to the call: policy still speaks alone
+    plan.dropped = plan.dropped + [{"endpoint_id": "c.other", "why": "needs {domain}"},
+                                   {"endpoint_id": "d.other", "why": "adapter unverified: pending"}]
+    with_needs = call_route._no_candidate_refusal(ep, plan, options)
+    assert with_needs.log_kind == "admission_denied", with_needs.detail
     # the caller's own exclude may have taken a provider open to the team: not demo policy alone
     excluded = call_route._no_candidate_refusal(
         ep, plan, call_route.RouteOptions.from_headers(lambda key: "b" if key.lower() == "x-treg-route-exclude" else None))
