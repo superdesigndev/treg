@@ -2707,12 +2707,15 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         "</div></div>")
 
     flow = (
-        '<section id="flow"><div class="wrap"><div class="seclab">What your agent can now do</div>'
+        '<section id="flow"><div class="wrap"><div class="seclab">'
+        + ("What your agent could do once this server enables it" if public_off else "What your agent can now do")
+        + "</div>"
         f"<h2>{esc_d}, one prompt away</h2>"
         '<div class="fx">'
         '<div class="fp"><div class="tag">AGENT</div>'
         f'<div class="agrow">{_agent_ptiles()}</div>'
-        + "".join(f'<div class="t"><span>{_esc_html(t)}</span><i>✓</i></div>' for t in task_lines)
+        + "".join(f'<div class="t"><span>{_esc_html(t)}</span>' + ("" if public_off else "<i>✓</i>") + "</div>"
+                  for t in task_lines)
         + "</div>"
         '<div class="ar">→</div>'
         '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
@@ -2964,6 +2967,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                 "reads both products' public pages side by side: billing, keys, access and limits. "
                 f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
                 "</div></section>")
+    if public_off:  # nothing here is callable until this server enables it: no prompt to try
+        tryit = ""
     body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
             + faq + copy_js)
 

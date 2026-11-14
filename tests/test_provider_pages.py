@@ -141,7 +141,8 @@ async def test_a_public_provider_not_enabled_never_promises_free_calls(clients: 
     assert "not enabled on this server" in page.lower() and "Nothing to connect" in page
     for false in ("No charge per call", "Nothing. treg.to does not charge", "Its tools are free",
                   "free, no key, nothing to connect", "connect your own account", "tools · free",
-                  "✓ 200", "a live-verified call"):
+                  "✓ 200", "a live-verified call", "What your agent can now do", "<i>✓</i>",
+                  "Show me the price first"):
         assert false not in page, false
 
 
