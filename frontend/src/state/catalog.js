@@ -240,10 +240,10 @@ verdictDate(d){ try{ const m=String(d).length===7;   // a review carries only it
       || (this.platData&&this.platData.providers||{})[service]; return (p&&p.auth_kind)||''; },
 endpointAccessLabel(e){
       if(e.kind==='routed') return 'Routed platform call';
-      if(e.platform_auth==='anonymous'){   // a keyless row: free with no key, or refused where not enabled
+      if(e.platform_auth==='anonymous'){   // a keyless row: free with no key only where this server serves it
         const r=this.provRecord(e.provider);
-        if(r && r.auth_kind==='public' && r.enabled===false) return 'Not enabled on this server';
-        if(!r || r.enabled!==false) return 'Free, no key';
+        if(r && r.enabled===false){ if(r.auth_kind==='public') return 'Not enabled on this server'; }
+        else return 'Free, no key';
       }
       if(e.id==='fishaudio.voices.list') return 'Team voices + BYOK';
       const p=this.providers.find(p=>p.service===e.provider)

@@ -782,3 +782,13 @@ def test_a_refusal_names_a_keyless_alternative_as_callable_with_no_key(monkeypat
     free_line = next(line for line in lines if "freeboard.jobs" in line)
     assert "no key needed" in free_line and "credential" not in free_line, lines
     assert any("paidindex.jobs" in line and "needs your own paidindex credential" in line for line in lines), lines
+
+
+def test_the_connect_listing_says_whether_this_server_serves_a_provider(monkeypatch):
+    """The dashboard labels a key provider's keyless rows from this listing: it must carry the
+    allow-list, or a row this server does not serve keyless reads as free."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is False
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is True

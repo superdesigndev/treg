@@ -61,3 +61,9 @@ test('a paused public provider keeps the paused page', () => {
     get mkToolData(){ return catalogComputed.mkToolData.call(this) } }
   expect(catalogComputed.mkProvider.call(vm)).toBeNull()
 })
+
+test('a key provider\'s keyless row not served here falls back to its key labels', () => {
+  const e = { id: 'p.keyless', provider: 'p', platform_auth: 'anonymous', platform_eligible: true }
+  expect(label(e, [{ service: 'p', auth_kind: 'key', enabled: false }])).toBe('Platform + BYOK')
+  expect(label(e, [{ service: 'p', auth_kind: 'key', enabled: true }])).toBe('Free, no key')
+})

@@ -4616,6 +4616,8 @@ def listing() -> list[dict]:
             "supports_discovery": p.supports_discovery,
             "has_identity": p.has_identity,
             "auth_kind": p.auth_kind,
+            # whether this server serves the provider's keyless rows (its allow-list)
+            "enabled": get_settings().platform_provider_enabled(p.service),
             "token_label": p.token_label,
             "token_placeholder": p.token_placeholder,
             "setup_url": p.setup_url,
