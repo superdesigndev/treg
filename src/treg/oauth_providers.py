@@ -4273,6 +4273,36 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+SPECSTREAM = OAuthProvider(
+    service="specstream",
+    display_name="SpecStream",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your SpecStream API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://specstream.ai/workspace",
+    setup_action_label="Get your SpecStream API key",
+    setup_steps=(
+        "Sign in to SpecStream and open Agents & API.",
+        "Create an API key with only the projects, operations and spending limit the task needs, and copy it.",
+    ),
+    setup_note=(
+        "A find is billed per matching row (5 cents, 15 cents or $1) from your SpecStream balance, never "
+        "above the ceiling you set; a row left out costs nothing. New accounts start with $10 of credit. "
+        "Connecting reads the balance, which spends nothing."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Live web data as structured rows from a request in plain words, every value linked to the page it came from.",
+    base_url="https://api.specstream.ai",
+    docs_url="https://specstream.ai/docs/api",
+    # Free read: a bogus key answers 401 {"error": {"code": "invalid_token", ...}}.
+    probe_path="/v1/capacity/balance",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4289,7 +4319,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, SPECSTREAM, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
