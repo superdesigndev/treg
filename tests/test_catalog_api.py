@@ -1327,3 +1327,27 @@ def test_an_auto_route_row_files_where_its_providers_do():
     for ep in routed:
         kids = {e["domain"] for e in cat.for_capability(ep["capability"]) if e.get("kind") != "routed"}
         assert ep["domain"] in kids, ep["id"]
+
+
+def test_fraudnova_platform_prices_every_check_tool():
+    """FraudNova bills one prepaid credit per successful IP, email or phone check; fx.yaml prices
+    the credit from the smallest pack, so every paid row is platform-eligible and the free balance
+    probe (own-account) is not."""
+    from treg.domain.catalog import store as cs
+
+    c = cs.load()
+    rows = [ep for ep in c.endpoints if ep["id"].startswith("fraudnova.")]
+    assert len(rows) == 7
+    assert c.credit_rates["fraudnova"] == 0.008
+    eligible = {ep["id"] for ep in rows if c.platform_eligible(ep)}
+    assert eligible == {
+        "fraudnova.ip.risk.score",
+        "fraudnova.people.email.verify",
+        "fraudnova.people.phone.verify",
+        "fraudnova.ip.risk.score.batch",
+        "fraudnova.people.email.verify.batch",
+        "fraudnova.people.phone.verify.batch",
+    }
+    for ep in rows:
+        if ep["id"] in eligible:
+            assert c.cost_view(ep["cost"], "fraudnova")["usd"] == 0.008, ep["id"]
