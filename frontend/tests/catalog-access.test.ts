@@ -88,10 +88,3 @@ test('Try says no key is needed only when no key is injected', () => {
   expect(k(key, keyless, { tier: 'none' })).toBe(false)          // a key provider: the team's key serves it
   expect(k(key, { id: 'p.x', provider: 'p' }, { tier: 'platform' })).toBe(false)
 })
-
-test('a team that has its own tool for a not-enabled provider can still copy and try it', () => {
-  const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true }
-  const vm = { drawerEp: e, providerPaused: () => false, catEndpointConnected: () => true,
-    provAuthKind: () => 'public', endpointAccessLabel: () => 'Not enabled on this server' }
-  expect(catalogComputed.drawerNext.call(vm)).toBe('copy')
-})

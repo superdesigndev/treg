@@ -941,3 +941,20 @@ async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(mo
                               adapters={"board.list": SimpleNamespace(test_identity=sample)})
     out = await A._routed_access(route, SimpleNamespace(org_id=1, org=None), catalog)
     assert out["tier"] == "routed" and "board.list" in out["detail"], out
+
+
+async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients, monkeypatch):
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    row = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    sid = (await clients.post("/secrets", json={"name": "eu-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-eu", "base_url": "https://eu.financialdatasets.example",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/financialdatasets.prices.snapshot/access")).json()
+    assert out["tier"] == "tool", out

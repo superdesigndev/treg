@@ -4476,3 +4476,31 @@ async def test_a_route_cut_by_treg_s_read_cap_and_the_caller_s_skips_is_still_tr
     assert "skipped" in outcomes and outcomes <= {"skipped", "error"}, r.json()["detail"]["tried"]
     line = call_error_lines()[-1]
     assert line["error_class"] == "treg_error" and line["by"] == "treg", line
+
+
+async def test_a_team_tool_on_a_row_s_own_host_is_planned_as_the_team_s_tool(clients: AsyncClient, monkeypatch):
+    """A row that declares its own host (a provider's second region) is the team's own tool when the
+    team registered a tool for THAT host: the router must see it, as a direct call does."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.models import Org
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setitem(row, "host", "eu.financialdatasets.example")
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    sid = (await clients.post("/secrets", json={"name": "eu-key", "value": "v"})).json()["id"]
+    r = await clients.post("/tools", json={"name": "our-eu", "base_url": "https://eu.financialdatasets.example",
+                                           "secret_id": sid})
+    assert r.status_code == 200, r.text
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
+    assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)

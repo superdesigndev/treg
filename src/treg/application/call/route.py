@@ -634,6 +634,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     stats = await _observed_stats(ids)
     own: set[str] = set()
     own_tools: set[str] = set()
+    tool_hosts: set[str] = set()  # hosts the team registered a tool for (a row on another host is not covered)
     if ids:
         from sqlalchemy import select as _select
         from ...models import Tool
@@ -647,9 +648,10 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                     prov = oauth_providers.get(service)
                     if prov is not None and prov.base_url:
                         hosts.setdefault(_host_of(prov.base_url), service)
-                if hosts:
-                    tools = (await db.execute(_select(Tool.host).where(Tool.org_id == caller.org_id))).scalars().all()
-                    own_tools = {hosts[h] for h in tools if h in hosts}
+                if hosts or any(e.get("host") for e, _, _ in raw):
+                    tool_hosts = set((await db.execute(
+                        _select(Tool.host).where(Tool.org_id == caller.org_id))).scalars().all())
+                    own_tools = {hosts[h] for h in tool_hosts if h in hosts}
             for service in services:
                 if service in own_tools:
                     continue
@@ -665,7 +667,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
         tier = (
-            "tool" if e["provider"] in own_tools else
+            # a row declaring its own host (Lever EU) is the team's tool only on that host
+            "tool" if (e.get("host") in tool_hosts if e.get("host") else e["provider"] in own_tools) else
             "credential" if e["provider"] in own else
             "anonymous" if anonymous else
             "platform"

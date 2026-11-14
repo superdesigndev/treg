@@ -6,6 +6,8 @@ platform service tiers satisfy an endpoint.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -246,7 +248,10 @@ async def _direct_access(
     endpoint: dict, provider, service: str, caller: Caller, db: AsyncSession,
     billed_note: str,
 ) -> dict | None:
-    probe = provider.base_url.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
+    base = provider.base_url
+    if endpoint.get("host"):  # a row on another of the provider's hosts (Lever EU) is probed there
+        base = urlsplit(base)._replace(netloc=endpoint["host"]).geturl()
+    probe = base.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
     for url in provider.tool_lookup_urls(probe):
         try:
             target = await resolve_call_target(url, caller, _resolve_call)

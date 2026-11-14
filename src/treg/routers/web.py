@@ -2665,7 +2665,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
             f"{_esc_html(blurb)} {esc_d} is a public API with no key and nothing to connect; this server "
-            "has not enabled it, so its tools are not callable here."
+            "has not enabled it, so its tools are not callable here unless your team registers its own tool for it."
             if public_off else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key. {esc_d} is a "
             "public API: free, no key, nothing to connect."
@@ -2801,7 +2801,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
            f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Eligible tools run on treg.to's key, "
            "metered per call from a prepaid balance.</p></div>")
         + ('<div class="card"><h4>Not enabled here</h4><p>This server has not enabled these tools, '
-           'so calls are refused.</p></div>' if public_off else
+           'so calls are refused unless your team registers its own tool for it.</p></div>' if public_off else
            '<div class="card"><h4>Free</h4><p>No charge per call and no markup.</p></div>' if public else
            '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
            'markup. <a href="/pricing">How billing works</a>.</p></div>')
@@ -2899,7 +2899,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             (f"Do I need a {display} account?",
              f"No. {display} is a public API with no key: there is nothing to connect."),
             ("What does a call cost?", "Nothing. treg.to does not charge for these calls."
-             if not public_off else "This server has not enabled these tools, so calls are refused."),
+             if not public_off else "This server has not enabled these tools, so calls are refused unless "
+             "your team registers its own tool for the provider."),
         ]
     else:
         faq_items = [

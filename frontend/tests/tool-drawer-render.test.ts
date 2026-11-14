@@ -27,7 +27,8 @@ const base = { drawerEp: ep, drawerFacts: '', platCopied: '', drawerTab: 'params
 test('the drawer renders for a public provider this server has not enabled', async () => {
   const html = await renderDrawer({ ...base, drawerNext: 'off', providerPaused: () => null })
   expect(html).toContain('This server has not enabled Board')
-  expect(html).not.toContain('Copy for your agent')
+  // a team whose own registered tool serves it can still hand the line to its agent; nothing to try here
+  expect(html).toContain('Copy for your agent')
   expect(html).not.toContain('Try it')
 })
 
