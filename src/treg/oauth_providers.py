@@ -4273,6 +4273,33 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+
+TCGDETECT = OAuthProvider(
+    service="tcgdetect",
+    display_name="TCGdetect",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="tcgdev_live_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://tcgdetect.com/settings#developer-api",
+    setup_action_label="Create a TCGdetect API key",
+    setup_steps=(
+        "Sign up at tcgdetect.com (any plan, including Free) and open Settings → Developer API.",
+        "Create a key. It starts with tcgdev_live_ and is shown once.",
+        "Catalog search, card details, and single-card prices are free. Photo identification is free, 20 per day.",
+    ),
+    setup_note="Grading reports, PSA population ($0.01 per success, including a miss), batch prices, and report PDFs spend a prepaid USD wallet, not Detect Tokens. The account check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Search a trading-card catalog, read prices and PSA population, identify a card from photos, and run a full AI grade.",
+    base_url="https://api.tcgdetect.com",
+    docs_url="https://tcgdetect.com/developers",
+    probe_path="/v1/account",  # free — a bad key gets HTTP 401 auth_invalid
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4299,7 +4326,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, TCGDETECT,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,

@@ -1059,6 +1059,41 @@ def test_trial_pools_flow_from_fx_to_eligibility_and_display():
     assert not c.platform_eligible(c.by_id["eodhd.eod"])
 
 
+
+def test_tcgdetect_platform_prices_any_account_tools():
+    from treg.domain.catalog import store as cs
+
+    c = cs.load()
+    rows = [ep for ep in c.endpoints if ep["id"].startswith("tcgdetect.")]
+    assert {ep["id"] for ep in rows} == {
+        "tcgdetect.account.usage",
+        "tcgdetect.pricing.rate_card",
+        "tcgdetect.catalog.search",
+        "tcgdetect.catalog.card",
+        "tcgdetect.prices.card",
+        "tcgdetect.identify.photo",
+        "tcgdetect.prices.batch",
+        "tcgdetect.population.psa",
+        "tcgdetect.grading.report",
+        "tcgdetect.grading.report.status",
+        "tcgdetect.grading.report.pdf",
+    }
+    eligible = {ep["id"] for ep in rows if c.platform_eligible(ep)}
+    assert "tcgdetect.account.usage" not in eligible
+    assert eligible == {
+        "tcgdetect.pricing.rate_card",
+        "tcgdetect.catalog.search",
+        "tcgdetect.catalog.card",
+        "tcgdetect.prices.card",
+        "tcgdetect.identify.photo",
+        "tcgdetect.prices.batch",
+        "tcgdetect.population.psa",
+        "tcgdetect.grading.report",
+        "tcgdetect.grading.report.status",
+        "tcgdetect.grading.report.pdf",
+    }
+
+
 def test_anymailfinder_platform_prices_all_shared_key_tools():
     from treg.domain.catalog import store as cs
 
