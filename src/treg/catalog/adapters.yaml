@@ -1785,11 +1785,12 @@ adapters:
     miss: "local_results == []"
 
   # ---- companies.jobs.search / companies.jobs -------------------------------------------------
-  # A job index answers a title search, or one company's open jobs by name. One that takes a
-  # company also serves treg.companies.jobs (same filters) where its fixture names a company.
+  # A job index answers a title search, or one company's open jobs by name. Only an index that
+  # matches the whole company name takes a name, on either contract; one that takes a company
+  # also serves treg.companies.jobs (same filters) where its fixture names a company.
   mobiusengine-jobs.jobs.search:
-    # Title searches only: its company filter is a substring ('ramp' also finds LiveRamp), so a
-    # company-anchored search goes to an exact-name index.
+    # Title searches only: its company filter is a substring ('ramp' also finds LiveRamp), so it
+    # never takes a company name; its company row is no routed child for the same reason.
     accepts: [[title]]
     in: {title: queryParams.title}
     in_expr:
@@ -1802,25 +1803,13 @@ adapters:
     # Priced per 1,000 jobs, billed per job: the plan's block rounding would quote 1,000 jobs.
     cost_units: limit
     out: {jobs: jobs, next_cursor: next_cursor}
-  mobiusengine-jobs.jobs.company:
-    accepts: [[name]]
-    in: {name: queryParams.company}
-    in_expr:
-      queryParams.countries: "upper(country)"
-      queryParams.locations: location
-      queryParams.work_mode: "choose(remote == true, 'Remote Solely', null)"
-      queryParams.posted_within_days: posted_within_days
-      queryParams.limit: limit
-    max: {limit: 100}
-    # Priced per 1,000 jobs, billed per job: the plan's block rounding would quote 1,000 jobs.
-    cost_units: limit
-    out: {jobs: jobs, next_cursor: next_cursor}
   jobspipe.jobs.search:
-    accepts: [[title, name], [title], [name]]
-    in: {title: body.job_title_or, name: body.company_name_or}
+    # Title searches only: company_name_or is a prefix match ('Nationwide' also finds Nationwide
+    # Legal), so it never takes a company name.
+    accepts: [[title]]
+    in: {title: body.job_title_or}
     in_expr:
       body.job_title_or: "list(title)"
-      body.company_name_or: "list(name)"
       body.job_country_code_or: "list(upper(country))"
       body.job_location_or: "list(location)"
       body.remote: "choose(remote == true, true, null)"

@@ -764,7 +764,7 @@ contracts:
       - {domain: str}
     identity_notes:
       title: "job title words ('data engineer'); with name or domain, that role at that company"
-      name: "the employer's name ('Ramp'). Some job indexes match it as a prefix ('Nationwide' also finds Nationwide Legal): check each row's company. For one company's whole open board, treg.companies.jobs takes the board itself"
+      name: "the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's whole open board, treg.companies.jobs takes the board itself"
       domain: "the employer's website domain ('ramp.com')"
     # A title search answered without the title, or a company search answered without the company,
     # bills strangers' or the whole company's jobs as a hit. A name and a domain name one company,
@@ -783,8 +783,9 @@ contracts:
       next_cursor: {type: str}
     miss: "jobs == []"
     idempotent: true
-    # The three with the fullest current postings at the lowest price per job; MobiusEngine takes
-    # title searches only (adapters.yaml), and Hirebase matches a company name exactly.
+    # The three with the fullest current postings at the lowest price per job. MobiusEngine and
+    # JobsPipe match a company name in part, so they take title searches only (adapters.yaml); a
+    # name goes to Hirebase first, then the other whole-name indexes.
     prefer: [mobiusengine-jobs, hirebase, jobspipe]
 
   companies.jobs:
@@ -796,7 +797,7 @@ contracts:
     identity_notes:
       ats: "the company's job system, read from its careers URL: greenhouse (job-boards.greenhouse.io/<board>), lever (jobs.lever.co/<board>), lever_eu (jobs.eu.lever.co/<board>), ashby (jobs.ashbyhq.com/<board>), smartrecruiters (careers.smartrecruiters.com/<board>), workable (apply.workable.com/<board>). The board is read free; add name or domain so a board treg cannot read answers from a job index"
       board: "the board's name, the path segment after the host in that URL ('discord')"
-      name: "the employer's name ('Ramp'). The first indexes asked match the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent; a later fallback matches a substring: check each row's company"
+      name: "the employer's whole name as the company writes it ('Ramp'): every index asked matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent"
       domain: "the employer's website domain ('ramp.com')"
     # The board named by `ats` reaches only that system's reader: treg never guesses a board on
     # another system.
@@ -816,8 +817,8 @@ contracts:
       next_cursor: {type: str}
     miss: "jobs == []"
     idempotent: true
-    # A name goes to the exact-name indexes (Hirebase, then TheirStack) before MobiusEngine's
-    # substring match; a domain keeps PredictLeads ahead of TheirStack, as its price puts it.
+    # A name goes only to whole-name indexes, Hirebase then TheirStack; a domain keeps PredictLeads
+    # ahead of TheirStack, as its price puts it.
     prefer: [hirebase, predictleads, theirstack]
 
   jobs.salary.benchmark:
