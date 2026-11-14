@@ -1392,7 +1392,7 @@ MOBIUSENGINE_JOBS = OAuthProvider(
 )
 
 # Keyless: the Job Board API answers every GET without authentication, so there is nothing to
-# connect or probe. Rows are `platform_auth: anonymous`; the EU host does not resolve (2026-11-14).
+# connect or probe. Rows are `platform_auth: anonymous`; no EU host is listed.
 GREENHOUSE = OAuthProvider(
     service="greenhouse",
     display_name="Greenhouse Job Board",
