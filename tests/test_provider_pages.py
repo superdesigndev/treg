@@ -154,3 +154,23 @@ async def test_a_key_provider_with_its_key_counts_keyless_rows_apart(clients: As
     page = (await clients.get("/tools/financialdatasets")).text
     assert "Free, no key" in page and "Platform + BYOK" in page
     assert not re.search(r"-\d+ BYOK only", page), "keyless rows counted as platform rows"
+
+
+async def test_a_mixed_key_providers_kicker_counts_its_free_rows(clients: AsyncClient, monkeypatch):
+    """Keyed rows on treg's key, keyed rows that need the team's own key, and keyless rows: three
+    counts that add up to the tools on the page."""
+    import re
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "test-key")
+    cat = catalog_store.load()
+    keyed = next(e["id"] for e in cat.endpoints
+                 if e["provider"] == "financialdatasets" and e.get("platform_auth") != "anonymous")
+    # an own-account row is never served on treg's key: it needs the team's own key
+    monkeypatch.setitem(cat.by_id[keyed], "scope", "own_account")
+    page = (await clients.get("/tools/financialdatasets")).text
+    m = re.search(r"(\d+) tools · (\d+) platform \+ BYOK · (\d+) BYOK only · (\d+) free, no key", page)
+    assert m, re.findall(r"\d+ tools · [^<]{0,90}", page)[:2]
+    total, platform, byok, free = map(int, m.groups())
+    assert platform + byok + free == total and byok >= 1 and free >= 1

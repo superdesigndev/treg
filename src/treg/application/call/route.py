@@ -88,6 +88,7 @@ from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
     sampled_provider_allowed, unscoped,
 )
+from ... import oauth_providers
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import route_health
@@ -635,7 +636,6 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     own_tools: set[str] = set()
     if ids:
         from sqlalchemy import select as _select
-        from ... import oauth_providers
         from ...models import Tool
         async with session_maker() as db:
             services = {e["provider"] for e, _, _ in raw}
@@ -695,7 +695,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
             continue
-        if tier == "platform" and e.get("platform_auth") == "anonymous":
+        if (tier == "platform" and e.get("platform_auth") == "anonymous"
+                and getattr(oauth_providers.get(e["provider"]), "auth_kind", "") == "public"):
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}"})
             continue

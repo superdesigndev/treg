@@ -19,3 +19,13 @@ test('keyed rows keep their labels', () => {
   const e = { id: 'p.x', provider: 'p', platform_eligible: true }
   expect(label(e, [{ service: 'p', auth_kind: 'key' }])).toBe('Platform + BYOK')
 })
+
+test('Try it never tells a keyless public row it needs a key', () => {
+  const vm = { mkOauth: () => false }
+  const msg = (ep: object, access: object) => catalog.tryUnavailableMessage.call(vm, ep, access)
+  const keyless = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous' }
+  expect(msg(keyless, { detail: 'board.jobs is a keyless public API that this server has not enabled' }))
+    .toBe('board.jobs is a keyless public API that this server has not enabled')
+  expect(msg(keyless, {})).not.toContain('needs a key')
+  expect(msg({ id: 'p.x', provider: 'p' }, {})).toContain('needs a key')
+})

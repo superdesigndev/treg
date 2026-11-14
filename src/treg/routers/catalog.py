@@ -226,7 +226,8 @@ def _quote_skip(ep: dict, cat) -> str | None:
         return f"{ep['provider']} is paused on this deployment"
     if anonymous_served(ep) is not None:  # the keyless tier: free, no key on this deployment needed
         return None
-    if ep.get("platform_auth") == "anonymous":  # keyless but not served here: the true reason, not "no key"
+    if (ep.get("platform_auth") == "anonymous"  # a public provider's row not served here: its true reason
+            and getattr(oauth_providers.get(ep["provider"]), "auth_kind", "") == "public"):
         return f"{ep['provider']} {_anonymous_refusal(ep, None)}"
     if not cat.platform_eligible(ep):
         return "not platform-eligible and no own key"

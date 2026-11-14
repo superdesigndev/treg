@@ -4426,3 +4426,27 @@ async def test_a_keyless_child_answers_a_routed_call_with_no_credential_hold_or_
     assert r.json()["raw"] == answer
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_a_key_providers_keyless_row_is_never_called_a_keyless_public_api(
+        clients: AsyncClient, monkeypatch):
+    """Only a public provider has nothing to connect. A key provider's keyless row not served here
+    is refused for its key, which a team's own key would satisfy — never as a keyless public API."""
+    from treg.models import Org
+    from treg.routers.catalog import _quote_skip
+    cat = catalog_store.load()
+    row = cat.by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(row, "platform_auth", "anonymous")
+    monkeypatch.setitem(row, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+    plan = await call_route.build_plan(cat.by_id["treg.stocks.quote.live"], {"symbol": "AAPL"},
+                                       SimpleNamespace(org_id=org_id, org=org),
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    why = {d["endpoint_id"]: d["why"] for d in plan.dropped}.get("financialdatasets.prices.snapshot", "")
+    assert why and "keyless public API" not in why, plan.dropped
+    skip = _quote_skip(row, cat) or ""
+    assert skip and "keyless public API" not in skip, skip

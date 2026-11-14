@@ -77,7 +77,7 @@ treg login</pre></div>
                  dead Run button — point them at the tab that DOES work. -->
             <div v-if="epTryAccess && !['anonymous','platform','tool','credential','routed'].includes(epTryAccess.tier)"
                  class="banner" style="margin:0">
-              {{epTryAccess.missing_message || (epTry.platform_auth==='anonymous' ? (epTryAccess.detail || 'This free public API is not served here.') : mkOauth(epTry.provider) ? 'Can\'t run this here yet — connect '+(epTry.provider_display||epTry.provider)+' first, then Run.' : 'This endpoint needs a key. Use the AI Agent / CLI / API tab, or bring your own.')}}
+              {{tryUnavailableMessage(epTry, epTryAccess)}}
               <div style="margin-top:10px">
                 <button v-if="mkOauth(epTry.provider)" class="btn sm primary" @click="openProvider(epTry.provider); closeEpTry()">{{epTryAccess.action_label||endpointConnectLabel(epTry)}}</button>
                 <button v-else-if="mkKnown(epTry.provider)" class="btn sm primary" @click="goByok(epTry.provider)">🔑 Bring your own key</button>

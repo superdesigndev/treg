@@ -381,6 +381,13 @@ usefulOf(e){ return e.reviews && e.reviews.share ? reviewSummary(e.reviews) : nu
     mkKnown(service){ return this.providers.some(p=>p.service===service)
       || (this.publicCatalog && !!((this.platData&&this.platData.providers||{})[service])); },
 mkOauth(service){ const p=this.providers.find(x=>x.service===service); return !!p && p.auth_kind==='oauth'; },
+// Why "Try it" cannot run a tool for this team: the server's own words first, a keyless public row's
+// refusal never reads as needing a key.
+tryUnavailableMessage(ep, access){
+      if(access && access.missing_message) return access.missing_message;
+      if(ep.platform_auth==='anonymous') return (access && access.detail) || 'This free public API is not served here.';
+      return this.mkOauth(ep.provider) ? 'Can\'t run this here yet — connect '+(ep.provider_display||ep.provider)+' first, then Run.'
+        : 'This endpoint needs a key. Use the AI Agent / CLI / API tab, or bring your own.'; },
 // `providers` comes from /connections, which needs a session. On a public catalog URL there is
     // none, so fall back to the display name the OPEN catalog response already carries — otherwise
     // every provider on a public shelf would render as its bare slug.
