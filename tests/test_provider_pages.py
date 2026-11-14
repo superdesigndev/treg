@@ -123,4 +123,22 @@ async def test_a_key_providers_keyless_rows_are_never_called_treg_key(clients: A
     page = (await clients.get("/tools/financialdatasets")).text
     assert "Free, no key" in page
     assert "Platform + BYOK" not in page and "support treg's platform key" not in page
-    assert "connect your own account" not in page
+    # no treg key exists here, and most of its tools need the team's own: never describe treg's key
+    for false in ("run on treg.to's key", "metered per call", "Eligible tools run on treg.to",
+                  "No. Eligible tools"):
+        assert false not in page, false
+
+
+async def test_a_public_provider_not_enabled_never_promises_free_calls(clients: AsyncClient, monkeypatch):
+    """Nothing to connect, but this server refuses its calls: the page must not say they are free."""
+    import dataclasses
+    from treg import oauth_providers
+    from treg.config import get_settings
+    monkeypatch.setitem(oauth_providers.REGISTRY, "financialdatasets", dataclasses.replace(
+        oauth_providers.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    page = (await clients.get("/tools/financialdatasets")).text
+    assert "not enabled on this server" in page.lower() and "Nothing to connect" in page
+    for false in ("No charge per call", "Nothing. treg.to does not charge", "Its tools are free",
+                  "free, no key, nothing to connect", "connect your own account"):
+        assert false not in page, false

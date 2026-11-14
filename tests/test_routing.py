@@ -3755,7 +3755,9 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     for rec in fixtures.generate():
         eid = rec["endpoint_id"]
         cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
-        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
+        # a row that settles on the provider's reported charge pays what it reports, 0 for an empty page
+        if (not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero
+                or cost.get("reported_charge")):
             continue
         line = engine.replay(rec)
         if (line.get("routing") or {}).get("kind") != "miss":
