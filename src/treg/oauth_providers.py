@@ -1769,6 +1769,21 @@ DATAGMA = OAuthProvider(
     probe_path="/api/ingress/v1/mine", probe_method="GET",
 )
 
+SNAPYSCALE = OAuthProvider(
+    service="snapyscale", display_name="Snapyscale", auth_kind="key",
+    token_label="API key", token_placeholder="your Snapyscale pilot API key",
+    token_header="X-API-Key", token_format="{secret}",
+    setup_url="https://api.snapyscale.co/",
+    setup_action_label="Request pilot access",
+    setup_steps=("Contact Snapyscale support to request a scoped pilot API key.", "Copy the supplied key."),
+    setup_note="Limited pilot. Verification bills definitive results; finding bills found mailboxes only. Supplier settlement is arranged separately.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email addresses or find a mailbox candidate from a full name and company domain.",
+    base_url="https://api.snapyscale.co", docs_url="https://api.snapyscale.co/docs",
+    probe_path="/v1/account",
+)
+
 TRYKITT = OAuthProvider(
     service="trykitt",
     display_name="Kitt AI",
@@ -4282,7 +4297,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
-        TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        SNAPYSCALE, TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,

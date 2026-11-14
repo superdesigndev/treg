@@ -1,0 +1,25 @@
+{
+  "request_id": "e4938a57-4f30-4303-8f8a-73ab7caddeb9",
+  "email": "test@example.com",
+  "status": "invalid",
+  "reason": "syntax_or_mail_setup_invalid",
+  "checks": {
+    "syntax_valid": null,
+    "mx_accepts_mail": false,
+    "smtp_connected": null,
+    "smtp_deliverable": null
+  },
+  "is_catch_all": null,
+  "is_disposable": null,
+  "is_role_based": null,
+  "verified_at": "2026-11-05T11:04:07.704673+00:00",
+  "evidence": "reacher_smtp",
+  "identity_confirmed": false,
+  "billing": {
+    "units": 1,
+    "charge_micro_usd": 850,
+    "charge_usd": 0.00085,
+    "currency": "USD"
+  },
+  "cached": false
+}
