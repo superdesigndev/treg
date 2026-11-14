@@ -1140,6 +1140,9 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
         # "Servable" is the caller's real question: not "does another row exist" but "can treg
         # answer it for me right now". Both halves of tier 4, exactly as `_platform_offer` asks.
         keyless = anonymous_served(alt) is not None  # a public row this deployment serves with no key
+        alt_provider = oauth_providers.get(alt["provider"])
+        if not keyless and getattr(alt_provider, "auth_kind", "") == "public":
+            continue  # a public API this server does not serve: no key or connection would help
         servable = keyless or bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
         ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable, keyless))
     if not ranked:
@@ -1163,7 +1166,9 @@ def _marketplace_no_credential(
         lines = [f"{ep_id} {_anonymous_refusal(ep, org)}"]
         lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
         lines.extend(_capability_alternatives(ep) if ep is not None else [])
-        return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines))
+        ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
+        return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
+                                log_kind="platform_key_missing" if ours else None)
     lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
     lines.append(f"  connect one:  treg connections connect --provider {service}")
     if provider.uses_pasted_secret:

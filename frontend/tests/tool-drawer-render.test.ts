@@ -7,8 +7,8 @@ import * as Vue from 'vue'
 
 // Render the real ToolDrawer template against a stand-in dashboard: every name it reads answers
 // something harmless, and the drawer's own state (drawerEp, drawerNext, providerPaused) is set.
-function renderDrawer(state: Record<string, any>) {
-  const { descriptor } = parse(readFileSync(new URL('../src/components/ToolDrawer.vue', import.meta.url), 'utf8'))
+function renderDrawer(state: Record<string, any>, file = '../src/components/ToolDrawer.vue') {
+  const { descriptor } = parse(readFileSync(new URL(file, import.meta.url), 'utf8'))
   const { code } = compileTemplate({ source: descriptor.template!.content, filename: 'ToolDrawer.vue', id: 'td',
     compilerOptions: { mode: 'function' } })
   const render = new Function('Vue', code)(Vue)
@@ -39,4 +39,12 @@ test('the drawer still renders a paused provider and a callable one', async () =
 
 test('the paused branch never throws when the provider has no pause message', async () => {
   await expect(renderDrawer({ ...base, drawerNext: 'paused', providerPaused: () => null })).resolves.toBeTypeOf('string')
+})
+
+test('the Try dialog never says a credential is injected for a keyless tool', async () => {
+  const epTry = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', call_template: 'treg call board.jobs' }
+  const html = await renderDrawer({ epTry, epTryAccess: { tier: 'none', detail: 'board.jobs is a keyless public API that this server has not enabled' },
+    epTryTab: 'api', mkOauth: () => false, tryUnavailableMessage: () => 'refused' }, '../src/dialogs/TryEndpointDialog.vue')
+  expect(html).not.toContain('injects the credential')
+  expect(html).not.toContain('the key is injected')
 })

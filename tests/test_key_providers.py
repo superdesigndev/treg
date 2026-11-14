@@ -806,3 +806,47 @@ def test_every_public_providers_row_is_served_once_allow_listed(monkeypatch):
     cat = catalog_store.load()
     unserved = [ep["id"] for ep in cat.endpoints if ep["provider"] in public and anonymous_served(ep) is None]
     assert unserved == []
+
+
+def test_a_refusal_never_lists_a_public_api_this_server_does_not_serve(monkeypatch):
+    """Nothing the caller can connect or add would make it callable, so it is not an alternative."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    monkeypatch.setitem(P.REGISTRY, "offboard", dataclasses.replace(P.REGISTRY["financialdatasets"],
+                                                                     service="offboard", auth_kind="public"))
+    off = {"id": "offboard.jobs", "provider": "offboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, off, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "offboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: None)
+    lines = R._capability_alternatives(asked)
+    assert not any("offboard.jobs" in line for line in lines), lines
+    assert any("paidindex.jobs" in line for line in lines), lines
+
+
+def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
+    """Not allow-listed is this deployment's switch, not the caller's missing credential."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep)
+    assert exc.log_kind == "platform_key_missing", exc.log_kind

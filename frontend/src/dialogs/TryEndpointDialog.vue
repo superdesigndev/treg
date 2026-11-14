@@ -56,14 +56,14 @@ export default { components: { TikTokPostForm }, setup: useDashboard }
 treg login</pre></div>
             <div class="lbl" style="margin-top:18px">2 · See its params &amp; price</div>
             <div class="lc-codewrap"><button class="lc-cp" @click="copyStart('treg catalog get '+epTry.id,'ep-cli2')">{{startCopied==='ep-cli2'?'✓ copied':'copy'}}</button><pre>treg catalog get {{epTry.id}}</pre></div>
-            <div class="lbl" style="margin-top:18px">3 · Call it — {{epTry.id==='fishaudio.voices.list'?'BYOK or platform is selected server-side':(epTryAccess&&epTryAccess.tier==='anonymous'?'no provider key is needed':'the key is injected server-side')}}</div>
+            <div class="lbl" style="margin-top:18px">3 · Call it — {{epTry.id==='fishaudio.voices.list'?'BYOK or platform is selected server-side':((epTry.platform_auth==='anonymous'||(epTryAccess&&epTryAccess.tier==='anonymous'))?'no provider key is needed':'the key is injected server-side')}}</div>
             <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(epTryCliCall,'ep-cli3')">{{startCopied==='ep-cli3'?'✓ copied':'copy'}}</button><pre style="white-space:pre-wrap;word-break:break-all">{{epTryCliCall}}</pre></div>
           </template>
 
           <!-- API — the raw /call/ passthrough with the token header -->
           <template v-else-if="epTryTab==='api'">
             <p v-if="epTry.id==='fishaudio.voices.list'" class="sub" style="margin:0 0 8px">One endpoint, one token. The server returns normalized voice rows from the connected Fish account under BYOK, or from this team's organization-owned voices otherwise.</p>
-            <p v-else class="sub" style="margin:0 0 8px">One endpoint, one token. {{epTryAccess&&epTryAccess.tier==='anonymous'?'This verified public upstream route needs no provider key.':'treg injects the credential server-side.'}} treg relays the response verbatim.</p>
+            <p v-else class="sub" style="margin:0 0 8px">One endpoint, one token. {{(epTry.platform_auth==='anonymous'||(epTryAccess&&epTryAccess.tier==='anonymous'))?'This verified public upstream route needs no provider key.':'treg injects the credential server-side.'}} treg relays the response verbatim.</p>
             <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(epTryCurl,'ep-api')">{{startCopied==='ep-api'?'✓ copied':'copy'}}</button><pre style="white-space:pre-wrap;word-break:break-all">{{epTryCurl}}</pre></div>
             <p class="sub" v-if="!myToken" style="margin:8px 0 0;font-size:12px"><span class="mono">$TREG_TOKEN</span> is a placeholder — set it to your API token (copy it on Getting started).</p>
           </template>
