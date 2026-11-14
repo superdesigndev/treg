@@ -98,7 +98,8 @@ async def admit(client_ip: str) -> bool:
     async with database.session_maker() as db:
         ok = await ratestore.rate_check(
             db, RATE_NS,
-            [(f"ip:{client_ip}", int(s.find_max_per_ip_hour)), ("all", int(s.find_max_per_hour))],
+            [*ratestore.ip_limit(client_ip, int(s.find_max_per_ip_hour), key=f"ip:{client_ip}"),
+             ("all", int(s.find_max_per_hour))],
             RATE_WINDOW_S)
         await db.commit()
     return ok

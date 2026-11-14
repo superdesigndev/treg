@@ -1,0 +1,85 @@
+[
+  {
+    "url": "redacted",
+    "product_name": "redacted",
+    "product_id": "redacted",
+    "rating": 5,
+    "author_name": "redacted",
+    "review_header": "Worth the cost",
+    "review_id": "redacted",
+    "review_text": "Expensive but the fit my ears well and sound great. Easy and useful connectivity with iPhones.  Multiple cups included and the battery lasts a long time. Wireless charging is a plus as well. Have some Skullcandy earbuds for work but they are less comfortable and don't last anywhere near as long.",
+    "author_id": "redacted",
+    "review_posted_date": "6/23/2023",
+    "review_images": [
+      "https://i5.walmartimages.com/dfw/6e29e393-3826/k2-_86c82354-e900-4fc9-9a6c-953705ebf039.v1.jpg"
+    ],
+    "helpful_count": 0,
+    "is_verified": true,
+    "videos": null,
+    "top_reviewer": false,
+    "item_details": null,
+    "not_helpful_count": null,
+    "review_page_number": 1,
+    "timestamp": "2026-11-10T15:30:01.765Z",
+    "input": {
+      "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021",
+      "sort_by": ""
+    }
+  },
+  {
+    "url": "redacted",
+    "product_name": "redacted",
+    "product_id": "redacted",
+    "rating": 5,
+    "author_name": "redacted",
+    "review_header": "More than satisfied",
+    "review_id": "redacted",
+    "review_text": "I'm so glad I bought these. Overall the price is great compared to other places and they're the real deal :)",
+    "author_id": "redacted",
+    "review_posted_date": "8/4/2023",
+    "review_images": [
+      "https://i5.walmartimages.com/dfw/6e29e393-da84/k2-_5dc1b851-f55a-458b-82f2-5730ece9dd1b.v1.jpg",
+      "https://i5.walmartimages.com/dfw/6e29e393-79fd/k2-_87d98c7d-7c76-49bf-b648-3f93b3b8e8de.v1.jpg"
+    ],
+    "helpful_count": 0,
+    "is_verified": true,
+    "videos": null,
+    "top_reviewer": false,
+    "item_details": null,
+    "not_helpful_count": null,
+    "review_page_number": 1,
+    "timestamp": "2026-11-10T15:30:01.765Z",
+    "input": {
+      "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021",
+      "sort_by": ""
+    }
+  },
+  {
+    "url": "redacted",
+    "product_name": "redacted",
+    "product_id": "redacted",
+    "rating": 5,
+    "author_name": "redacted",
+    "review_header": "Pros",
+    "review_id": "redacted",
+    "review_text": "They fit good into my small ears. Great crisp sound too.",
+    "author_id": "redacted",
+    "review_posted_date": "6/10/2023",
+    "review_images": [
+      "https://i5.walmartimages.com/dfw/6e29e393-b234/k2-_176fc4cd-b2dc-4281-a881-3a053944fb7c.v1.jpg",
+      "https://i5.walmartimages.com/dfw/6e29e393-eaf2/k2-_7c43581c-d62c-4731-a7c4-3000fcf227d1.v1.jpg"
+    ],
+    "helpful_count": 0,
+    "is_verified": true,
+    "videos": null,
+    "top_reviewer": false,
+    "item_details": null,
+    "not_helpful_count": null,
+    "review_page_number": 1,
+    "timestamp": "2026-11-10T15:30:01.765Z",
+    "input": {
+      "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021",
+      "sort_by": ""
+    }
+  }
+]

@@ -227,7 +227,6 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
         ("Your Google Business Profile reviews, and reply to them", ("google-business.reviews",
                                                                      "google-business.review.reply")),
         ("Search terms that surfaced your listing on Maps", ("google-business.insights.keywords",)),
-        ("Hotel listing details", ("tripadvisor.hotel.detail",)),
     )),
     ("Finance & markets", (
         ("Current quote for a ticker", ("stocks.quote.live",)),
@@ -2283,7 +2282,7 @@ USE_CASE_PAGES["find-local-businesses-by-keyword-and-location"] = {
          "business's own site and verifying what you find there, which is a separate job with its "
          "own failure rate rather than a field you can ask for here."),
     ],
-    "related": ("A business's reviews", "Hotel listing details", "Product reviews",
+    "related": ("A business's reviews", "Product reviews",
                 "Your Google Business Profile reviews, and reply to them"),
 }
 
@@ -2695,7 +2694,7 @@ USE_CASE_PAGES["business-reviews"] = {
     ],
     "related": ("Find local businesses by keyword and location",
                 "Your Google Business Profile reviews, and reply to them",
-                "Product reviews", "Hotel listing details"),
+                "Product reviews"),
 }
 
 USE_CASE_PAGES["google-analytics-traffic-and-behaviour-reports"] = {

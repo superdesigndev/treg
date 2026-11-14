@@ -539,9 +539,10 @@ def test_workos_webhook_signature_and_portal_response():
 async def test_workos_portal_accepts_documented_url():
     def handle(request):
         assert request.url.path == "/portal/generate_link"
+        assert json.loads(request.content) == {"organization": "org_1", "intent": "domain_verification"}
         return httpx.Response(200, json={"link": "https://setup.workos.com?token=example"})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="sso")
+        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="domain_verification")
     assert url == "https://setup.workos.com?token=example"
 
 
@@ -553,6 +554,49 @@ async def test_workos_portal_accepts_live_staging_url():
     assert url == "https://setup.workos.com/init?apiToken=example"
 
 
+async def test_domain_verification_setup_and_status(clients, monkeypatch):
+    from treg.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "workos_api_key", "sk_test")
+    org_id = await team(clients)
+    async def get_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "pending"}])
+    async def portal(_client, *, key, organization, intent, return_url):
+        assert key == "sk_test"
+        assert organization == "org_workos_1"
+        assert intent == "domain_verification"
+        assert return_url.endswith("/app#orgs/sso")
+        return "https://setup.workos.com/init?apiToken=example"
+    monkeypatch.setattr(workos, "get_organization", get_org)
+    monkeypatch.setattr(workos, "portal_link", portal)
+    status = await clients.get(f"/orgs/{org_id}/sso/domains")
+    assert status.status_code == 200
+    assert status.json() == {"status": "pending", "domains": [
+        {"domain": "company.example", "state": "pending"}]}
+    link = await clients.post(f"/orgs/{org_id}/sso/setup/domain_verification")
+    assert link.status_code == 200
+    assert link.json()["url"].startswith("https://setup.workos.com/")
+    async def verified_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "verified"}])
+    monkeypatch.setattr(workos, "get_organization", verified_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json()["status"] == "verified"
+    async def failed_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "failed"}])
+    monkeypatch.setattr(workos, "get_organization", failed_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json() == {"status": "failed", "domains": [
+        {"domain": "company.example", "state": "failed"}]}
+
+
+async def test_domain_status_rejects_another_workos_organization(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "workos_api_key", "sk_test")
+    org_id = await team(clients)
+    async def wrong_org(_client, **_kwargs):
+        return organization(org_id + 1)
+    monkeypatch.setattr(workos, "get_organization", wrong_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).status_code == 422
+
+
 async def test_workos_invites_it_contact_with_both_setup_intents():
     calls = []
     def handle(request):
@@ -560,7 +604,7 @@ async def test_workos_invites_it_contact_with_both_setup_intents():
         if request.method == "GET":
             return httpx.Response(200, json={"data": []})
         if request.url.path.endswith("/invite"):
-            assert json.loads(request.content) == {"intents": ["sso", "directory_sync"]}
+            assert json.loads(request.content) == {"intents": ["domain_verification", "sso", "directory_sync"]}
             return httpx.Response(204)
         assert json.loads(request.content) == {"email": "it@example.com"}
         return httpx.Response(201, json={"id": "it_contact_123"})
@@ -838,6 +882,26 @@ async def test_subscription_webhooks_activate_then_cancel_without_balance_credit
             Membership.org_id == org_id, Membership.user_id == result.user_id))).scalar_one_or_none() is None
 
 
+async def test_discounted_checkout_completion_activates_subscription(clients):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.stripe_customer_id = "cus_test"
+        balance_before = org.balance_micro
+        db.add(org)
+        await db.commit()
+        result = await billing.handle_webhook_event(db, {"type": "checkout.session.completed",
+            "created": 100, "data": {"object": {"customer": "cus_test", "mode": "subscription",
+            "subscription": "sub_free_first_invoice", "payment_status": "no_payment_required",
+            "metadata": {"treg_kind": "enterprise_sso", "treg_org_id": str(org_id),
+                         "treg_plan": "sso_directory"}}}})
+        assert result["handled"]
+        row = await db.get(EnterpriseSSO, org_id)
+        assert row.plan == "sso_directory"
+        assert row.subscription_status == "active"
+        assert (await db.get(Org, org_id)).balance_micro == balance_before
+
+
 async def test_canceled_workos_setup_is_removed_and_retried(clients, monkeypatch):
     from treg.config import get_settings
     settings = get_settings()
@@ -1083,6 +1147,7 @@ async def test_checkout_uses_monthly_team_subscription_without_touching_balance(
     monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
     monkeypatch.setattr(settings, "enterprise_sso_bundle_only", True)
     monkeypatch.setattr(settings, "enterprise_sso_bundle_price_id", "price_bundle")
+    monkeypatch.setattr(settings, "enterprise_sso_promo_org_ids", "999999")
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     calls = []
     async def fake_call(operation, *, api_key, **kwargs):
@@ -1101,11 +1166,38 @@ async def test_checkout_uses_monthly_team_subscription_without_touching_balance(
     checkout = calls[-1][1]
     assert checkout["mode"] == "subscription"
     assert checkout["line_items"] == [{"quantity": 1, "price": "price_bundle"}]
+    assert checkout["allow_promotion_codes"] is False
     assert [operation for operation, _ in calls] == [
         enterprise_billing.stripe_adapter.PRICE_RETRIEVE,
         enterprise_billing.stripe_adapter.CUSTOMER_CREATE,
         enterprise_billing.stripe_adapter.CHECKOUT_SESSION_CREATE]
     assert checkout["subscription_data"]["metadata"]["treg_org_id"] == str(org_id)
+
+
+async def test_checkout_offers_promotion_codes_only_to_allowed_team(clients, monkeypatch):
+    from treg.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "workos_api_key", "sk_workos_test")
+    monkeypatch.setattr(settings, "workos_client_id", "client_test")
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_stripe_test")
+    monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test")
+    monkeypatch.setattr(settings, "enterprise_sso_bundle_price_id", "price_bundle")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(settings, "enterprise_sso_promo_org_ids", f"999999, {org_id}")
+    calls = []
+
+    async def fake_call(operation, *, api_key, **kwargs):
+        calls.append((operation, kwargs))
+        if operation == enterprise_billing.stripe_adapter.PRICE_RETRIEVE:
+            return stripe_price()
+        if operation == enterprise_billing.stripe_adapter.CUSTOMER_CREATE:
+            return {"id": "cus_test"}
+        return {"url": "https://checkout.stripe.com/c/pay/test"}
+
+    monkeypatch.setattr(enterprise_billing.stripe_adapter, "call", fake_call)
+    await enterprise_billing.start_checkout(org_id, "sso_directory",
+        price_id="price_bundle", base="https://treg.example", email="owner@example.com")
+    assert calls[-1][1]["allow_promotion_codes"] is True
 
 
 async def test_checkout_refuses_nonmonthly_or_inactive_price(clients, monkeypatch):

@@ -169,7 +169,7 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
 
 
 def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True,
-                       carry_input: bool = True) -> int:
+                       carry_input: bool = True, fresh_price_note: bool = False) -> int:
     """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
@@ -200,7 +200,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     replaces a proven request, not re-ingesting.
 
     A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
-    card (AnyAPI's sources and failover ceiling), so the fresh one is written over the carried one.
+    card, so the fresh one is written over the carried one. With `fresh_price_note` the same holds
+    for a carried v2 `price` (AnyAPI's note names its sources and failover ceiling); every other
+    provider keeps its reviewed `price` whole, note included.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
     old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
@@ -217,6 +219,8 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
         if not prev or prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
             place_added(ep)
             continue
+        fresh_notes = {key: ep[key].get("note") for key in (("cost", "price") if fresh_price_note else ("cost",))
+                       if isinstance(ep.get(key), dict)}
         carried_fields = [
             "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
             # Reviewed per-row facts no spec carries: a price read from the provider's own bill
@@ -250,7 +254,6 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             carried_fields.append("input")
         if carry_capability:
             carried_fields.append("capability")
-        fresh_cost_note = ep["cost"].get("note") if isinstance(ep.get("cost"), dict) else None
         for field in carried_fields:
             if field == "platform_blocked" and (ep.get("resource_ownership") or {}).get("requires"):
                 # The block stood in for ownership the row could not express; declared ownership
@@ -258,8 +261,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
                 continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
-        if fresh_cost_note and isinstance(ep.get("cost"), dict):
-            ep["cost"] = {**ep["cost"], "note": fresh_cost_note}
+        for key, note in fresh_notes.items():
+            if note and isinstance(ep.get(key), dict):
+                ep[key] = {**ep[key], "note": note}
         if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
@@ -297,9 +301,10 @@ def place_added(ep: dict) -> None:
 
 
 def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
-                   *, carry_capability: bool = True, carry_input: bool = True) -> Path:
+                   *, carry_capability: bool = True, carry_input: bool = True,
+                   fresh_price_note: bool = False) -> Path:
     carried = carry_verification(provider, endpoints, carry_capability=carry_capability,
-                                 carry_input=carry_input)
+                                 carry_input=carry_input, fresh_price_note=fresh_price_note)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -1457,7 +1462,7 @@ _ANYAPI_MEASURED: dict[str, dict] | None = None
 # source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
 # number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
 # listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
-# `reported_charge` (`costUsd`) is what actually settles either way.
+# `costUsd` (the settle default in anyapi.yaml) is what actually settles either way.
 #
 # This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
 # lower number there would be a smaller reserve with no upside. It also does NOT apply to a
@@ -1482,7 +1487,8 @@ def _anyapi_measured() -> dict[str, dict]:
 
 def _anyapi_input(schema: dict, example: dict) -> dict:
     """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
-    routing controls, so a generated `test_request` is built from the vendor's own examples."""
+    routing controls, so a generated `test_request` is built from the vendor's own examples. AnyAPI
+    takes the shared `fields` query parameter as one comma-separated value, so a list is joined."""
     required = set(schema.get("required") or [])
     body = {}
     for name, spec in (schema.get("properties") or {}).items():
@@ -1499,13 +1505,14 @@ def _anyapi_input(schema: dict, example: dict) -> dict:
         if name in example:
             field["example"] = example[name]
         body[name] = field
-    return {"body": body, "bodyType": "json"}
+    return {"body": body, "bodyType": "json", "queryArrayEncoding": "comma"}
 
 
-def _anyapi_cost(api: dict) -> dict:
-    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges.
+def _anyapi_price(api: dict) -> dict:
+    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges, as the
+    row's `price` and `provenance`; the reported settle on `costUsd` is the `defaults:` of anyapi.yaml.
 
-    `cost.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
+    `price.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
     trailing 60 days (ANYAPI_MEASURED_FILE), so the shelf price is what nine calls in ten settle at
     or below. That replaces the rate card's `pricing.from.maxUsd` - the CHEAPEST source's price at
     the input maximum - which is wrong in both directions wherever the ledger can check it: it
@@ -1531,8 +1538,8 @@ def _anyapi_cost(api: dict) -> dict:
 
     `source: observed` is this catalog's own word for a price seen being billed rather than read
     off a page (domain/catalog/store.COST_SOURCES); the rate-card fallback keeps `rate_card_api`.
-    `reported_charge` stays on every row either way: `costUsd` is the only number that knows which
-    source served and how many rows came back, and it is what settles.
+    Every row settles on `costUsd` either way: it is the only number that knows which source served
+    and how many rows came back.
     """
     measured = (None if api["id"] in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE
                 else _anyapi_measured().get(api["id"]))
@@ -1541,16 +1548,11 @@ def _anyapi_cost(api: dict) -> dict:
         price = max(price, _anyapi_flat_floor(api))
         price = min(price, api["pricing"].get("failoverMaxUsd") or price)
     return {
-        "type": "per_success",
-        "value": price,
-        "currency": "USD",
-        "unit": "call",
-        "reported_charge": {"path": "costUsd", "unit": "usd"},
-        "source": "observed" if measured else "rate_card_api",
-        "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
-        "checked": ANYAPI_CHECKED,
-        "confidence": "verified",
-        "note": anyapi_cost_note(len(api.get("lanes") or []), api["pricing"]["failoverMaxUsd"]),
+        "price": {"value": _money(price), "currency": "USD", "unit": "call",
+                  "note": anyapi_cost_note(len(api.get("lanes") or []), api["pricing"]["failoverMaxUsd"])},
+        "provenance": {"source": "observed" if measured else "rate_card_api",
+                       "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
+                       "checked": ANYAPI_CHECKED, "confidence": "verified"},
     }
 
 
@@ -1574,8 +1576,8 @@ def _anyapi_flat_floor(api: dict) -> float:
 
 
 def anyapi_cost_note(lanes: int, ceiling: float) -> str:
-    """The row's `cost.note`: how far a failover can take one charge, what settles it and how a
-    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_cost`.
+    """The row's `price.note`: how far a failover can take one charge, what settles it and how a
+    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_price`.
     The hand-curated core rows in anyapi.yaml use the same sentences."""
     serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
              f"to ${ceiling:g} at the dearest." if lanes > 1 else
@@ -1618,7 +1620,6 @@ def ingest_anyapi(refresh: bool = False):
             continue
         ep = {
             "id": f"anyapi.{sku}",
-            "tier": "extended",
             "platform": platform,
             "domain": sku.split(".", 1)[1].split("_")[0],
             "method": api["method"].upper(),
@@ -1626,7 +1627,7 @@ def ingest_anyapi(refresh: bool = False):
             "name": clean(api["name"])[:60],
             "summary": clean(api["description"])[:400],
             "input": _anyapi_input(content.get("schema") or {}, example),
-            "cost": _anyapi_cost(api),
+            **_anyapi_price(api),
             # One public page per SKU: live price, source routing and measured 30-day uptime.
             "docs_url": ("https://getanyapi.com/api/"
                          f"{prefix.replace('_', '-')}/{sku.split('.', 1)[1].replace('_', '-')}"),
@@ -1641,14 +1642,14 @@ def ingest_anyapi(refresh: bool = False):
         "Every SKU AnyAPI publishes on its ten busiest platforms, minus the routes curated in",
         "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
         "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
-        "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
+        "Prices are MEASURED: price.value is the p90 of what AnyAPI actually billed for that SKU",
         "over the 60 days to the ingest date (operator-supplied pricing evidence), so it is",
         "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
         "SKU with too few charged calls to measure keeps the rate card's cheapest-source price",
-        "(cost.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve by",
-        "design; every response reports its exact charge as costUsd, which is what reported_charge",
-        "settles on. cost.note tells the caller the failover ceiling and how to cap it.",
-    ], carry_capability=True, carry_input=False)
+        "(provenance.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve",
+        "by design; every response reports its exact charge as costUsd, which the settle default in",
+        "anyapi.yaml settles on. price.note tells the caller the failover ceiling and how to cap it.",
+    ], carry_capability=True, carry_input=False, fresh_price_note=True)
     return out, {"endpoints": len(endpoints)}
 
 

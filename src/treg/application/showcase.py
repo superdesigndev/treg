@@ -795,7 +795,8 @@ async def vote(db: AsyncSession, user: User, app_id: int, up: bool, client_ip: s
         raise ShowcaseError("not_found")
     await ratestore.sweep(db, VOTE_NS)
     if not await ratestore.rate_check(
-            db, VOTE_NS, [(f"u:{user.id}", VOTE_MAX_PER_USER), (f"i:{client_ip}", VOTE_MAX_PER_IP)],
+            db, VOTE_NS, [(f"u:{user.id}", VOTE_MAX_PER_USER),
+                          *ratestore.ip_limit(client_ip, VOTE_MAX_PER_IP, key=f"i:{client_ip}")],
             VOTE_WINDOW_S):
         await db.commit()
         raise ShowcaseError("rate_limited")

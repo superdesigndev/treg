@@ -1101,6 +1101,7 @@ BALANCE_ROUTES = {
     "anymailfinder": _anymailfinder,
     "enrow": _enrow,
     "filtrat": _filtrat,
+    "filtrat_finder": _filtrat,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,

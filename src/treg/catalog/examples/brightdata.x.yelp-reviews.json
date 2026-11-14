@@ -1,0 +1,77 @@
+[
+  {
+    "business_id": "redacted",
+    "Review_auther": {
+      "Username": "redacted",
+      "URL": "redacted",
+      "Location": "New York, NY",
+      "Friends": 50,
+      "Reviews_made": 125,
+      "Photos": 0
+    },
+    "Rating": 5,
+    "Date": "11/11/2023",
+    "Content": "A visit to New York City is incomplete without indulging in the hustle, bustle, and culinary adventure offered by Katz's Delicatessen. This storied institution, nestled in the heart of Lower East Side, has been serving up heaping portions of delectable deli classics since 1888, marking its reputatio",
+    "review_order": 1.0,
+    "url": "redacted",
+    "recommended_review": false,
+    "profile_pic_url": "redacted",
+    "review_id": "redacted",
+    "date_iso_format": "2023-11-11T00:00:00.000Z",
+    "timestamp": "2026-11-10T15:31:19.722Z",
+    "input": {
+      "url": "https://www.yelp.com/biz/katzs-delicatessen-new-york",
+      "sort_by": ""
+    }
+  },
+  {
+    "business_id": "redacted",
+    "Review_auther": {
+      "Username": "redacted",
+      "URL": "redacted",
+      "Location": "New York, NY",
+      "Friends": 2,
+      "Reviews_made": 19,
+      "Photos": 0
+    },
+    "Rating": 2,
+    "Date": "13/11/2012",
+    "Content": "The food is good. Let me just say that first. The food is good. Although, not all of it. More on that in a minute.\n\nI hadn't been in a few years prior to last night's dinner. It has really changed. The restaurant was as packed as ever. Only now, when diners walk in, they are treated as though they a",
+    "review_order": 2.0,
+    "url": "redacted",
+    "recommended_review": false,
+    "profile_pic_url": null,
+    "review_id": "redacted",
+    "date_iso_format": "2012-11-13T00:00:00.000Z",
+    "timestamp": "2026-11-10T15:31:19.722Z",
+    "input": {
+      "url": "https://www.yelp.com/biz/katzs-delicatessen-new-york",
+      "sort_by": ""
+    }
+  },
+  {
+    "business_id": "redacted",
+    "Review_auther": {
+      "Username": "redacted",
+      "URL": "redacted",
+      "Location": "Los Angeles, CA",
+      "Friends": 107,
+      "Reviews_made": 69,
+      "Photos": 14
+    },
+    "Rating": 5,
+    "Date": "11/11/2023",
+    "Content": "From the moment I stepped into Katz's Delicatessen, I was transported into a bustling world of culinary history and tradition. This legendary eatery, a staple of New York City's Lower East Side, has been serving up classic Jewish delicacies since 1888, and it's clear they've perfected the art of san",
+    "review_order": 3.0,
+    "url": "redacted",
+    "recommended_review": false,
+    "profile_pic_url": "redacted",
+    "review_id": "redacted",
+    "date_iso_format": "2023-11-11T00:00:00.000Z",
+    "timestamp": "2026-11-10T15:31:19.722Z",
+    "input": {
+      "url": "https://www.yelp.com/biz/katzs-delicatessen-new-york",
+      "sort_by": ""
+    }
+  }
+]

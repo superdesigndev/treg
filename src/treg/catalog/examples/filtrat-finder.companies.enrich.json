@@ -1,0 +1,43 @@
+{
+  "url": "https://www.linkedin.com/company/stripe",
+  "mode": "json",
+  "status": "found",
+  "company": {
+    "name": "Stripe",
+    "website": "https://stripe.com",
+    "domain": "stripe.com",
+    "industry": "Technology, Information and Internet",
+    "type": "Privately Held",
+    "size": "5001-10,000 employees (16694 employees)",
+    "employees": 16694,
+    "followers": null,
+    "headquarters": "South San Francisco, United States",
+    "country": "United States",
+    "specialties": null,
+    "description": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+    "phone": null,
+    "locations": [
+      "Singel 542, Amsterdam, North Holland 1017, NL",
+      "354 Oyster Point Blvd, South San Francisco, California 94080, US (primary)",
+      "920 5th Ave, Seattle, Washington 98104, US",
+      "1-5-8 Jingumae, Tokyo, Shibuya-ku 150-0001, JP",
+      "Avenida Paseo de la Reforma 296, Ciudad de Mexico, Colonia Juarez  06600, MX",
+      "1 Wilton Park, Wilton Terrace, Dublin, County Dublin D02 FX04, IE",
+      "89 Neil Rd, Central Business District, Singapore 088894, SG",
+      "Church Street Haridevpur, Shanthala Nagar, Ashok Nagar, Bengaluru, Karnataka 560001, IN",
+      "10, Boulevard Haussmann, Paris, Ile-de-France 75009, FR",
+      "28 Liberty Street, New York, NY 10005, US",
+      "Avenida Paulista 1374, Paulínia, São Paulo 13140-000, BR",
+      "201 Bishopsgate, London, England EC2M 3NS, GB",
+      "515 N State St, Chicago, Illinois 60610, US",
+      "222 Exhibition St, Melbourne, Victoria 3000, AU"
+    ],
+    "social": {
+      "github": "https://github.com/stripe",
+      "youtube": "https://www.youtube.com/watch?v=eMSqlQMk480"
+    }
+  },
+  "cached": false,
+  "credits_used": 12.0,
+  "credits_remaining": 1249988.0
+}

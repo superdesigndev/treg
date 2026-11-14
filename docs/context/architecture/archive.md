@@ -279,7 +279,9 @@ endpoints with a verified adapter and a nonempty hit/miss expression (`has_resul
 a 4xx status), judged by its outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
 `routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
-the adapter. Strict per-endpoint validators live in `results.py`.
+the adapter. Strict per-endpoint validators live in `results.py` for rows in today's spelling; a v2
+row that needs one names an `error` plugin, so an answer the plugin rejects is `error`, which the
+archive treats as it treats `unknown`.
 
 `ArchiveKey.result_state` / `result_snapshot_id` track the last decisive found or empty
 observation, separately from the newest snapshot; `result_observed_version` marks the newest

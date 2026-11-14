@@ -107,7 +107,7 @@ async def mint_sandbox(*, client_ip: str) -> dict:
     async with session_maker() as db:
         await ratestore.sweep(db, SANDBOX_HIT_NS)
         allowed = await ratestore.rate_check(
-            db, SANDBOX_HIT_NS, [(client_ip, SANDBOX_RATE_MAX)], SANDBOX_RATE_WINDOW_S)
+            db, SANDBOX_HIT_NS, ratestore.ip_limit(client_ip, SANDBOX_RATE_MAX), SANDBOX_RATE_WINDOW_S)
         if not allowed:
             await db.commit()
             raise SandboxError("rate_limited")

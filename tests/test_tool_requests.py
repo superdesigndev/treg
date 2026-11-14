@@ -15,6 +15,7 @@ from sqlmodel import select
 
 from treg import audit
 from treg.api import TOOLREQ_RATE_MAX, app
+from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import SearchMiss, ToolRequest
 
@@ -115,3 +116,11 @@ async def test_a_blank_search_logs_no_miss(clients: AsyncClient):
     assert r.status_code == 200
     await audit.drain()
     assert await _fetch_misses() == []
+
+
+async def test_an_exempt_address_is_not_rate_limited(clients: AsyncClient, monkeypatch):
+    monkeypatch.setattr(get_settings(), "rate_limit_exempt_ips", "127.0.0.1")
+    for i in range(TOOLREQ_RATE_MAX + 1):
+        r = await clients.post("/tool-requests", json={"capability": f"thing {i}"})
+        assert r.status_code == 200, r.text
+    assert len(await _fetch_rows()) == TOOLREQ_RATE_MAX + 1

@@ -180,6 +180,28 @@ class CapIn(BaseModel):
     daily_call_cap: int  # per-user, per-day usage cap for the member; -1 = unlimited
 
 
+class SpendCapIn(BaseModel):
+    # micro-USD per UTC day on treg's keys. None = follow the team default; -1 = no limit.
+    daily_spend_cap_micro: int | None = None
+
+
+def _check_spend_cap(value: int | None, field: str, *, allow_none_limit: bool) -> None:
+    if value is None:
+        return
+    if value < (-1 if allow_none_limit else 0):
+        allowed = "-1 (no limit) or 0 or more" if allow_none_limit else "0 or more, or null for none"
+        raise HTTPException(status_code=422, detail=f"{field} must be {allowed}")
+
+
+async def _member_spend_view(db: AsyncSession, org: Org, memberships) -> dict[int, dict]:
+    """Each member's daily spend limit (own figure and the one in force) and what counts against it
+    today. One grouped query for the whole roster."""
+    spent = await ledger.members_spent_since(db, org.id, usage_policy._day_start_utc())
+    return {m.id: {"daily_spend_cap_micro": m.daily_spend_cap_micro,
+                   "effective_daily_spend_cap_micro": budget_policy.member_daily_spend_cap(m, org),
+                   "spent_today_micro": spent.get(m.id, 0)} for m in memberships}
+
+
 class AccessIn(BaseModel):
     # tool_access: None = all tools (clear the restriction); a list = the ONLY tool names allowed.
     tool_access: list[str] | None = None
@@ -308,6 +330,9 @@ class OrgPatchIn(BaseModel):
 
 class OrgSettingsIn(BaseModel):
     daily_cap_micro: int | None = None
+    # The daily spend limit every member and agent gets (not owners or admins). Setting it, or
+    # null to clear it, also clears each member's and agent's own figure: it applies to all.
+    member_daily_spend_cap_micro: int | None = None
     platform_overflow: bool | None = None  # False = opt out of the overflow relay
     archive: bool | None = None  # False = opt out of the archive (archive.md, "Opting out")
     budget_dims: list[str] | None = None
@@ -531,9 +556,8 @@ async def create_invite(
     if body.landing is not None and not _LANDING_RE.match(body.landing):
         raise HTTPException(status_code=422, detail="landing must be a detail path like /app/skills/<name>")
     code = crypto.new_token()
-    # A SECOND secret for the email link only. The admin gets `code` back (out-of-band relay) so the
-    # code can never be a sign-in factor; `email_token` is never returned here — only the inbox sees
-    # it, which is what lets /auth/invite-signin treat it like an emailed OTP and mint a session.
+    # A second secret for the email link only, never returned here. Neither it nor `code` signs anyone
+    # in; /auth/invite-signin only prefills the invitee's address on the login page.
     email_token = crypto.new_token()
     invite = Invite(
         org_id=org_id, email=email, role=body.role,
@@ -736,12 +760,14 @@ async def list_members(
         )).scalars().all()
     }
     used = await _used_today_by_user(db, org_id)  # one grouped query, not N+1
+    spend = await _member_spend_view(db, caller.org, memberships)
     out: list[dict] = []
     for m in memberships:
         user = users.get(m.user_id)
         if user is not None:
             out.append({"user_id": user.id, "email": user.email, "role": m.role,
                         "daily_call_cap": m.daily_call_cap, "used_today": used.get(user.email, 0),
+                        **spend[m.id],
                         "tool_access": m.tool_access, "project_access": m.project_access,
                         "local_run_enabled": m.local_run_enabled,
                         # so the dashboard can separate people from machines in one roster —
@@ -801,6 +827,26 @@ async def set_member_cap(
     return {"user_id": user_id, "org_id": org_id, "daily_call_cap": body.daily_call_cap}
 
 
+@app.patch("/orgs/{org_id}/members/{user_id}/spend-cap")
+async def set_member_spend_cap(
+    org_id: int, user_id: int, body: SpendCapIn,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set one member's daily spend limit on treg's keys (admin/owner), in micro-USD. `null` follows
+    the team default, `-1` is no limit, 0 or more is this member's own limit."""
+    _require_admin_of(org_id, caller)
+    _check_spend_cap(body.daily_spend_cap_micro, "daily_spend_cap_micro", allow_none_limit=True)
+    membership = (await db.execute(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )).scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=404, detail="not a member of this org")
+    membership.daily_spend_cap_micro = body.daily_spend_cap_micro
+    await db.commit()
+    return {"user_id": user_id, "org_id": org_id,
+            **(await _member_spend_view(db, caller.org, [membership]))[membership.id]}
+
+
 @app.patch("/orgs/{org_id}/members/{user_id}/access")
 async def set_member_access(
     org_id: int, user_id: int, body: AccessIn,
@@ -836,8 +882,12 @@ async def my_usage(
     """The caller's own usage today + cap for the active org — so a member sees 'used / cap' without
     admin access. `cap` is -1 when unlimited. Counted as the members list counts it."""
     used = await _used_today_by_user(db, caller.org_id)
+    spend_cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org)
+    spent = (await ledger.member_spent_since(db, caller.membership.id, usage_policy._day_start_utc())
+             if spend_cap is not None else 0)
     return {"org": caller.org.slug, "used_today": used.get(caller.email, 0),
-            "cap": caller.membership.daily_call_cap}
+            "cap": caller.membership.daily_call_cap,
+            "daily_spend_cap_micro": spend_cap, "spent_today_micro": spent}
 
 
 @app.delete("/orgs/{org_id}/members/{user_id}")
@@ -1049,6 +1099,7 @@ class AgentIn(BaseModel):
     name: str
     role: str = "member"  # never "owner" (see below); "admin" is owner-granted only
     daily_call_cap: int = -1  # -1 = unlimited, mirroring set_member_cap
+    daily_spend_cap_micro: int | None = None  # None = the team default, mirroring set_member_spend_cap
     tool_access: list[str] | None = None  # None = every tool, mirroring set_member_access
     project_access: list | None = None  # None = every project; slugs or ids, mirroring set_member_access
     local_run_enabled: bool = True
@@ -1087,6 +1138,7 @@ async def create_agent(
         raise HTTPException(status_code=403, detail="only an owner can create an admin agent")
     if body.daily_call_cap < -1:
         raise HTTPException(status_code=422, detail="daily_call_cap must be -1 (unlimited) or >= 0")
+    _check_spend_cap(body.daily_spend_cap_micro, "daily_spend_cap_micro", allow_none_limit=True)
 
     email = _agent_email(caller.org, name)
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
@@ -1111,6 +1163,7 @@ async def create_agent(
     else:
         membership.role = _keep("role", membership.role)
     membership.daily_call_cap = _keep("daily_call_cap", membership.daily_call_cap)
+    membership.daily_spend_cap_micro = _keep("daily_spend_cap_micro", membership.daily_spend_cap_micro)
     if is_new or "tool_access" in sent:  # only re-validate what the caller actually sent
         membership.tool_access = _normalize_tool_access(
             body.tool_access, await _known_access_names(org_id, db))
@@ -1145,6 +1198,7 @@ async def create_agent(
     return {"token": token, "name": name, "email": email, "org": caller.org.slug, "user_id": user.id,
             "api_key_id": key.id,
             "role": membership.role, "daily_call_cap": membership.daily_call_cap,
+            "daily_spend_cap_micro": membership.daily_spend_cap_micro,
             "tool_access": membership.tool_access, "project_access": membership.project_access,
             "local_run_enabled": membership.local_run_enabled,
             "pinned_tags": membership.pinned_tags,
@@ -1531,6 +1585,7 @@ async def get_org_settings(
     return {"daily_cap_micro": _effective_daily_cap(org),  # 0 = no limit
             "daily_cap_set_by_team": int(org.daily_cap_micro or 0) or None,
             "platform_default_micro": get_settings().platform_daily_cap_micro,  # 0 = none
+            "member_daily_spend_cap_micro": org.member_daily_spend_cap_micro,  # None = none
             "platform_overflow": not org.platform_overflow_disabled,
             # The archive opt-out (archive.md, "Opting out"): the moment the team objected, or None.
             "archive": org.archive_opt_out_at is None,
@@ -1556,6 +1611,11 @@ async def set_org_settings(
         if body.daily_cap_micro < 0:
             raise HTTPException(status_code=422, detail="daily_cap_micro must be 0 or more")
         org.daily_cap_micro = body.daily_cap_micro
+    if "member_daily_spend_cap_micro" in sent:
+        _check_spend_cap(body.member_daily_spend_cap_micro, "member_daily_spend_cap_micro",
+                         allow_none_limit=False)
+        org.member_daily_spend_cap_micro = body.member_daily_spend_cap_micro
+        await budget_policy.reset_member_spend_caps(db, org_id)
     if "platform_overflow" in sent and body.platform_overflow is not None:
         org.platform_overflow_disabled = not body.platform_overflow
     if "archive" in sent and body.archive is not None:

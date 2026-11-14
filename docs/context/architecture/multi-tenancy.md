@@ -73,8 +73,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
 - **`Org.public_demo`** marks a team whose member token is published: non-admin members are locked to
   `/call` plus reads and may never act as a user (`require_member` / `require_identity`).
 - **`ApiKey`** resolves a credential to a membership; the membership stays the only source of role,
-  tool and project access, local-run permission, daily cap and billing identity, so more keys never
-  mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
+  tool and project access, local-run permission, daily call cap, daily spend limit and billing
+  identity, so more keys never mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
   (legacy, left empty for new memberships). A signed Default token carries the row's team-local
   generation; rotation increments it, invalidating the prior token without touching other teams.
   After membership removal the detached, revoked Default row keeps the old token unauthorized.
@@ -83,8 +83,10 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   `POST /invites/{id}/accept` by id; both run `_join_invited_team`. The code is returned to the
   admin who created the invite, so it only names the invite: it never signs anyone in, never
   creates a `User`, and never yields a token for an account the caller has not proven.
-  `email_token_hash` is the inbox-only second secret in the emailed link and may sign the invitee
-  in (`/auth/invite-signin`, one-time). The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
+  to the invitee's address and redirects to the login with it prefilled, never a session, because
+  an emailed secret is only as private as every system the mail passes through and any team admin
+  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one
@@ -172,7 +174,10 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   when set and valid, else the `X-Forwarded-For` entry `TREG_TRUSTED_PROXY_HOPS` from the right, else
   the socket peer. Never the first `X-Forwarded-For` entry, which is the client's own claim. MCP tools
   call the API in process and forward the resolved address (`client_ip.forwarding_headers`) so MCP
-  callers keep their own buckets.
+  callers keep their own buckets. Every per-IP window is built with `ratestore.ip_limit`, which
+  drops the address entry for an address `TREG_RATE_LIMIT_EXEMPT_IPS` names (`client_ip.exempt`);
+  the per-email, per-user and deployment-wide entries beside it still decide, and no money cap is
+  touched. The list is parsed at startup, so a malformed entry refuses to boot.
 - **Turnstile on email start**, the only door minting an inbox proof from a bare HTTP call. Off unless
   site key and secret are set. Every page posting to `/auth/email/start` loads `/captcha.js` and sends
   `captcha_token` (a test enforces it); a script that cannot get a token sends `!blocked`, `!pending`

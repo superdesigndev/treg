@@ -3542,6 +3542,23 @@ FILTRAT = OAuthProvider(
     probe_path="/credits/balance",  # free; a bad key gets 401
 )
 
+FILTRAT_FINDER = OAuthProvider(
+    service="filtrat-finder", display_name="Filtrat Email Finder", auth_kind="key",
+    token_label="API key", token_placeholder="your Filtrat API key (ak_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://filtrat.io/app/api",
+    setup_action_label="Get your Filtrat API key",
+    setup_steps=("Sign in to Filtrat and open API & Integrations.", "Create an API key and copy it."),
+    setup_note="Found emails spend credits; not-found answers and the account check are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find work emails from a name and company domain, confirmed on catch-all domains too.",
+    base_url="https://filtrat.io/v1",
+    docs_url="https://filtrat.io/v1/docs",
+    probe_path="/credits/balance",  # free; a bad key gets 401
+)
+
+
 
 DROPCONTACT = OAuthProvider(
     service="dropcontact", display_name="Dropcontact", auth_kind="key",
@@ -4276,7 +4293,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

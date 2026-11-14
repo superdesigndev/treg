@@ -1,0 +1,34 @@
+[
+  {
+    "seller_id": "A2L77EE7U53NWQ",
+    "url": "https://www.amazon.com/sp?seller=A2L77EE7U53NWQ",
+    "seller_name": "Amazon Resale",
+    "description": "Amazon Resale\r. Get deep discounts on open-box and used products. We inspect and certify all items for sale on Amazon Resale based on physical and functional condition if you're unsatisfied with the product for any reason, you can return it in accordance with Amazon's return policy.  For further ass",
+    "detailed_info": [
+      {
+        "title": "Business Name",
+        "value": "Amazon.com Services LLC"
+      },
+      {
+        "title": "Business Address",
+        "value": "410 Terry Avenue North, Seattle, WA, 98109-5210, US"
+      }
+    ],
+    "return_policy": [],
+    "shipping_policies": "This item is Fulfilled by Amazon.com and ships based on Amazon.com Shipping Rates and Policies .",
+    "privacy_security": "Amazon knows that you care how information about you is used and shared, and we appreciate your trust that we will do so carefully and sensibly. By visiting Amazon.com, you are accepting the practices described in Amazon.com's Privacy Policy . In addition, we want you to be aware that Amazon.com wil",
+    "privacy_policy": "Amazon Resale values the privacy of your personal data.",
+    "help_content": "For questions about a charge that has been made to your credit card, please contact Amazon. Questions about how to place an order? Search Amazon Help.",
+    "buisness_name": "Amazon.com Services LLC",
+    "buisness_address": "410 Terry Avenue North, Seattle, WA, 98109-5210, US",
+    "country": "US",
+    "seller_phone_number": null,
+    "rating_count": null,
+    "delivery_rates": "This item is Fulfilled by Amazon.com and ships based on Amazon.com Shipping Rates and Policies .",
+    "products_count": null,
+    "timestamp": "2026-11-10T15:42:53.990Z",
+    "input": {
+      "url": "https://www.amazon.com/sp?seller=A2L77EE7U53NWQ"
+    }
+  }
+]

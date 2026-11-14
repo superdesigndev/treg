@@ -15,6 +15,8 @@ sources:
   - src/treg/routers/billing.py
   - src/treg/infra/slack.py
   - tests/test_topup_reconcile.py
+  - tests/test_member_spend_cap.py
+  - src/treg/alembic/versions/0102_member_daily_spend_cap.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -122,10 +124,11 @@ through `audit.py`: it drops rows past its queue bound and swallows exceptions.
 **Column width.** A Postgres `integer` holds at most $2,147.48 in micro-USD. Running totals and caps
 (`Org.balance_micro`, `daily_cap_micro`, the auto-top-up amounts, `CreditBlock.amount_micro` and
 `remaining_micro`, `Hold.amount_micro`, `TagBudget`'s caps, `spent_today_micro`) are `BIGINT`
-(revision 0093). Per-row journal amounts (`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`:
-one row holds one call's or one top-up's amount, which `billing.TOPUP_MAX_USD` keeps far below the
-limit, and changing a type there rewrites a very large table under an exclusive lock. A new column
-that sums or caps money is `BIGINT` from its first revision.
+(revision 0093); `autotopup_monthly_cap_micro` is `BIGINT` (revision 0103). Per-row journal amounts
+(`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`: one row holds one call's or one top-up's
+amount, which `billing.TOPUP_MAX_USD` keeps far below the limit, and changing a type there rewrites a
+very large table under an exclusive lock. A new column that sums or caps money is `BIGINT` from its
+first revision.
 
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
@@ -177,16 +180,17 @@ first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable
 liability, so spending promo first keeps the refundable pool small.
 
-**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only`
-(video generation) is paid from purchased credit alone: `_platform_reserve` passes
-`purchased_only=True` (`_purchased_only` in `application/call/reserve.py`), and
-`reserve_in_transaction` runs `_purchased_gate` before the balance gate. The gate locks the org's
-purchased blocks in primary-key order, subtracts its open `Hold.purchased_only` holds, and raises
-`PurchasedCreditShort` (an `InsufficientBalance`) when the rest cannot cover the charge; the call
-is refused with 402 `free_credit_excludes_video`, before any upstream request and with nothing
-held. The flag is stored on the hold, so every settle path (the call, the async worker, a batch
-close) draws only purchased blocks in `_consume_blocks`; an overrun past them is a recorded
-`block_shortfall_micro`, never taken from free credit. A $0 call passes the gate.
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only: true`
+(none today; `video-gen` carries it as `false`) is paid from purchased credit alone:
+`_platform_reserve` passes `purchased_only=True` (`_purchased_only` in
+`application/call/reserve.py`), and `reserve_in_transaction` runs `_purchased_gate` before the
+balance gate. The gate locks the org's purchased blocks in primary-key order, subtracts its open
+`Hold.purchased_only` holds, and raises `PurchasedCreditShort` (an `InsufficientBalance`) when the
+rest cannot cover the charge; the call is refused with 402 `free_credit_excludes_video`, before any
+upstream request and with nothing held. The flag is stored on the hold, so every settle path (the
+call, the async worker, a batch close) draws only purchased blocks in `_consume_blocks`; an overrun
+past them is a recorded `block_shortfall_micro`, never taken from free credit. A $0 call passes the
+gate.
 
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.
@@ -533,8 +537,10 @@ low balance produces ONE charge.
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
-  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD`; a cap below one
-  refill is refused.
+  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
+  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
+  `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
   charge, else an hour divided by the team's `autotopup_max_per_hour` (0 means
   `autotopup_default_per_hour`). The number is part of the mandate text.
@@ -615,6 +621,11 @@ dashboard and refuses an org without `stripe_customer_id` rather than minting on
   cancellation controls. `billing.start_checkout` rejects a stale Price ID and re-verifies the Price
   before Checkout. One pending reservation per team plus an idempotent Stripe session request stop
   parallel subscriptions.
+- `TREG_ENTERPRISE_SSO_PROMO_ORG_IDS` optionally enables Stripe's promotion-code field for an
+  explicit comma-separated set of stable team IDs. It is empty by default, because any active,
+  unrestricted Stripe code could otherwise discount an SSO subscription. Operators must restrict
+  a pilot code to the SSO product and limit its redemptions in Stripe. A discount changes the
+  invoice, not the subscription's renewal or the WorkOS connection cost.
 - The signed billing webhook records subscription status; WorkOS setup and sign-in are gated on
   `active`, `trialing` or `past_due` (Stripe is still retrying). A Checkout redirect grants nothing.
   Subscription metadata binds the event to a team and plan, the Stripe customer must match, and
@@ -648,6 +659,38 @@ today. The first movement of a new UTC day resets it (`_spent_today_values`). A 
 cannot replace it: a busy org's rows touch most heap pages of the day, so no index makes the
 aggregate cheaper than reading the day. `spent_today_from_ledger` computes the same number for
 reconciliation, and `tests/test_daily_spend_counter.py` asserts they agree.
+
+### A daily spend limit per member
+
+`_enforce_member_spend_cap` limits what one member or agent may commit on treg's keys per UTC day.
+`budget_policy.member_daily_spend_cap` picks the figure: the member's own
+`Membership.daily_spend_cap_micro` (-1 = no limit), else the team default
+`Org.member_daily_spend_cap_micro`, which never applies to an owner or admin. NULL everywhere means
+no limit and no extra work on the call.
+
+When a limit applies, `_platform_reserve` passes `member_id` to `ledger.reserve_in_transaction`, which
+writes one `MemberSpend` row in the balance transaction. The row follows its hold like `TagSpend`:
+estimate in flight, consumed figure at settle (restamped to settle time), deleted on release. The
+check reads `ledger.member_spent_since` (one indexed aggregate) and compares it with the charged
+estimate. The refusal carries `resets_at` (the next 00:00 UTC) and a matching `Retry-After`, so an
+agent waits instead of retrying. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
+calls can overshoot by their estimates, and the org balance and platform daily cap stay the hard
+gates. An unlimited member writes no rows, so spend made before a limit applied does not count
+against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
+the hub's own steps are. A crashed call's expired hold still counts until it is reaped, and the
+reserve reaps only after this gate, so a refusal reaps the team's stale holds first and reads again.
+
+The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
+this limit refuses the call, or cannot be checked, the call service gives that slot back
+(`usage.return_daily_slot`), on the direct path and on an overflow-only call alike, so a member stopped by dollars, or retrying an unavailable check, does
+not also lose calls. The slot goes back only to the UTC day it was taken on: a refusal after
+midnight never takes a slot from the new day. `memberspend` has no foreign keys; team deletion clears it with the team. The first limit reached stops the member.
+
+The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
+clears it). Setting it means "this, for all": `budget_policy.reset_member_spend_caps` clears every
+member's and agent's own figure in the same transaction; owners and admins keep theirs. One
+member's figure is set with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
+mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
 
 ## Checking the work (`reconcile.py`)
 
@@ -767,23 +810,32 @@ row.
   resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
   applied, values coerced by their declared type), times a bounded `times` field, else the
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
-  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it), `entities` (list items,
-  comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
+  comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
+  request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
   or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
   fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
+- **The request it can price.** On every tier, before anything is held, `price_call` refuses with
+  `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
+  type is not a list (an undeclared one is not judged), and a `reserve.rows` count the request
+  carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
+  takes the default). The refusal names the parameter, never its value.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
-  spelling records a free miss, so the call record and the stats fallback read it alike. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
-  hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
-  evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged
+  answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
+  maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
+  unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
+  `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
+  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.
@@ -976,7 +1028,11 @@ a balance, hold or ledger row; both are allowlisted on their own (`capacity_exha
 `MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve` checks
 the actual estimate with margin before opening its transaction. Direct calls set it only from
 `X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
-route's remainder. A refusal is a 402 `route_max_cost` that moves no money. Overflow inherits the
+route's remainder. A refusal is a 402 `route_max_cost` that moves no money. The route first drops
+a candidate whose bare plan price (`cost_at`, rows rounded up to the cost's `per` block) exceeds
+what is left; that price can be an upper bound, so margin is not added there. A child it admits
+is checked again at its reserve on the adapted request's own price with margin, and that
+refusal's skip in `_treg.tried` names the hold and the remainder. Overflow inherits the
 field and checks its own estimate; a preceding direct charge reduces the remainder.
 
 Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))

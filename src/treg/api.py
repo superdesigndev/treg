@@ -273,7 +273,8 @@ async def create_tool_request(
     `_same_origin` gate on the cookie path only."""
     await ratestore.sweep(db, TOOLREQ_HIT_NS)
     if not await ratestore.rate_check(db, TOOLREQ_HIT_NS,
-                                      [(_client_ip(request), TOOLREQ_RATE_MAX)], TOOLREQ_RATE_WINDOW_S):
+                                      ratestore.ip_limit(_client_ip(request), TOOLREQ_RATE_MAX),
+                                      TOOLREQ_RATE_WINDOW_S):
         await db.commit()  # persist the sweep even on reject
         raise HTTPException(status_code=429, detail="too many tool requests from here — try again later")
     capability = body.capability.strip()

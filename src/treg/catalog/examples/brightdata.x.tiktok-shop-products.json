@@ -1,0 +1,11 @@
+[
+  {
+    "timestamp": "2026-11-10T15:29:22.517Z",
+    "input": {
+      "url": "https://www.tiktok.com/shop/pdp/1729385508414442302",
+      "category": ""
+    },
+    "error": "Product not available.",
+    "error_code": "dead_page"
+  }
+]

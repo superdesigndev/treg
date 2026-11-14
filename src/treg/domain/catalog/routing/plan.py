@@ -40,6 +40,9 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     limit-less child last, so a free-on-miss role finder fell behind a search that bills its empty
     answers."""
     used = _used_keys(adapter)
+    # A filter written into a stand-in's text (`q` "… in Germany") reaches the provider there.
+    for k in _stand_in_sent(adapter, identity):
+        used |= _carried(contract, k, identity)
     return tuple(k for k in (contract.filters or ()) if k != "limit"
                  and identity.get(k) not in (None, "") and (given is None or k in given)
                  and (k not in used or _unmappable(adapter, k, identity)))
@@ -58,6 +61,36 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
         return all(P.evaluate(e, identity) in (None, "", []) for e in exprs)
     except Exception:  # noqa: BLE001 - ranking must never crash on an expression
         return False
+
+
+def _carried(contract: Contract, key: str, identity: dict[str, Any]) -> set[str]:
+    """The caller's keys a stand-in `key` built from `identity` holds in its text: those of the
+    contract's `stand_in_carries` the text says. A key is said when leaving it out changes the text,
+    alone or beside any one other key: a country the location already names ("in Dublin, Ireland")
+    is said, since without the location it is the place. A value the text never uses (a list, a
+    country code with no name) is not."""
+    expr = contract.stand_in.get(key)
+    names = [n for n in contract.stand_in_carries.get(key, ()) if identity.get(n) not in (None, "")]
+    if not expr or not names:
+        return set()
+    try:
+        def without(*drop):
+            return P.evaluate(expr, {**identity, **dict.fromkeys(drop)})
+        if P.evaluate(expr, identity) in (None, ""):
+            return set()
+        base = {k: without(k) for k in names}
+        return {n for n in names if base[n] != without() or any(
+            without(n, k) != base[k] for k in names if k != n)}
+    except Exception:  # noqa: BLE001 - scoping must never crash on an expression
+        return set()
+
+
+def _stand_in_sent(adapter: Adapter, identity: dict[str, Any]) -> set[str]:
+    """Stand-in keys this adapter's request carries: ones its matched variant names that the caller
+    left empty."""
+    stand_in = getattr(adapter, "_stand_in", None) or {}
+    variant = set(adapter_accepts(adapter, identity) or ()) if stand_in else set()
+    return {k for k in stand_in if k in variant and identity.get(k) in (None, "")}
 
 
 def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> tuple[str, ...]:
@@ -83,10 +116,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
             used |= names & standing
         else:
             used |= {n for n in names if identity.get(n) is None or isinstance(identity[n], str)}
-    # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
-    for k, expr in stand_in.items():
+    # A stand-in this adapter sends carries the keys the contract says its text holds
+    # (`stand_in_carries`: `q` from title and company), each only as a string
+    for k in stand_in:
         if k in used and k in standing:
-            used |= set(re.findall(r"[A-Za-z_]\w*", expr))
+            used |= _carried(contract, k, identity)
     # A free-text key the caller wrote rides only in the variant the adapter matched, or in a key
     # the contract says carries it (`carried_by`: q in title). One that answers {company_domain, q}
     # by {company_domain} alone, or {full_name, q} by the name, drops what q asked for.
@@ -185,6 +219,10 @@ class Candidate:
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
+    p95_ms: int | None = None
+    # The short-window verdict (`routing.health`): `slow` asks it after the others of its tier,
+    # `failing` is kept only as a probe or when nothing else is left; `ok` changes nothing.
+    health: str = "ok"
 
     @property
     def expected_cost_per_hit(self) -> float:
@@ -212,6 +250,7 @@ class Candidate:
                 "expected_cost_per_hit_micro": (None if self.expected_cost_per_hit == float("inf") else int(self.expected_cost_per_hit)),
                 "hit_rate": self.hit_rate, "ok_rate": self.ok_rate, "p50_ms": self.p50_ms,
                 "confidence": self.confidence, "exhausted": self.exhausted, **({"note": self.note} if self.note else {}),
+                **({"health": self.health} if self.health != "ok" else {}),
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
@@ -224,10 +263,12 @@ class Plan:
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
+    health: dict[str, str] = field(default_factory=dict)  # endpoint id -> short-window verdict, when not ok
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
-                "plan": [c.view() for c in self.candidates], "dropped": self.dropped}
+                "plan": [c.view() for c in self.candidates], "dropped": self.dropped,
+                **({"health": self.health} if self.health else {})}
 
 
 def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,
@@ -245,7 +286,7 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -285,7 +326,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
         lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
-        return (tier, pref, *lead,
+        # A child failing or slow right now is asked after the healthy ones of its tier, whatever
+        # order a contract default or a published rule gives it. Only the caller's own prefer
+        # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
+        unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
+        order = (pref, unwell) if caller_prefer else (unwell, pref)
+        return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,
                 c.last_ok_days if c.last_ok_days is not None else 10**6, c.endpoint["id"])
     return sorted(keep, key=key)

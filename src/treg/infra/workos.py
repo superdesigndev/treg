@@ -167,7 +167,7 @@ async def directory_users(client: httpx.AsyncClient, *, key: str, directory: str
 
 async def portal_link(client: httpx.AsyncClient, *, key: str, organization: str, intent: str,
                       return_url: str | None = None) -> str:
-    if intent not in {"sso", "dsync"}:
+    if intent not in {"sso", "dsync", "domain_verification"}:
         raise ValueError("invalid portal intent")
     payload = {"organization": organization, "intent": intent}
     if return_url:
@@ -194,7 +194,7 @@ async def invite_it_contact(client: httpx.AsyncClient, *, key: str, organization
         contact_id = contact.get("id")
     if not isinstance(contact_id, str) or not contact_id.startswith("it_contact_"):
         raise WorkOSError("WorkOS IT contact missing")
-    intents = ["sso"] + (["directory_sync"] if directory_sync else [])
+    intents = ["domain_verification", "sso"] + (["directory_sync"] if directory_sync else [])
     try:
         response = await client.post(BASE_URL + f"{path}/{contact_id}/invite",
             json={"intents": intents},

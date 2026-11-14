@@ -64,6 +64,8 @@ _COMMON = {
 _VOCABULARY: dict[str, dict[str, Any]] = {
     "cli_command_completed": _COMMON | {
         "command": _text(r"[a-z][a-z0-9_]{0,63}"),
+        "in_command": _text(r"[a-z][a-z0-9_]{0,63}"),
+        "missing_command": _text(r"[a-z][a-z0-9_]{0,63}"),
         "exit_code": _int(-1000, 1000),
         "success": _bool,
         "duration_ms": _int(0, 86_400_000),

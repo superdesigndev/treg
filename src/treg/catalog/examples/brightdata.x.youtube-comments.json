@@ -1,0 +1,71 @@
+[
+  {
+    "comment_id": "redacted",
+    "comment_text": "I was on Pinterest I scanned a bar code and got rickrolled wtf",
+    "likes": 0,
+    "replies": 0,
+    "username": "redacted",
+    "username_md5": "redacted",
+    "user_channel": "redacted",
+    "date": "8 minutes ago",
+    "url": "redacted",
+    "video_id": "redacted",
+    "replies_value": null,
+    "replies_without_names": null,
+    "user_id": "redacted",
+    "mentioned_timestamps_minutes": null,
+    "mentioned_timestamps_seconds": null,
+    "date_iso": "2026-11-10T15:25:52.210Z",
+    "timestamp": "2026-11-10T15:33:54.356Z",
+    "input": {
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "sort_by": ""
+    }
+  },
+  {
+    "comment_id": "redacted",
+    "comment_text": "Fuck not again",
+    "likes": 1,
+    "replies": 0,
+    "username": "redacted",
+    "username_md5": "redacted",
+    "user_channel": "redacted",
+    "date": "23 minutes ago",
+    "url": "redacted",
+    "video_id": "redacted",
+    "replies_value": null,
+    "replies_without_names": null,
+    "user_id": "redacted",
+    "mentioned_timestamps_minutes": null,
+    "mentioned_timestamps_seconds": null,
+    "date_iso": "2026-11-10T15:10:52.210Z",
+    "timestamp": "2026-11-10T15:33:54.356Z",
+    "input": {
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "sort_by": ""
+    }
+  },
+  {
+    "comment_id": "redacted",
+    "comment_text": "He say robux 😢",
+    "likes": 0,
+    "replies": 0,
+    "username": "redacted",
+    "username_md5": "redacted",
+    "user_channel": "redacted",
+    "date": "23 minutes ago",
+    "url": "redacted",
+    "video_id": "redacted",
+    "replies_value": null,
+    "replies_without_names": null,
+    "user_id": "redacted",
+    "mentioned_timestamps_minutes": null,
+    "mentioned_timestamps_seconds": null,
+    "date_iso": "2026-11-10T15:10:52.211Z",
+    "timestamp": "2026-11-10T15:33:54.356Z",
+    "input": {
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "sort_by": ""
+    }
+  }
+]

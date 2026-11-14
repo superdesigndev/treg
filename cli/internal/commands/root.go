@@ -47,6 +47,8 @@ func Root(env *Env) *cobra.Command {
 		balanceCmd(env),
 		healthCmd(env),
 		orgCmd(env),
+		invitesCmd(env),
+		acceptCmd(env),
 		toolCmd(env),
 		secretCmd(env),
 		connectionsCmd(env),

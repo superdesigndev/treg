@@ -188,3 +188,13 @@ def test_fixed_login_codes_refuses_a_malformed_entry():
         Settings(fixed_login_codes="reviewer@example.com=not-a-sha256")
     with pytest.raises(ValidationError):
         Settings(fixed_login_codes="reviewer@example.com")
+
+
+async def test_an_exempt_address_keeps_the_per_email_cap(client, monkeypatch):
+    from treg.routers.auth import OTP_START_MAX_PER_EMAIL, OTP_START_MAX_PER_IP
+    monkeypatch.setattr(get_settings(), "rate_limit_exempt_ips", "127.0.0.1")
+    for i in range(OTP_START_MAX_PER_IP + 1):  # past the per-IP cap, every inbox fresh
+        assert (await client.post("/auth/email/start", json={"email": f"u{i}@matrix.io"})).status_code == 200
+    for _ in range(OTP_START_MAX_PER_EMAIL):
+        assert (await client.post("/auth/email/start", json={"email": "one@matrix.io"})).status_code == 200
+    assert (await client.post("/auth/email/start", json={"email": "one@matrix.io"})).status_code == 429

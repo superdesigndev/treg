@@ -1,0 +1,101 @@
+[
+  {
+    "name": "OpenAI",
+    "url": "https:/…",
+    "id": "openai",
+    "cb_rank": 2,
+    "region": "Califor…",
+    "about": "OpenAI …",
+    "industries": [
+      {
+        "id": "agentic…",
+        "value": "Agentic…"
+      },
+      {
+        "id": "ai-infr…",
+        "value": "AI Infr…"
+      },
+      "… 1 mor…"
+    ],
+    "operating_status": "active",
+    "company_type": "for_pro…",
+    "social_media_links": [
+      "https:/…",
+      "https:/…",
+      "… 1 mor…"
+    ],
+    "num_employees": "1001-50…",
+    "country_code": "United …",
+    "website": "https:/…",
+    "contact_email": "support…",
+    "contact_phone": "+1 800-…",
+    "featured_list": [
+      {
+        "org_funding_total": {
+          "currency": "USD",
+          "value": 538508635088,
+          "value_usd": 538508635088,
+          "formatted_value": "$538.51…"
+        },
+        "org_num": 151,
+        "org_num_investors": 1846,
+        "title": "Santand…"
+      },
+      {
+        "org_funding_total": {
+          "currency": "USD",
+          "value": 5144293637897,
+          "value_usd": 5144293637897,
+          "formatted_value": "$5.14T"
+        },
+        "org_num": 9714,
+        "org_num_investors": 26936,
+        "title": "United …"
+      },
+      "… 1 mor…"
+    ],
+    "full_description": "OpenAI …",
+    "type": "company",
+    "uuid": "cf2c678…",
+    "active_tech_count": 121,
+    "builtwith_num_technologies_used": 121,
+    "builtwith_tech": [
+      {
+        "name": "SSL by …",
+        "num_companies_using": "1000000",
+        "technology_category": [
+          "ssl"
+        ]
+      },
+      {
+        "name": "DNSSEC",
+        "num_companies_using": "1000000",
+        "technology_category": [
+          "ns"
+        ]
+      },
+      "… 1 mor…"
+    ],
+    "ipo_status": "private",
+    "similar_companies": [
+      {
+        "link": "https:/…",
+        "name": "Mistral…"
+      },
+      {
+        "link": "https:/…",
+        "name": "DeepSee…"
+      },
+      "… 1 mor…"
+    ],
+    "image": "https:/…",
+    "monthly_visits": 713637978,
+    "semrush_visits_latest_month": 713637978,
+    "semrush_last_updated": "2026-10…",
+    "monthly_visits_growth": 0.315011671185467,
+    "semrush_visits_mom_pct": 0.315011671185467,
+    "num_contacts": 1360,
+    "num_contacts_linkedin": 1360,
+    "…": "70 more field(s) truncated"
+  }
+]

@@ -1,0 +1,120 @@
+[
+  {
+    "title": "The Shawshank Redemption",
+    "popularity": 50,
+    "genres": [
+      "Drama"
+    ],
+    "presentation": "After a banker is sentenced to life in Shawshank Prison, he forms an unlikely friendship with a seasoned inmate and clings to hope amid cruelty and corruption.",
+    "credit": [
+      {
+        "names": [
+          {
+            "link": "https://www.imdb.com/name/nm0001104/",
+            "name": "Frank Darabont"
+          }
+        ],
+        "title": "Director"
+      },
+      {
+        "names": [
+          {
+            "link": "https://www.imdb.com/name/nm0000175/",
+            "name": "Stephen King"
+          },
+          {
+            "link": "https://www.imdb.com/name/nm0001104/",
+            "name": "Frank Darabont"
+          }
+        ],
+        "title": "Writers"
+      },
+      {
+        "names": [
+          {
+            "link": "https://www.imdb.com/name/nm0000209/",
+            "name": "Tim Robbins"
+          },
+          {
+            "link": "https://www.imdb.com/name/nm0000151/",
+            "name": "Morgan Freeman"
+          },
+          {
+            "link": "https://www.imdb.com/name/nm0348409/",
+            "name": "Bob Gunton"
+          }
+        ],
+        "title": "Stars"
+      }
+    ],
+    "videos": [
+      {
+        "name": "Official Trailer",
+        "link": "https://www.imdb.com/video/vi3877612057"
+      },
+      {
+        "name": "Tim Robbins Thanks Fans for Making 'The Shawshank Redemption' the No. 1 Movie on",
+        "link": "https://www.imdb.com/video/vi78891545"
+      }
+    ],
+    "photos": [
+      {
+        "name": "Morgan Freeman, Tim Robbins, William Sadler, Larry Brandenburg, Neil Giuntoli, Brian Libby, David Proval, and Joseph Ragno in The Shawshank Redemption (1994)",
+        "link": "https://www.imdb.com/title/tt0111161/mediaviewer/rm2971500544"
+      },
+      {
+        "name": "Clancy Brown, Dion Anderson, and Brian Delate in The Shawshank Redemption (1994)",
+        "link": "https://www.imdb.com/title/tt0111161/mediaviewer/rm2954723328"
+      },
+      {
+        "name": "Tim Robbins in The Shawshank Redemption (1994)",
+        "link": "https://www.imdb.com/title/tt0111161/mediaviewer/rm3206381568"
+      }
+    ],
+    "top_cast": [
+      {
+        "actor": "Tim Robbins",
+        "link": "https://www.imdb.com/name/nm0000209",
+        "character": "Andy Dufresne"
+      },
+      {
+        "actor": "Morgan Freeman",
+        "link": "https://www.imdb.com/name/nm0000151",
+        "character": "Ellis Boyd 'Red' Redding"
+      },
+      {
+        "actor": "Bob Gunton",
+        "link": "https://www.imdb.com/name/nm0348409",
+        "character": "Warden Norton"
+      }
+    ],
+    "details_release_date": "10/14/1994 (United States)",
+    "details_countries_of_origin": "United States",
+    "details_official_site": "https://www.facebook.com/shawshankredemptionfilm/",
+    "details_language": "English",
+    "details_also_known_as": "Sueño de fuga",
+    "details_filming_locations": "Butler, Ohio, USA",
+    "details_production_companies": "Castle Rock Entertainment",
+    "specs_color": "Color",
+    "specs_sound_mix": "Dolby Digital",
+    "specs_aspect_ratio": "1.85 : 1",
+    "url": "https://www.imdb.com/title/tt0111161/",
+    "media_type": "Feature Film",
+    "imdb_rating": 9.3,
+    "poster_url": "https://www.imdb.com/title/tt0111161/mediaviewer/rm1690056449",
+    "imdb_rating_count": 3263428,
+    "awards": "Won Oscar 7 Oscars  21 wins total",
+    "critics_review_count": 152,
+    "review_count": 12082,
+    "review_rating": 10,
+    "featured_review": "Misery and Stand By Me were the best adaptations up until this one, now you can add Shawshank to that list.\n\nThis is simply one of the best films ever made and I know I am not the first to say that and I certainly won't be the last. The standing on the IMDb is a true barometer of that. #3 as of this",
+    "storyline": "Chronicles the experiences of a formerly successful banker as a prisoner in the gloomy jailhouse of Shawshank after being found guilty of a crime he did not commit. The film portrays the man's unique way of dealing with his new, torturous life; along the way he befriends a number of fellow prisoners",
+    "boxoffice_budget": "$25,000,000.00",
+    "id": "tt0111161",
+    "timestamp": "2026-11-10T15:31:12.667Z",
+    "input": {
+      "url": "https://www.imdb.com/title/tt0111161/",
+      "comment": ""
+    }
+  }
+]
