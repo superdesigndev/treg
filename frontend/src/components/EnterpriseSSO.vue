@@ -4,16 +4,16 @@ import { useDashboard } from '../state/context'
 export default {
   props: { orgId: { type: Number, required: true }, slug: { type: String, required: true }, owner: Boolean },
   setup: useDashboard,
-  data: () => ({ sso: null, blockedMembers: [], busy: '', error: '', message: '', itEmail: '', showInviteIT: false }),
+  data: () => ({ sso: null, domain: null, domainError: '', blockedMembers: [], busy: '', error: '', message: '', itEmail: '', showInviteIT: false }),
   watch: { orgId() { this.loadSSO() } },
   mounted() { this.loadSSO() },
   computed: {
     subscribed() { return this.sso && ['active', 'trialing', 'past_due'].includes(this.sso.subscription_status) },
     directoryPlan() { return this.sso?.plan === 'sso_directory' },
-    setupStepCount() { return this.directoryPlan ? 3 : 2 },
+    setupStepCount() { return this.directoryPlan ? 4 : 3 },
     completedSteps() {
       if (!this.sso) return 0
-      return Number(this.sso.sso_ready) + Number(this.directoryPlan && this.sso.directory_ready) + Number(this.sso.enforced)
+      return Number(this.domain?.status === 'verified') + Number(this.sso.sso_ready) + Number(this.directoryPlan && this.sso.directory_ready) + Number(this.sso.enforced)
     },
   },
   methods: {
@@ -26,12 +26,22 @@ export default {
     },
     async loadSSO() {
       this.sso = null
+      this.domain = null
+      this.domainError = ''
       this.blockedMembers = []
       try {
         this.sso = await this.api(`/orgs/${this.orgId}/sso`)
-        if (this.owner) this.blockedMembers = (await this.api(`/orgs/${this.orgId}/sso/blocked`)).members
+        if (this.owner) {
+          this.blockedMembers = (await this.api(`/orgs/${this.orgId}/sso/blocked`)).members
+          if (this.subscribed) await this.loadDomain()
+        }
       }
       catch (e) { this.error = e.detail || 'Could not load SSO settings.' }
+    },
+    async loadDomain() {
+      this.domainError = ''
+      try { this.domain = await this.api(`/orgs/${this.orgId}/sso/domains`) }
+      catch (e) { this.domainError = e.detail || 'Could not check the company domain. Try again.' }
     },
     async action(kind, path, body) {
       this.busy = kind; this.error = ''; this.message = ''
@@ -126,13 +136,33 @@ export default {
 
         <div class="sso-section-head"><div class="lbl">SETUP</div><h3>Get your team ready</h3><p>Complete these steps in order. The check marks update after treg verifies each step.</p></div>
         <div class="sso-steps">
+          <article class="sso-panel sso-step" :class="{'sso-step-done':domain?.status==='verified'}">
+            <div class="sso-step-main">
+              <span class="sso-check" :class="{'done':domain?.status==='verified'}" aria-hidden="true">{{domain?.status==='verified'?'✓':'1'}}</span>
+              <div class="sso-step-copy">
+                <div class="sso-step-title"><h4>Verify your company domain</h4><span class="sso-step-state">{{domain?.status==='verified'?'Verified':domain?.status==='pending'?'DNS verification pending':domain?.status==='failed'?'Verification failed':domainError?'Status unavailable':'Start here'}}</span></div>
+                <p>WorkOS checks your company's domain before employees can sign in with SSO. Your IT admin will add a DNS record to prove ownership.</p>
+                <p v-if="domain?.domains?.length" class="sso-domain-list">{{domain.domains.map(item => `${item.domain} (${item.state})`).join(', ')}}</p>
+                <p v-if="domainError" class="sso-step-hint" role="status">{{domainError}}</p>
+                <div class="sso-actions">
+                  <button class="btn sso-button" :class="domain?.status==='verified'?'':'primary'" :disabled="!!busy" @click="action('open domain verification','setup/domain_verification')">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6.5 2.5h-4v11h11v-4M8 8l5.5-5.5M9.5 2.5h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    {{domain?.status==='verified'?'Manage company domains':'Verify company domain'}}
+                  </button>
+                  <button class="btn sso-button" :disabled="!!busy" @click="loadDomain">Refresh status</button>
+                </div>
+                <button class="sso-text-action sso-invite-toggle" :aria-expanded="showInviteIT" @click="showInviteIT=!showInviteIT">{{showInviteIT?'Hide IT invitation':'Someone else manages your DNS or provider? Invite your IT admin'}} <span aria-hidden="true">{{showInviteIT?'↑':'↓'}}</span></button>
+                <div v-if="showInviteIT" class="sso-invite"><p>WorkOS will email your IT admin instructions for domain verification and provider setup.</p><div class="field sso-invite-form"><input v-model="itEmail" type="email" autocomplete="email" aria-label="IT admin email" placeholder="it@company.com" @keyup.enter="inviteIT"/><button class="btn sso-button" :disabled="!!busy" @click="inviteIT">Send invitation <span aria-hidden="true">→</span></button></div></div>
+              </div>
+            </div>
+          </article>
           <article class="sso-panel sso-step" :class="{'sso-step-done':sso.sso_ready}">
             <div class="sso-step-main">
-              <span class="sso-check" :class="{'done':sso.sso_ready}" aria-hidden="true">{{sso.sso_ready?'✓':'1'}}</span>
-              <div class="sso-step-copy"><div class="sso-step-title"><h4>Connect and test company SSO</h4><span class="sso-step-state">{{sso.sso_ready?'Verified':'Next step'}}</span></div>
-                <p>{{sso.sso_ready?'An employee has successfully signed in through your company provider.':'Connect your provider in WorkOS, then use the employee link for one test sign-in.'}}</p>
+              <span class="sso-check" :class="{'done':sso.sso_ready}" aria-hidden="true">{{sso.sso_ready?'✓':'2'}}</span>
+              <div class="sso-step-copy"><div class="sso-step-title"><h4>Connect and test company SSO</h4><span class="sso-step-state">{{sso.sso_ready?'Verified':domain?.status==='verified'?'Next step':'Waiting for domain'}}</span></div>
+                <p>{{sso.sso_ready?'An employee has successfully signed in through your company provider.':'After your domain is verified, connect your provider in WorkOS and use the employee link for one test sign-in.'}}</p>
                 <div class="sso-actions">
-                  <button class="btn sso-button" :class="!sso.sso_ready?'primary':''" :disabled="!!busy" @click="action('open setup','setup/sso')">
+                  <button class="btn sso-button" :class="domain?.status==='verified' && !sso.sso_ready?'primary':''" :disabled="!!busy" @click="action('open setup','setup/sso')">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6.5 2.5h-4v11h11v-4M8 8l5.5-5.5M9.5 2.5h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     {{sso.sso_ready?'Manage SSO connection':'Set up company SSO'}}
                   </button>
@@ -141,14 +171,12 @@ export default {
                     Copy employee sign-in link
                   </button>
                 </div>
-                <button class="sso-text-action sso-invite-toggle" :aria-expanded="showInviteIT" @click="showInviteIT=!showInviteIT">{{showInviteIT?'Hide IT invitation':'Someone else manages your provider? Invite your IT admin'}} <span aria-hidden="true">{{showInviteIT?'↑':'↓'}}</span></button>
-                <div v-if="showInviteIT" class="sso-invite"><p>WorkOS will email setup instructions to your IT admin.</p><div class="field sso-invite-form"><input v-model="itEmail" type="email" autocomplete="email" aria-label="IT admin email" placeholder="it@company.com" @keyup.enter="inviteIT"/><button class="btn sso-button" :disabled="!!busy" @click="inviteIT">Send invitation <span aria-hidden="true">→</span></button></div></div>
               </div>
             </div>
           </article>
 
           <article v-if="directoryPlan" class="sso-panel sso-step" :class="{'sso-step-done':sso.directory_ready}">
-            <div class="sso-step-main"><span class="sso-check" :class="{'done':sso.directory_ready}" aria-hidden="true">{{sso.directory_ready?'✓':'2'}}</span><div class="sso-step-copy">
+              <div class="sso-step-main"><span class="sso-check" :class="{'done':sso.directory_ready}" aria-hidden="true">{{sso.directory_ready?'✓':'3'}}</span><div class="sso-step-copy">
               <div class="sso-step-title"><h4>Connect Directory Sync</h4><span class="sso-step-state">{{sso.directory_ready?'Connected':'Not connected'}}</span></div>
               <p>{{sso.directory_ready?'Employee changes can now update access in treg.':'Connect your employee directory so removals can revoke team access and keys.'}}</p>
               <button class="btn sso-button" :class="sso.sso_ready && !sso.directory_ready?'primary':''" :disabled="!!busy" @click="action('open setup','setup/dsync')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6.5 2.5h-4v11h11v-4M8 8l5.5-5.5M9.5 2.5h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>{{sso.directory_ready?'Manage directory':'Set up Directory Sync'}}</button>
@@ -196,6 +224,7 @@ export default {
 .sso-step-copy{min-width:0;flex:1}.sso-step-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.sso-step-title h4{font-size:15px;letter-spacing:-.01em;margin:2px 0 5px}.sso-step-state{font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}.sso-step-done .sso-step-state{color:var(--green)}
 .sso-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.sso-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px}.sso-button svg{width:15px;height:15px;flex:none}
 .sso-step-copy>.sso-button{margin-top:14px}.sso-step-hint{display:inline-block;margin:10px 0 0 10px;color:var(--muted);font-size:11px}.sso-step-copy p.sso-step-hint{display:block;margin:9px 0 0;font-size:11px}
+.sso-step-copy p.sso-domain-list{margin-top:9px;font-size:12px;color:var(--ink);overflow-wrap:anywhere}
 .sso-invite-toggle{margin-top:16px;font-size:12px}.sso-invite{margin-top:9px;padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px}.sso-invite p{margin:0 0 9px}.sso-invite-form{display:flex;gap:8px}.sso-invite-form input{min-width:0;flex:1}
 .sso-plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.sso-plan{display:flex;flex-direction:column;gap:12px}.sso-plan-top{display:flex;justify-content:space-between;align-items:center}.sso-plan-mark{font-size:24px;line-height:1}.sso-plan h4{font-size:18px;margin:0}.sso-plan .sso-muted{min-height:58px}.sso-price{margin-top:auto;display:flex;align-items:baseline;gap:5px}.sso-price strong{font-size:26px;letter-spacing:-.04em}.sso-price span{font-size:12px;color:var(--muted)}.sso-plan>.sso-button{margin-top:4px}
 .sso-blocked h3{margin-top:0}.sso-blocked-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding-top:12px;margin-top:12px;font-size:13px}

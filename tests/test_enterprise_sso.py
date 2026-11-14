@@ -539,9 +539,10 @@ def test_workos_webhook_signature_and_portal_response():
 async def test_workos_portal_accepts_documented_url():
     def handle(request):
         assert request.url.path == "/portal/generate_link"
+        assert json.loads(request.content) == {"organization": "org_1", "intent": "domain_verification"}
         return httpx.Response(200, json={"link": "https://setup.workos.com?token=example"})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="sso")
+        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="domain_verification")
     assert url == "https://setup.workos.com?token=example"
 
 
@@ -553,6 +554,49 @@ async def test_workos_portal_accepts_live_staging_url():
     assert url == "https://setup.workos.com/init?apiToken=example"
 
 
+async def test_domain_verification_setup_and_status(clients, monkeypatch):
+    from treg.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "workos_api_key", "sk_test")
+    org_id = await team(clients)
+    async def get_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "pending"}])
+    async def portal(_client, *, key, organization, intent, return_url):
+        assert key == "sk_test"
+        assert organization == "org_workos_1"
+        assert intent == "domain_verification"
+        assert return_url.endswith("/app#orgs/sso")
+        return "https://setup.workos.com/init?apiToken=example"
+    monkeypatch.setattr(workos, "get_organization", get_org)
+    monkeypatch.setattr(workos, "portal_link", portal)
+    status = await clients.get(f"/orgs/{org_id}/sso/domains")
+    assert status.status_code == 200
+    assert status.json() == {"status": "pending", "domains": [
+        {"domain": "company.example", "state": "pending"}]}
+    link = await clients.post(f"/orgs/{org_id}/sso/setup/domain_verification")
+    assert link.status_code == 200
+    assert link.json()["url"].startswith("https://setup.workos.com/")
+    async def verified_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "verified"}])
+    monkeypatch.setattr(workos, "get_organization", verified_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json()["status"] == "verified"
+    async def failed_org(_client, **_kwargs):
+        return organization(org_id, domains=[{"domain": "company.example", "state": "failed"}])
+    monkeypatch.setattr(workos, "get_organization", failed_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).json() == {"status": "failed", "domains": [
+        {"domain": "company.example", "state": "failed"}]}
+
+
+async def test_domain_status_rejects_another_workos_organization(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "workos_api_key", "sk_test")
+    org_id = await team(clients)
+    async def wrong_org(_client, **_kwargs):
+        return organization(org_id + 1)
+    monkeypatch.setattr(workos, "get_organization", wrong_org)
+    assert (await clients.get(f"/orgs/{org_id}/sso/domains")).status_code == 422
+
+
 async def test_workos_invites_it_contact_with_both_setup_intents():
     calls = []
     def handle(request):
@@ -560,7 +604,7 @@ async def test_workos_invites_it_contact_with_both_setup_intents():
         if request.method == "GET":
             return httpx.Response(200, json={"data": []})
         if request.url.path.endswith("/invite"):
-            assert json.loads(request.content) == {"intents": ["sso", "directory_sync"]}
+            assert json.loads(request.content) == {"intents": ["domain_verification", "sso", "directory_sync"]}
             return httpx.Response(204)
         assert json.loads(request.content) == {"email": "it@example.com"}
         return httpx.Response(201, json={"id": "it_contact_123"})

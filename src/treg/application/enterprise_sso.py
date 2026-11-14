@@ -3,11 +3,13 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import delete, select
 
 from ..domain.governance import teams
 from ..domain.identity.access import _is_machine_email, _norm_email
+from ..infra import workos
 from ..infra.db import session_maker
 from ..models import (EnterpriseDirectoryUser, EnterpriseSSO, EnterpriseSSOAudit, EnterpriseSSOBlock, EnterpriseSSOEvent,
                       EnterpriseSSOIdentity, Membership, Org, User)
@@ -65,6 +67,25 @@ async def configured_team(org_id: int) -> tuple[Org, EnterpriseSSO]:
         if org is None or config is None or config.subscription_status not in PAID_STATUSES:
             raise EnterpriseSSOError("SSO is not active for this team")
         return org, config
+
+
+async def domain_status(org_id: int, *, workos_api_key: str) -> tuple[str, list[dict[str, str]]]:
+    """Read the team's WorkOS domains and summarize their verification state."""
+    _, config = await configured_team(org_id)
+    if not config.workos_org_id:
+        return "not_started", []
+    async with httpx.AsyncClient() as client:
+        organization = await workos.get_organization(client, key=workos_api_key,
+            organization=config.workos_org_id)
+    if organization.get("external_id") != str(org_id):
+        raise workos.WorkOSError("WorkOS organization does not belong to this team")
+    domains = [{"domain": item["domain"], "state": item["state"]}
+               for item in (organization.get("domains") or [])
+               if isinstance(item, dict) and isinstance(item.get("domain"), str)
+               and item.get("state") in {"verified", "pending", "failed"}]
+    states = {item["state"] for item in domains}
+    status = next((state for state in ("verified", "pending", "failed") if state in states), "not_started")
+    return status, domains
 
 
 async def bind_workos_org(org_id: int, workos_org_id: str) -> None:
