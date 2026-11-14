@@ -1,0 +1,465 @@
+provider: fundable
+source:
+  docs: https://docs.tryfundable.ai/
+  openapi: https://docs.tryfundable.ai/openapi.json
+  curated: '2026-11-11'
+pricing_url: https://docs.google.com/spreadsheets/d/1VV2uc6Unv__rUxt5I2jgypSe_E1sP6TH1A_-HGAc7yU/edit?gid=0#gid=0
+
+proposed_capabilities:
+  companies.funding: "A company's funding rounds & financing events"
+  companies.funding.detail: "Get one funding round by ID"
+  companies.funding_round.investors: "List investors in one funding round"
+  companies.investors.search: "Find investor firms by identity, location or portfolio activity"
+  companies.investors.enrich: "Get an investor firm's profile and funding statistics"
+  companies.investors.deals: "List an investor's investments"
+  people.investment_deals: "List funding rounds involving an individual investor"
+  companies.location.resolve: "Map location names to filter values"
+
+defaults:
+  expect: {path: response.success, op: equals, value: true}
+  provenance:
+    source: docs
+    source_url: https://docs.google.com/spreadsheets/d/1VV2uc6Unv__rUxt5I2jgypSe_E1sP6TH1A_-HGAc7yU/edit?gid=0#gid=0
+    checked: '2026-11-11'
+    confidence: documented
+
+endpoints:
+  - id: fundable.deals.search
+    capability: companies.funding.feed
+    platform: companies
+    domain: funding
+    scope: any_account
+    method: POST
+    path: /deals
+    name: Search funding rounds
+    summary: Search funding rounds across company histories by round, date, size, company, location, industry or investor.
+    input:
+      bodyType: json
+      body:
+        type: object
+        properties:
+          deal: {type: object, required: false, note: "financing_types, size_min, size_max, date_start, date_end, created_start and created_end filters"}
+          company: {type: object, required: false, note: "company_ids, locations, industries, super_categories, employee_count, ipo_status and total_raised_min/max filters"}
+          investors: {type: object, required: false, note: "investor_ids and people_ids filters"}
+          identifiers: {type: object, required: false, note: "deal_ids UUID filter"}
+          page: {type: integer, required: false, default: 0, min: 0}
+          page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+          sort_by: {type: string, required: false, default: most_recent_deal, enum: [most_recent_deal, oldest_deal, largest_raise, smallest_raise]}
+      note: "Use /deals for matching rounds across companies' full histories; /companies filters only each company's latest round."
+    test_request:
+      body: {deal: {financing_types: [{type: SERIES_A}], date_start: '2024-01-01', date_end: '2024-12-31'}, page: 0, page_size: 1}
+    reserve: {rows: {param: body.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/deals/list
+
+  - id: fundable.deals.get
+    capability: companies.funding.detail
+    platform: companies
+    domain: funding
+    scope: any_account
+    method: GET
+    path: /deals/{id}
+    name: Get a funding round
+    summary: Get the full details for one funding round by its UUID.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Fundable deal UUID; obtain it from a deals search"}
+    test_request:
+      pathParams: {id: "977c87f1-e438-44e6-965f-0508c6c77747"}
+    miss:
+      status: [404]
+      when: {path: response.error.code, op: equals, value: DEAL_NOT_FOUND}
+      means: "No matching record; no credits charged."
+    price: {value: '0.06', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/deals/get
+
+  - id: fundable.deals.investors
+    capability: companies.funding_round.investors
+    platform: companies
+    domain: funding
+    scope: any_account
+    method: GET
+    path: /deals/{id}/investors
+    name: List a funding round's investors
+    summary: List the firms, associated people and angel investors for one funding round.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Fundable deal UUID; obtain it from a deals search"}
+    test_request:
+      pathParams: {id: "b9bea6b3-cde3-4ff8-9ec5-c938b06f22ca"}
+    price: {value: '0.06', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/deals/investors
+
+  - id: fundable.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /companies
+    name: Search companies
+    summary: Find companies and their latest funding round using filters or a list of company identifiers.
+    input:
+      bodyType: json
+      body:
+        type: object
+        properties:
+          identifiers: {type: object, required: false, note: "ids, domains, linkedin_urls and crunchbase_urls batch lookup"}
+          company: {type: object, required: false, note: "search_query, min_relevance, locations, industries, super_categories, employee_count, ipo_status and total_raised_min/max filters"}
+          latest_deal: {type: object, required: false, note: "financing_types, size/date range and investor_ids filters for each company's latest round"}
+          investors: {type: object, required: false, note: "investor_ids and people_ids filters across any company round"}
+          page: {type: integer, required: false, default: 0, min: 0}
+          page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+          sort_by: {type: string, required: false, default: most_recent_raise, note: "Documented company sort options"}
+      note: "Filters under latest_deal apply only to the company's most recent round; use /deals to match any historical round."
+    test_request:
+      body: {identifiers: {domains: [stripe.com]}, page: 0, page_size: 1}
+    reserve: {rows: {param: body.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/companies/list
+
+  - id: fundable.companies.get
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /company
+    name: Get a company
+    summary: Get one company's profile and latest funding details by UUID, domain, LinkedIn or Crunchbase identifier.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Company UUID"}
+        domain: {type: string, required: false, example: stripe.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/stripe}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/stripe}
+      note: Provide exactly one identifier; domain or LinkedIn can be passed directly without a search.
+    test_request:
+      queryParams: {domain: stripe.com}
+    miss:
+      status: [404]
+      when: {path: response.error.code, op: equals, value: COMPANY_NOT_FOUND}
+      means: "No matching record; no credits charged."
+    price: {value: '0.06', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/companies/get
+
+  - id: fundable.companies.deals
+    capability: companies.funding
+    platform: companies
+    domain: funding
+    scope: any_account
+    method: GET
+    path: /company/deals
+    name: List a company's funding rounds
+    summary: List funding rounds for one company by UUID, domain, LinkedIn or Crunchbase identifier.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Company UUID"}
+        domain: {type: string, required: false, example: stripe.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/stripe}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/stripe}
+        page: {type: integer, required: false, default: 0, min: 0}
+        page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+      note: Provide one company identifier; pagination is zero-based.
+    test_request:
+      queryParams: {domain: stripe.com, page: 0, page_size: 1}
+    reserve: {rows: {param: query.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/companies/deals
+
+  - id: fundable.companies.resolve
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /company/search
+    name: Look up companies
+    summary: Look up companies by name, domain, LinkedIn URL or Crunchbase URL.
+    input:
+      queryParams:
+        name: {type: string, required: false, example: Stripe}
+        domain: {type: string, required: false, example: stripe.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/stripe}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/stripe}
+      note: Provide exactly one search parameter.
+    test_request:
+      queryParams: {domain: stripe.com}
+    miss: {when: {path: response.data.companies, op: empty}, means: "No matches; the search is still charged."}
+    bill: {miss: charged}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/companies/search
+
+  - id: fundable.investors.search
+    capability: companies.investors.search
+    platform: companies
+    domain: investors
+    scope: any_account
+    method: POST
+    path: /investors
+    name: Search investor firms
+    summary: Find investor firms by identity, location or the companies and deals in their portfolios.
+    input:
+      bodyType: json
+      body:
+        type: object
+        properties:
+          identifiers: {type: object, required: false, note: "ids, domains, linkedin_urls and crunchbase_urls batch lookup"}
+          investor: {type: object, required: false, note: "investor firm location and employee_count filters"}
+          company_investments: {type: object, required: false, note: "portfolio company, industry, location and funding-round filters"}
+          page: {type: integer, required: false, default: 0, min: 0}
+          page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+          sort_by: {type: string, required: false, default: most_recent_deal, note: "Documented investor sort options"}
+      note: Use /people with investor filters when the desired results are individual angels or lead partners.
+    test_request:
+      body: {identifiers: {domains: [sequoiacap.com]}, page: 0, page_size: 1}
+    reserve: {rows: {param: body.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/investors/list
+
+  - id: fundable.investors.get
+    capability: companies.investors.enrich
+    platform: companies
+    domain: investors
+    scope: any_account
+    method: GET
+    path: /investor
+    name: Get an investor firm
+    summary: Get one investor firm's profile and investment statistics by UUID, domain, LinkedIn or Crunchbase identifier.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Investor firm UUID"}
+        domain: {type: string, required: false, example: sequoiacap.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/sequoia-capital}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/sequoia-capital}
+      note: Provide exactly one identifier.
+    test_request:
+      queryParams: {domain: sequoiacap.com}
+    miss:
+      status: [404]
+      when: {path: response.error.code, op: equals, value: INVESTOR_NOT_FOUND}
+      means: "No matching record; no credits charged."
+    price: {value: '0.06', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/investors/get
+
+  - id: fundable.investors.deals
+    capability: companies.investors.deals
+    platform: companies
+    domain: funding
+    scope: any_account
+    method: GET
+    path: /investor/deals
+    name: List an investor's investments
+    summary: List an investor's investments, including the companies and funding rounds they invested in.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Investor firm UUID"}
+        domain: {type: string, required: false, example: sequoiacap.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/sequoia-capital}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/sequoia-capital}
+        page: {type: integer, required: false, default: 0, min: 0}
+        page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+      note: Provide one investor identifier; pagination is zero-based.
+    test_request:
+      queryParams: {domain: sequoiacap.com, page: 0, page_size: 1}
+    reserve: {rows: {param: query.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/investors/deals
+
+  - id: fundable.investors.resolve
+    capability: companies.investors.search
+    platform: companies
+    domain: investors
+    scope: any_account
+    method: GET
+    path: /investor/search
+    name: Look up investor firms
+    summary: Look up investor firms by name, domain, LinkedIn URL or Crunchbase URL.
+    input:
+      queryParams:
+        name: {type: string, required: false, example: Sequoia Capital}
+        domain: {type: string, required: false, example: sequoiacap.com}
+        linkedin: {type: string, required: false, example: https://linkedin.com/company/sequoia-capital}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/organization/sequoia-capital}
+      note: Provide exactly one search parameter.
+    test_request:
+      queryParams: {domain: sequoiacap.com}
+    miss: {when: {path: response.data.investors, op: empty}, means: "No matches; the search is still charged."}
+    bill: {miss: charged}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/investors/search
+
+  - id: fundable.people.search
+    capability: people.search
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /people
+    name: Search people
+    summary: Search founders, employees, angel investors and lead investors by role, company or investment activity.
+    input:
+      bodyType: json
+      body:
+        type: object
+        properties:
+          person_type: {type: string, required: false, default: any, enum: [company, investor, any]}
+          identifiers: {type: object, required: false, note: "ids, linkedin_urls, crunchbase_urls and twitter_urls batch lookup"}
+          person: {type: object, required: false, note: "roles, contact_types, job_titles, education_schools and linkedin_companies filters"}
+          company: {type: object, required: false, note: "employer, location, industry, headcount, funding and latest-deal filters"}
+          investor: {type: object, required: false, note: "investor firm identity, location and deal filters"}
+          page: {type: integer, required: false, default: 0, min: 0}
+          page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+          sort_by: {type: string, required: false, default: most_recent_deal_date, note: "Documented people sort options"}
+      note: person_type accepts company, investor or any; the default any combines both populations.
+    test_request:
+      body: {identifiers: {linkedin_urls: [https://www.linkedin.com/in/eladgil/]}, page: 0, page_size: 1}
+    reserve: {rows: {param: body.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/people/list
+
+  - id: fundable.people.get
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /person
+    name: Get a person
+    summary: Get one person's profile by UUID, LinkedIn, Crunchbase or Twitter identifier.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Person UUID"}
+        linkedin: {type: string, required: false, example: https://www.linkedin.com/in/eladgil/}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/person/elad-gil}
+        twitter: {type: string, required: false, example: https://x.com/eladgil}
+      note: Provide exactly one identifier.
+    test_request:
+      queryParams: {linkedin: https://www.linkedin.com/in/eladgil/}
+    miss:
+      status: [404]
+      when: {path: response.error.code, op: equals, value: PERSON_NOT_FOUND}
+      means: "No matching record; no credits charged."
+    price: {value: '0.06', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/people/get
+
+  - id: fundable.people.deals
+    capability: people.investment_deals
+    platform: people
+    domain: funding
+    scope: any_account
+    method: GET
+    path: /person/deals
+    name: List a person's investments
+    summary: List funding rounds a person joined as an angel investor or lead partner.
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Person UUID"}
+        linkedin: {type: string, required: false, example: https://www.linkedin.com/in/eladgil/}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/person/elad-gil}
+        twitter: {type: string, required: false, example: https://x.com/eladgil}
+        page: {type: integer, required: false, default: 0, min: 0}
+        page_size: {type: integer, required: false, default: 10, min: 1, max: 500}
+      note: Provide one person identifier; pagination is zero-based.
+    test_request:
+      queryParams: {linkedin: https://www.linkedin.com/in/eladgil/, page: 0, page_size: 1}
+    reserve: {rows: {param: query.page_size, default: {value: 10, source: docs}, max: 500}}
+    price: {value: '0.06', currency: USD, per: 1, unit: result}
+    settle: {reported: {path: response.meta.credits_used, unit: usd, scale: 0.06}}
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/people/deals
+
+  - id: fundable.people.resolve
+    capability: people.search
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /person/search
+    name: Look up people
+    summary: Search people by name, UUID, LinkedIn, Crunchbase or Twitter identifier.
+    input:
+      queryParams:
+        name: {type: string, required: false, example: Elad Gil}
+        id: {type: string, required: false, note: "Person UUID"}
+        linkedin: {type: string, required: false, example: https://www.linkedin.com/in/eladgil/}
+        crunchbase: {type: string, required: false, example: https://crunchbase.com/person/elad-gil}
+        twitter: {type: string, required: false, example: https://x.com/eladgil}
+        person_type: {type: string, required: false, enum: [investor, company]}
+      note: Provide exactly one identifier or name; person_type optionally limits the result pool.
+    test_request:
+      queryParams: {linkedin: https://www.linkedin.com/in/eladgil/, person_type: investor}
+    miss: {when: {path: response.data.people, op: empty}, means: "No matches; the search is still charged."}
+    bill: {miss: charged}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/people/search
+
+  - id: fundable.industries.resolve
+    capability: companies.industry.resolve
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /industry/search
+    name: Look up industries
+    summary: Find industries and broader categories by name, with the values needed to filter Fundable searches.
+    input:
+      queryParams:
+        name: {type: string, required: true, example: software}
+        type: {type: string, required: false, enum: [INDUSTRY, SUPER_CATEGORY]}
+        industry_type: {type: string, required: false, enum: [INDUSTRY, SUPER_CATEGORY], note: "Alias for type"}
+    test_request:
+      queryParams: {name: software, type: INDUSTRY}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/industries/search
+
+  - id: fundable.locations.resolve
+    capability: companies.location.resolve
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /location/search
+    name: Look up locations
+    summary: Find cities, states, regions and countries by name, with the values needed to filter Fundable searches.
+    input:
+      queryParams:
+        name: {type: string, required: true, example: San Francisco}
+        type: {type: string, required: false, enum: [CITY, STATE, REGION, COUNTRY]}
+        location_type: {type: string, required: false, enum: [CITY, STATE, REGION, COUNTRY], note: "Alias for type"}
+    test_request:
+      queryParams: {name: San Francisco, type: CITY}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    settle: null
+    added: '2026-11-11'
+    docs_url: https://docs.tryfundable.ai/api-reference/locations/search

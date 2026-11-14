@@ -408,6 +408,7 @@ _UNRECORDED_SIGNATURE = {
     "financialdatasets",
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
+    "fundable",  # unlimited API account; an exhausted-credit response was not forced
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
