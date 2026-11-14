@@ -116,6 +116,24 @@ def test_limit_exceeded_note_names_adapter_shape():
     )["why"] == "merged answers exceeded the asked limit"
 
 
+def test_limit_shortfall_note_names_adapter_shape():
+    """why for a short page mirrors the exceeded helper's adapter/merge distinctions."""
+    from types import SimpleNamespace
+    bare = SimpleNamespace(in_map={"q": "queryParams.q"}, in_expr={})
+    mapped = SimpleNamespace(in_map={"q": "body.query"},
+                             in_expr={"body.limit": "limit"})
+    assert call_route._limit_shortfall_note(
+        asked=20, returned=8, served_by="anyapi.google.serp.organic", merged=False, adapter=mapped
+    ) == {"asked": 20, "returned": 8,
+          "why": "anyapi.google.serp.organic returned fewer rows than asked"}
+    assert call_route._limit_shortfall_note(
+        asked=20, returned=10, served_by="crawl4ai.web.search", merged=False, adapter=bare
+    )["why"] == "crawl4ai.web.search does not accept limit"
+    assert call_route._limit_shortfall_note(
+        asked=20, returned=12, served_by="anyapi.google.serp.organic", merged=True, adapter=mapped
+    )["why"] == "merged answers fell short of the asked limit"
+
+
 # ---- pure ------------------------------------------------------------------------------------
 
 def test_expression_language():
@@ -2692,7 +2710,65 @@ async def test_child_that_returns_exactly_limit_does_not_claim_excess(
     d = r.json()
     assert d["_treg"]["served_by"] == "crawl4ai.web.search"
     assert len(d["output"]["results"]) == 3 and "limit_exceeded" not in d["_treg"]
-    assert "X-Treg-Limit-Exceeded" not in r.headers
+    assert "limit_shortfall" not in d["_treg"]
+    assert "X-Treg-Limit-Exceeded" not in r.headers and "X-Treg-Limit-Shortfall" not in r.headers
+    get_settings.cache_clear()
+
+
+async def test_routed_child_that_returns_fewer_than_limit_discloses_shortfall(
+    clients: AsyncClient, monkeypatch
+):
+    """A serving SERP child that answers one ~page for `limit` 20 keeps every row and names the
+    shortfall on `_treg.limit_shortfall` — opposite of limit_exceeded, same honesty. A contract
+    default does not count as a sent limit."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "PLATFORM-ANYAPI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "anyapi")
+    get_settings.cache_clear()
+    rows = [{"title": f"t{i}", "url": f"https://example.com/{i}", "snippet": "s",
+             "link": f"https://example.com/{i}", "position": i + 1}
+            for i in range(8)]
+    # anyapi.google.serp.organic maps results from output.data.results
+    body = {"output": {"data": {"results": rows}}, "costUsd": 0.0004}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"anyapi": [(200, body)]}, seen))
+    r = await clients.post("/call/treg.google.serp.organic",
+                           json={"q": "gel packs for shipping", "limit": 20, "country": "us"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] == "anyapi.google.serp.organic"
+    assert len(d["output"]["results"]) == 8 and d["output"]["count"] == 8
+    note = d["_treg"]["limit_shortfall"]
+    assert note == {"asked": 20, "returned": 8,
+                    "why": "anyapi.google.serp.organic returned fewer rows than asked"}
+    assert r.headers["X-Treg-Limit-Shortfall"] == "asked=20,returned=8"
+    assert "limit_exceeded" not in d["_treg"]
+    # without a sent limit, the contract default is not a question anyone asked
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"anyapi": [(200, body)]}, seen))
+    r2 = await clients.post("/call/treg.google.serp.organic",
+                            json={"q": "gel packs for shipping", "country": "us"})
+    assert r2.status_code == 200 and "limit_shortfall" not in r2.json()["_treg"]
+    get_settings.cache_clear()
+
+
+async def test_routed_miss_does_not_claim_limit_shortfall(
+    clients: AsyncClient, monkeypatch
+):
+    """An empty miss already says outcome=miss with []/0; shortfall is only for a real short hit."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "PLATFORM-ANYAPI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "anyapi")
+    get_settings.cache_clear()
+    body = {"output": {"data": {"results": []}}, "costUsd": 0.0004}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"anyapi": [(200, body)]}, []))
+    r = await clients.post("/call/treg.google.serp.organic",
+                           json={"q": "site:example.invalid nonexistent-xyzzy", "limit": 20})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss"
+    assert "limit_shortfall" not in d["_treg"] and "X-Treg-Limit-Shortfall" not in r.headers
     get_settings.cache_clear()
 
 

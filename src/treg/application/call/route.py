@@ -28,7 +28,9 @@ When the caller sent a domain and the hit carries an email, `_treg.domain_match`
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
 
 When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
-and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
+and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed. When it
+returns fewer rows than that `limit`, `_treg.limit_shortfall` / `X-Treg-Limit-Shortfall` say so —
+a short page is never silently treated as "that is all there is".
 
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
@@ -569,6 +571,17 @@ def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: b
         why = f"{served_by} does not accept limit"
     else:
         why = f"{served_by} returned more rows than asked"
+    return {"asked": asked, "returned": returned, "why": why}
+
+
+def _limit_shortfall_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
+    """Honest disclosure when a routed answer carries fewer list rows than the caller asked for."""
+    if merged:
+        why = "merged answers fell short of the asked limit"
+    elif adapter is not None and not _adapter_uses_limit(adapter):
+        why = f"{served_by} does not accept limit"
+    else:
+        why = f"{served_by} returned fewer rows than asked"
     return {"asked": asked, "returned": returned, "why": why}
 
 
@@ -1640,9 +1653,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 if options.decisive and winner_outcome in ("hit", "weak") else None)
     # A child (or a merge) that answers more rows than the caller's sent `limit` still returns
     # every billed row: routed endpoints wrap the child's answer and never alter it. Disclose the
-    # excess on `_treg` (and a header) instead of trimming. Only a limit the caller SENT counts —
-    # a contract default is not a question anyone asked.
+    # excess on `_treg` (and a header) instead of trimming. The opposite shortfall — fewer rows
+    # than asked — is disclosed the same way so a one-page child is never mistaken for "Google
+    # has nothing more". Only a limit the caller SENT counts — a contract default is not a
+    # question anyone asked.
     limit_exceeded = None
+    limit_shortfall = None
     asked_limit = plan.identity.get("limit")
     if (isinstance(given, dict) and "limit" in given
             and isinstance(asked_limit, (int, float)) and not isinstance(asked_limit, bool)):
@@ -1651,6 +1667,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         asked_n = int(asked_limit)
         if list_field and returned_n > asked_n:
             limit_exceeded = _limit_exceeded_note(
+                asked=asked_n, returned=returned_n, served_by=served,
+                merged=bool(merged_from), adapter=cand.adapter)
+        elif list_field and returned_n < asked_n and winner_outcome in ("hit", "weak"):
+            # A miss already has empty/null output; shortfall is about a real answer that undershot.
+            limit_shortfall = _limit_shortfall_note(
                 asked=asked_n, returned=returned_n, served_by=served,
                 merged=bool(merged_from), adapter=cand.adapter)
 
@@ -1672,6 +1693,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"capped": True} if cost_capped else {}),
                           **({"ignored_filters": ignored} if ignored else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
+                          **({"limit_shortfall": limit_shortfall} if limit_shortfall else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
@@ -1684,6 +1706,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                  **({"X-Treg-Limit-Exceeded":
                                      f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
                                     if limit_exceeded else {}),
+                                 **({"X-Treg-Limit-Shortfall":
+                                     f"asked={limit_shortfall['asked']},returned={limit_shortfall['returned']}"}
+                                    if limit_shortfall else {}),
                                  **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Incomplete": "true"} if incomplete else {}),

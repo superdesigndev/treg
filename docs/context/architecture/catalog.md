@@ -1261,6 +1261,11 @@ an invalid extra never disables the primary.
   `{asked, returned, why}`. The extra rows are already billed and a routed answer is never altered;
   a contract default is not a question anyone asked, so it does not trigger the note. `limit`
   stays out of `ignored_filters` (a page size, not a narrowing filter).
+- **Fewer rows than `limit` are disclosed**: when the caller sent `limit` and a hit (or weak hit)
+  returns fewer list rows, `_treg.limit_shortfall` / `X-Treg-Limit-Shortfall` name
+  `{asked, returned, why}` — a one-page child that stops around 10 for `limit=20` is never mistaken
+  for "that is all Google has". Rows are not invented and a miss stays a miss (no shortfall note on
+  empty output). Only a sent `limit` counts.
 - **A long provider cursor stays in `raw` only**: a routed endpoint takes no cursor, so
   `output.next_cursor` only serves a direct call to the serving provider. One longer than
   `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
