@@ -2809,6 +2809,9 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Calls through your own connection are not metered by treg.")
            + '</p></div>' if is_oauth else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Once this server enables it, a free '
+           'treg.to account is all it takes: no card, and no account with the provider.</p></div>'
+           if public_off else
            '<div class="card"><h4>No subscription, no seats</h4><p>A free treg.to account is all it '
            'takes: no card, and no account with the provider.</p></div>' if public else
            '<div class="card"><h4>No subscription, no seats</h4><p>Platform calls are charged per call. '

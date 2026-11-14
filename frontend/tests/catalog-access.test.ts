@@ -72,6 +72,6 @@ test('the drawer offers nothing to copy or try for a tool this server refuses', 
   const e = { id: 'board.jobs', provider: 'board', platform_auth: 'anonymous', platform_eligible: true, call_template: 'x' }
   const vm = { drawerEp: e, providerPaused: () => false, catEndpointConnected: () => false,
     provAuthKind: () => 'public', endpointAccessLabel: () => 'Not enabled on this server' }
-  expect(catalogComputed.drawerNext.call(vm)).toBe('paused')
+  expect(catalogComputed.drawerNext.call(vm)).toBe('off')
   expect(catalogComputed.drawerNext.call({ ...vm, endpointAccessLabel: () => 'Free, no key' })).toBe('copy')
 })

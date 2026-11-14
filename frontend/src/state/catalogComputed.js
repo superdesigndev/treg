@@ -242,7 +242,7 @@ drawerIds(){
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
       if(this.providerPaused(e.provider)) return 'paused';
       // a public provider this server has not enabled: nothing to copy or try, its calls are refused
-      if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'paused';
+      if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'off';
       if(this.catEndpointConnected(e)) return 'copy';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },
