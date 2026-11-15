@@ -6,7 +6,14 @@ import time
 
 import httpx
 
+from ..config import get_settings
 from ..domain.connections.refresh import _DEFAULT_TOKEN_URI
+from .upstream.ssrf import url_host_is_public
+
+
+async def require_public_token_uri(url: str) -> None:
+    if get_settings().proxy_ssrf_check and not await url_host_is_public(url):
+        raise ValueError("token endpoint resolves to a non-public address")
 
 
 class HTTPXOAuthRefreshPort:
@@ -35,6 +42,7 @@ class HTTPXOAuthRefreshPort:
         # minted before that field existed fall back to body auth, then RETRY once with Basic on a
         # 4xx — and stamp the method that worked so the next refresh skips the dance.
         method = blob.get("token_endpoint_auth_method")
+        await require_public_token_uri(token_uri)
 
         async def _post(basic: bool) -> httpx.Response:
             if (blob.get("refresh_method") or "POST").upper() == "GET":
@@ -53,8 +61,8 @@ class HTTPXOAuthRefreshPort:
         resp.raise_for_status()
         tok = resp.json()
         access = tok.get("access_token")
-        if not access:  # a 200 with an error-shaped body ({"error":"invalid_grant"}) — surface it clearly
-            raise ValueError(f"token endpoint returned no access_token: {tok.get('error') or tok}")
+        if not access:
+            raise ValueError("token endpoint answer had no access_token")
         new = dict(blob)
         if tried_basic and method is None:  # learned by the retry — remember it for the next refresh
             new["token_endpoint_auth_method"] = "client_secret_basic"
