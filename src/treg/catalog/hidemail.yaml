@@ -1,0 +1,301 @@
+# HideMail: private email aliases that forward to the caller's own inbox. Every route acts on the
+# token owner's account, so the file is own_account and BYOK-only: there is no shared data a
+# platform key could serve. API calls are not metered; plan limits (alias count, forwards/day) apply.
+# Excluded: token issue/revoke routes, the legacy /api/v1/email/create (superseded by POST
+# /api/v1/aliases), /domain-options (the alias-domains list in the flat format Bitwarden reads), and
+# the webhook routes (setting one only emails the owner a confirmation link).
+provider: hidemail
+source:
+  docs: https://hidemail.app/docs/
+  openapi: https://hidemail.app/docs/openapi.yaml
+  curated: '2026-10-28'
+limits: "60 requests/minute per user. Free plan: 10 aliases and 100 forwarded emails a day; Premium lifts both."
+pricing_url: https://hidemail.app/pricing
+proposed_capabilities:
+  email-aliases.list: "List your email aliases"
+  email-aliases.create: "Create a new email alias that forwards to your inbox"
+  email-aliases.note.update: "Change the note on one of your email aliases"
+  email-aliases.activate: "Turn an email alias back on so it forwards mail"
+  email-aliases.deactivate: "Turn off an email alias so it blocks mail"
+  email-aliases.domains.list: "List the domains you can create aliases on"
+  email-aliases.domains.default.set: "Choose the domain new aliases are created on"
+  email-aliases.domains.default.reset: "Create new aliases on the built-in domain again"
+  email-aliases.custom_domains.list: "List the custom domains on your alias account"
+  email-aliases.custom_domains.setup: "Get the DNS records that connect a domain to your aliases"
+  email-aliases.custom_domains.add: "Add a custom domain for your email aliases"
+  email-aliases.custom_domains.verify: "Check a custom domain's DNS records and turn it on"
+  email-aliases.custom_domains.catch_all: "Turn catch-all on or off for a custom alias domain"
+
+endpoints:
+  - id: hidemail.account.identity
+    capability: account.identity
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /api/user
+    name: Signed-in account
+    summary: "Get the email address of the token owner"
+    input: {}
+    test_request: {}
+    cost: &free_cost
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://hidemail.app/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "API access is included on every plan, including the free one; calls are not metered."
+    docs_url: https://hidemail.app/docs/#endpoints-GETapi-user
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.list
+    capability: email-aliases.list
+    platform: email-aliases
+    domain: aliases
+    scope: own_account
+    method: GET
+    path: /api/v1/aliases
+    name: List aliases
+    summary: "Get all aliases."
+    input:
+      queryParams:
+        "page[number]": {type: integer, required: false, note: "1-based page", example: 1}
+        "page[size]": {type: integer, required: false, note: "1–100", example: 10}
+        search: {type: string, required: false, note: "3–50 characters; matches address or note", example: "shop"}
+        "filter[is_active]": {type: integer, required: false, enum: [0, 1], example: 1}
+        sort: {type: string, required: false, note: "email | is_active | created_at | updated_at | total_blocked | total_forwarded; prefix - for descending", example: "-created_at"}
+    test_request: {queryParams: {"page[size]": 1}}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-GETapi-v1-aliases
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.create
+    capability: email-aliases.create
+    platform: email-aliases
+    domain: aliases
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/v1/aliases
+    name: Create alias
+    summary: "Create a new email alias."
+    input:
+      bodyType: json
+      body:
+        description: {type: string, required: false, note: "note for the alias, at most 200 characters", example: "My shopping account"}
+        domain: {type: string, required: false, note: "one of your alias domains (see email-aliases.domains.list); empty uses your default", example: "hidemail.app"}
+      note: "Counts toward the plan's alias limit; at the limit the call is refused."
+    test_request: {body: {description: "treg verification"}}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-POSTapi-v1-aliases
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.note.update
+    capability: email-aliases.note.update
+    platform: email-aliases
+    domain: aliases
+    scope: own_account
+    kind: action
+    method: PATCH
+    path: /api/v1/aliases
+    name: Update alias note
+    summary: "Update an email alias note."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "an alias you own", example: "k3j9x@hidemail.app"}
+        note: {type: string, required: true, note: "at most 255 characters", example: "Newsletter sign-ups"}
+      note: "An address you do not own answers 404 \"Email alias not found\"."
+    untestable: "needs an alias address owned by the verification account; run email-aliases.create first and pass its data.email"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-PATCHapi-v1-aliases
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.activate
+    capability: email-aliases.activate
+    platform: email-aliases
+    domain: aliases
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/v1/active-aliases
+    name: Turn alias on
+    summary: "Activate an alias."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "an alias you own", example: "k3j9x@hidemail.app"}
+      note: "An address you do not own answers 404 \"Alias not found\"."
+    untestable: "needs an alias address owned by the verification account; run email-aliases.create first and pass its data.email"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-POSTapi-v1-active-aliases
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.deactivate
+    capability: email-aliases.deactivate
+    platform: email-aliases
+    domain: aliases
+    scope: own_account
+    kind: action
+    method: DELETE
+    path: /api/v1/delete-aliases
+    name: Turn alias off
+    summary: "Deactivate an alias."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "an alias you own", example: "k3j9x@hidemail.app"}
+      note: "Despite the path the alias is not deleted: it blocks mail until turned back on. Answers 204 with no body."
+    untestable: "needs an alias address owned by the verification account; run email-aliases.create first and pass its data.email"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-DELETEapi-v1-delete-aliases
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.domains.list
+    capability: email-aliases.domains.list
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    method: GET
+    path: /api/v1/alias-domains
+    name: List alias domains
+    summary: "List the domains you can create aliases on, and which one is the default."
+    input: {}
+    test_request: {}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-GETapi-v1-alias-domains
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.domains.default.set
+    capability: email-aliases.domains.default.set
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    kind: action
+    method: PUT
+    path: /api/v1/default-alias-domain
+    name: Set default alias domain
+    summary: "Make one of your verified custom domains the default for new aliases."
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: true, note: "a custom domain on your account whose MX record is verified, or your built-in HideMail domain to switch back", example: "mail.example.com"}
+      note: "404 when the domain is not on your account; 422 when its MX record is not verified yet."
+    untestable: "needs a custom domain with a verified MX record on the verification account"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-PUTapi-v1-default-alias-domain
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.domains.default.reset
+    capability: email-aliases.domains.default.reset
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    kind: action
+    method: DELETE
+    path: /api/v1/default-alias-domain
+    name: Reset default alias domain
+    summary: "Create new aliases on the built-in HideMail domain again."
+    input: {}
+    test_request: {}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-DELETEapi-v1-default-alias-domain
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.custom_domains.list
+    capability: email-aliases.custom_domains.list
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    method: GET
+    path: /api/v1/custom-domains
+    name: List custom domains
+    summary: "List your custom domains and their verification state."
+    input: {}
+    test_request: {}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-GETapi-v1-custom-domains
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.custom_domains.setup
+    capability: email-aliases.custom_domains.setup
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    method: GET
+    path: /api/v1/custom-domains/{domain}
+    name: Custom domain DNS setup
+    summary: "Get the DNS records to publish for a domain, and whether they are found."
+    input:
+      pathParams:
+        domain: {type: string, required: true, note: "bare domain name", example: "example.com"}
+      note: "Works before the domain is added: publish the ownership TXT record first, then add the domain. 422 for a malformed name."
+    test_request: {pathParams: {domain: "example.com"}}
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-GETapi-v1-custom-domains--domain-
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.custom_domains.add
+    capability: email-aliases.custom_domains.add
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/v1/custom-domains
+    name: Add custom domain
+    summary: "Add a custom domain whose ownership TXT record is published."
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: true, note: "bare domain name", example: "example.com"}
+      note: "Answers 201 with the domain's setup. Refused when the ownership TXT record is missing or the plan's domain limit is reached."
+    untestable: "needs a domain whose DNS the verification account controls"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-POSTapi-v1-custom-domains
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.custom_domains.verify
+    capability: email-aliases.custom_domains.verify
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/v1/custom-domains/{domain}/verification
+    name: Verify custom domain
+    summary: "Check a custom domain's MX record and start receiving its mail."
+    input:
+      pathParams:
+        domain: {type: string, required: true, note: "a custom domain on your account", example: "example.com"}
+      note: "404 when the domain is not on your account; 422 while the MX record is not found yet."
+    untestable: "needs a custom domain on the verification account with its MX record published"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-POSTapi-v1-custom-domains--domain--verification
+    added: '2026-11-03'
+
+  - id: hidemail.email-aliases.custom_domains.catch_all
+    capability: email-aliases.custom_domains.catch_all
+    platform: email-aliases
+    domain: domains
+    scope: own_account
+    kind: action
+    method: PUT
+    path: /api/v1/custom-domains/{domain}/catch-all
+    name: Custom domain catch-all
+    summary: "Turn catch-all on or off: create an alias for any address on the domain on first mail."
+    input:
+      pathParams:
+        domain: {type: string, required: true, note: "a verified custom domain on your account", example: "example.com"}
+      bodyType: json
+      body:
+        enabled: {type: boolean, required: true, example: true}
+      note: "The response's data.requires_paid_plan says whether catch-all needs Premium."
+    untestable: "needs a verified custom domain on the verification account"
+    cost: *free_cost
+    docs_url: https://hidemail.app/docs/#endpoints-PUTapi-v1-custom-domains--domain--catch-all
+    added: '2026-11-03'
