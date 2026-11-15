@@ -50,7 +50,8 @@ classified AS (
                WHEN refused_by IS NOT NULL THEN 'other'
                WHEN status_code IN (401, 402, 403) AND credential_tier IN ('credential', 'tool')
                    THEN 'caller_provider_account'
-               WHEN status_code IN (401, 402, 403) THEN 'our_provider_account'
+               WHEN status_code IN (401, 402) THEN 'our_provider_account'
+               WHEN status_code = 403 THEN 'upstream_error'
                WHEN status_code IN (400, 405, 409, 413, 415, 422) THEN 'caller_input'
                WHEN status_code IN (404, 410) THEN 'not_found'
                WHEN status_code IN (408, 504) THEN 'timeout'

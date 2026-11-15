@@ -4,10 +4,11 @@ The class is read from the most specific evidence the call has: the failure kind
 class in `types.FAILURE_KINDS`, beside its blame), else treg's refusal mechanism (`refused_by`),
 else what the provider's own documented error says (`domain.capacity.signatures`), else its status.
 A provider account error is the caller's or treg's by who holds that account: an access error
-(401/403) belongs to whoever owns the credential, the caller on a credential or tool tier; a credit
-error (402, an out-of-credit answer) to whoever pays the provider, treg on its own key and on its
-pay-per-use OAuth app. `caller_side` marks the classes a default error view leaves out; they are
-still logged.
+(401/403) belongs to whoever owns the credential, the caller on a credential or tool tier; on treg's
+key only a 401 is, since a scraper or an API answers 403 for the page or record it was asked for. A
+credit error (402, an out-of-credit answer) belongs to whoever pays the provider, treg on its own
+key and on its pay-per-use OAuth app. `caller_side` marks the classes a default error view leaves
+out; they are still logged.
 """
 
 from __future__ import annotations
@@ -74,7 +75,10 @@ def classify(status: int, *, tier: str | None, refused_by: str | None = None,
         cls = "treg_error" if status >= 500 else "other"
     if cls in (_CREDIT, _ACCESS):
         owned = tier in CALLER_TIERS and not (cls == _CREDIT and billed_oauth)
-        cls = "caller_provider_account" if owned else "our_provider_account"
+        if owned:
+            cls = "caller_provider_account"
+        else:
+            cls = "upstream_error" if status == 403 else "our_provider_account"
     return by, cls
 
 
