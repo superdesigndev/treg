@@ -1,0 +1,1099 @@
+provider: nansen
+source:
+  docs: https://docs.nansen.ai
+  openapi: https://api.nansen.ai/openapi.json
+  curated: '2026-11-03'
+pricing_url: https://docs.nansen.ai/getting-started/credits
+limits: 'Free: 15 requests/second and 300/minute. Pro: 75 requests/second and 1,500/minute.
+  Account-specific limits may apply.'
+proposed_capabilities:
+  crypto.token.holders: Find token holders with balances and supply shares
+  crypto.token.indicators: Quantitative risk and reward indicators for a token
+  crypto.tokens.screen: Screen tokens using market and on-chain filters
+  crypto.token.flows: Token flow summaries grouped by wallet cohort
+  crypto.token.buyers_sellers: Find wallets that bought or sold a token
+  crypto.smart_money.holdings: Aggregated token holdings of Smart Money wallets
+  crypto.wallet.balances: Current token balances and USD values for a blockchain wallet
+  crypto.wallet.counterparties: Find wallets and entities transacting with a wallet
+  crypto.wallet.related: Find related wallets and on-chain address relationships
+  crypto.wallet.pnl: Summarize realized wallet trading profit and loss
+endpoints:
+- id: nansen.search.general
+  capability: crypto.search
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/search/general
+  name: Search tokens and entities
+  summary: Search across all categories
+  input:
+    bodyType: json
+    body:
+      search_query:
+        type: string
+        required: true
+        note: Search query - token name, symbol, contract address, or entity name.
+        example: AAVE
+      result_type:
+        type: string
+        required: false
+        note: Type filter - 'token' for tokens only, 'entity' for entities only, 'any'
+          for both.
+        enum:
+        - token
+        - entity
+        - any
+        default: any
+        example: token
+      chain:
+        type: string
+        required: false
+        note: Optional chain filter to narrow down token results (e.g., 'ethereum',
+          'solana', 'base').
+        example: ethereum
+      limit:
+        type: integer
+        required: false
+        note: 'Maximum number of results to return (default: 25, max: 50).'
+        min: 1.0
+        max: 50.0
+        default: 25
+        example: 1
+    note: Corresponds to connector tool general_search. Token/entity discovery mode;
+      address labels and domain resolution are separate API operations.
+  test_request:
+    body:
+      search_query: AAVE
+      result_type: token
+      chain: ethereum
+      limit: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: verified
+    note: 'Token/entity discovery mode; address labels and domain resolution are separate
+      API operations. '
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/search
+- id: nansen.tgm.token-information
+  capability: crypto.coin.profile
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/token-information
+  name: Token metadata and trading metrics
+  summary: Get "Token God Mode" (TGM) token information data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum: &id002
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bnb
+        - ethereum
+        - hyperevm
+        - hyperliquid
+        - injective
+        - iotaevm
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - starknet
+        - sui
+        - ton
+        - tron
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Token address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe:
+        type: string
+        required: true
+        note: Timeframe for the token information query
+        enum: &id004
+        - 5m
+        - 1h
+        - 6h
+        - 12h
+        - 1d
+        - 7d
+        example: 1d
+    note: Corresponds to connector tool token_info. Spot/on-chain mode; Hyperliquid
+      perp statistics are outside this route.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe: 1d
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Spot/on-chain mode; Hyperliquid perp statistics are outside this route.
+      Published standard tariff. Self-test account reported zero cost and usage for
+      all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/token-information
+- id: nansen.tgm.holders
+  capability: crypto.token.holders
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/holders
+  name: Find top token holders
+  summary: Get "Token God Mode" (TGM) holders data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum:
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bitcoin
+        - bnb
+        - ethereum
+        - hyperevm
+        - injective
+        - iotaevm
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - starknet
+        - sui
+        - ton
+        - tron
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Token address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      aggregate_by_entity:
+        type: boolean
+        required: false
+        note: Whether to return entity data
+        default: false
+      label_type:
+        type: string
+        required: false
+        note: 'Which holders to return: ''all_holders'', ''smart_money'', ''whale'',
+          ''public_figure'' or ''exchange''. The matching labels are applied automatically,
+          so no labels filter is needed. To keep only specific labels, use filters.include_smart_money_labels;
+          to drop specific labels, use filters.exclude_smart_money_labels.'
+        enum:
+        - whale
+        - public_figure
+        - smart_money
+        - all_holders
+        - exchange
+        default: all_holders
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: &id001
+          page: 1
+          per_page: 1
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply to the query.
+      premium_labels:
+        type: boolean
+        required: false
+        note: Controls label tier in the response. When null/omitted or false (the
+          default), returns free-tier labels at the standard credit cost for this
+          endpoint. When true, returns premium labels (Smart Money, Fund, and other
+          advanced labels), is billed at 150 credits per call, and requires a paid
+          plan.
+        example: false
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "value_usd", "direction": "DESC"}] - Sort by value USD descending
+
+          - [{"field": "token_amount", "direction": "ASC"}] - Sort by token amount
+          ascending
+
+          - [{"field": "ownership_percentage", "direction": "DESC"}] - Sort by ownership
+          percentage descending'
+    note: Corresponds to connector tool token_current_top_holders. Spot holders, cheapest
+      standard-label tier. premium_labels=true costs 150 credits and requires a paid
+      plan; connector on-chain calls use that premium tier. Hyperliquid positions
+      are a separate operation.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      pagination: *id001
+      premium_labels: false
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Spot holders, cheapest standard-label tier. premium_labels=true costs 150
+      credits and requires a paid plan; connector on-chain calls use that premium
+      tier. Hyperliquid positions are a separate operation. Standard-account paid
+      pricing remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/holders
+- id: nansen.tgm.token-ohlcv
+  capability: crypto.price.ohlc
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/token-ohlcv
+  name: Token OHLCV candles
+  summary: Retrieve token OHLCV candle data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum:
+        - algorand
+        - aptos
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bitcoin
+        - bitlayer
+        - bnb
+        - chiliz
+        - ethereum
+        - gravity
+        - hyperevm
+        - hyperliquid
+        - injective
+        - iotaevm
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - stacks
+        - starknet
+        - stellar
+        - sui
+        - ton
+        - tron
+        - viction
+        example: ethereum
+      token_address:
+        type: string
+        required: false
+        note: Token contract address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      token_addresses:
+        type: array
+        required: false
+        note: Array of token contract addresses for batch queries (max 10, or max
+          5 for Hyperliquid, mutually exclusive with token_address)
+      date:
+        type: object
+        required: false
+        note: Date range for the data (defaults to last 30 days if not specified)
+        example:
+          from: '2026-11-01T00:00:00Z'
+          to: '2026-11-01T01:00:00Z'
+      timeframe:
+        type: string
+        required: true
+        note: Time resolution for OHLCV data
+        enum:
+        - 1m
+        - 5m
+        - 15m
+        - 30m
+        - 1h
+        - 4h
+        - 1d
+        - 1w
+        - 1M
+        example: 1h
+    note: Corresponds to connector tool token_ohlcv. Direct HTTP candles; does not
+      perform the connector token-name enrichment call.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe: 1h
+      date:
+        from: '2026-11-01T00:00:00Z'
+        to: '2026-11-01T01:00:00Z'
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Direct HTTP candles; does not perform the connector token-name enrichment
+      call. Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/price-ohlcv
+- id: nansen.tgm.indicators
+  capability: crypto.token.indicators
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/indicators
+  name: Nansen token risk and reward indicators
+  summary: Get Nansen Score Indicators
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum: *id002
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Token contract address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+    note: Corresponds to connector tool token_quant_scores. Spot quantitative indicators.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Spot quantitative indicators. Standard-account paid pricing remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/nansen-indicators
+- id: nansen.token-screener
+  capability: crypto.tokens.screen
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/token-screener
+  name: Discover tokens with screening filters
+  summary: Retrieve token screener data
+  input:
+    bodyType: json
+    body:
+      chains:
+        type: array
+        required: true
+        note: List of blockchain chains to filter by
+        minItems: 1
+        maxItems: 5
+        example: &id003
+        - ethereum
+      timeframe:
+        type: string
+        required: false
+        note: '**Required** (unless using deprecated ''date'' parameter).
+
+
+          Time window for token screening data.
+
+
+          Available timeframes and their data characteristics:
+
+          - 5m: Last 5 minutes (minute-level granularity, 2-hour retention)
+
+          - 10m: Last 10 minutes (minute-level granularity, 2-hour retention)
+
+          - 1h: Last 1 hour (minute-level granularity, 2-hour retention)
+
+          - 6h: Last 6 hours (hourly granularity, 2-day retention)
+
+          - 24h: Last 24 hours (hourly granularity, 2-day retention)
+
+          - 7d: Last 7 days (daily granularity, 2-month retention)
+
+          - 30d: Last 30 days (daily granularity, 2-month retention)
+
+
+          Cannot be used together with ''date''.'
+        enum:
+        - 5m
+        - 10m
+        - 1h
+        - 6h
+        - 24h
+        - 7d
+        - 30d
+        example: 24h
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "buy_volume", "direction": "DESC"}] - Sort by buy volume descending
+
+          - [{"field": "price_change", "direction": "DESC"}] - Sort by price change
+          descending'
+    note: Corresponds to connector tool token_discovery_screener. Spot token screener;
+      Hyperliquid perps use the separate perp-screener route.
+  test_request:
+    body:
+      chains: *id003
+      timeframe: 24h
+      pagination: *id001
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Spot token screener; Hyperliquid perps use the separate perp-screener route.
+      Standard-account paid pricing remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/token-screener
+- id: nansen.tgm.flow-intelligence
+  capability: crypto.token.flows
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/flow-intelligence
+  name: Summarize token flows by wallet cohort
+  summary: Get "Token God Mode" (TGM) flow intelligence data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum:
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bnb
+        - ethereum
+        - hyperevm
+        - injective
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - starknet
+        - sui
+        - ton
+        - tron
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Token address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe:
+        type: string
+        required: false
+        note: Time window for the flow intelligence data
+        enum: *id004
+        default: 1d
+        example: 1d
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply to the query.
+    note: Corresponds to connector tool token_recent_flows_summary. Spot flow intelligence;
+      direct HTTP call without connector token-name enrichment or Hyperliquid position
+      intelligence.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe: 1d
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Spot flow intelligence; direct HTTP call without connector token-name enrichment
+      or Hyperliquid position intelligence. Standard-account paid pricing remains
+      unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/flow-intelligence
+- id: nansen.tgm.who-bought-sold
+  capability: crypto.token.buyers_sellers
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/who-bought-sold
+  name: Find token buyers and sellers
+  summary: Get "Token God Mode" (TGM) who bought/sold data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain
+        enum: *id002
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Address of token
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      buy_or_sell:
+        type: string
+        required: false
+        note: Are we checking buys or sells
+        enum:
+        - BUY
+        - SELL
+        default: BUY
+        example: BUY
+      date:
+        type: object
+        required: true
+        note: ISO 8601 date-time range object with from and to fields
+        example: &id005
+          from: '2026-11-01T00:00:00Z'
+          to: '2026-11-02T00:00:00Z'
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply to the query.
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "bought_volume_usd", "direction": "DESC"}] - Sort by bought
+          volume descending
+
+          - [{"field": "sold_volume_usd", "direction": "ASC"}] - Sort by sold volume
+          ascending'
+    note: Corresponds to connector tool token_who_bought_sold. Use buy_or_sell to
+      select buyers or sellers.
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      buy_or_sell: BUY
+      date: *id005
+      pagination: *id001
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Use buy_or_sell to select buyers or sellers. Standard-account paid pricing
+      remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/who-bought-sold
+- id: nansen.smart-money.holdings
+  capability: crypto.smart_money.holdings
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/smart-money/holdings
+  name: Smart Money token holdings
+  summary: Get Smart Money Holdings Data
+  input:
+    bodyType: json
+    body:
+      chains:
+        type: array
+        required: true
+        note: Chains to include in the analysis (only smart money supported chains).
+          Use 'all' to include all available chains.
+        example:
+        - ethereum
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "value_usd", "direction": "DESC"}] - Sort by value USD descending
+
+          - [{"field": "holders_count", "direction": "ASC"}] - Sort by number of holders
+          ascending
+
+          - [{"field": "value_usd", "direction": "DESC"}, {"field": "holders_count",
+          "direction": "ASC"}] - Sort by value USD descending, then number of holders
+          ascending'
+    note: Corresponds to connector tool smart_traders_and_funds_token_balances. Aggregated
+      holdings; not a per-wallet breakdown.
+  test_request:
+    body:
+      chains:
+      - ethereum
+      pagination: &id006
+        page: 1
+        per_page: 1
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Aggregated holdings; not a per-wallet breakdown. Published standard tariff.
+      Self-test account reported zero cost and usage for all calls; standard-account
+      billing remains unobserved. Errors are not charged.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/smart-money/holdings
+- id: nansen.profiler.address.current-balance
+  capability: crypto.wallet.balances
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/current-balance
+  name: Current wallet token balances
+  summary: Get Address Current Balance Data
+  input:
+    bodyType: json
+    body:
+      address:
+        type: string
+        required: false
+        note: Address to get balances for
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      entity_name:
+        type: string
+        required: false
+        note: Entity name to get balances for
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain for the balances
+        enum: &id007
+        - all
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bitcoin
+        - bnb
+        - ethereum
+        - hyperevm
+        - injective
+        - iotaevm
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - starknet
+        - sui
+        - ton
+        - tron
+        example: ethereum
+      hide_spam_token:
+        type: boolean
+        required: false
+        note: Removes suspicious tokens from the balance list
+        default: true
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      order_by:
+        type: array
+        required: false
+        note: Custom sort order to override the endpoint's default ordering
+    note: Corresponds to connector tool address_portfolio. Wallet-balances mode only.
+      The connector complete portfolio also calls DeFi and Hyperliquid operations,
+      which are not combined by this HTTP route.
+  test_request:
+    body:
+      chain: ethereum
+      address: '0x28c6c06298d514db089934071355e5743bf21d60'
+      pagination: *id006
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Wallet-balances mode only. The connector complete portfolio also calls DeFi
+      and Hyperliquid operations, which are not combined by this HTTP route. Published
+      standard tariff. Self-test account reported zero cost and usage for all calls;
+      standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/profiler/address-current-balances
+- id: nansen.profiler.address.counterparties
+  capability: crypto.wallet.counterparties
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/counterparties
+  name: Find wallet counterparties
+  summary: Get Address Counterparties Data
+  input:
+    bodyType: json
+    body:
+      address:
+        type: string
+        required: false
+        note: Address to get counterparties for
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      entity_name:
+        type: string
+        required: false
+        note: Entity name to get counterparties for
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain for the counterparties data
+        enum: *id007
+        example: ethereum
+      date:
+        type: object
+        required: true
+        note: 'Date range for the counterparties data. Note: High-volume addresses
+          (e.g., WETH on Base) are limited to 180 days. Very high-activity wallets
+          (e.g. exchange hot wallets) can be slow over wide ranges — use a shorter
+          range for those.'
+        example: *id005
+      source_input:
+        type: string
+        required: false
+        note: Type of interactions to include
+        enum:
+        - Combined
+        - Tokens
+        - ETH
+        default: Combined
+      group_by:
+        type: string
+        required: false
+        note: Group counterparties by wallet or entity
+        enum:
+        - wallet
+        - entity
+        default: wallet
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "total_volume_usd", "direction": "DESC"}] - Sort by total volume
+          descending
+
+          - [{"field": "interaction_count", "direction": "ASC"}] - Sort by interaction
+          count ascending
+
+          - [{"field": "volume_in_usd", "direction": "DESC"}] - Sort by incoming volume
+          descending'
+    note: Corresponds to connector tool address_counterparties. Single-wallet counterparties;
+      batch lookup remains outside the core.
+  test_request:
+    body:
+      chain: ethereum
+      address: '0x28c6c06298d514db089934071355e5743bf21d60'
+      date: *id005
+      pagination: *id001
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Single-wallet counterparties; batch lookup remains outside the core. Standard-account
+      paid pricing remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/profiler/address-counterparties
+- id: nansen.profiler.address.related-wallets
+  capability: crypto.wallet.related
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/related-wallets
+  name: Find related wallets
+  summary: Get Address Related Wallets Data
+  input:
+    bodyType: json
+    body:
+      wallet_address:
+        type: string
+        required: false
+        note: Wallet address to get related wallets for. Required, unless the deprecated
+          `address` field is sent.
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain for the related wallets data
+        enum:
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bitcoin
+        - bnb
+        - ethereum
+        - injective
+        - iotaevm
+        - linea
+        - mantle
+        - mantra
+        - monad
+        - near
+        - optimism
+        - plasma
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - starknet
+        - sui
+        - ton
+        - tron
+        example: ethereum
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id001
+      order_by:
+        type: array
+        required: false
+        note: Custom sort order to override the endpoint's default ordering
+    note: Corresponds to connector tool address_related_addresses. Single-chain relationship
+      lookup; does not perform the connector all-chain fan-out or separate first-funder
+      calls.
+  test_request:
+    body:
+      chain: ethereum
+      wallet_address: '0x28c6c06298d514db089934071355e5743bf21d60'
+      pagination: *id001
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Single-chain relationship lookup; does not perform the connector all-chain
+      fan-out or separate first-funder calls. Standard-account paid pricing remains
+      unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/profiler/address-related-wallets
+- id: nansen.profiler.address.pnl-summary
+  capability: crypto.wallet.pnl
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/pnl-summary
+  name: Summarize wallet profit and loss
+  summary: Get Address PnL Summary Data
+  input:
+    bodyType: json
+    body:
+      wallet_address:
+        type: string
+        required: false
+        note: Wallet address to get PnL summary for
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      entity_name:
+        type: string
+        required: false
+        note: Entity name to get PnL summary for
+      chain:
+        type: string
+        required: true
+        note: Blockchain chain for the PnL data
+        enum:
+        - all
+        - arbitrum
+        - arc
+        - avalanche
+        - base
+        - bnb
+        - ethereum
+        - monad
+        - optimism
+        - polygon
+        - robinhood
+        - sei
+        - solana
+        - sonic
+        - sui
+        example: ethereum
+      date:
+        type: object
+        required: true
+        note: Date range for the PnL data
+        example: *id005
+    note: Corresponds to connector tool wallet_pnl_summary. Single-chain spot PnL
+      summary; Hyperliquid PnL is a separate API operation.
+  test_request:
+    body:
+      chain: ethereum
+      wallet_address: '0x28c6c06298d514db089934071355e5743bf21d60'
+      date: *id005
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Single-chain spot PnL summary; Hyperliquid PnL is a separate API operation.
+      Standard-account paid pricing remains unobserved.
+  added: '2026-11-06'
+  docs_url: https://docs.nansen.ai/api/profiler/address-pnl-and-trade-performance
