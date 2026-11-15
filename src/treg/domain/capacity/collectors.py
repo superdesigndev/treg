@@ -1160,6 +1160,7 @@ BALANCE_ROUTES = {
 NO_BALANCE_API = {
     "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
                 "field; the prepaid USD balance is visible in the Corpo API dashboard",
+    "whogoes": "postpaid partner key: WhoGoes invoices monthly from its usage log, so there is no balance to read; the only limit is the key's daily USD cap, signalled by 402 DAILY_CAP_REACHED until UTC midnight",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "

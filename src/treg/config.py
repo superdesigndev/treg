@@ -416,6 +416,7 @@ class Settings(BaseSettings):
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
     platform_key_findymail: str = ""      # Bearer key
     platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
+    platform_key_whogoes: str = ""        # Bearer partner key (wgp_); invoiced monthly, daily USD cap per key
     platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
     platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
     platform_key_filtrat_finder: str = ""  # Bearer key (ak_…); Filtrat's finder, its own partner account
