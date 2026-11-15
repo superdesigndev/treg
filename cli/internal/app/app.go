@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -24,6 +25,12 @@ import (
 // Exit statuses are a contract: 0 success, 1 a refusal or failed request, 2 a usage error.
 const usageError = 2
 
+// startFlush sends earlier invocations' queued events while this one runs. Tests that read the
+// queue replace it: the flush claims the queue file by renaming it while it sends.
+var startFlush = func(registry string, transport http.RoundTripper) {
+	go telemetry.Flush(context.Background(), registry, transport)
+}
+
 func Main(argv []string, stderr io.Writer) int {
 	api.UseSystemProxy()
 	argv = append([]string(nil), argv...)
@@ -38,7 +45,7 @@ func Main(argv []string, stderr io.Writer) int {
 	env := commands.NewEnv(cfg, json, org)
 	background := len(argv) > 0 && strings.HasPrefix(argv[0], "__")
 	if !background {
-		go telemetry.Flush(context.Background(), api.RegistryURL(cfg), api.Transport())
+		startFlush(api.RegistryURL(cfg), api.Transport())
 		if exe, err := update.Executable(); err == nil {
 			update.RemoveLeftover(exe)
 			if len(argv) == 0 || argv[0] != "update" {

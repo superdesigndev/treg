@@ -1208,3 +1208,23 @@ async def test_icypeas_people_search_overflows_at_orthogonals_flat_fee(clients: 
     assert before - await _balance(clients) == 10_000
     assert seen[0].json == {"api": "icypeas", "path": "/api/find-people", "body": body}
     assert await _holds() == []
+
+
+async def test_an_overflow_only_spend_refusal_gives_back_the_call_slot(clients: AsyncClient, overflow_on, monkeypatch):
+    await _route(price_micro=3_000)
+    await _exhausted()
+    org_id = (await clients.get("/auth/me")).json()["org_id"]
+    r = await clients.post(f"/orgs/{org_id}/agents",
+                           json={"name": "rep-overflow", "daily_call_cap": 1, "daily_spend_cap_micro": 0})
+    assert r.status_code == 200, r.text
+    agent = r.json()
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
+    for n in (1, 2, 3):
+        r = await clients.get(f"/call/{EP}?aweme_id={n}", headers={"X-Treg-Token": agent["token"]})
+        assert r.status_code == 429 and r.json()["detail"]["error"] == "member_spend_cap_reached", r.text
+    assert seen == []
+    await clients.patch(f"/orgs/{org_id}/members/{agent['user_id']}/spend-cap",
+                        json={"daily_spend_cap_micro": -1})
+    r = await clients.get(f"/call/{EP}?aweme_id=4", headers={"X-Treg-Token": agent["token"]})
+    assert r.status_code == 200 and r.headers["X-Treg-Served-Via"] == "overflow:orthogonal", r.text

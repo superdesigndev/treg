@@ -298,7 +298,7 @@ async def test_emailed_invite_link_refuses_a_blocked_domain(client, ops, sent_in
         r = await visitor.post("/auth/invite-signin", content=f"t={t}",
                                headers={"content-type": "application/x-www-form-urlencoded"},
                                follow_redirects=False)
-        assert r.status_code == 403 and "cannot be used to sign in" in r.text
+        assert r.status_code == 303
         assert "treg_session" not in r.headers.get("set-cookie", "")
         assert (await visitor.get("/invites/mine")).status_code == 401
     assert await _user_count("farm@farm-a.example") == 0

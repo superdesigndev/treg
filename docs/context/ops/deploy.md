@@ -151,7 +151,10 @@ URL does not establish replication; operators provision a compatible schema and 
 
 `/admin/errors` reads evidence from this datasource with a 3-second statement limit (it shares the
 read pool with dashboard reports); authorization stays on the admin pool and releases its connection
-first, and with no read URL it keeps using the admin pool. Further callers must tolerate replica lag
+first, and with no read URL it keeps using the admin pool. `/admin/archive` and
+`/admin/reconcile/*` read the same datasource through `get_admin_report_session`: one report per
+process, a 60-second statement limit, the same fallback to the admin pool (where that limit is
+what protects the primary). Further callers must tolerate replica lag
 and keep writes, cursor advancement and concurrency control on the primary. `connection_budget()`
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.

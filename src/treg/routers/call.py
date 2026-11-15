@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import analytics
 from .. import audit
 from .. import sandbox as demo_sandbox
+from ..application.call import call_errors
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -259,6 +260,17 @@ async def _stamp_call_exit(
             client=_client_of(request), refused_by=_refusal_kind(status_code),
             api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
             telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
+        failure = getattr(request.state, "call_failure", None)
+        marketplace = getattr(context, "marketplace", None)
+        call_errors.emit(
+            status_code, org_id=org_id, call_ref=call_ref,
+            road=("catalog" if marketplace is not None
+                  else "own_tool" if getattr(context, "target", None) is not None else "unresolved"),
+            endpoint_id=getattr(marketplace, "endpoint_id", None),
+            provider=getattr(marketplace, "provider", None),
+            tier=getattr(marketplace, "tier", None), refused_by=_refusal_kind(status_code),
+            failure=failure, kind=failure_kind,
+            billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
         if failure_kind:
             _capture_exceptional_call(
                 request, call_ref=call_ref, status_code=status_code, failure_kind=failure_kind)
@@ -397,6 +409,7 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
     try:
         context = create_call_context(call_input)
     except CallFailure as exc:
+        request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
     request.state.call_ref = context.call_ref
     request.state.call_context = context
@@ -419,9 +432,11 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
             streaming = True  # The ASGI response now owns cleanup and slot release.
         return response
     except (org_concurrency.AdmissionRejected, org_flow_control.PauseRejected) as exc:
+        request.state.call_failure = exc
         raise HTTPException(status_code=exc.status_code, detail=exc.detail,
                             headers={"Retry-After": str(exc.retry_after_s)}) from exc
     except CallFailure as exc:
+        request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
     except PoolTimeoutError:
         # The application-wide handler owns the typed 503 and its db_pool event.
