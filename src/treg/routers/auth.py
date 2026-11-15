@@ -603,7 +603,7 @@ def _login_page_html(login_id: str, *, session_email: str | None, github: bool, 
     parts: list[str] = [
         '<div id="pcbox" class="pair"><label class="pklabel" for="paircode">Enter the code shown in your terminal</label>'
         '<input id="paircode" autocomplete="off" autocapitalize="characters" spellcheck="false" '
-        'inputmode="latin" placeholder="7F3K" maxlength="9"></div>',
+        'inputmode="latin" placeholder="7F3K" maxlength="9" autofocus></div>',
         '<div id="orgpick"></div>',
     ]
     # With a live session the doors are noise — the user is one click from done. Collapse them behind

@@ -272,9 +272,9 @@ var adLinkShape = regexp.MustCompile(`^[a-z0-9]{6}$`)
 func (e *Env) loginInBrowser() error {
 	base := strings.TrimRight(e.Registry(), "/")
 	c := e.AnonymousClient()
-	// The registry mints the login id and a short pairing code; the browser shows the code so the
-	// person can match it against this terminal, and a login someone else started cannot be
-	// approved into a token for them. A registry too old for /start gets a locally minted id.
+	// The registry mints the login id and a short pairing code; the person types the code from this
+	// terminal on the sign-in page, so a login someone else started cannot be approved into a token
+	// for them. A registry too old for /start gets a locally minted id.
 	var lid, code string
 	start, startErr := c.Do(api.Request{Method: "POST", Path: "/auth/cli/start"})
 	if startErr == nil && start.Status == 200 {

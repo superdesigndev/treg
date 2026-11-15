@@ -640,9 +640,9 @@ def cmd_login(args, cfg) -> None:
     # session with one click, else offers every configured door (GitHub / Google / email code).
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
-    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
-    # must echo the code back before it finishes, so a login you didn't start — someone mailing you a
-    # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
+    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The person
+    # types the code from this terminal on the sign-in page, so a login you didn't start — someone
+    # mailing you a /login?cli=… link — can't be approved into a token for them. If the server is too old to know
     # /start, fall back to a locally-minted id (no code) so login still works.
     code = None
     start_exc = None
