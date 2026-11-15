@@ -558,9 +558,9 @@ Meta publishes its Graph reference only as HTML, with no machine-readable OpenAP
 Reviewed Instagram `input` and authorization contracts are therefore curated catalog data that
 ingestion carries forward instead of erasing on a later scrape.
 
-Path placeholders are percent-encoded by the marketplace caller; a value that already contains a
-valid `%HH` escape is kept verbatim so callers can reuse encoded resource names an upstream
-returned, while a literal `%` becomes `%25`. Where a provider's resource name is a hierarchy rather
+Path placeholders are percent-encoded by the marketplace caller as one segment each; a value that
+already contains a valid `%HH` escape is decoded and re-encoded once, so callers can reuse encoded
+resource names an upstream returned, while a literal `%` becomes `%25` and `.` or `..` is refused. Where a provider's resource name is a hierarchy rather
 than one opaque id (Google Tag Manager), the catalog exposes atomic placeholders
 (`catalog_ingest.google_flat_path_params` follows Discovery's `flatPath`) so no slash-delimited name
 passes through one placeholder and becomes `%2F`.

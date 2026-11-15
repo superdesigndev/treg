@@ -9,7 +9,7 @@ from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ from ...domain.identity.access import Caller
 from ...domain.money import settlement as settlement_basis
 from ...domain import provider_resources
 from ...infra.db import session_maker
+from ...infra.upstream import pathsegment
 from ...domain.governance.access import pinned_tag_predicates
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
@@ -1162,9 +1163,6 @@ def _platform_key_missing(ep: dict, provider) -> bool:
     return provider.uses_pasted_secret and not settings.platform_key_for(ep["provider"])
 
 
-_VALID_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
-
-
 def _marketplace_upstream(
     ep: dict, provider, query_params, authorization_method: str = "",
 ) -> tuple[str, set[str]]:
@@ -1193,12 +1191,13 @@ def _marketplace_upstream(
                     f"{ep['id']} needs --query {name}=<value> "
                     f"(a path parameter of {ep['path']})"))
         # Agents often pass `siteUrl` straight from GSC's sites list, where it may already be
-        # encoded. Preserve a value containing a real %HH escape; otherwise encode it exactly once.
-        # A literal/invalid percent sequence has no valid escape and therefore becomes `%25`.
-        # @ is a legal character inside a path segment (RFC 3986 pchar), not a path/query
-        # delimiter. Email-path APIs may validate it before percent-decoding (Tomba does).
-        # Keep it literal; slashes, ?, # and other delimiters still need escaping.
-        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="@")
+        # encoded: a value with a real %HH escape is decoded first, then every value is encoded
+        # exactly once as one segment.
+        if pathsegment.is_dot_segment(value):
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=422, parameter=f"pathParams.{name}",
+                rule="type", detail=f"{ep['id']} does not accept {name}={value!r} (a path segment)")
+        rendered = pathsegment.encode(value)
         path = path.replace("{%s}" % name, rendered)
         consumed.add(name)
     required = [k for k, v in (inp.get("queryParams") or {}).items()
