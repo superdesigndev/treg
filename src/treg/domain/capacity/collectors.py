@@ -1179,6 +1179,9 @@ NO_BALANCE_API = {
     "aviato": "no public balance endpoint documented (checked docs.data.aviato.co 2026-08-31) — "
               "internal playbooks reference aviato_get_balance but it is not in the public API; "
               "dashboard only",
+    "creatorcrawl": "no API-key-readable balance endpoint; X-Credits-Remaining rides on every billed 2xx "
+                    "and a 402 carries credits.remaining; the balance is visible in the app.creatorcrawl.com "
+                    "dashboard",
     "coresignal": "no dedicated balance endpoint (checked docs.coresignal.com 2026-08-31) — "
                   "x-credits-remaining header rides only on BILLED 200s (a free 422 has none); "
                   "dashboard only",

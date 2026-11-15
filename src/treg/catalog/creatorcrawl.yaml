@@ -1,0 +1,311 @@
+provider: creatorcrawl
+source:
+  docs: https://api.creatorcrawl.com/docs
+  openapi: https://api.creatorcrawl.com/openapi.json
+  curated: '2026-11-15'
+pricing_url: https://creatorcrawl.com/pricing/
+
+defaults:
+  bill: {miss: charged}
+  provenance:
+    source: observed
+    source_url: https://creatorcrawl.com/pricing/
+    checked: '2026-11-15'
+    confidence: verified
+
+endpoints:
+  - id: creatorcrawl.tiktok.user.profile
+    added: '2026-11-15'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /tiktok/profile
+    name: "TikTok user profile by handle"
+    summary: "Public TikTok profile by handle, with bio, follower, following, post and like counts"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "stoolpresidente"}
+    test_request:
+      queryParams: {handle: "stoolpresidente"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.tiktok.user.videos
+    added: '2026-11-15'
+    capability: tiktok.user.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /tiktok/profile/videos
+    name: "TikTok user's videos by handle"
+    summary: "A TikTok user's videos by handle, latest or most popular first, with stats and a page cursor"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "stoolpresidente"}
+        user_id: {type: string, required: false, note: "TikTok user id; answers faster than handle"}
+        sort_by: {type: string, required: false, note: "one of latest | popular", example: "latest"}
+        cursor: {type: string, required: false, note: "page.cursor from the previous response"}
+        region: {type: string, required: false, note: "2-letter proxy country code, default US", example: "US"}
+    test_request:
+      queryParams: {handle: "stoolpresidente"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.tiktok.video.captions
+    added: '2026-11-15'
+    capability: tiktok.video.captions
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /tiktok/video/transcript
+    name: "TikTok video transcript by URL"
+    summary: "Transcript text of a TikTok video by URL"
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "TikTok video URL", example: "https://www.tiktok.com/@stoolpresidente/video/7708426625846709518"}
+        language: {type: string, required: false, note: "2-letter language code", example: "en"}
+        use_ai_as_fallback: {type: string, required: false, note: "'true' transcribes with AI when the video has no captions"}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@stoolpresidente/video/7708426625846709518"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.text, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.tiktok.search.videos
+    added: '2026-11-15'
+    capability: tiktok.search.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /tiktok/search/keyword
+    name: "Search TikTok videos by keyword"
+    summary: "TikTok videos matching a keyword, filterable by date posted and duration, with a page cursor"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "search keyword", example: "coffee"}
+        date_posted: {type: string, required: false, note: "time frame filter"}
+        sort_by: {type: string, required: false, note: "sort order"}
+        region: {type: string, required: false, note: "2-letter proxy country code", example: "US"}
+        max_duration_seconds: {type: number, required: false, note: "only videos at or below this length"}
+        cursor: {type: string, required: false, note: "page.cursor from the previous response"}
+    test_request:
+      queryParams: {query: "coffee"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.instagram.user.profile
+    added: '2026-11-15'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /instagram/profile
+    name: "Instagram user profile by handle"
+    summary: "Public Instagram profile by handle, with bio, follower, following and post counts"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "nasa"}
+    test_request:
+      queryParams: {handle: "nasa"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.instagram.user.posts
+    added: '2026-11-15'
+    capability: instagram.user.posts
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /instagram/user/posts
+    name: "Instagram user's recent posts by handle"
+    summary: "An Instagram user's recent posts by handle, with captions, media and engagement counts"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "nasa"}
+        next_max_id: {type: string, required: false, note: "page.cursor from the previous response"}
+    test_request:
+      queryParams: {handle: "nasa"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.instagram.post.comments
+    added: '2026-11-15'
+    capability: instagram.post.comments
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /instagram/post/comments
+    name: "Instagram post or reel comments by URL"
+    summary: "Comments on an Instagram post or reel by URL, with a page cursor"
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "post or reel URL", example: "https://www.instagram.com/reel/Dfc1mYxFevS"}
+        cursor: {type: string, required: false, note: "page.cursor from the previous response"}
+    test_request:
+      queryParams: {url: "https://www.instagram.com/reel/Dfc1mYxFevS"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.youtube.channel.profile
+    added: '2026-11-15'
+    capability: youtube.channel.profile
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/channel
+    name: "YouTube channel by handle, id or URL"
+    summary: "A YouTube channel's profile and subscriber count by handle, channel id or URL"
+    input:
+      queryParams:
+        handle: {type: string, required: false, note: "channel handle", example: "@MrBeast"}
+        channelId: {type: string, required: false, note: "channel id"}
+        url: {type: string, required: false, note: "channel URL"}
+      note: "one of handle | channelId | url"
+    test_request:
+      queryParams: {handle: "@MrBeast"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.youtube.video.detail
+    added: '2026-11-15'
+    capability: youtube.video.detail
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/video
+    name: "YouTube video details by URL"
+    summary: "A YouTube video's title, description, view, like and comment counts by URL"
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.youtube.video.captions
+    added: '2026-11-15'
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/video/transcript
+    name: "YouTube video transcript by URL"
+    summary: "A YouTube video's transcript as full text and timed segments by URL"
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        language: {type: string, required: false, note: "2-letter language code", example: "en"}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.text, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.youtube.search.videos
+    added: '2026-11-15'
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/search
+    name: "Search YouTube by keyword"
+    summary: "YouTube videos, shorts, channels and playlists matching a keyword, with a continuation token"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "search keyword", example: "coffee"}
+        uploadDate: {type: string, required: false, note: "upload date filter"}
+        sortBy: {type: string, required: false, note: "sort order"}
+        type: {type: string, required: false, note: "result type filter"}
+        duration: {type: string, required: false, note: "video length filter"}
+        region: {type: string, required: false, note: "2-letter country code", example: "US"}
+        continuationToken: {type: string, required: false, note: "page.cursor from the previous response"}
+    test_request:
+      queryParams: {query: "coffee"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.videos, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.x.user.profile
+    added: '2026-11-15'
+    capability: x.user.profile
+    platform: x
+    scope: any_account
+    method: GET
+    path: /twitter/profile
+    name: "X user profile by handle"
+    summary: "Public X profile by handle, with bio, verification tier, follower, following and post counts"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "nasa"}
+    test_request:
+      queryParams: {handle: "nasa"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.x.user.posts
+    added: '2026-11-15'
+    capability: x.user.posts
+    platform: x
+    scope: any_account
+    method: GET
+    path: /twitter/user/tweets
+    name: "X user's recent posts by handle"
+    summary: "An X user's recent posts by handle, with text, media and engagement counts"
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "handle without the @", example: "nasa"}
+    test_request:
+      queryParams: {handle: "nasa"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.reddit.subreddit.posts
+    added: '2026-11-15'
+    capability: reddit.subreddit.posts
+    platform: reddit
+    scope: any_account
+    method: GET
+    path: /reddit/subreddit/posts
+    name: "Subreddit posts by name"
+    summary: "A subreddit's posts by name, sortable and filterable by time frame, with a page cursor"
+    input:
+      queryParams:
+        subreddit: {type: string, required: true, note: "subreddit name without r/", example: "programming"}
+        sort: {type: string, required: false, note: "sort order"}
+        timeframe: {type: string, required: false, note: "time frame filter"}
+        after: {type: string, required: false, note: "page.cursor from the previous response"}
+    test_request:
+      queryParams: {subreddit: "programming"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
+
+  - id: creatorcrawl.linkedin.company.profile
+    added: '2026-11-15'
+    capability: linkedin.company.profile
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /linkedin/company
+    name: "LinkedIn company page by URL"
+    summary: "A LinkedIn company page by URL, with industry, size, employee count, headquarters and website"
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "company page URL", example: "https://www.linkedin.com/company/microsoft"}
+    test_request:
+      queryParams: {url: "https://www.linkedin.com/company/microsoft"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.id, op: empty}}
+    docs_url: https://api.creatorcrawl.com/docs
