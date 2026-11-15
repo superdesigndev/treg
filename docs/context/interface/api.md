@@ -125,7 +125,9 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
-  account); limits are unchanged. The invite code is join-only and needs the invitee signed
+  account); limits are unchanged. Email verify locks the code's `Ephemeral` row with the same
+  no-op update as CLI pairing before comparing, so parallel wrong guesses each spend one of
+  `MAX_OTP_ATTEMPTS`. The invite code is join-only and needs the invitee signed
   in; the separate `email_token` in the emailed link only prefills the login (it authenticates no
   one) and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
