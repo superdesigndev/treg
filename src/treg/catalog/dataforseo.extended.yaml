@@ -3122,7 +3122,7 @@ endpoints:
     body:
       app_ids:
         type: array
-        items: {type: string}
+        items: {type: [integer, string]}
         required: false
         note: 'ids of the apps required field IDs of mobile applications on App Store; you can find the ID in the URL of every app listed on App Store; example: in the URL https://apps.apple.com/us/app/id835599320 the id is 835599320; the maximum number of IDs you can specify in this field is 1000'
         example:
@@ -6049,7 +6049,7 @@ endpoints:
     body:
       category_codes:
         type: array
-        items: {type: string}
+        items: {type: [integer, string]}
         required: false
         note: 'product and service categories required field The maximum number of categories you can specify: 5 you can download the full list of possible categories'
         example:
@@ -6822,7 +6822,7 @@ endpoints:
     body:
       category_codes:
         type: array
-        items: {type: string}
+        items: {type: [integer, string]}
         required: false
         note: 'product and service categories required field The maximum number of categories you can specify: 20 you can download the full list of possible categories'
         example:

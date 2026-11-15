@@ -17458,7 +17458,7 @@ endpoints:
       properties:
         room_ids:
           type: array
-          items: {type: string}
+          items: {type: [integer, string]}
           note: List of TikTok live room IDs
   test_request:
     body:
@@ -19914,7 +19914,7 @@ endpoints:
       properties:
         gift_ids:
           type: array
-          items: {type: string}
+          items: {type: [integer, string]}
           note: call for best value ($0.025), auto-process first 50 if more than 50
           required: true
   test_request:
