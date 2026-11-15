@@ -1096,6 +1096,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if param_check_refuses():
                 raise _parameter_refused(ep, f"body.{name}", *found)
             would_refuse(ep["id"], f"body.{name}", found[0], "routed", "routed")
+            break
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()

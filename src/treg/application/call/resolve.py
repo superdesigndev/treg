@@ -2387,10 +2387,10 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
 
 async def _resolve_marketplace_call(ep: dict, *, log_would_refuse: bool = True,
                                     **resolution) -> MarketplaceCall:
-    """Resolve a catalog call (`_resolve_catalog_tier`). In log mode (`TREG_PARAM_CHECK`) each
-    declared parameter the check would refuse is relayed as before and logged once, with the tier
-    the call resolved to (`none` when it did not resolve); a routed child's own check is not logged,
-    its plan already wrote the line."""
+    """Resolve a catalog call (`_resolve_catalog_tier`). In log mode (`TREG_PARAM_CHECK`) a call
+    the check would refuse is relayed as before and logged once, naming the parameter refuse mode
+    would name, with the tier the call resolved to (`none` when it did not resolve); a routed
+    child's own check is not logged, its plan already wrote the line."""
     would: list[tuple[str, str]] = []
     tier = "none"
     try:
@@ -2489,7 +2489,7 @@ async def _resolve_catalog_tier(
     if refused := _enforce_declared_query(ep, query):
         would.append(refused)
     body = await read_body() if has_body else b""
-    if refused := _enforce_catalog_body(ep, body):
+    if (refused := _enforce_catalog_body(ep, body)) and not would:
         would.append(refused)
     phash = _params_hash(ep["id"], query.multi_items(), body)
     # The catalog's estimate travels on EVERY tier - informational on tiers 1/2 (the provider bills

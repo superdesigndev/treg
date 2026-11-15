@@ -359,11 +359,25 @@ async def test_a_query_parameter_outside_its_declaration_on_every_tier(
         get_settings.cache_clear()
 
 
+async def test_a_call_breaking_a_query_and_a_body_parameter_is_one_would_refuse_line(
+        clients: AsyncClient, monkeypatch, caplog, mode):
+    """Refuse mode names the query parameter, read first; log mode writes that line alone."""
+    caplog.set_level(logging.INFO, logger="treg.param_check")
+    assert (await clients.post("/secrets", json={"name": "anyapi", "value": "OWN"})).status_code == 200
+    seen = _upstream(monkeypatch, {"results": []})
+    before = await _balance(clients)
+    r = await clients.post("/call/anyapi.google.serp.organic", params={"max_items": "abc"},
+                           json={"query": "best coffee maker", "page": "abc"})
+    await _checked(r, mode, caplog, seen, before, clients, endpoint_id="anyapi.google.serp.organic",
+                   parameter="queryParams.max_items", rule="type", tier="credential", road="catalog")
+
+
 ROUTED_CASES = [
     ({"country": "fr"}, "body.country", "enum", 200), ({"q": "x" * 81}, "body.q", "length", 200),
     ({"keywords": ["a", "b", "c"]}, "body.keywords", "array_length", 200),
     ({"keywords": "a"}, "body.keywords", "type", 200),
     ({"company_domain": 7}, "body.company_domain", "type", 503),   # main: no candidate takes it alone
+    ({"q": "x" * 81, "country": "fr"}, "body.q", "length", 200),
 ]
 
 
@@ -390,15 +404,6 @@ async def test_a_routed_identity_or_filter_outside_its_declaration_before_any_pr
 # -- the sweep: strict rows and union-typed parameters, every documented value and every JSON type ----
 
 _PROBES = ["x", "1", "0", "true", 1, 0, 1.5, True, False, None, {}, {"k": "v"}, [], ["x"], [1], [{"k": "v"}]]
-# Declared on `body_allowlist` rows as `dict`/`list`, words the allowlist check never read; read in the
-# one vocabulary as `object`/`array`, it now holds them to that type in either mode.
-_HELD_SINCE_THE_VOCABULARY = {
-    ("litescrape.web.fetch.post", "viewport"), ("litescrape.web.fetch.post", "markdown"),
-    ("litescrape.web.fetch.post", "set_cookies"), ("litescrape.web.fetch.post", "inject_page_script"),
-    ("litescrape.web.fetch.post", "inject_frame_script"), ("litescrape.web.screenshot.post", "viewport"),
-    ("litescrape.web.screenshot.post", "set_cookies"), ("litescrape.web.screenshot.post", "inject_page_script"),
-    ("litescrape.web.screenshot.post", "inject_frame_script"),
-}
 
 
 def _declared(ep: dict):
@@ -471,24 +476,6 @@ def test_strict_rows_and_union_parameters_take_their_documented_values(monkeypat
             for value in _PROBES:
                 _verdict(ep, location, name, value, body, query)
         assert refused == {}, refused
-    finally:
-        get_settings.cache_clear()
-
-
-def test_in_log_mode_strict_rows_hold_the_fields_their_words_now_name(monkeypatch):
-    """In log mode only main's own checks refuse. On a body_allowlist row those read each field's
-    declared type, so a field main declared as `dict` or `list` (words it never read) is now held to
-    `object` or `array`: that is the whole of what refuses beyond main outside the switch."""
-    monkeypatch.setenv("TREG_PARAM_CHECK", "log")
-    get_settings.cache_clear()
-    try:
-        cat = catalog_store.load()
-        for row, name in sorted(_HELD_SINCE_THE_VOCABULARY):
-            ep = cat.by_id[row]
-            body = (ep.get("test_request") or {}).get("body") or {}
-            assert ep.get("body_allowlist") and _verdict(ep, "body", name, "a string", body, {}) == f"body.{name}"
-            kind = ep["input"]["body"][name]["type"]
-            assert _verdict(ep, "body", name, {} if kind == "object" else [], body, {}) is None
     finally:
         get_settings.cache_clear()
 

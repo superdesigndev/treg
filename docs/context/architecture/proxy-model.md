@@ -313,8 +313,10 @@ child's adapter-built request through these checks (`_query_refusal`, `_body_ref
 `TREG_PARAM_CHECK` (`Settings.param_check`) sets what a broken declaration does:
 
 - **`log`**, the default and the reading of any value but `refuse`: the call goes on exactly as
-  without the check (relayed as sent, the routed plan unchanged) and the check writes one INFO line
-  on the `treg.param_check` logger, `catalog_parameter_would_refuse` followed by JSON:
+  without the check (relayed as sent, the routed plan unchanged) and the check writes an INFO line
+  for the first broken parameter of a call (the one refuse mode would name) and for each child the
+  routed plan would drop, on the `treg.param_check` logger, `catalog_parameter_would_refuse`
+  followed by JSON:
   `endpoint_id`, `parameter` (`queryParams.limit`, `body.urls`, `body.0.limit` in a task array),
   `rule` (`type`, `repeat`, `enum`, `range`, `length`, `array_length`, `items:<rule>`), `tier` and
   `road`, never the value. `road` is `catalog` (a direct call), `routed` (a routed call's own

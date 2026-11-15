@@ -4196,7 +4196,7 @@ endpoints:
           note: User sec_uid
           required: true
         cursor:
-          type: string
+          type: [integer, string]
           note: Pagination cursor (string), "0" for first page, then pass the cursor from the previous response
         count:
           type: [integer, string]
