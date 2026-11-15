@@ -297,14 +297,10 @@ func (e *Env) loginInBrowser() error {
 	if ad != "" {
 		loginURL += "&ad=" + ad
 	}
-	if code != "" {
-		// In the fragment, never sent to the server, so it stays out of request logs.
-		loginURL += "#code=" + code
-	}
 	outf("Opening your browser to sign in…\nIf it doesn't open, visit:\n  %s\n\n", loginURL)
 	if code != "" {
 		p := e.Colors()
-		outf("  The sign-in page shows this code - check it matches:  %s%s%s%s\n\n", p.Bold, p.Teal, code, p.Reset)
+		outf("  Type this code on the sign-in page:  %s%s%s%s\n\n", p.Bold, p.Teal, code, p.Reset)
 	}
 	outln("Waiting for authorization…")
 	browser.Stdout, browser.Stderr = nil, nil

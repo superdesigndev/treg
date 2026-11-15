@@ -596,9 +596,8 @@ def _login_page_html(login_id: str, *, session_email: str | None, github: bool, 
     is HTML-escaped (it's the only other interpolated value)."""
     # A pairing-code block sits above everything: whichever door the user takes, approve() won't complete
     # the CLI handshake until the code shown in their own terminal is echoed back (phishing guard — a
-    # login they didn't start has no matching code). A `treg login` link carries the code in the URL
-    # fragment, so the JS swaps this input for a read-only display the user just visually confirms;
-    # the typed input remains the fallback for links without one. #orgpick is ALWAYS present (filled by loadOrgs when a
+    # login they didn't start has no matching code). The user always types the code: the page never
+    # takes it from the link, so a link alone can never carry a login through. #orgpick is ALWAYS present (filled by loadOrgs when a
     # session exists at load, and after the email door signs in). #doors holds the sign-in options; the
     # divider only shows when a session pre-exists.
     parts: list[str] = [
@@ -693,7 +692,7 @@ _LOGIN_CSS = (
     ".team.primary .tm{color:var(--inverse-ink);opacity:.7}"
     ".pair{align-items:center;padding:16px;border-radius:16px;background:var(--panel2);text-align:center}"
     ".pklabel{font-size:12.5px;color:var(--muted)}"
-    "#paircode-show,#paircode{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.2;"
+    "#paircode{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.2;"
     "letter-spacing:.24em;text-indent:.24em;text-align:center;color:var(--ink);font-variant-numeric:tabular-nums}"
     "#paircode{min-height:52px;text-transform:uppercase;background:var(--surface)}"
     "#paircode::placeholder{color:var(--muted2);opacity:.5}"
@@ -704,15 +703,7 @@ _LOGIN_CSS = (
 # done() builds DOM via textContent (the email came over JSON — never trust it into innerHTML).
 _LOGIN_JS = """
 const LID='__LOGIN_ID__';
-// `treg login` puts the pairing code in the URL FRAGMENT (#code=…) — it never reaches the server on
-// the GET. When present, show it read-only for a visual match against the terminal instead of making
-// the user type it; approve() still sends it for full server-side validation. No fragment (an old CLI,
-// or a link someone stripped it from) → the typed-input fallback below stays.
-const PAIR=(()=>{const m=/[#&]code=([A-Za-z0-9-]{1,16})/.exec(location.hash||'');return m?m[1].toUpperCase():''})();
-if(PAIR){const box=document.getElementById('pcbox');if(box){box.innerHTML='';
- const l=document.createElement('div');l.className='pklabel';l.textContent='Check this code matches your terminal';box.appendChild(l);
- const c=document.createElement('div');c.id='paircode-show';c.textContent=PAIR;box.appendChild(c);}}
-const pairCode=()=>PAIR||((document.getElementById('paircode')||{}).value||'');
+const pairCode=()=>((document.getElementById('paircode')||{}).value||'');
 // Signed-in users see the doors collapsed behind the "use a different account" divider.
 function toggleDoors(){const d=document.getElementById('doors');if(!d)return;
  const open=d.style.display==='none';d.style.display=open?'':'none';
