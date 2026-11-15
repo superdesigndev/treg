@@ -1424,13 +1424,11 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str, str] | None:
     """(parameter, rule, reason) of the first declared body field the request sends that breaks
     its declaration (`catalog.params.check`), else None. A JSON array body (a list of task objects) is read
     task by task, a form body as strings by the declared types, and every value of a repeated JSON
-    field is checked; a body that does not parse is relayed for the provider to judge. On a
-    ``strict_body`` or ``body_allowlist`` row an absent required field is read as sent. A multipart
+    field is checked; a body that does not parse is relayed for the provider to judge. A multipart
     body is not read."""
     inputs = ep.get("input") or {}
     fields, whole = _body_fields(inputs.get("body"))
     text = inputs.get("bodyType") == "form"
-    strict = bool(ep.get("strict_body") or ep.get("body_allowlist"))
     if not body or (not fields and whole is None) or inputs.get("bodyType") == "multipart":
         return None
     if text:
@@ -1457,9 +1455,9 @@ def _body_refusal(ep: dict, body: bytes) -> tuple[str, str, str] | None:
         prefix = f"body.{index}." if tasks else "body."
         for name, spec in fields.items():
             values = _field_values(document, name)
-            if not isinstance(spec, dict) or not (values or strict and spec.get("required")):
+            if not isinstance(spec, dict) or not values:
                 continue
-            for value in values or [None]:
+            for value in values:
                 if found := params.check(spec, value, text=text):
                     return prefix + name, *found
     return None
