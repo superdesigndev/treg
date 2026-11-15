@@ -134,6 +134,17 @@ func compareRows(t *testing.T, label string, got, want []any) {
 	}
 }
 
+func TestSlugTurnsDotsIntoDashes(t *testing.T) {
+	for in, want := range map[string]string{"You.com": "you-com", "MobiusEngine.ai Jobs Data": "mobiusengine-ai-jobs-data", "Google AI": "google-ai"} {
+		if got := Slug(in); got != want {
+			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := LegacySlug("You.com"); got != "you.com" {
+		t.Errorf("LegacySlug(You.com) = %q", got)
+	}
+}
+
 func TestClassifyCLI(t *testing.T) {
 	_, catalog := Bundled()
 	entry := func(bin string) Entry {

@@ -266,8 +266,6 @@ def _require_not_live_demo_tool(caller: Caller, tool: Tool) -> None:
 
 
 def _require_admin_for_dotted_names(caller: Caller, names) -> None:
-    """A dotted name is the shape of a catalog or hub id, and a team tool of that name answers every
-    call to that id in the team (application/call/resolve.py), so only an admin may choose one."""
     if any("." in n for n in names) and not _role_at_least(caller.role, "admin"):
         raise HTTPException(status_code=403, detail=(
             "a tool name containing a dot needs the admin or owner role"))

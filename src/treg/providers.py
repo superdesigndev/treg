@@ -549,8 +549,12 @@ def scan_env(env_path: str, catalog: list[dict] | None = None) -> list[Detection
     return detections
 
 
-def _slug(provider: str) -> str:
+def _legacy_slug(provider: str) -> str:
     return provider.lower().replace(" ", "-")
+
+
+def _slug(provider: str) -> str:
+    return _legacy_slug(provider).replace(".", "-")
 
 
 def build_binding(auth: dict) -> dict | None:
@@ -631,7 +635,7 @@ def plan_actions(detections: list[Detection]) -> list[Action]:
             if user_var and pass_var:
                 actions.append(Action(
                     detection=d, supported=True, base_url=d.base_url, tool_name=_slug(d.provider or ""),
-                    secret_name=f"{_slug(d.provider or '').replace('-', '_').upper()}_BASIC",
+                    secret_name=f"{_legacy_slug(d.provider or '').replace('-', '_').upper()}_BASIC",
                     binding=build_binding({"shape": "basic"}), combine=(user_var, pass_var)))
             else:
                 actions.append(Action(detection=d, supported=False, base_url=d.base_url,
