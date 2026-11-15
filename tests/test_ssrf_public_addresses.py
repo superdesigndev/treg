@@ -52,6 +52,14 @@ def test_registration_refuses_a_trailing_dot_local_name():
         assert safe_webhook_url(url) is False, url
 
 
+async def test_tool_registration_folds_a_trailing_dot_only_with_the_check_on(clients, monkeypatch):
+    body = {"name": "dotted", "base_url": "http://localhost.:9/"}
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
+    assert (await clients.post("/tools", json=body)).status_code == 422
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", False)
+    assert (await clients.post("/tools", json=body)).status_code == 200
+
+
 def _recording_client(hits: list[str], answer: dict | None = None) -> httpx.AsyncClient:
     def handle(request: httpx.Request) -> httpx.Response:
         hits.append(str(request.url))

@@ -14,7 +14,7 @@ def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return ip.is_global and not ip.is_multicast and not ip.is_reserved
 
 
-def safe_webhook_url(url: str | None) -> bool:
+def safe_webhook_url(url: str | None, *, fold_trailing_dot: bool = True) -> bool:
     """Allow only globally routable unicast addresses for HTTP(S) webhook targets.
 
     DNS names are checked at call time; local names and non-public literals are refused here
@@ -28,7 +28,9 @@ def safe_webhook_url(url: str | None) -> bool:
         return False
     if u.scheme not in ("http", "https") or not u.hostname:
         return False
-    host = u.hostname.lower().rstrip(".")
+    host = u.hostname.lower()
+    if fold_trailing_dot:
+        host = host.rstrip(".")
     if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
         return False
     try:

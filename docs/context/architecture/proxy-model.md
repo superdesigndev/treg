@@ -328,7 +328,8 @@ user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off
 same switch) just before sending: the health probe (`health._probe`), the owner webhook
 (`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
 code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
-(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`) and normalizes numeric IP encodings
+(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
+`proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
 (`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
 unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes

@@ -269,7 +269,7 @@ def _require_public_base_url(base_url: str) -> None:
     """A tool's base_url is fetched server-side by the proxy — reject internal / loopback / cloud-metadata
     targets so a member can't turn `treg call` into an SSRF (e.g. base_url=169.254.169.254). Reuses the
     same block-list the webhook path already uses. DNS names are allowed (best-effort)."""
-    if not health.safe_webhook_url(base_url):
+    if not health.safe_webhook_url(base_url, fold_trailing_dot=get_settings().proxy_ssrf_check):
         raise HTTPException(status_code=422, detail=(
             "base_url must be a public http(s) address — loopback, private, link-local, and cloud-"
             "metadata hosts are refused"))
