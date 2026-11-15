@@ -114,3 +114,6 @@ registers each skill in its own session, so one failure cannot poison the rest o
 - **Re-runs are idempotent.** Both sides skip by name (a recipe-only bundle has no tool for the
   server's 409 to catch); `--replace` deletes then recreates. The tool name is checked before the
   secret is posted, so a clash never leaves an orphan secret.
+- **A tool name has no dots.** `_slug` / `Slug` turn a provider name's spaces and dots into dashes
+  (`You.com` is `you-com`), since a dotted name needs an admin. The idempotency check also accepts
+  the older dotted spelling (`_legacy_slug` / `LegacySlug`) as the same tool, and `--replace` removes it.
