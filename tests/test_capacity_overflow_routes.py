@@ -425,6 +425,7 @@ _UNRECORDED_SIGNATURE = {
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
+    "turion",  # postpaid, invoiced monthly; a workspace with no quota row has no out-of-credits answer
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }

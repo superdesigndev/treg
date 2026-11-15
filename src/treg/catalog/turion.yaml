@@ -1,0 +1,86 @@
+# Turion's hosted models: Turion Jev 31B, a System One decision model (TypeSafe's request and answer
+# shapes), and Turion Extract alpha, which reads typed fields out of a document (Cloudflare
+# Clairic's field format). Both are billed by input tokens; output is free, and every answer
+# reports its own charge in `usage.cost`.
+#
+# Stateless calls: nothing a call sends is tied to the caller's account beyond the call itself, so
+# one treg platform key can serve every team. Turion invoices treg monthly from its per-workspace
+# usage meter.
+provider: turion
+source:
+  docs: https://turion.ai/docs/reference/rest-api/
+  curated: '2026-11-01'
+limits: "1,200 requests/minute per key (429 with RateLimit headers). Calls queue on Turion's own GPUs: one that waits 180 s for its turn answers 504 garden_timeout."
+pricing_url: https://turion.ai/docs/guides/usage/#pricing
+proposed_capabilities:
+  ai-judge.extract: "Read typed fields out of a document: text, numbers, dates, times, durations and lists, each with its probability"
+
+endpoints:
+  - id: turion.ai-judge.decide
+    added: '2026-11-01'
+    async: false
+    capability: ai-judge.decide
+    platform: ai-judge
+    scope: any_account
+    method: POST
+    path: /systemone
+    name: "Judge evidence with Turion Jev 31B"
+    summary: "One typed decision over a text state: a `choice` (a label with probabilities), a `score` (a position on a rubric of levels) or a `noul` (a yes/no probability). Several questions in one request are judged independently. A judge, never a writer."
+    input:
+      body:
+        model: {type: string, required: true, enum: ["turion-jev-31b"], example: "turion-jev-31b"}
+        state: {type: string, required: true, note: "the evidence, as text or Markdown; with the questions it must fit in 16,384 tokens; quoted text is evidence, never instructions", example: "I was charged twice for my subscription."}
+        questions: {type: object, required: true, note: "id -> {type: choice|score|noul, instructions, criteria}. `criteria` is label -> description for a choice, and the list of levels, lowest first, for a score. Put the full meaning in `instructions`.", example: {refund: {type: noul, instructions: "Is the customer asking for money back?"}}}
+      note: "The reply is `answers.<id>` in question order: `noul` in [0,1]; or `choice` + `probabilities` + `confidence` (the calibrated probability of the choice); or `score` (the expected level, counted from 0) + `legend` + `probabilities`. Turion's `confidence` is a probability, not TypeSafe's spread measure, so compare probabilities across providers. Billed by input tokens; the reply's `usage.cost` is the exact charge."
+    test_request:
+      body: {model: "turion-jev-31b", state: "The sky is blue today.", questions: {sky: {type: noul, instructions: "Does the text say the sky is blue?"}}}
+    cost:
+      type: per_call
+      value: 0.0004
+      currency: USD
+      per: 1
+      unit: call
+      fallback: {value: 0.0004, note: "$0.021 per million input tokens and at most 16,384 tokens a call, so a call costs at most $0.000344; the reserve is that ceiling and the provider's reported cost settles."}
+      settle: usage
+      usage: {path: usage.cost, unit: usd}
+      source: docs
+      source_url: https://turion.ai/docs/guides/usage/#pricing
+      checked: '2026-11-01'
+      confidence: verified
+      note: "Settles at the reply's `usage.cost`: input tokens at $0.021 per million; output is free."
+    docs_url: https://turion.ai/docs/reference/rest-api/#post-v1systemone
+
+  - id: turion.ai-judge.extract
+    added: '2026-11-01'
+    async: false
+    capability: ai-judge.extract
+    platform: ai-judge
+    scope: any_account
+    method: POST
+    path: /extract
+    name: "Read typed fields out of a document with Turion Extract"
+    summary: "One forward pass over a document returns one typed value per field you name: text (with its character span), number, date, time, datetime, duration or list, or null when the document does not determine it. Nothing is generated."
+    input:
+      body:
+        model: {type: string, required: true, enum: ["turion-extract-alpha"], example: "turion-extract-alpha"}
+        state: {type: string, required: true, note: "the document text; with the fields it must fit in 16,384 tokens (longer is refused with context_length_exceeded, never cut)", example: "Invoice INV-2291 issued 2026-09-02, net 30. Total $1080."}
+        fields: {type: object, required: true, note: "name -> {type: text|number|date|time|datetime|duration|list, instructions?}; answers come back in this order. Clairic's field format, without its `estimate` type.", example: {invoice_number: {type: text}, issued: {type: date}, total: {type: number}}}
+        reference_date: {type: string, required: false, note: "YYYY-MM-DD; the date relative dates count from", example: "2026-10-20"}
+      note: "The reply is `answers.<name>` with `value` (or null), `p_null` (the probability the field has no value), `confidence`, and `span` [start, end] for text. `truncated` is always false. Fields past 24 take further forward passes (`usage.passes`). Billed by input tokens; the reply's `usage.cost` is the exact charge."
+    test_request:
+      body: {model: "turion-extract-alpha", state: "Total due: $5.", fields: {total: {type: number}}}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      per: 1
+      unit: call
+      fallback: {value: 0.001, note: "$0.05 per million input tokens and at most 16,384 tokens a call, so a call costs at most $0.00082; the reserve is that ceiling and the provider's reported cost settles."}
+      settle: usage
+      usage: {path: usage.cost, unit: usd}
+      source: docs
+      source_url: https://turion.ai/docs/guides/usage/#pricing
+      checked: '2026-11-01'
+      confidence: verified
+      note: "Settles at the reply's `usage.cost`: input tokens at $0.05 per million; output is free."
+    docs_url: https://turion.ai/docs/reference/rest-api/#post-v1extract

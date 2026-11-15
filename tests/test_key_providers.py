@@ -18,6 +18,31 @@ from httpx import AsyncClient
 from treg import oauth_providers as P
 
 
+async def test_turion_key_uses_free_account_probe(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/account"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"id": "ws_1", "handle": "acme", "name": "acme"})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "turion", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    # The wire body Turion returned for a garbage key on 2026-11-01.
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": {
+                "code": "unauthorized", "message": "Invalid token", "details": {}}}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "turion", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     def valid(request):
         assert request.method == "GET"
