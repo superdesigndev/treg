@@ -292,6 +292,17 @@ async def test_log_mode_answers_as_if_there_were_no_check_and_logs_no_value(
     assert "secret" not in caplog.text
 
 
+async def test_a_refusal_by_the_check_names_its_parameter_and_rule_on_the_call_error_line(
+        clients: AsyncClient, monkeypatch, call_error_lines, tavily_on):
+    monkeypatch.setenv("TREG_PARAM_CHECK", "refuse")
+    get_settings.cache_clear()
+    _upstream(monkeypatch, {"results": [], "failed_results": []})
+    r = await clients.post("/call/tavily.web.extract", json={**EXTRACT, "urls": ["https://example.com", 7]})
+    assert r.status_code == 400, r.text
+    line = next(line for line in call_error_lines() if line["endpoint_id"] == "tavily.web.extract")
+    assert (line["parameter"], line["rule"], line["error_class"]) == ("body.urls", "items:type", "caller_input")
+
+
 class _Replayed:
     """The relayed request with its already-read body, for the scripted upstream."""
 
