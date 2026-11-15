@@ -386,11 +386,12 @@ endpoints:
       unit: call
       settle: usage
       usage: {path: summary.cost, unit: credit}
+      worst_case: 92.5
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-11-12'
       confidence: verified
-      note: "Each URL costs like a scrape on treg's account (0.25 credits, 3.70 at the hard effort) and its line carries that cost; the closing summary line carries the total, which settles the call. The 6.25-credit hold is 25 URLs at 0.25."
+      note: "Each URL costs like a scrape on treg's account (0.25 credits, 3.70 at the hard effort) and its line carries that cost; the closing summary line carries the total, which settles the call. The hold is 92.5 credits, 25 URLs at the hard effort; what the summary does not use goes back."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt

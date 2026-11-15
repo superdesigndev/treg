@@ -379,7 +379,8 @@ cost:
 - `fallback` is a hand-written global upper bound, checked against every row's maximum.
 - `settle: table` reserves and settles the matched row. `settle: usage` reserves the matched row as
   an estimate and settles the reply's `usage.path` figure, which may exceed the reserve; a flat
-  `value` may also declare `settle: usage` with its `fallback` as the reserve. `usage.unit` is `usd`,
+  `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
+  most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
   `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
   positive USD rates; a term path may select a list item by key
