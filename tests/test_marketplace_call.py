@@ -530,7 +530,7 @@ def test_path_parameter_refuses_a_dot_segment(value):
     ep = {"id": "x.y.z", "path": "/v3/locations/{country}", "input": {}}
     with pytest.raises(ResolutionFailed) as exc:
         call_resolution._marketplace_upstream(ep, provider, {"country": value})
-    assert exc.value.status_code == 422 and "country" in exc.value.detail
+    assert exc.value.status_code == 400 and "country" in exc.value.detail
 
 
 async def test_deny_rules_cover_marketplace_calls(clients: AsyncClient, caplog):

@@ -1195,7 +1195,7 @@ def _marketplace_upstream(
         # exactly once as one segment.
         if pathsegment.is_dot_segment(value):
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=422, parameter=f"pathParams.{name}",
+                "catalog_parameter_invalid", status_code=400, parameter=f"pathParams.{name}",
                 rule="type", detail=f"{ep['id']} does not accept {name}={value!r} (a path segment)")
         rendered = pathsegment.encode(value)
         path = path.replace("{%s}" % name, rendered)

@@ -292,7 +292,7 @@ A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
 property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped. Raw `@` stays
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
 fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
-with `catalog_parameter_invalid` (422) before any hold, since URL normalization would remove it as
+with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
 a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
