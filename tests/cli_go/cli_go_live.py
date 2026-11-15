@@ -94,15 +94,11 @@ _addresses = itertools.count()
 class LiveRegistry:
     def __init__(self, tmp: Path, extra_env: dict[str, str] | None = None,
                  catalog_patch: dict | None = None) -> None:
-        self.port = _free_port()
-        self.url = f"http://localhost:{self.port}"
         key = subprocess.run([sys.executable, "-m", "treg", "keygen"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout.strip()
         env = {k: v for k, v in os.environ.items() if not k.startswith("TREG_")}
         env |= {
-            "PORT": str(self.port),
             "TREG_DATABASE_URL": f"sqlite+aiosqlite:///{tmp / 'registry.db'}",
-            "TREG_PUBLIC_URL": self.url,
             "TREG_EMAIL_DEV_MODE": "true",
             "TREG_SECRET_KEY": key,
             "TREG_SESSION_SECRET": secrets.token_hex(24),
@@ -117,20 +113,40 @@ class LiveRegistry:
             env["TREG_TEST_CATALOG_PATCH"] = json.dumps(catalog_patch)
             command = [sys.executable, str(Path(__file__).with_name("cli_go_boot.py"))]
         self.log = (tmp / "registry.log").open("wb")
-        self.proc = subprocess.Popen(command, cwd=ROOT, env=env,
-                                     stdout=self.log, stderr=subprocess.STDOUT)
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            if self.proc.poll() is not None:
-                raise RuntimeError(f"the registry exited: {(tmp / 'registry.log').read_text()[-2000:]}")
-            try:
-                if httpx.get(f"{self.url}/health", timeout=2).status_code < 500:
-                    break
-            except httpx.HTTPError:
-                time.sleep(0.3)
+        # _free_port releases the port before the registry binds it, so under xdist another
+        # worker's server can take it first. Only this registry answers /meta with its own URL;
+        # when the port went elsewhere, start again on a fresh one.
+        for _ in range(3):
+            self.port = _free_port()
+            self.url = f"http://localhost:{self.port}"
+            self.proc = subprocess.Popen(
+                command, cwd=ROOT, env=env | {"PORT": str(self.port), "TREG_PUBLIC_URL": self.url},
+                stdout=self.log, stderr=subprocess.STDOUT)
+            if self._came_up():
+                break
+            self._stop()
         else:
-            raise RuntimeError("the registry did not come up")
+            raise RuntimeError(f"the registry did not come up: {(tmp / 'registry.log').read_text()[-2000:]}")
         self.http = httpx.Client(base_url=self.url, headers={"X-Treg-Key-Protocol": "1"}, timeout=30)
+
+    def _came_up(self) -> bool:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and self.proc.poll() is None:
+            try:
+                meta = httpx.get(f"{self.url}/meta", timeout=2)
+                if meta.status_code == 200 and meta.json().get("public_url") == self.url:
+                    return True
+            except (httpx.HTTPError, ValueError):
+                pass
+            time.sleep(0.3)
+        return False
+
+    def _stop(self) -> None:
+        self.proc.terminate()
+        try:
+            self.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
 
     def email_code(self, email: str) -> str:
         """The dev-mode sign-in code for `email`, asked for from an address of its own."""
@@ -173,9 +189,5 @@ class LiveRegistry:
 
     def close(self) -> None:
         self.http.close()
-        self.proc.terminate()
-        try:
-            self.proc.wait(10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        self._stop()
         self.log.close()
