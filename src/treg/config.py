@@ -354,6 +354,7 @@ class Settings(BaseSettings):
     platform_key_tikhub: str = ""
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""
+    platform_key_creatorcrawl: str = ""
     platform_key_brightdata: str = ""
     platform_key_justoneapi: str = ""
     platform_key_serpapi: str = ""

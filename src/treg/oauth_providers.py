@@ -2262,6 +2262,31 @@ SCRAPECREATORS = OAuthProvider(
     token_verify_field="creditCount",
 )
 
+CREATORCRAWL = OAuthProvider(
+    service="creatorcrawl",
+    display_name="CreatorCrawl",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your CreatorCrawl API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.creatorcrawl.com",
+    setup_action_label="Get your CreatorCrawl API key",
+    setup_steps=(
+        "Sign up at app.creatorcrawl.com and open API Keys.",
+        "Create and copy an API key.",
+    ),
+    setup_note="Data calls cost credits; the key check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Public profiles, posts, comments, transcripts and search across TikTok, Instagram, YouTube, X, Reddit, LinkedIn and Facebook.",
+    base_url="https://api.creatorcrawl.com",
+    docs_url="https://api.creatorcrawl.com/docs",
+    probe_path="/validate-key",
+)
+
 
 DATAFORSEO = OAuthProvider(
     service="dataforseo",
@@ -4287,7 +4312,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, CREATORCRAWL,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
