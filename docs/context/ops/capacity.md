@@ -103,7 +103,10 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
   `CapacitySnapshot` per provider, publishes each `LatestState` to ratestore as
   `capacity:state:<provider>` and commits once. The key is the Settings slot spelling
   (`fiber_ai`); `state_key()` maps a catalog id (`fiber-ai`) onto it, so readers find the state
-  under either spelling. A note that looks like a credential is withheld before it is stored. The
+  under either spelling. A note that looks like a credential is withheld before it is stored. A
+  failed HTTP balance route is stored as its status code only (`_failure_note`: httpx messages
+  carry the request URL, and some routes take the key in the query), and an error text holding
+  the provider's credential value or a query credential mark is withheld (`snapshot_from`). The
   sweep never touches the call path's locks: the meter it reads may not be the allowance that ran
   out.
 - **`view.py`** - `LatestStateView`, the in-process copy of both namespaces reloaded from ratestore
