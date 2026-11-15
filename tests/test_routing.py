@@ -4327,6 +4327,19 @@ async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answe
         assert (await db.execute(select(Hold))).scalars().all() == []
 
 
+def test_a_child_never_inherits_the_callers_accept_encoding():
+    """A routed call parses each child's answer. A caller's `Accept-Encoding: gzip` (httpx, fetch)
+    passed on would bring an unmetered child's body back compressed (the relay reads it raw), the
+    parse would fail and a hit would read as a miss; dropped, the relay asks for identity."""
+    from types import SimpleNamespace
+    parent = SimpleNamespace(input=SimpleNamespace(
+        raw_headers=((b"accept-encoding", b"gzip, deflate"), (b"x-other", b"kept")),
+        caller=None, client_ip=None, catalog_only=False))
+    child = call_route._child_input(parent, {"id": "x.y", "method": "GET"}, {}, None)
+    names = [k.lower() for k, _ in child.raw_headers]
+    assert b"accept-encoding" not in names and b"x-other" in names
+
+
 async def test_a_same_named_secret_never_makes_a_public_provider_an_own_key_child(
         clients: AsyncClient, monkeypatch):
     """A public provider has nothing to connect, so the router plans its reader on the anonymous
