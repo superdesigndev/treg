@@ -12,6 +12,8 @@
 --   - a 403 for an operator's quota: `caller_policy` / `treg_policy`
 --   - a provider's 400 documented as an empty account: `caller_input` / a provider account class
 --   - a 402 on treg's pay-per-use OAuth app: the team's account / treg's
+--   - a 403 on treg's key that the provider documents as out of credit: `upstream_error` /
+--     `our_provider_account`
 --   - treg's relay-stage refusals without a `refused_by` (declared rate, failed injection, refused
 --     address, buffer limit): `upstream` / `treg`
 --   - a routed parent the provider refused (`route_caller_fault`): `treg` / `upstream`; for the

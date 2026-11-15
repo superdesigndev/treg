@@ -239,8 +239,9 @@ is its table. A provider account error belongs to whoever holds the account: an 
 `caller_provider_account` on the `credential` and `tool` tiers, and a credit error (a 402 or an
 out-of-credit answer) is the caller's only when the caller pays the provider, so treg's own key and
 its pay-per-use OAuth app are `our_provider_account`. On treg's key an upstream 401 is
-`our_provider_account` but a 403 is `upstream_error`: scrapers and APIs answer 403 for the page or
-record they were asked for, not for treg's account.
+`our_provider_account` but a 403 is `upstream_error`, unless it is a documented out-of-credit
+answer: scrapers and APIs answer 403 for the page or record they were asked for, not for treg's
+account.
 
 No request or answer value, header, credential or message text is logged. The answer is read only
 for its documented error code. A parameter is named only when every part looks like a field name

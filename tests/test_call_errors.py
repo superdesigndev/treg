@@ -54,6 +54,7 @@ async def _answering(status: int, doc: dict) -> None:
     (402, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (401, {"tier": "tool"}, ("upstream", "caller_provider_account")),
     (403, {"tier": "platform"}, ("upstream", "upstream_error")),
+    (403, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
     (401, {"tier": "platform"}, ("upstream", "our_provider_account")),
     (403, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (402, {"tier": "anonymous"}, ("upstream", "our_provider_account")),

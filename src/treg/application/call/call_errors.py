@@ -78,7 +78,7 @@ def classify(status: int, *, tier: str | None, refused_by: str | None = None,
         if owned:
             cls = "caller_provider_account"
         else:
-            cls = "upstream_error" if status == 403 else "our_provider_account"
+            cls = "upstream_error" if cls == _ACCESS and status == 403 else "our_provider_account"
     return by, cls
 
 
