@@ -302,6 +302,7 @@ A tool's `base_url` is checked against the internal-address block-list (includin
 encodings) at registration, and the proxy re-resolves the host at call time
 (`infra.upstream.ssrf.host_is_public`, gated by `proxy_ssrf_check`), so DNS rebinding does not
 bypass it. The health probe and the OAuth token endpoint (refresh and code exchange) get the same
-resolve check before sending; a token answer without `access_token` is reported without its body.
+resolve check before sending; a token answer without `access_token` is reported without its body,
+naming only a standard OAuth error code (`invalid_grant`) when the answer carries one.
 `routers.resources._require_public_base_url` also rejects a `base_url` pointing back at
 treg itself, so a team uses treg's tools by id instead of proxying treg through treg.

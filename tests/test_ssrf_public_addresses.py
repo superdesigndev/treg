@@ -129,7 +129,7 @@ async def test_oauth_code_exchange_rechecks_dns(internal_names):
 
 
 async def test_token_answer_without_access_token_is_not_echoed():
-    answer = {"error": "MARKER-ERROR", "other": "MARKER-BODY"}
+    answer = {"error": "MARKER-ERROR", "error_description": "MARKER-BODY"}
     pending = SimpleNamespace(
         client_secret=crypto.encrypt("csec"), client_id="cid", redirect_uri="https://treg.test/cb",
         code_verifier="", token_endpoint_auth_method="client_secret_post",

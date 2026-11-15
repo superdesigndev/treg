@@ -7,7 +7,7 @@ import time
 import httpx
 
 from .. import crypto
-from .oauth_refresh import require_public_token_uri
+from .oauth_refresh import no_access_token_error, require_public_token_uri
 
 
 class HTTPXOAuthExchangePort:
@@ -37,7 +37,7 @@ class HTTPXOAuthExchangePort:
         token = response.json()
         access = token.get("access_token")
         if not access:
-            raise ValueError("token endpoint answer had no access_token")
+            raise no_access_token_error(token)
         blob = {
             "access_token": access,
             "token": access,
