@@ -5,6 +5,10 @@
 /src/treg/api.py         @unclecode @stonexer
 /src/treg/bootstrap.py   @unclecode @stonexer
 /src/treg/worker.py      @unclecode @stonexer
+/src/treg/maintenance.py @unclecode @stonexer
+/src/treg/alembic/env.py @unclecode @stonexer
+/pyproject.toml          @unclecode @stonexer
+/hatch_build.py          @unclecode @stonexer
 /src/treg/web/install.sh      @unclecode @stonexer
 /src/treg/web/install-bin.sh  @unclecode @stonexer
 /src/treg/web/install.ps1     @unclecode @stonexer
