@@ -837,6 +837,75 @@ async def test_omitting_the_resource_is_fine(clients):
     assert "balance_usd" in out, "the default audience must be the one the MCP server accepts"
 
 
+async def _new_account_cookie(clients, email):
+    """A verified account that has not reached the dashboard yet: no team, not onboarded. This is
+    who a connector's sign-in brings back to consent, because the parked authorization resumes
+    straight after sign-in."""
+    from conftest import verified_identity
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    await verified_identity(clients, email)
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        cookie = session.make_session(user.id, token_version=user.token_version)
+    clients.cookies.set("treg_session", cookie)
+
+
+async def test_a_new_account_gets_its_first_team_at_consent(clients):
+    """Refusing "not a member of any team" ended every first connection from a new account, the
+    connector's most likely user. Consent names the team approval will make, and makes it."""
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "jane@newco-consent.test")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge,
+              "code_challenge_method": "S256"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["teams"] == [] and shown.json()["new_team"] == "Newco Consent"
+    page = await clients.get("/oauth/authorize", params=params)
+    assert "Allowing creates your team, <b>Newco Consent</b>" in page.text
+    assert 'name="org_id" value="0"' in page.text
+
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": 0, "decision": "allow"},
+                           follow_redirects=False)
+    assert r.status_code == 302 and "code=" in r.headers["location"], r.text
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.status_code == 200, tok.text
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=tok.json()["access_token"])
+    assert out.get("team_name") == "Newco Consent", out
+
+    again = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert [t["slug"] for t in again.json()["teams"]] == [out["team"]] and again.json()["new_team"] is None
+
+
+async def test_an_onboarded_account_without_a_team_is_still_refused(clients):
+    """Someone who left every team already had their first run; consent does not make another."""
+    from sqlalchemy import update
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "left@oldco-consent.test")
+    async with session_maker() as db:
+        await db.execute(update(User).where(User.email == "left@oldco-consent.test").values(onboarded=True))
+        await db.commit()
+    _, challenge = _pkce()
+    r = await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "s"},
+        follow_redirects=False)
+    assert r.status_code == 302 and "error=access_denied" in r.headers["location"]
+
+
 async def test_a_null_origin_from_a_redirect_chain_is_not_treated_as_cross_site(clients):
     """The intermittent failure Unclecode hit: approve worked on one attempt and was refused on
     another. `Origin: null` is a browser reporting an OPAQUE origin, which happens after certain
