@@ -262,6 +262,12 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   age - hold_grace_s / 2`. The async worker passes what remains of the row's processing deadline. A
   settlement that enters the database without the lease queues on the CreditBlock lock while
   holding a pooled connection, which is why these bounds exist.
+- **A silent store costs one timeout, not one per operation.** After a store failure
+  (`kv_unavailable` or `gate_error`) the process skips the store for `_STORE_DOWN_S` (5 s, the
+  `fair_share` pattern) and every operation in that window takes the database path at once. A
+  failed gate frees its process-local locks before the lease cleanup runs, and the cleanup runs as a
+  background task, so a stuck cleanup never holds the next operation; the lease TTL bounds a lease it
+  does not remove.
 - Renewal and deletion are owner-checked, so an old holder cannot extend or delete a newer owner's
   lease. TTL cannot prove an old database transaction has stopped, which is why database locks stay
   the correctness mechanism. Fallbacks preserve correctness but not isolation and are counted
