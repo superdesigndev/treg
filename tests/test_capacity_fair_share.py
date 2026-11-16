@@ -344,3 +344,52 @@ def test_every_endpoint_concurrency_family_names_catalog_endpoints_of_one_provid
         providers = {by_id[endpoint_id]["provider"] for endpoint_id in row["endpoints"]}
         assert len(providers) == 1 and family.startswith(f"{providers.pop()}."), family
         assert family not in _CONCURRENCY, family
+
+
+# ---- one team's ceiling across processes --------------------------------------------------------
+
+async def test_a_team_over_its_ceiling_is_refused_and_another_team_still_gets_a_place(shared):
+    one, two = FairShare(), FairShare()
+    held = [await one.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(4)]
+    held += [await two.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(4)]
+    with pytest.raises(ShareBusy):
+        await one.acquire("p", 1, 10, max_wait_s=0.05, team_ceiling_percent=80)
+    assert shared.held("p") == 8 and shared.held("p:team:1") == 8
+    light = await two.acquire("p", 2, 10, max_wait_s=0.05, team_ceiling_percent=80)
+    assert shared.held("p") == 9
+    for s in (*held, light):
+        s.release()
+    await _turns()
+    assert shared.held("p") == 0 and shared.held("p:team:1") == 0 and shared.held("p:team:2") == 0
+
+
+async def test_the_ceiling_is_off_by_default_and_for_a_cap_it_cannot_reduce(shared):
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 10) for _ in range(10)]
+    assert shared.held("p:team:1") == 0
+    for s in slots:
+        s.release()
+    (await gate.acquire("q", 1, 4, team_ceiling_percent=80)).release()  # ceil(3.2) = 4 = the cap
+    await _turns()
+    assert not any("team" in k for k in shared.owners)
+
+
+async def test_a_refused_wait_returns_the_team_place(shared):
+    one, two = FairShare(), FairShare()
+    held = await one.acquire("p", 9, 5)
+    others = [await one.acquire("p", 9, 5) for _ in range(4)]
+    with pytest.raises(ShareBusy):
+        await two.acquire("p", 1, 5, max_wait_s=0.05, team_ceiling_percent=80)
+    await _turns()
+    assert shared.held("p:team:1") == 0
+    for s in (held, *others):
+        s.release()
+
+
+async def test_a_failing_store_leaves_the_ceiling_open(shared):
+    shared.down = True
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(9)]
+    assert all(s.team_lease is None for s in slots)
+    for s in slots:
+        s.release()

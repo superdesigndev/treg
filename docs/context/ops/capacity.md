@@ -224,6 +224,15 @@ lease; expiry cannot stop a request already sent. When the store fails the proce
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
 
+The fewest-first choice is per process, so across processes a light team is not ahead of a heavy
+one: a freed place goes to whichever process's request lands first. `TREG_FAIR_SHARE_TEAM_CEILING_PERCENT`
+(0, off, by default) bounds that: with the shared store, one team holds at most `ceil(cap x percent
+/ 100)` places of an account across every process, counted on a second lease key per account and
+team (`<account>:team:<org id>`) through the same lease scripts. A call over its team's ceiling
+leaves at once as `share_busy`, so the remaining places stay for other teams; other teams are not
+affected. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
+account's own rule alone.
+
 ## Upstream connections: a bounded wait and a cap per provider
 
 Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider

@@ -12,6 +12,11 @@ The rule is max-min fairness on the places, and it never leaves a place empty wh
    call is served at the next free place; a heavy team keeps whatever no lighter team wants.
 3. A call that waited `max_wait_s` leaves the line with `ShareBusy`, so a routed job moves to
    its next provider and a direct call is refused (not charged) with a retry hint.
+4. With the shared store and `team_ceiling_percent` set, one team holds at most that share of the
+   places across every process (a second lease key per account and team). A call over it leaves
+   at once with `ShareBusy`, so the places it does not take stay for other teams. Rule 2's
+   fewest-first choice is per process, so this ceiling is what keeps a light team's place free
+   across processes.
 
 DB-free on purpose, like the rate limiter (infra/upstream/limiter.py): it runs after the DB phase
 ended and before the relay. The line and the fewest-first choice are per process. With the shared
@@ -27,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass, field
@@ -156,14 +162,18 @@ class _Pool:
 class Slot:
     """One place held by one call. `release()` is idempotent; every call path releases."""
 
-    __slots__ = ("_gate", "_provider", "_team", "waited_ms", "lease")
+    __slots__ = ("_gate", "_provider", "_team", "waited_ms", "lease", "team_lease")
 
     def __init__(self, gate: "FairShare | None", provider: str = "", team: int = 0,
                  waited_ms: int = 0, lease: provider_concurrency.Lease | None = None) -> None:
         self._gate, self._provider, self._team, self.waited_ms = gate, provider, team, waited_ms
         self.lease = lease
+        self.team_lease: provider_concurrency.Lease | None = None
 
     def release(self) -> None:
+        if self.team_lease is not None:
+            team_lease, self.team_lease = self.team_lease, None
+            team_lease.release()
         if self.lease is not None:
             lease, self.lease = self.lease, None
             lease.release()
@@ -195,11 +205,37 @@ class FairShare:
         return pool
 
     async def acquire(self, provider: str, team: int, cap: int, *,
-                      max_wait_s: float = DEFAULT_MAX_WAIT_S) -> Slot:
+                      max_wait_s: float = DEFAULT_MAX_WAIT_S,
+                      team_ceiling_percent: int = 0) -> Slot:
         """Take a place for `team` on `provider`, waiting at most `max_wait_s` (rule 3)."""
         if cap <= 0:
             return NO_SLOT
         pool = self._pool(provider, cap)
+        team_lease = await self._team_place(pool, team, team_ceiling_percent)
+        try:
+            slot = await self._place(pool, provider, team, max_wait_s)
+        except BaseException:
+            if team_lease is not None:
+                team_lease.release()
+            raise
+        slot.team_lease = team_lease
+        return slot
+
+    async def _team_place(self, pool: _Pool, team: int,
+                          percent: int) -> provider_concurrency.Lease | None:
+        """Rule 4: the team's place under its ceiling, or `ShareBusy`; None when no ceiling
+        applies or the store does not answer (the account's own rule still holds)."""
+        ceiling = math.ceil(pool.cap * percent / 100)
+        if not pool.shared or not 0 < percent < 100 or ceiling >= pool.cap:
+            return None
+        if time.monotonic() < pool.store_down_until:
+            return None
+        outcome = await provider_concurrency.try_acquire(f"{pool.name}:team:{team}", ceiling)
+        if outcome == provider_concurrency.BUSY:
+            raise ShareBusy(pool.name, team, ceiling, 0.0)
+        return outcome
+
+    async def _place(self, pool: _Pool, provider: str, team: int, max_wait_s: float) -> Slot:
         full = pool.active >= pool.cap or bool(pool.line)
         if not pool.shared and not full:
             pool.take(team)

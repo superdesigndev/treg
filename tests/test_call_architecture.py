@@ -353,6 +353,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "provider_resources.tombstone"),
     ("application/call/service.py", "_execute_call", "fair_share.acquire"),
     ("domain/capacity/fair_share.py", "_ask", "provider_concurrency.try_acquire"),
+    ("domain/capacity/fair_share.py", "_team_place", "provider_concurrency.try_acquire"),
     ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
