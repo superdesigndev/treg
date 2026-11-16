@@ -58,16 +58,20 @@ class _Place:
 
 
 async def _take(scope: Scope, ident: str, cap: int) -> _Place:
+    """The shared store decides first; this process's count decides too, because runs it admitted
+    while the store was not answering hold no shared lease."""
     key = (scope, ident)
+    lease = None
     if provider_concurrency.enabled():
         held = await provider_concurrency.try_acquire(ident, cap, namespace=f"hub-{scope}")
         if held == provider_concurrency.BUSY:
             raise HubBusy(scope, cap)
-        if held is not None:
-            return _Place(key, held)
+        lease = held
     if _active.get(key, 0) >= cap:
+        if lease is not None:
+            lease.release()
         raise HubBusy(scope, cap)
-    return _Place(key, None)
+    return _Place(key, lease)
 
 
 @asynccontextmanager

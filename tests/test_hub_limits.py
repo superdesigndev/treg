@@ -114,3 +114,31 @@ async def test_runs_the_shared_store_admitted_still_count_when_it_stops_answerin
             async with limits.slot(6, "t.more"):
                 pass
     assert released.count("6") == limits.MAX_RUNS_PER_TEAM
+
+
+async def test_runs_admitted_while_the_store_was_down_still_count_once_it_answers(monkeypatch):
+    released: list[str] = []
+
+    class Lease:
+        def __init__(self, account):
+            self.account = account
+
+        def release(self):
+            released.append(self.account)
+
+    answering = False
+
+    async def shared(account, cap, *, namespace="provider-concurrency"):
+        return Lease(account) if answering else None
+
+    monkeypatch.setattr(provider_concurrency, "enabled", lambda: True)
+    monkeypatch.setattr(provider_concurrency, "try_acquire", shared)
+    async with AsyncExitStack() as held:
+        for n in range(limits.MAX_RUNS_PER_TEAM):
+            await held.enter_async_context(limits.slot(9, f"t.tool{n}"))
+        answering = True
+        with pytest.raises(limits.HubBusy) as busy:
+            async with limits.slot(9, "t.more"):
+                pass
+        assert busy.value.scope == "team"
+        assert released == ["9"]
