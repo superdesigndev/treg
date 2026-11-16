@@ -571,11 +571,12 @@ async def test_the_fifth_concurrent_run_is_refused_with_a_retry_time(clients: As
     tasks = [asyncio.create_task(clients.post(f"/call/{tool_id}", json=m)) for _ in range(4)]
     for _ in range(50):                               # let the four take their slots
         await asyncio.sleep(0.01)
-        if limits.active(1) >= 4 or any(limits.active(o) >= 4 for o in list(limits._active)):
+        if any(n >= 4 for (scope, _), n in list(limits._active.items()) if scope == "team"):
             break
     fifth = await clients.post(f"/call/{tool_id}", json=m)
     assert fifth.status_code == 429, fifth.text
     assert fifth.json()["detail"]["error"] == "hub_busy" and fifth.json()["detail"]["retry_after_s"] == 5
+    assert fifth.json()["detail"]["scope"] == "team"
     gate.set()
     done = await asyncio.gather(*tasks)
     assert all(r.status_code in (200, 424) for r in done)

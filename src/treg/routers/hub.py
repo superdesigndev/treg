@@ -293,14 +293,12 @@ async def run_hub_folder(
     context = create_call_context(call_input)
     await db.commit()
     try:
-        with hub_limits.slot(caller.org_id):
+        async with hub_limits.slot(caller.org_id, row.tool_id):
             response, charged = await hub_runner.run_hub_tool(
                 context, row, payload, request.headers.get, request.app.state.http, execute_call,
                 audit_client="hub-run")
-    except hub_limits.TeamBusy as busy:
-        raise HTTPException(status_code=429, detail={
-            "error": "hub_busy", "active": busy.active, "max": hub_limits.MAX_RUNS_PER_TEAM,
-            "retry_after_s": hub_limits.RETRY_AFTER_S}) from None
+    except hub_limits.HubBusy as busy:
+        raise HTTPException(status_code=429, detail=busy.detail()) from None
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
     out = _http_upstream_response(response)

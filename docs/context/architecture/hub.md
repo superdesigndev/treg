@@ -9,6 +9,7 @@ sources:
   - src/treg/application/hub/__init__.py
   - src/treg/application/hub/runner.py
   - src/treg/application/hub/sandbox.py
+  - src/treg/application/hub/sandbox_workers.py
   - src/treg/application/hub/limits.py
   - src/treg/application/hub/health.py
   - src/treg/hub_sandbox.py
@@ -38,8 +39,15 @@ sources:
   - docs/hub-recipes/data-sheets/run.js
   - docs/hub-recipes/data-csv/run.js
   - docs/hub-recipes/engineering-team-size/run.js
+  - docs/hub-recipes/video-shot-breakdown/run.js
   - tests/test_hub.py
   - tests/test_hub_sandbox.py
+  - tests/test_hub_sandbox_workers.py
+  - tests/test_hub_limits.py
+  - tests/test_hub_limits_redis.py
+  - tests/hub_workers_runtime.py
+  - workers/hub-sandbox/src/index.js
+  - workers/hub-sandbox/wrangler.toml
   - tests/callmatrix/test_hub_run.py
 related:
   - architecture/proxy-model.md
@@ -139,8 +147,12 @@ Rules that look removable and are not:
 
 Failure: when a step fails, nothing new starts, in-flight steps finish, and the run answers 424
 `hub_run_failed`; passing the ceiling is 402 `hub_run_max_cost`. Money spent on completed steps
-stays spent and the price is released. Runs per team are capped in-process
-(`application/hub/limits.py`, 429 `hub_busy`); the cap is per process, not global.
+stays spent and the price is released. Runs in flight are capped per team (`MAX_RUNS_PER_TEAM`)
+and per tool across every team (`TREG_HUB_TOOL_MAX_RUNS`, 0 = off), so one busy tool cannot spend a
+shared upstream quota for everyone (`application/hub/limits.py`, 429 `hub_busy` with the `scope`
+that refused). With the shared store both are counted across every server process on renewed
+leases, the same scripts as provider concurrency; without it, or when it does not answer, each
+process counts its own.
 `Idempotency-Key` covers the whole run through the parent's store. `HubRun` keeps one row per run
 and is deleted with the calling team.
 
@@ -160,6 +172,27 @@ engine, so concurrent calls run in the parent up to the JSON road's width. An en
 the parent's kill: the engine cannot call into Python with its own time limit set. `timeout_s` on
 one call answers `{status: 0, timed_out: true}` instead of ending the run, and the cancelled child
 releases its hold.
+
+`TREG_HUB_SANDBOX` selects the engine (`quickjs` default, or `workers`). The host rules above do
+not move: `_Host` in `sandbox.py` admits every call, charge and log for both engines. In `workers`
+mode the process running the script opens a WebSocket to the loader's `/run`
+(`workers/hub-sandbox`) and holds it for the run. Nothing connects into treg: the script's
+`ctx.call`, `ctx.charge` and logs arrive as frames on that socket and are answered on it, so the
+run is served by the process that started it whatever the number of workers or instances, and the
+run's in-flight calls are its own tasks, cancelled when it ends. The first frame is the run (script,
+inputs, data, wall) with an HMAC over `exp.` and the run under `TREG_HUB_WORKERS_AUTH_SECRET`, the
+same value as the loader's Wrangler secret `AUTH_SECRET`; the loader loads nothing before it checks
+it. A captured frame replays only into the replayer's own socket, never into treg. The loader puts
+the script in a dynamic worker with `globalOutbound: null` and an empty `env`; its one road out is
+the bridge object passed to `run()`, which lives in the loader, forwards only `call`, `charge` and
+`logs`, and holds no key. A key is never given to the loader or the isolate: the call path stays the
+only place a key exists. `TREG_HUB_WORKERS_URL` must be https off loopback, because the frames carry
+the caller's inputs and every step's answer. A Workers WebSocket message is at most 32 MiB, above
+the hub's data, answer and output caps. Workers isolate memory is the platform's 128 MB, not
+`MEMORY_MB`, and local workerd does not surface it before the wall clock. A tight loop also blocks
+that workerd thread, so the parent's wall is the kill that actually lands there; `cpuMs` does not
+include time spent waiting on a reply. Dynamic workers disallow `eval`, `new Function` and Wasm
+compilation; `tests/test_hub_sandbox_workers.py` tries each way out from inside a script.
 
 ## The maker's road (`routers/hub.py`, `application/hub/__init__.py`)
 
