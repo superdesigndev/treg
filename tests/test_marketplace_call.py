@@ -512,6 +512,27 @@ def test_path_placeholders_fill_from_query_and_are_consumed():
     assert exc.value.status_code == 400 and "siteUrl" in exc.value.detail
 
 
+@pytest.mark.parametrize("value", [
+    "%75s/../../x?y=1#z", "%75s%2F..%2F..%2Fx", "%2e%2e/%2e%2e/serp", "us/../x", "a%3Fb#c/d", "%FF/.."])
+def test_path_parameter_stays_one_segment_even_when_already_encoded(value):
+    provider = type("P", (), {"base_url": "https://api.example.com"})()
+    ep = {"id": "x.y.z", "path": "/v3/locations/{country}", "input": {}}
+    url, _ = call_resolution._marketplace_upstream(ep, provider, {"country": value})
+    sent = httpx.URL(url)
+    assert sent.path.startswith("/v3/locations/")
+    assert "/" not in sent.raw_path.decode().removeprefix("/v3/locations/")
+    assert sent.query == b"" and sent.fragment == ""
+
+
+@pytest.mark.parametrize("value", ["..", "%2E%2E", ".", "%2e", ".%2e"])
+def test_path_parameter_refuses_a_dot_segment(value):
+    provider = type("P", (), {"base_url": "https://api.example.com"})()
+    ep = {"id": "x.y.z", "path": "/v3/locations/{country}", "input": {}}
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._marketplace_upstream(ep, provider, {"country": value})
+    assert exc.value.status_code == 400 and "country" in exc.value.detail
+
+
 async def test_deny_rules_cover_marketplace_calls(clients: AsyncClient, caplog):
     """Policy is evaluated on the RESOLVED upstream — an endpoint-id call can't dodge a host block."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})

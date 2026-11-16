@@ -125,7 +125,9 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
-  account); limits are unchanged. The invite code is join-only and needs the invitee signed
+  account); limits are unchanged. Email verify locks the code's `Ephemeral` row with the same
+  no-op update as CLI pairing before comparing, so parallel wrong guesses each spend one of
+  `MAX_OTP_ATTEMPTS`. The invite code is join-only and needs the invitee signed
   in; the separate `email_token` in the emailed link only prefills the login (it authenticates no
   one) and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
@@ -134,7 +136,7 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 ### CLI pairing
 
 `POST /auth/cli/start` mints a login id and a four-character code shown only in the terminal,
-never in a URL. `POST /auth/cli/approve` requires the session, the same-origin CSRF check, the
+never in a URL; the user types it on the `/login` page, which never reads a code from its link. `POST /auth/cli/approve` requires the session, the same-origin CSRF check, the
 matching code and membership in the chosen team; `GET /auth/cli/poll` hands over the Default key
 exactly once (only a seven-day bootstrap credential when no team was chosen).
 
@@ -408,13 +410,6 @@ cookie-authenticated mutation.
 **Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
 included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
 ([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
-
-**Response encoding**: `_GzipResponseMiddleware` gzips a text, JSON or XML answer of at least
-1 KiB for a client whose `Accept-Encoding` takes gzip, flushing every streamed chunk so a stream
-still arrives as it is produced, and weakens a strong `ETag` so an `If-Range` never pairs the
-encoded body with an unencoded range. An answer already carrying a
-`Content-Encoding`, an event stream, a partial (206) or `no-transform` answer and binary types
-pass untouched. "Byte for byte" anywhere in these docs means the body after content decoding.
 
 ## Views
 

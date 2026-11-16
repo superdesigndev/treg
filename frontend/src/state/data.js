@@ -44,7 +44,7 @@ export default function data(){
   // usage-metering: rollups + the member's own used/cap
       // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
       // false = this deployment sells no balance, so the whole block stays hidden.
-      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
+      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoMonthlyCap:2000, autoConsent:false, autoOpen:false,
       topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
       capCfg:null, capUsd:0, capBusy:false, capErr:'',
       memberCapUsd:'', memberCapBusy:false, memberCapErr:'', memberCapOpen:false,

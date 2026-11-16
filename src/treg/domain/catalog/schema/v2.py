@@ -177,16 +177,20 @@ class Usage(Model):
 
 
 class Settle(Model):
-    """Absent: the hold."""
+    """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
+    settle at, in the price's currency: the hold is never below it."""
 
     count: Count | None = None
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
+    worst_case: Money | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
+        if self.worst_case is not None and self.reported is None and self.usage is None:
+            raise ValueError("settle.worst_case belongs beside settle.reported or settle.usage")
         return self
 
 
@@ -385,6 +389,8 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
         out["usage"] = {"unit": usage["unit"], **(
             {"terms": [{"path": relative(t["path"]), "rate": float(t["rate"])} for t in usage["terms"]]}
             if "terms" in usage else {"path": relative(usage["path"])})}
+    if settle.get("worst_case") is not None:
+        out["worst_case"] = _number(settle["worst_case"])
     out.update(provenance)
     if "note" in price:
         out["note"] = price["note"]

@@ -313,19 +313,26 @@ async def verify_email_login(
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
     async with database.session_maker() as db:
-        entry = await ratestore.kv_get(db, OTP_NS, email)
-        if entry is None:
+        # Like approve_cli_login: UPDATE serializes on PostgreSQL and SQLite (where FOR UPDATE is
+        # ignored). Keep the lock through the compare and the attempt decrement.
+        row = (await db.execute(update(Ephemeral).where(
+            Ephemeral.ns == OTP_NS, Ephemeral.k == email,
+        ).values(k=Ephemeral.k).returning(Ephemeral)
+          .execution_options(synchronize_session=False))).scalar_one_or_none()
+        if row is None or row.expires_at < _utcnow_naive():
+            if row is not None:
+                await db.delete(row)
             await db.commit()
             raise EmailAuthError("invalid_code")
+        entry = row.v
         if not hmac.compare_digest(entry["hash"], crypto.hash_token(code.strip())):
-            entry["attempts"] -= 1
-            if entry["attempts"] <= 0:
-                await ratestore.kv_pop(db, OTP_NS, email)
+            if entry["attempts"] <= 1:
+                await db.delete(row)
             else:
-                await ratestore.kv_put(db, OTP_NS, email, entry, ttl_s=None)
+                row.v = {**entry, "attempts": entry["attempts"] - 1}
             await db.commit()
             raise EmailAuthError("invalid_code")
-        await ratestore.kv_pop(db, OTP_NS, email)
+        await db.delete(row)
         created: set[int] = set()
         proven: set[int] = set()
         try:

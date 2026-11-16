@@ -9,7 +9,7 @@ from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ from ...domain.identity.access import Caller
 from ...domain.money import settlement as settlement_basis
 from ...domain import provider_resources
 from ...infra.db import session_maker
+from ...infra.upstream import pathsegment
 from ...domain.governance.access import pinned_tag_predicates
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
@@ -304,6 +305,7 @@ class MarketplaceCall:
     tier: str                       # tool | credential | anonymous | platform | platform-overflow
     cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    worst_case_micro: int = 0       # RAW declared worst case; the hold is never below it
     max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
@@ -540,7 +542,7 @@ def _enforce_team_label(ep: dict, org_id: int, body: bytes, headers=None, query=
     for path in ep.get("team_label") or ():
         if _request_value(path, body, headers, query) != [expected]:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="fixed", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": path, "expected": expected,
                     "message": f"{ep['id']} on treg's key requires {path} = {expected}, "
@@ -558,7 +560,7 @@ def _enforce_caller_email(ep: dict, email: str, body: bytes, headers=None, query
         values = _request_value(path, body, headers, query)
         if values and [str(v).strip().lower() for v in values] != [own]:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="fixed", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": path, "expected": email,
                     "message": f"{ep['id']} on treg's key sends {path} only to your own email, "
@@ -590,7 +592,7 @@ def _enforce_request_quantity(ep: dict, cost: dict, body: bytes, query) -> None:
     rule = cost.get("quantity") if isinstance(cost.get("quantity"), dict) else None
     if rule and _request_quantity(cost, body, query) is None:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail={
+            "catalog_parameter_invalid", status_code=400, rule="range", detail={
                 "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                 "parameter": rule.get("field"),
                 "message": f"{ep['id']} needs {rule.get('field')}: a whole number from 1 to "
@@ -1146,11 +1148,20 @@ def _marketplace_no_credential(
     lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
     if ep is not None:
         lines.extend(_capability_alternatives(ep))
-    return ResolutionFailed(
-        "credential_missing", status_code=404, detail="\n".join(lines))
+    ours = ep is not None and _platform_key_missing(ep, provider)
+    return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
+                            log_kind="platform_key_missing" if ours else None)
 
 
-_VALID_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+def _platform_key_missing(ep: dict, provider) -> bool:
+    """Would treg serve `ep` without the team's credential (its own key, or the anonymous
+    fallback) but for this deployment's key or allow-list for the provider?"""
+    if not catalog_store.load().platform_eligible(ep):
+        return False
+    settings = get_settings()
+    if ep.get("platform_auth") == "anonymous":
+        return not settings.platform_provider_enabled(ep["provider"])
+    return provider.uses_pasted_secret and not settings.platform_key_for(ep["provider"])
 
 
 def _marketplace_upstream(
@@ -1167,7 +1178,8 @@ def _marketplace_upstream(
             if (authorization_method and allowed and authorization_method not in allowed
                     and query_params.get(name) is not None):
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail=(
+                    "catalog_parameter_invalid", status_code=400, parameter=f"{where}.{name}",
+                    rule="authorization_method", detail=(
                         f"{ep['id']} does not accept {name} with {authorization_method}; "
                         f"choose {', '.join(allowed)} or remove {name}"))
     consumed = set()
@@ -1175,16 +1187,18 @@ def _marketplace_upstream(
         value = query_params.get(name)
         if value is None:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail=(
+                "catalog_parameter_invalid", status_code=400, parameter=f"pathParams.{name}",
+                rule="required", detail=(
                     f"{ep['id']} needs --query {name}=<value> "
                     f"(a path parameter of {ep['path']})"))
         # Agents often pass `siteUrl` straight from GSC's sites list, where it may already be
-        # encoded. Preserve a value containing a real %HH escape; otherwise encode it exactly once.
-        # A literal/invalid percent sequence has no valid escape and therefore becomes `%25`.
-        # @ is a legal character inside a path segment (RFC 3986 pchar), not a path/query
-        # delimiter. Email-path APIs may validate it before percent-decoding (Tomba does).
-        # Keep it literal; slashes, ?, # and other delimiters still need escaping.
-        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="@")
+        # encoded: a value with a real %HH escape is decoded first, then every value is encoded
+        # exactly once as one segment.
+        if pathsegment.is_dot_segment(value):
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, parameter=f"pathParams.{name}",
+                rule="type", detail=f"{ep['id']} does not accept {name}={value!r} (a path segment)")
+        rendered = pathsegment.encode(value)
         path = path.replace("{%s}" % name, rendered)
         consumed.add(name)
     required = [k for k, v in (inp.get("queryParams") or {}).items()
@@ -1194,7 +1208,8 @@ def _marketplace_upstream(
                 and query_params.get(k) is None]
     if required:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail=(
+            "catalog_parameter_invalid", status_code=400, parameter=f"queryParams.{required[0]}",
+            rule="required", detail=(
                 f"{ep['id']} requires --query "
                 + " --query ".join(f"{k}=<value>" for k in required)))
     return provider.base_url.rstrip("/") + "/" + path.lstrip("/"), consumed
@@ -1209,7 +1224,7 @@ def _strict_json_object(body: bytes, ep_id: str) -> dict:
     document = _strict_json(body, ep_id)
     if not isinstance(document, dict):
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
             detail=f"{ep_id} requires a JSON object request body",
         )
     return document
@@ -1221,7 +1236,7 @@ def _strict_json_task_objects(body: bytes, ep_id: str) -> list[dict]:
     tasks = document if isinstance(document, list) else [document]
     if not tasks or not all(isinstance(task, dict) for task in tasks):
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
             detail=f"{ep_id} requires a JSON object or an array of JSON objects as the request body",
         )
     return tasks
@@ -1240,12 +1255,12 @@ def _strict_json(body: bytes, ep_id: str) -> object:
         document = json.loads(body, object_pairs_hook=object_pairs)
     except _DuplicateJsonKey as exc:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter=f"body.{exc}", rule="repeat",
             detail=f"{ep_id} request body repeats JSON field {str(exc)!r}",
         ) from None
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter="body", rule="json",
             detail=f"{ep_id} requires a JSON request body",
         ) from None
     return document
@@ -1284,19 +1299,24 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
     inputs = ep.get("input") or {}
     fields = (inputs.get("queryParams") or {}) | (inputs.get("pathParams") or {})
     values: dict[str, str] = {}
-    invalid = has_body
+    invalid = ("body", "undeclared") if has_body else None
     for name, value in query.multi_items():
         spec = fields.get(name)
-        if name in values or not isinstance(spec, dict):
-            invalid = True
+        where = "pathParams" if name in (inputs.get("pathParams") or {}) else "queryParams"
+        if not isinstance(spec, dict):
+            invalid = invalid or (f"queryParams.{name}", "undeclared")
+        elif name in values:
+            invalid = invalid or (f"{where}.{name}", "repeat")
         elif spec.get("enum") is not None and value not in spec["enum"]:
-            invalid = True
+            invalid = invalid or (f"{where}.{name}", "enum")
         values[name] = value
-    if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
-        invalid = True
+    for name, spec in fields.items():
+        if spec.get("required") and not values.get(name):
+            where = "pathParams" if name in (inputs.get("pathParams") or {}) else "queryParams"
+            invalid = invalid or (f"{where}.{name}", "required")
     if invalid:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter=invalid[0], rule=invalid[1],
             detail={"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "message": "Use only the declared query parameters and allowed values, once each; "
                                "include required parameters and omit the request body."},
@@ -1327,7 +1347,9 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
         )
         if unknown or missing:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400,
+                parameter=f"body.{(unknown or missing)[0]}",
+                rule="undeclared" if unknown else "required", detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "message": "Use only the declared body fields and include every required field.",
@@ -1348,17 +1370,18 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                 continue
             declared = str(spec.get("type") or "")
             checker = scalar_types.get(declared)
-            invalid = checker is not None and not checker(value)
+            invalid = "type" if checker is not None and not checker(value) else None
             if (not invalid and not declared.startswith("array")
-                    and spec.get("enum") is not None):
-                invalid = value not in spec["enum"]
+                    and spec.get("enum") is not None and value not in spec["enum"]):
+                invalid = "enum"
             if not invalid and declared in {"integer", "number"}:
                 minimum, maximum = spec.get("min"), spec.get("max")
-                invalid = ((isinstance(minimum, (int, float)) and value < minimum)
-                           or (isinstance(maximum, (int, float)) and value > maximum))
+                if ((isinstance(minimum, (int, float)) and value < minimum)
+                        or (isinstance(maximum, (int, float)) and value > maximum)):
+                    invalid = "range"
             if invalid:
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule=invalid, detail={
                         "error": "catalog_parameter_invalid",
                         "endpoint_id": ep["id"],
                         "parameter": f"body.{name}",
@@ -1373,20 +1396,20 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
         value = document.get(name)
         minimum = spec.get("minItems", spec.get("min"))
         maximum = spec.get("maxItems", spec.get("max"))
-        valid = isinstance(value, list)
-        if valid and spec.get("enum") is not None:
-            valid = all(item in spec["enum"] for item in value)
-        if valid and isinstance(minimum, int):
-            valid = len(value) >= minimum
-        if valid and isinstance(maximum, int):
-            valid = len(value) <= maximum
-        if not valid:
+        broken = None if isinstance(value, list) else "type"
+        if not broken and spec.get("enum") is not None \
+                and not all(item in spec["enum"] for item in value):
+            broken = "enum"
+        if not broken and ((isinstance(minimum, int) and len(value) < minimum)
+                           or (isinstance(maximum, int) and len(value) > maximum)):
+            broken = "range"
+        if broken:
             expected = (
                 f"between {minimum} and {maximum}" if minimum != maximum
                 else f"exactly {minimum}"
             )
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule=broken, detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "parameter": f"body.{name}",
@@ -1403,7 +1426,7 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                             if field_value not in (None, "", [])} if isinstance(item, dict) else set())
                 if not set(required_all) <= present or (required_any and not set(required_any) & present):
                     raise ResolutionFailed(
-                        "catalog_parameter_invalid", status_code=400, detail={
+                        "catalog_parameter_invalid", status_code=400, rule="required", detail={
                             "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                             "parameter": f"body.{name}.{index}",
                             "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
@@ -1456,7 +1479,7 @@ def _multipart_fields(body: bytes, content_type: str, ep_id: str) -> dict[str, o
         return fields
     except Exception as exc:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
             detail=f"{ep_id} requires a valid multipart/form-data request body",
         ) from exc
 
@@ -1541,7 +1564,7 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
                        "(the call fee plus three rows)")
     if problem:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail={
+            "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                 "error": "catalog_parameter_invalid",
                 "endpoint_id": ep["id"],
                 "parameter": "queryParams",
@@ -1577,7 +1600,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
         if len(limits) != 1 or re.fullmatch(r"(?:[1-9]|10)", limits[0]) is None:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": "queryParams.limit", "expected": "an explicit integer from 1 to 10",
                     "message": "LeadOcean shared-key people search requires an explicit limit from 1 to 10; "
@@ -1593,7 +1616,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             if type(limit) is not int or not 1 <= limit <= _PLATFORM_PAGE_MAX \
                     or document.get("blur_company_data") is True:
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
                         "parameter": "body.limit",
                         "message": "TheirStack shared-key search requires an explicit limit from 1 to 100 and ordinary, unblurred results.",
@@ -1605,7 +1628,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             if (sum(bool(document.get(name)) for name in identifiers) != 1
                     or document.get("company_name_or") or document.get("company_id")):
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
                         "parameter": "body",
                         "message": "TheirStack shared-key lookup requires exactly one singular company identifier.",
@@ -1621,7 +1644,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             size = document.get("size")
             if type(size) is not int or not 1 <= size <= 100:
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
                         "parameter": "body.size",
                         "message": "Ocean.io shared-key search requires an explicit size from 1 to 100; "
@@ -1633,7 +1656,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             for name in ("revealEmails", "revealPhones"):
                 if name in document:
                     raise ResolutionFailed(
-                        "catalog_parameter_invalid", status_code=400, detail={
+                        "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                             "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
                             "parameter": f"body.{name}",
                             "message": "Ocean.io contact reveals are not available on the shared key; "
@@ -1647,7 +1670,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         for name, _ in query.multi_items():
             if name in _APOLLO_WEBHOOK_PARAMS:
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                         "parameter": f"queryParams.{name}",
                         "message": "Apollo phone, waterfall and webhook options are not available on "
@@ -1660,7 +1683,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         invalid = octen.invalid_platform_parameter(ep["id"], body)
         if invalid:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": invalid,
                     "message": "Octen platform calls require a bounded request; connect your own key "
@@ -1674,7 +1697,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             ep["id"], dict(query.multi_items()) if query else {}, ep.get("cost") or {})
         if invalid:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": invalid,
                     "message": "Enrichlayer shared-key calls require a bounded, priced request; "
@@ -1691,7 +1714,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         )
         if requested is None or not 1 <= requested <= _OPENMART_PLATFORM_MAX_RECORDS:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "parameter": parameter,
@@ -1713,7 +1736,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         allowed = spec.get("enum") if isinstance(spec, dict) else None
         if isinstance(allowed, list) and (query.get(name) if query is not None else None) not in allowed:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": f"pathParams.{name}", "expected": allowed,
                     "message": f"{ep['id']} serves {name} " + ", ".join(map(str, allowed))
@@ -1727,7 +1750,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         supplied = _request_header_values(headers, name)
         if supplied != [str(expected)]:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": f"headers.{name}", "expected": expected,
                     "message": f"{ep['id']} requires header {name}: {expected}",
@@ -1742,7 +1765,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         if expected is None:
             if supplied:
                 raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, detail={
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                         "parameter": f"queryParams.{name}",
                         "message": f"{ep['id']} does not take query parameter {name} on treg's key; "
@@ -1752,7 +1775,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             continue
         if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": f"queryParams.{name}", "expected": expected,
                     "message": f"{ep['id']} requires query parameter {name}={expected}",
@@ -1778,7 +1801,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         actual = _document_value(document, path)
         if actual != expected or (isinstance(expected, bool) and type(actual) is not bool):
             raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                     "error": "catalog_parameter_invalid",
                     "endpoint_id": ep["id"],
                     "parameter": f"body.{path}",
@@ -1807,7 +1830,7 @@ def _managed_values(ep: dict, rule: dict, query: QueryValues, body: bytes, heade
     if (not values or any(not isinstance(item, str) or not item.strip() for item in values)
             or (not locator.get("many") and len(values) != 1)):
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail={
+            "catalog_parameter_invalid", status_code=400, rule="required", detail={
                 "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                 "parameter": f"{where}.{name}",
                 "message": f"{ep['id']} requires a valid managed resource id",
@@ -1893,6 +1916,7 @@ def _one_resource_value(ep: dict, query: QueryValues, refs: list[tuple[str, dict
     if len(values) != 1:
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400,
+            rule="repeat" if values else "required",
             detail=f"{ep['id']} requires exactly one unambiguous async resource id",
         )
     return values.pop()
@@ -2125,7 +2149,9 @@ def _preflight_authorization(ep: dict, secret: Secret, method: str, authorizatio
 @dataclass(frozen=True)
 class Pricing:
     """What a catalog call reserves and how its hold will settle, in RAW micro-USD. `terms` is a
-    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling."""
+    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling. `worst_case_micro`
+    is the row's declared worst case (`cost.worst_case`, `settle.worst_case`), 0 without one: the
+    hold covers it, while a missing figure still settles at the estimate."""
 
     estimate_micro: int
     unit_micro: int
@@ -2133,6 +2159,7 @@ class Pricing:
     settlement_basis: dict
     request_data: dict
     terms: dict | None = None
+    worst_case_micro: int = 0
 
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
@@ -2147,7 +2174,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
         hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
         return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
                        settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
-                       request_data=request_data, terms=terms)
+                       request_data=request_data, terms=terms,
+                       worst_case_micro=call_cost.worst_case_micro(ep, cat))
     raw_cost = ep.get("cost") or {}
     cv = cat.cost_view(raw_cost, service) if raw_cost else None
     info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
@@ -2194,10 +2222,13 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
             "enrichlayer_rule": raw_cost["enrichlayer"],
             "enrichlayer_unit_micro": info_unit,
         }
+    worst = raw_cost.get("worst_case")
     return Pricing(
         estimate_micro=info_est, unit_micro=info_unit,
         reported_charge_unit_micro=reported_charge_unit_micro,
         settlement_basis=basis, request_data=request_data,
+        worst_case_micro=settlement_basis._micro(float(worst), unit_micro)
+        if worst is not None and unit_micro > 0 else 0,
     )
 
 
@@ -2232,7 +2263,7 @@ async def _resolve_marketplace_call(
     if (has_body and (ep.get("input") or {}).get("bodyType") == "form"
             and "json" in _request_headers(request_headers).get("content-type", "").lower()):
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400,
+            "catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
             detail=f"{ep['id']} takes an application/x-www-form-urlencoded body, not JSON: send "
                    "the same fields as key=value&key=value with that Content-Type")
 
@@ -2242,7 +2273,8 @@ async def _resolve_marketplace_call(
         )
     except ValueError as exc:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail=str(exc),
+            "catalog_parameter_invalid", status_code=400, rule="authorization_method",
+            detail=str(exc),
         ) from None
     chosen_tool: Tool | None = None
     chosen_secret: Secret | None = None
@@ -2293,7 +2325,7 @@ async def _resolve_marketplace_call(
     common = dict(
         upstream=upstream, consumed=consumed, endpoint_id=ep["id"], provider=service,
         params_hash=phash, cost_type=str((ep.get("cost") or {}).get("type") or ""),
-        estimate_micro=pricing.estimate_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
         # The per-ROW price, carried on every tier (settle only reads it on metered calls):
         # a `per_result` settle that can't count rows can only ever bill the estimate.
         unit_micro=pricing.unit_micro,
@@ -2369,7 +2401,7 @@ async def _resolve_marketplace_call(
             if ep["id"] == "contactout.people.search.reveal":
                 size = values.get("page_size")
                 if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 25:
-                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                         "parameter": "page_size",
                         "message": "Specify page_size from 1 to 25; each result reserves up to $0.67.",
@@ -2381,7 +2413,7 @@ async def _resolve_marketplace_call(
                 if isinstance(expected, bool) and isinstance(actual, str):
                     actual = actual.lower() == "true" if actual.lower() in ("true", "false") else actual
                 if actual != expected:
-                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="fixed", detail={
                         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                         "parameter": name, "expected": expected,
                         "message": f"{ep['id']} requires {name}={expected!r}; use the matching catalog tool.",

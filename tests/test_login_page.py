@@ -75,7 +75,7 @@ async def test_landing_offers_dashboard_for_a_live_session(web):
     assert r.status_code == 200
     assert 'data-signed-in="true"' in r.text
     assert r.headers['cache-control'] == 'private, no-store'
-    assert r.headers['vary'] == 'Cookie, Accept-Encoding'
+    assert r.headers['vary'] == 'Cookie'
     web.cookies.set("treg_session", sess.make_session(uid, ttl=-1))  # expired session → landing again
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200
@@ -218,6 +218,17 @@ async def test_email_door_completes_the_handshake(web, monkeypatch):
 async def test_start_mints_a_login_id_and_code(web):
     d = (await web.post("/auth/cli/start")).json()
     assert len(d["login_id"]) >= 8 and len(d["code"]) == 4  # server issues both; the code is short
+
+
+async def test_login_page_asks_for_the_typed_code_and_ignores_the_link(web):
+    """The pairing code only proves anything if the user types it from their own terminal; a code an
+    older CLI still appends to the link (#code=...) must never fill it in."""
+    uid = await _seed_user()
+    web.cookies.set("treg_session", sess.make_session(uid))
+    r = await web.get(f"/login?cli={LID}")
+    assert r.status_code == 200
+    assert 'id="paircode"' in r.text
+    assert "location.hash" not in r.text
 
 
 async def test_approve_requires_a_started_login_and_matching_code(web):

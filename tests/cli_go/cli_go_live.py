@@ -70,8 +70,8 @@ class EchoUpstream:
             do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _serve
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        # Registration refuses loopback hosts; the trailing-dot spelling of localhost is a DNS name
-        # to that check and still resolves here, and the test registry runs without the call-time check.
+        # Registration refuses loopback hosts; with TREG_PROXY_SSRF_CHECK off it reads the trailing-dot
+        # spelling of localhost as a DNS name, which still resolves here.
         self.url = f"http://localhost.:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

@@ -52,8 +52,13 @@ treg returns the employee to its sign-in dialog with an explanation.
 
 The team owner subscribes to **SSO** or **SSO + Directory Sync** in **Team -> SSO**
 (`TREG_ENTERPRISE_SSO_BUNDLE_ONLY`, default `true`, shows only the bundle). Once Stripe reports an
-active subscription, the owner opens WorkOS setup from there (the link is generated on click and
-expires after five minutes) or has WorkOS email an IT admin, who needs no treg account. **Require
+active subscription, the owner first opens **Verify company domain**. WorkOS guides the company's
+IT admin through a DNS TXT record; the domain must show **Verified** before WorkOS can activate
+SSO. This is the email domain of the employees using the IdP, not treg's domain. The owner then
+opens WorkOS SSO setup (the link is generated on click and expires after five minutes) or has
+WorkOS email an IT admin, who needs no treg account. IT invitations include domain verification,
+SSO, and Directory Sync when the subscribed plan includes it. Existing SSO setup links remain
+available while verification is pending, so an in-progress connection can resume. **Require
 SSO** becomes available only after a successful WorkOS sign-in. Non-owners see the SSO tab, to
 copy the sign-in link, only once a paid connection is ready.
 

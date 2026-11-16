@@ -124,10 +124,11 @@ through `audit.py`: it drops rows past its queue bound and swallows exceptions.
 **Column width.** A Postgres `integer` holds at most $2,147.48 in micro-USD. Running totals and caps
 (`Org.balance_micro`, `daily_cap_micro`, the auto-top-up amounts, `CreditBlock.amount_micro` and
 `remaining_micro`, `Hold.amount_micro`, `TagBudget`'s caps, `spent_today_micro`) are `BIGINT`
-(revision 0093). Per-row journal amounts (`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`:
-one row holds one call's or one top-up's amount, which `billing.TOPUP_MAX_USD` keeps far below the
-limit, and changing a type there rewrites a very large table under an exclusive lock. A new column
-that sums or caps money is `BIGINT` from its first revision.
+(revision 0093); `autotopup_monthly_cap_micro` is `BIGINT` (revision 0103). Per-row journal amounts
+(`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`: one row holds one call's or one top-up's
+amount, which `billing.TOPUP_MAX_USD` keeps far below the limit, and changing a type there rewrites a
+very large table under an exclusive lock. A new column that sums or caps money is `BIGINT` from its
+first revision.
 
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
@@ -325,8 +326,15 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
 - `settle: usage` reserves what the rate-card table says THIS request costs and settles the reported
   figure, which may exceed the reserve: the ledger takes the difference, the next reserve is the
   gate, and `reconcile.async_task_settlement` lists every `overrun` and every
-  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). A success with no usage figure settles
-  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling. The unit's
+  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). The next reserve gates only calls in
+  sequence; calls in flight together all passed the balance gate already. So a row whose reported
+  figure can exceed the estimate declares its worst case (`cost.worst_case`, `settle.worst_case` in
+  v2; `Pricing.worst_case_micro`, `MarketplaceCall.worst_case_micro`), and `_platform_reserve` holds
+  the higher of the estimate and the worst case, through the tag, member and daily-cap gates as
+  well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
+  basis's `reserve_micro`: a success with no usage figure settles
+  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling or the worst case.
+  The validator warns on a usage row with no worst case. The unit's
   micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
   task in flight; a non-USD basis without a frozen rate settles at the reserve.
 
@@ -536,8 +544,10 @@ low balance produces ONE charge.
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
-  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD`; a cap below one
-  refill is refused.
+  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
+  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
+  `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
   charge, else an hour divided by the team's `autotopup_max_per_hour` (0 means
   `autotopup_default_per_hour`). The number is part of the mandate text.
@@ -832,7 +842,7 @@ row.
   maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
   unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
   `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
-  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.

@@ -376,13 +376,18 @@ def test_calling_code(number, code):
     assert P.calling_code(number) == code
 
 
-def test_ref_parts():
-    assert ev.ref_parts("abc") == (None, None, None)
-    assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
-    assert ev.ref_parts("abc:v") == ("abc", "v", None)
-    assert ev.ref_parts("abc:r0:p3") == ("abc:r0", "p3", None)
-    assert ev.ref_parts("abc:s2") == ("abc", "s2", None)
-    assert ev.ref_parts("abc:s2.7") == ("abc", "s2.7", None)
+@pytest.mark.parametrize("ref,parts", [
+    ("abc", (None, None, None)),
+    ("abc:r2", ("abc", "r2", 2)),
+    ("abc:v", ("abc", "v", None)),
+    ("abc:u", ("abc", "u", None)),
+    ("abc:r0:p3", ("abc:r0", "p3", None)),
+    ("abc:s2", ("abc", "s2", None)),
+    ("abc:s2.0", ("abc", "s2.0", None)),
+    ("abc:s2.13", ("abc", "s2.13", None)),
+])
+def test_ref_parts(ref, parts):
+    assert ev.ref_parts(ref) == parts
 
 
 def test_an_unknown_analytics_mode_fails_the_contract():

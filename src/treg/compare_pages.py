@@ -2444,136 +2444,6 @@ COMPETITORS: dict[str, dict] = {
             ("Waterfall enrichment", "https://www.clay.com/waterfall-enrichment"),
         ],
     },
-    "apollo": {
-        "name": "Apollo.io",
-        "short": "Apollo",
-        "site": "https://www.apollo.io",
-        "group": "gtm",
-        "mono": "#1E3A8A",
-        "logo": "/logos/apollo.svg",
-        "logo_fills": True,
-        "title": "treg vs Apollo.io: Apollo MCP, API and pricing compared",
-        "description": "Apollo MCP and API reach Apollo's own 240M+ contacts. treg gives an agent "
-                       "Apollo and other people data providers per call, no seats.",
-        "sub": "Apollo and many other data providers on one token, with no seats. Apollo.io adds its "
-               "own database, outreach and a CRM.",
-        "their_words": "Grow revenue with one connected GTM system.",
-        "tldr": "Both give you people and company data, and Apollo's API is in the treg catalog. treg "
-                "is like OpenRouter for tools: one API key and one balance for many paid APIs. treg "
-                "lets your agent call Apollo beside many other people and company data providers, plus "
-                "SEO, social and ad tools, through one token, per call at the provider's rate with 0% "
-                "markup and no seats. Apollo is a full sales platform: its own contact database, "
-                "sequences, a dialer and a CRM, on per-seat plans with credits. Keep Apollo for your "
-                "reps, connect your Apollo key to treg, and treg never meters your agent's calls on it.",
-        "spec": {"billing": "Per seat, with credits", "start": "Free plan, no time limit",
-                 "keys": "Your Apollo account", "code": "Hosted only"},
-        "fit_them": [
-            "Your reps need sequences, a dialer, call recording and a CRM.",
-            "You want 240M+ contacts and 30M+ companies with rich filters in one product.",
-            "You want a first-party MCP server with about 60 actions, including writes.",
-            "You want a free plan with no time limit, and many API endpoints that use no credits.",
-        ],
-        "fit_treg": [
-            "Your agent checks several people and company data providers through one token.",
-            "You want no seats: each call billed at the provider's rate, with 0% markup.",
-            "You want SEO, social, ad library and generation tools beside the people data.",
-            "You already have an Apollo key and want your agent to use it, never metered, beside every "
-            "other provider.",
-            "You want a team daily spend cap and a per-call cost ceiling on your agent's calls.",
-        ],
-        "cells": _c(
-            how_pay="Per-seat plans with credits that reset each cycle. Apollo's own article (17 September "
-                    "2026) lists Basic $49, Professional $79 and Organization $119 per user a month, billed "
-                    "annually.",
-            free_start="A free plan with no time limit. Search and enrichment by MCP or CLI need a work email.",
-            fees="Enrichment costs 1 to 9 credits a person (+8 with a mobile number). Many other API endpoints "
-                 "use no credits.",
-            catalog="240M+ contacts and 30M+ companies in its own database.",
-            data="Its own people and company data, plus waterfall email and phone from other vendors, in "
-                 "credits.",
-            own_accounts="Mailboxes for sequences; free plans connect Gmail only.",
-            actions="About 60 MCP actions, including CRM records, lists, sequences and one-off email.",
-            answer="Apollo's own API response.",
-            mcp="A first-party remote MCP server with OAuth or an API key.",
-            api_cli="A REST API with an OpenAPI spec, and a CLI.",
-            own_keys="Not applicable: you use your Apollo account.",
-            open_source="No. The CLI's source is on GitHub.",
-            price_before="Credit costs per endpoint are published in the API docs.",
-            caps="Per-user credit caps set by admins.",
-            logs="API usage and credit usage stats.",
-            team="Seat-based teams; SSO on Custom plans.",
-        ),
-        "treg_cells": {
-            "catalog": "{ENDPOINTS} tools across {PROVIDERS} providers, including Apollo's people search and "
-                       "enrichment and many other people and company data providers.",
-        },
-        "better": [
-            ("Its own database.", "240M+ contacts and 30M+ companies, searchable with rich filters."),
-            ("Outreach built in.", "Sequences, a dialer, call recording, tasks and deals, in the same system "
-             "as the data."),
-            ("Writes by MCP.", "About 60 actions, including CRM records, lists, sequences and one-off email."),
-            ("Free endpoints.", "Many Apollo API endpoints use no credits."),
-            ("An interface for reps.", "A polished app for people who never touch an agent."),
-        ],
-        "different": [
-            ("Many providers, one token.", "Apollo is one of many people and company data providers among "
-             "{ENDPOINTS} tools across {PROVIDERS} providers. Routed tools try the next provider when one "
-             "misses an email or phone, and say so."),
-            ("No seats, 0% markup.", "A prepaid balance billed per call at the provider's rate. 0% markup is "
-             "a commitment in the terms, with no top-up fee."),
-            ("More than sales data.", "SEO, social, ad libraries, web scraping and generation sit beside the "
-             "people data."),
-            ("Your Apollo key, never metered.", "Connect your own Apollo key, and your agent's Apollo calls use "
-             "your Apollo credits, with no charge from treg."),
-            ("Dollar limits, prices first.", "A team daily spend cap, a per-call cost ceiling and per-member "
-             "call caps, and each tool's price with its source and checked date before the call."),
-        ],
-        "both": "Apollo's API is in the treg catalog. Keep Apollo for your reps' sequences and CRM, connect your "
-                "Apollo key to treg, and let your agent use it beside the other data providers.",
-        "faq": [
-            ("Is there an Apollo.io alternative for AI agents?",
-                 "It depends: treg gives your agent Apollo.io's people search and enrichment beside "
-                 "many other people and company data providers through one token, while Apollo.io is a "
-                 "full sales platform. Apollo.io has its own database of 240M+ contacts and 30M+ "
-                 "companies, sequences, a dialer and a CRM for reps."),
-            ("How much does Apollo.io cost?",
-                 "Apollo.io pricing is a free plan plus per-seat paid plans, while treg has no seats "
-                 "and bills each call at the provider's rate with 0% markup. Apollo's own article of "
-                 "17 September 2026 lists Basic at $49, Professional at $79 and Organization at $119 "
-                 "per user a month, billed annually."),
-            ("Does Apollo.io have an MCP server?",
-                 "Yes. Apollo.io has a first-party remote MCP server with OAuth or an API key, and "
-                 "treg is a remote MCP server with OAuth or a token header. The Apollo.io server lists "
-                 "about 60 actions, including CRM records, lists, sequences and one-off email. Free "
-                 "Apollo.io accounts on a personal email cannot search or enrich by MCP."),
-            ("Does Apollo.io have an API?",
-                 "Yes. Apollo.io has a REST API with an OpenAPI spec and a CLI, and Apollo.io's API is "
-                 "also in the treg catalog. On 3 November 2026 the Apollo.io pricing page said API "
-                 "access is on Custom plans, while Apollo's docs published rate limits for Free "
-                 "through Organization, so check with Apollo.io."),
-            ("Apollo.io vs treg: which is cheaper for an AI agent?",
-                 "It depends on the call: Apollo.io charges 1 to 9 credits to enrich a person, plus 8 "
-                 "when a mobile number comes back, while treg bills each call at the provider's rate "
-                 "and shows the price before you run it. Many other Apollo.io API endpoints use no "
-                 "credits, and Apollo.io credits do not roll over."),
-            ("Can I use Apollo.io and treg together?",
-                 "Yes. Apollo.io's API is in the treg catalog: keep Apollo.io for your reps' sequences "
-                 "and CRM, and connect your Apollo key to treg. Your agent's Apollo calls then use "
-                 "your Apollo credits, with no charge from treg, beside the other data providers."),
-            ("Does treg try another provider when Apollo.io misses an email?",
-                 "Yes, on routed tools. treg's routed tools try the next people data provider when one "
-                 "misses an email or phone, and say so in the answer. Apollo.io adds waterfall email "
-                 "and phone from other vendors, billed in Apollo credits."),
-        ],
-        "sources": [
-            ("Apollo home page", "https://www.apollo.io"),
-            ("Apollo pricing", "https://www.apollo.io/pricing"),
-            ("Apollo plan details, by Apollo", "https://www.apollo.io/insights/more-information-on-what-they-are-paying-for-in-apollo-plan-detailsusage-walkthrough"),
-            ("API pricing", "https://docs.apollo.io/docs/api-pricing.md"),
-            ("Apollo MCP", "https://docs.apollo.io/docs/apollo-mcp.md"),
-            ("Rate limits", "https://docs.apollo.io/reference/rate-limits.md"),
-        ],
-    },
     "openrouter": {
         "name": "OpenRouter",
         "site": "https://openrouter.ai",
@@ -2703,7 +2573,7 @@ UPDATED = "2026-11-06"
 # The comparisons a site footer names, by search demand; the hand-written footers (landing, rankings,
 # showcase, grokbot, people-search, gtm-engineering, aeo) list the same ones
 # (test_footers_name_the_same_comparisons).
-FOOTER = ("clay", "apollo", "composio", "zapier", "apify", "openrouter")
+FOOTER = ("clay", "composio", "zapier", "apify", "openrouter")
 
 
 def modified(key: str | None = None) -> str:
