@@ -21,6 +21,18 @@
       "handler": "treg.api._pool_saturated"
     },
     {
+      "exception": "asyncpg.exceptions.TooManyConnectionsError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "asyncpg.exceptions.CannotConnectNowError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "sqlalchemy.exc.DBAPIError",
+      "handler": "treg.api._db_error"
+    },
+    {
       "exception": "treg.infra.db.ReportBusy",
       "handler": "treg.bootstrap_handlers._report_busy"
     }
