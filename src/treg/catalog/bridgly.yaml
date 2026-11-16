@@ -319,24 +319,3 @@ endpoints:
     price: {value: '1', currency: credit, per: 1, unit: call}
     miss: {when: {path: response.data.posts, op: empty}}
     docs_url: https://docs.bridgly.app/api-reference/reddit/search-reddit-posts
-
-  # --- YouTube ----------------------------------------------------------------------------------
-  - id: bridgly.youtube.video.detail
-    added: '2026-11-16'
-    capability: youtube.video.detail
-    platform: youtube
-    scope: any_account
-    method: POST
-    path: /youtube/get-video
-    name: "YouTube video by link — details, stats, timed transcript"
-    summary: "Fetch a YouTube video from any link or id, Shorts and live streams included: title, description, channel, duration, view and like counts, publish date and timed transcript"
-    input:
-      bodyType: json
-      body:
-        url: {type: string, required: true, note: "any YouTube video link, or the 11-character video id", example: "dQw4w9WgXcQ"}
-        includeTranscript: {type: boolean, required: false, default: true, note: "the transcript costs nothing extra"}
-        transcriptLanguage: {type: string, required: false, note: "language code such as en or pt-BR; the video's default caption track otherwise"}
-    test_request: {body: {url: "dQw4w9WgXcQ"}}
-    price: {value: '1', currency: credit, per: 1, unit: call}
-    miss: {status: [404], means: "the video does not exist or is unavailable; free"}
-    docs_url: https://docs.bridgly.app/api-reference/youtube/fetch-a-videos-full-details-and-transcript-from-its-youtube-link
