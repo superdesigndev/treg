@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -16,6 +17,28 @@ CONSUMED_HEADERS = ("authorization",)
 # Block timestamps and our clock disagree a little; this is the margin past `valid_before`.
 EXPIRY_GRACE = timedelta(seconds=60)
 RPC_TIMEOUT_S = 30.0
+
+
+class _Gate:
+    """`before_remote` of one `verify`, run before its first RPC request and never again."""
+
+    def __init__(self, hook: Callable[[], Awaitable[None]]) -> None:
+        self.hook, self.spent, self.refused = hook, False, None
+
+
+_gate: ContextVar[_Gate | None] = ContextVar("mpp_verify_gate", default=None)
+
+
+async def _before_rpc(request: httpx.Request) -> None:
+    gate = _gate.get()
+    if gate is None or gate.spent:
+        return
+    gate.spent = True
+    try:
+        await gate.hook()
+    except Exception as exc:
+        gate.refused = exc   # pympp may wrap what an RPC raises; `verify` re-raises this
+        raise
 
 
 def _payment_scheme(value: str) -> bool:
@@ -40,9 +63,10 @@ class MppTempoRail:
         self.pay_to = recipient.lower()
         self.realm = realm.lower()
         self._challenge_ttl = timedelta(seconds=challenge_ttl_s)
-        # Tempo's hosted RPC takes its console API key in this header, not in the URL.
-        client = (httpx.AsyncClient(headers={"tempo-api-key": rpc_api_key}, timeout=RPC_TIMEOUT_S)
-                  if rpc_api_key else None)
+        # Tempo's hosted RPC takes its console API key in this header, not in the URL. pympp sends
+        # every RPC through this client, so its hook is where a verification first costs a call.
+        client = httpx.AsyncClient(headers={"tempo-api-key": rpc_api_key} if rpc_api_key else None,
+                                   timeout=RPC_TIMEOUT_S, event_hooks={"request": [_before_rpc]})
         self._chain = Chain(rpc_url or rpc_url_for_chain(chain_id), client=client)
         methods = tempo.charge(
             recipient=recipient, chain_id=chain_id, rpc_url=rpc_url or None, http_client=client,
@@ -84,7 +108,8 @@ class MppTempoRail:
         return [("WWW-Authenticate", value)
                 for value in result.challenge.headers.get_list("www-authenticate")]
 
-    async def verify(self, credential: str, offer: Offer) -> Verified:
+    async def verify(self, credential: str, offer: Offer, *,
+                     before_remote: Callable[[], Awaitable[None]] | None = None) -> Verified:
         from mpp import Credential
         from mpp.errors import PaymentError
 
@@ -97,12 +122,20 @@ class MppTempoRail:
         if not proof and offer.amount_micro <= 0:
             raise PaymentRejected("proof_required", "this request takes a zero-amount proof, not a payment")
         amount = "0" if proof else micro_to_decimal(offer.amount_micro)
+        gate = _Gate(before_remote) if before_remote else None
+        token = _gate.set(gate)
         try:
             validation = await self._mpp.validate_credential(
                 parsed, intent="charge", http_request=self._request(offer),
                 request={"amount": amount})
-        except PaymentError as exc:
-            raise PaymentRejected(_code(exc), str(exc) or exc.title) from exc
+        except Exception as exc:
+            if gate is not None and gate.refused is not None:
+                raise gate.refused from None
+            if isinstance(exc, PaymentError):
+                raise PaymentRejected(_code(exc), str(exc) or exc.title) from exc
+            raise
+        finally:
+            _gate.reset(token)
         if not validation.payer:
             raise PaymentRejected("verification_failed", "the payment names no payer")
         details = validation.details if isinstance(validation.details, dict) else {}

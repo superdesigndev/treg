@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -118,7 +118,8 @@ class X402Rail:
                         payer=payer, amount_micro=0, asset="", pay_to="",
                         expires_at=expires.replace(tzinfo=None), deferrable=False, kind="proof")
 
-    async def verify(self, credential: str, offer: Offer) -> Verified:
+    async def verify(self, credential: str, offer: Offer, *,
+                     before_remote: Callable[[], Awaitable[None]] | None = None) -> Verified:
         from mpp.x402 import X402FormatError, decode_payment_signature
 
         if credential.startswith(SIWX_MARK):
@@ -150,6 +151,8 @@ class X402Rail:
             valid_before = datetime.fromtimestamp(int(authorization.get("validBefore")), UTC)
         except (TypeError, ValueError, OverflowError) as exc:
             raise PaymentRejected("malformed_credential", "the authorization has no validBefore") from exc
+        if before_remote is not None:
+            await before_remote()
         try:
             result = await self._facilitator.verify(payload, requirements)
         except Exception as exc:

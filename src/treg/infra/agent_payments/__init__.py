@@ -7,7 +7,7 @@ CLI and every other server path never load them. No rail opens a database sessio
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
@@ -106,7 +106,10 @@ class PaymentRail(Protocol):
     async def challenge(self, offer: Offer, *, pay: bool = True,
                         prove: bool = False) -> list[tuple[str, str]]: ...
 
-    async def verify(self, credential: str, offer: Offer) -> Verified: ...
+    # `before_remote` runs once, just before the first chain or facilitator request this check
+    # makes; a credential refused by local checks alone never runs it. What it raises propagates.
+    async def verify(self, credential: str, offer: Offer, *,
+                     before_remote: Callable[[], Awaitable[None]] | None = None) -> Verified: ...
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement: ...
 

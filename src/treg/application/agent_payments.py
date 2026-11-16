@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import time
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
@@ -153,8 +153,9 @@ async def limit_request(headers: Mapping[str, str], client_ip: str) -> None:
 
 
 async def _limit_verification() -> None:
-    """Every payment or proof check may cost a chain or facilitator call: one cap across all
-    clients, which many addresses cannot get around."""
+    """A payment or proof check about to make a chain or facilitator call: one cap across all
+    clients, which many addresses cannot get around. The rail runs it only once local checks
+    have passed, so a credential refused locally (or a SIWX proof, checked locally) costs none."""
     async with session_maker() as db:
         ok = await ratestore.rate_check(
             db, RATE_NS, [("verify:all", get_settings().agent_payments_max_verifications_minute)],
@@ -164,6 +165,18 @@ async def _limit_verification() -> None:
         log.warning("agent payments: the payment check cap was reached")
         raise RateLimited("treg is checking too many payments right now; wait a minute and send "
                           "it again")
+
+
+def _once(hook: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
+    """`hook`, run by the first call only: one request spends at most one check."""
+    spent = False
+
+    async def run() -> None:
+        nonlocal spent
+        if not spent:
+            spent = True
+            await hook()
+    return run
 
 
 class PaymentChallenge(Exception):
@@ -355,13 +368,16 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         raise await challenge(paid, reason="ambiguous_payment",
                               message="send one payment credential, not several")
     rail, credential = presented[0]
-    await _limit_verification()
+    check = _once(_limit_verification)
     try:
-        verified = await rail.verify(credential, paid.offer)
+        verified = await rail.verify(credential, paid.offer, before_remote=check)
     except PaymentRejected as exc:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if verified.kind == "proof":
         return await _admit_proof(paid, verified)
+    # A verified payment is settled or looked up on chain next, even one its rail checked
+    # locally (an MPP pull transfer is first broadcast at settlement).
+    await check()
     max_life = get_settings().agent_payments_credit_proof_max_s
     if verified.deferrable and verified.expires_at > _now() + timedelta(seconds=max_life):
         verified = replace(verified, deferrable=False)
@@ -688,9 +704,8 @@ async def credit_of(headers: Mapping[str, str]) -> dict:
                             message="send one proof, not several. " + asked.detail["message"])
         raise asked
     rail, credential = presented[0]
-    await _limit_verification()
     try:
-        verified = await rail.verify(credential, offer)
+        verified = await rail.verify(credential, offer, before_remote=_limit_verification)
     except PaymentRejected as exc:
         asked.detail.update(reason=exc.code, message=f"{exc.message}. {asked.detail['message']}")
         raise asked from exc

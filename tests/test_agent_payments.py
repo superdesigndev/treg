@@ -493,7 +493,7 @@ async def test_a_suspended_payer_is_refused_before_any_payment(anon: AsyncClient
         assert len((await db.execute(select(AgentPayment))).scalars().all()) == 1
 
 
-async def test_concurrent_first_payments_share_one_payer_team(payments_on, monkeypatch):
+async def test_concurrent_first_payments_share_one_payer_team(clients, payments_on, monkeypatch):
     real = agent_payments.make_payer_team
     address = "0x" + "cd" * 20
 
@@ -1882,7 +1882,7 @@ async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
     assert str(sent[0].url) == "https://rpc.example/testnet"
 
     MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)
-    assert given["http_client"] is None
+    assert "tempo-api-key" not in given["http_client"].headers
 
 
 def test_a_tempo_rpc_key_needs_its_rpc_url(monkeypatch):
@@ -1927,3 +1927,91 @@ async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans()
     assert await chain.block_at(when) == 9_999_000
     logs = await chain.logs(address="0x", topics=[], from_block=9_999_000, to_block=9_999_900)
     assert logs == [{"transactionHash": "0xhit"}] and len(chain.ranges) == 3
+
+
+# ---- what a check costs the global cap ----------------------------------------------------------
+async def test_credentials_refused_locally_do_not_spend_the_check_cap(anon: AsyncClient,
+                                                                       payments_on, facilitator,
+                                                                       monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE", "1")
+    get_settings.cache_clear()
+    junk = [{"SIGN-IN-WITH-X": "x"}, {"PAYMENT-SIGNATURE": "x"}, {"Authorization": "Payment x"}]
+    for i, headers in enumerate(junk):
+        r = await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={**headers, "X-Forwarded-For": f"203.0.113.{i + 1}"})
+        assert r.status_code == 402, r.text
+    for expected in (200, 429):   # the one slot goes to the first check that reaches the facilitator
+        credential, _ = _x402_credential(await anon.get(f"/call/{EP}?aweme_id=7"))
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.status_code == expected, r.text
+    assert facilitator.verifies == 1
+
+
+async def test_a_payment_checked_locally_still_spends_the_check_cap(anon: AsyncClient,
+                                                                    payments_on, chain,
+                                                                    monkeypatch):
+    """An MPP pull transfer is checked without the chain, but settling it is a broadcast."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE", "1")
+    get_settings.cache_clear()
+    for i, expected in enumerate((200, 429)):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+            "Authorization": _mpp_credential(challenge, "0x76" + f"{i + 1}{i + 1}" * 40),
+            "X-Forwarded-For": f"203.0.113.{i + 1}"})
+        assert r.status_code == expected, r.text
+    assert chain.broadcasts == 1
+
+
+async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
+    import json
+
+    from mpp import Challenge, Credential
+
+    from treg.infra.agent_payments import Offer, PaymentRejected
+
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="http://rpc.invalid")
+    rpc: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        method = json.loads(request.content)["method"]
+        rpc.append(method)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
+                                         "result": hex(42431) if method == "eth_chainId" else None})
+
+    rail._chain._client._transport = httpx.MockTransport(answer)
+
+    def offer(path: str) -> Offer:
+        return Offer(amount_micro=FLOOR, method="GET", path=path, query="",
+                     resource_url=f"https://registry.test{path}", description="x",
+                     host="registry.test")
+
+    async def credential(path: str) -> str:
+        challenge = Challenge.from_www_authenticate((await rail.challenge(offer(path)))[0][1])
+        return Credential(challenge=challenge.to_echo(),
+                          payload={"type": "hash", "hash": "0x" + "ab" * 32}).to_authorization()
+
+    spent: list[int] = []
+
+    async def hook() -> None:
+        spent.append(1)
+
+    with pytest.raises(PaymentRejected):   # issued for another route: refused before any RPC
+        await rail.verify(await credential("/call/other"), offer("/call/x"), before_remote=hook)
+    assert (spent, rpc) == ([], [])
+    with pytest.raises(PaymentRejected):   # reaches the chain: one slot, however many RPCs
+        await rail.verify(await credential("/call/x"), offer("/call/x"), before_remote=hook)
+    assert spent == [1] and rpc
+
+    class CapReached(Exception):
+        pass
+
+    async def full() -> None:
+        raise CapReached
+
+    calls = len(rpc)
+    with pytest.raises(CapReached):        # the cap's refusal is what the caller sees
+        await rail.verify(await credential("/call/x"), offer("/call/x"), before_remote=full)
+    assert len(rpc) == calls

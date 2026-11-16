@@ -67,9 +67,14 @@ Three limits (`ratestore` under `agent_payments`), all answering 429 `rate_limit
 - per client address, before the body is read (`limit_request`): requests that carry a payment or
   proof (`agent_payments_max_payments_per_ip_minute`, default 30), and requests that carry none
   (`..._max_quotes_per_ip_minute`, default 120), each of which is priced;
-- across every client (`_limit_verification`): payment and proof checks
-  (`..._max_verifications_minute`, default 600), each of which may cost a Tempo RPC or facilitator
-  call. Many addresses cannot get around it; reaching it is logged.
+- across every client (`_limit_verification`): payment and proof checks that reach the network
+  (`..._max_verifications_minute`, default 600). A rail spends the slot (`verify(...,
+  before_remote=)`) just before its first Tempo RPC or facilitator request, and a verified payment
+  spends it before it is claimed (an MPP pull transfer is checked locally and first reaches the
+  chain at settlement); one request spends at most one. A credential its local checks refuse
+  (undecodable, another route's challenge, a bad HMAC) and a proof checked locally (SIWX, an MPP
+  proof signed by the account itself) cost none, so junk headers from many addresses cannot lock
+  paying wallets out. Many addresses cannot get around it; reaching it is logged.
 
 These checks are atomic (`rate_check(..., atomic=True)`): one upsert creates or locks the key's row
 until the commit, so concurrent requests count every hit. Other `ratestore` callers keep the
