@@ -68,3 +68,13 @@ def test_a_reingest_keeps_a_carried_price_note_without_the_opt_in(ingest, monkey
                    "provenance": {**provenance, "checked": "2026-11-11", "confidence": "verified"}}
     ingest.carry_verification("openrouter", [fresh])
     assert fresh["price"] == byok and fresh["provenance"] == provenance and fresh["settle"] is None
+
+
+def test_a_reingest_keeps_a_reviewed_cache_decision(ingest, monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    row = {"id": "anyapi.web.x", "method": "POST", "path": "/v1/run/web.x", "added": "2026-09-19"}
+    (tmp_path / "anyapi.extended.yaml").write_text(json.dumps(
+        {"provider": "anyapi", "endpoints": [row | {"cache": "forbidden"}]}))
+    fresh = dict(row)
+    ingest.carry_verification("anyapi", [fresh])
+    assert fresh["cache"] == "forbidden"
