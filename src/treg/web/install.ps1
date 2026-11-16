@@ -7,6 +7,9 @@
 # registry. TREG_TOKEN signs in non-interactively; TREG_CHANNEL picks stable or beta.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# .NET's own types for the download, hash and unzip: a Windows PowerShell started from PowerShell 7
+# inherits a module path where Get-FileHash and Expand-Archive do not load.
+Add-Type -AssemblyName System.Net.Http, System.IO.Compression.FileSystem
 
 $Base = '{BASE}'
 $Channel = if ($env:TREG_CHANNEL) { $env:TREG_CHANNEL } else { '{CHANNEL}' }
@@ -53,16 +56,65 @@ function Send-Step([string]$Step) {
       -Body (ConvertTo-Json -Compress -Depth 4 @{ events = @($Record) }) | Out-Null
   } catch {}
 }
-# Why a request failed, in a few words: the HTTP status, Windows PowerShell's WebException status
-# (SecureChannelFailure -> secure_channel_failure) or PowerShell 7's HttpRequestError.
+function ConvertTo-Snake([string]$Name) { ($Name -creplace '(?<=[a-z0-9])([A-Z])', '_$1').ToLower() }
+# Why a request failed, in a few words, from the innermost cause that names one: the socket's error
+# (ConnectionRefused -> connection_refused), a TLS failure, Windows PowerShell's WebException status
+# or PowerShell 7's HttpRequestError.
 function Get-FailureKind([System.Exception]$E) {
-  $Code = try { [int]$E.Response.StatusCode } catch { 0 }
-  if ($Code) { return "http_$Code" }
-  $Name = if ($E -is [System.Net.WebException]) { "$($E.Status)" }
-    elseif ($E.PSObject.Properties['HttpRequestError']) { "$($E.HttpRequestError)" }
-    elseif ($E -is [System.OperationCanceledException] -or $E -is [System.TimeoutException]) { 'Timeout' }
-    else { $E.GetType().Name -replace 'Exception$', '' }
-  return ($Name -creplace '(?<=[a-z0-9])([A-Z])', '_$1').ToLower()
+  for ($X = $E; $X; $X = $X.InnerException) {
+    if ($X -is [System.Net.Sockets.SocketException]) { return (ConvertTo-Snake "$($X.SocketErrorCode)") }
+    if ($X -is [System.Security.Authentication.AuthenticationException]) { return 'tls' }
+  }
+  for ($X = $E; $X; $X = $X.InnerException) {
+    if ($X -is [System.Net.WebException] -and "$($X.Status)" -ne 'UnknownError') { return (ConvertTo-Snake "$($X.Status)") }
+    if ($X.PSObject.Properties['HttpRequestError'] -and "$($X.HttpRequestError)" -ne 'Unknown') {
+      return (ConvertTo-Snake "$($X.HttpRequestError)")
+    }
+    if ($X -is [System.OperationCanceledException] -or $X -is [System.TimeoutException]) { return 'timeout' }
+  }
+  return (ConvertTo-Snake ($E.GetType().Name -replace 'Exception$', ''))
+}
+# Saves $Url to $Path: nothing when it is saved, else why not. A 30-second window that moves under
+# 10 KB gives the transfer up, so a stalled one reaches the mirror; Invoke-WebRequest's timeout does
+# not cover a body that keeps trickling.
+function Save-Url([string]$Url, [string]$Path) {
+  $Client = New-Object System.Net.Http.HttpClient
+  $Client.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+  $Out = $null
+  try {
+    $Get = $Client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead)
+    if (-not $Get.Wait(60000)) { return 'timeout' }
+    $Response = $Get.Result
+    if (-not $Response.IsSuccessStatusCode) { return "http_$([int]$Response.StatusCode)" }
+    $In = $Response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+    $Out = [System.IO.File]::Create($Path)
+    $Buffer = New-Object byte[] 65536
+    $Window = [System.Diagnostics.Stopwatch]::StartNew()
+    $Moved = 0
+    while ($true) {
+      $Read = $In.ReadAsync($Buffer, 0, $Buffer.Length)
+      if (-not $Read.Wait(30000)) { return 'stalled' }
+      if ($Read.Result -eq 0) { return }
+      $Out.Write($Buffer, 0, $Read.Result)
+      $Moved += $Read.Result
+      if ($Window.Elapsed.TotalSeconds -ge 30) {
+        if ($Moved -lt 10240) { return 'stalled' }
+        $Moved = 0
+        $Window.Restart()
+      }
+    }
+  } catch {
+    return (Get-FailureKind $_.Exception)
+  } finally {
+    if ($Out) { $Out.Close() }
+    $Client.Dispose()
+  }
+}
+function Get-Sha256([string]$Path) {
+  $Sha = [System.Security.Cryptography.SHA256]::Create()
+  $Stream = [System.IO.File]::OpenRead($Path)
+  try { return (($Sha.ComputeHash($Stream) | ForEach-Object { $_.ToString('x2') }) -join '') }
+  finally { $Stream.Close(); $Sha.Dispose() }
 }
 # What a file that failed its checksum holds, by its first bytes: an archive, or a page some proxy
 # or filter answered with.
@@ -78,22 +130,17 @@ function Get-FileKind([string]$Path) {
   return 'other'
 }
 # Saves the archive at $Url to $Zip and checks it against the SHA256SUMS at $SumsUrl: nothing when
-# it matches, else the step that failed and why. A transfer that stalls is given up so the mirror
-# gets its turn.
+# it matches, else the step that failed and why.
 function Get-Release([string]$Url, [string]$SumsUrl, [string]$Zip, [string]$Archive) {
-  try {
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Zip -TimeoutSec 120
-    $Sums = (Invoke-WebRequest -UseBasicParsing -Uri $SumsUrl -TimeoutSec 60).Content
-  } catch {
-    return @('download', (Get-FailureKind $_.Exception))
-  }
-  if ($Sums -is [byte[]]) { $Sums = [System.Text.Encoding]::UTF8.GetString($Sums) }
-  $Want = ($Sums -split "`n" | Where-Object { $_ -match "\s\*?$([regex]::Escape($Archive))\s*$" } |
+  $SumsFile = "$Zip.sums"
+  $Kind = Save-Url $Url $Zip
+  if (-not $Kind) { $Kind = Save-Url $SumsUrl $SumsFile }
+  if ($Kind) { return @('download', $Kind) }
+  $Want = ([System.IO.File]::ReadAllText($SumsFile) -split "`n" |
+    Where-Object { $_ -match "\s\*?$([regex]::Escape($Archive))\s*$" } |
     ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
   if (-not $Want) { return @('checksum', 'sums_missing') }
-  if ($Want.ToLower() -ne (Get-FileHash -Algorithm SHA256 -Path $Zip).Hash.ToLower()) {
-    return @('checksum', "got_$(Get-FileKind $Zip)")
-  }
+  if ($Want.ToLower() -ne (Get-Sha256 $Zip)) { return @('checksum', "got_$(Get-FileKind $Zip)") }
 }
 
 Send-Step 'started'
@@ -133,7 +180,7 @@ try {
     }
 
     $Reason = 'archive'
-    Expand-Archive -Path $Zip -DestinationPath (Join-Path $Tmp 'x') -Force
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, (Join-Path $Tmp 'x'))
     $New = Join-Path $Tmp 'x\treg.exe'
     if (-not (Test-Path $New)) { throw 'the archive holds no treg.exe' }
     $Reason = 'install_dir'

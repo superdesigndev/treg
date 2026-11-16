@@ -301,8 +301,9 @@ address has an in-memory window, and a well-formed batch is always a 204. A regi
 PostHog key drops them, so a self-hosted CLI reports nowhere else. `install-bin.sh` and
 `install.ps1` send `cli_install_step` the same way (`started`, then `installed` or `failed` with a
 reason), under the same opt-outs. Each says where the archive came from (`source`: `primary` or
-`mirror`) and, when the first source failed, why (`detail`: curl's exit code as `curl_<n>`, the HTTP
-status as `http_<n>`, Windows PowerShell's WebException status or PowerShell 7's HttpRequestError in
-snake case, or for a mismatch what the file holds, such as `got_html`), after how many `seconds`, and
+`mirror`) and, when the first source failed, why (`detail`: curl's exit code as `curl_<n>`; in
+PowerShell the HTTP status as `http_<n>`, `stalled`, `timeout`, or in snake case the socket error,
+else Windows PowerShell's WebException status or PowerShell 7's HttpRequestError; for a mismatch
+what the file holds, such as `got_html`), after how many `seconds`, and
 the mirror's `mirror_detail` when it failed too; `reason` stays the first source's. A failure after
 the download has its own reason: `archive`, `install_dir`, `install_command`, `run`.
