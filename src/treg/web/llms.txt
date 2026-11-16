@@ -38,7 +38,7 @@ holds those accounts and bills a fraction of a cent per call.
   skills in one line without installing them; do not stop to ask about them here.
 
       curl -fsSL {BASE}/install.sh | sh
-      treg login    # browser sign-in: GitHub, Google or an emailed code
+      treg login    # browser sign-in; tell the human the short code it prints, to type on that page
       treg          # check: account, team, balance, own tools, next commands
 
   Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a

@@ -640,9 +640,9 @@ def cmd_login(args, cfg) -> None:
     # session with one click, else offers every configured door (GitHub / Google / email code).
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
-    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
-    # must echo the code back before it finishes, so a login you didn't start — someone mailing you a
-    # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
+    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The person
+    # types the code from this terminal on the sign-in page, so a login you didn't start — someone
+    # mailing you a /login?cli=… link — can't be approved into a token for them. If the server is too old to know
     # /start, fall back to a locally-minted id (no code) so login still works.
     code = None
     start_exc = None
@@ -666,16 +666,13 @@ def cmd_login(args, cfg) -> None:
             f"  then retry `treg login`.\n"
             f"  (error: {start_exc})"
         )
-    # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
-    # the /login page displays it for a visual match against this terminal instead of making the user
-    # type it. The server still validates the code at approve time — the guard itself is unchanged.
     ad_link = _pending_ad_link()
-    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "") + (f"#code={code}" if code else "")
+    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "")
     # flush=True for non-TTY agent shells where stdout is block-buffered — the pairing code must
     # appear immediately so an agent driving a browser can see and verify it.
     print(f"Opening your browser to sign in…\nIf it doesn't open, visit:\n  {url}\n", flush=True)
     if code:
-        print(f"  The sign-in page shows this code — check it matches:  {_B}{_TEAL}{code}{_R}\n", flush=True)
+        print(f"  Type this code on the sign-in page:  {_B}{_TEAL}{code}{_R}\n", flush=True)
     print("Waiting for authorization…", flush=True)
     try:
         webbrowser.open(url)

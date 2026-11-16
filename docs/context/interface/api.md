@@ -136,7 +136,7 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 ### CLI pairing
 
 `POST /auth/cli/start` mints a login id and a four-character code shown only in the terminal,
-never in a URL. `POST /auth/cli/approve` requires the session, the same-origin CSRF check, the
+never in a URL; the user types it on the `/login` page, which never reads a code from its link. `POST /auth/cli/approve` requires the session, the same-origin CSRF check, the
 matching code and membership in the chosen team; `GET /auth/cli/poll` hands over the Default key
 exactly once (only a seven-day bootstrap credential when no team was chosen).
 
