@@ -49,6 +49,11 @@ before their `asyncio.run()` loop closes, so the serving loop never receives con
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
 
+Settings come from the environment and `.env`. With `TREG_AWS_SECRET_ID` set to a Secrets Manager
+ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` names, and its values
+win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
+boto3 takes credentials from the standard `AWS_*` variables.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
