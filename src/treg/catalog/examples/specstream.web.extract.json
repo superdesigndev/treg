@@ -1,0 +1,22 @@
+{
+  "data": {
+    "request_id": "ext_example_0001",
+    "results": [
+      {
+        "url": "https://example.com",
+        "status": "ok",
+        "title": "Example Domain",
+        "text": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+        "text_truncated": false,
+        "published": null,
+        "modified": null,
+        "read_from": "live",
+        "captured_at": null,
+        "read_from_url": null,
+        "emails": []
+      }
+    ],
+    "took_ms": 320,
+    "price_usd": 0.0008
+  }
+}

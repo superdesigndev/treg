@@ -3250,6 +3250,12 @@ adapters:
     const: {body.numResults: 10}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
+  specstream.web.search:
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    in_expr: {queryParams.num: "at_most(limit, 100)", queryParams.passages: "choose(contents, 'true', null)"}
+    const: {queryParams.speed: fast}
+    out: {results: data.sources, count: "len(data.sources)"}
 
   search1api.web.crawl:
     accepts: [[url]]
@@ -3331,6 +3337,12 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
+  specstream.web.extract:
+    accepts: [[url]]
+    in_expr: {body.urls: "list(url)"}
+    test_identity: {url: "https://example.com"}
+    const: {body.format: markdown}
+    out: {pages: data.results, count: "len(data.results)"}
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
