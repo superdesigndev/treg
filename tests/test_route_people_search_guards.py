@@ -19,7 +19,7 @@ def exa_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("paging", [{"page": 2}, {"offset": 100}, {"cursor": "abc"}])
+@pytest.mark.parametrize("paging", [{"page": 2}, {"offset": 100}, {"next_cursor": "abc"}])
 async def test_paging_key_is_refused_before_any_call(clients, exa_on, monkeypatch, paging):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
@@ -46,3 +46,65 @@ async def test_exa_rider_is_held_against_the_ceiling(clients, exa_on, monkeypatc
     charged = before - await _balance(clients)
     assert charged == charge <= float(cap) * 1_000_000
     assert (seen == []) == (status == 402)
+
+
+@pytest.fixture
+def lists_on(monkeypatch, platform_on):
+    for p in ("QUICKENRICH", "DROPLEADS"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"K-{p}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "quickenrich,dropleads")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _qe(n, cursor):
+    return {"data": [{"first_name": "P", "last_name": str(i), "employee_linkedin": f"https://linkedin.com/in/q{i}"}
+                     for i in range(n)], "meta": {"next_cursor": cursor}}
+
+
+def _dl(n, total):
+    return {"data": {"leads": [{"fullName": f"D {i}", "linkedinUrl": f"https://linkedin.com/in/d{i}"}
+                               for i in range(n)], "total": total}}
+
+
+async def _page(clients, body, prefer):
+    r = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Prefer": prefer})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def test_cursor_pages_through_the_provider_that_served_page_one(clients, lists_on, monkeypatch):
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"quickenrich": [(200, _qe(3, "QE-2")), (200, _qe(3, None))], "*": []}, seen))
+    body = {"title": "VP Sales", "limit": 3}
+    first = await _page(clients, body, "quickenrich")
+    cursor = first["output"]["next_cursor"]
+    assert cursor.startswith("trg1.") and first["raw"]["meta"]["next_cursor"] == "QE-2"
+    # A later answer from page one's provider only, even with another preferred.
+    second = await _page(clients, {**body, "cursor": cursor}, "dropleads")
+    assert [s[0] for s in seen] == ["quickenrich", "quickenrich"]
+    assert seen[1][3]["cursor"] == "QE-2" and "cursor" not in seen[0][3]
+    assert second["output"]["next_cursor"] is None and len(second["output"]["people"]) == 3
+
+
+async def test_a_provider_that_cannot_page_names_the_ones_that_can(clients, lists_on, monkeypatch):
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({"dropleads": [(200, _dl(2, 4))], "*": []}, seen))
+    answer = await _page(clients, {"title": "VP Sales", "limit": 2}, "dropleads")
+    assert answer["output"].get("next_cursor") is None
+    assert "X-Treg-Route-Prefer: quickenrich" in answer["_treg"]["paging"]
+
+
+@pytest.mark.parametrize("change", [{"title": "CFO"}, {"limit": 50}, "tamper"])
+async def test_cursor_for_another_question_is_refused(clients, lists_on, monkeypatch, change):
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({"quickenrich": [(200, _qe(3, "QE-2"))], "*": []}, seen))
+    body = {"title": "VP Sales", "limit": 3}
+    cursor = (await _page(clients, body, "quickenrich"))["output"]["next_cursor"]
+    nxt = {**body, "cursor": cursor + "x"} if change == "tamper" else {**body, **change, "cursor": cursor}
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json=nxt)
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "route_cursor_invalid", r.text
+    assert len(seen) == 1 and await _balance(clients) == before

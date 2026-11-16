@@ -54,6 +54,8 @@ from __future__ import annotations
 
 
 import asyncio
+import base64
+import hashlib
 import json
 import re
 import logging
@@ -152,6 +154,47 @@ WATERFALL_HEADER = "x-treg-route-waterfall"
 MAX_COST_HEADER = "x-treg-route-max-cost"
 # Body keys an agent sends to page; a routed call refuses them unless its contract declares one.
 _PAGING_KEYS = frozenset({"page", "offset", "cursor", "next_cursor", "page_token", "after", "skip", "start"})
+_CURSOR_PREFIX = "trg1."
+
+
+def _question_key(given: dict) -> str:
+    """The question a cursor pages: the body without its cursor. Another question gets a 422."""
+    rest = {k: v for k, v in given.items() if k != "cursor"}
+    return hashlib.sha256(json.dumps(rest, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _issue_cursor(endpoint_id: str, value, given: dict) -> str:
+    raw = json.dumps({"e": endpoint_id, "v": value, "q": _question_key(given)}, separators=(",", ":"))
+    return _CURSOR_PREFIX + base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _read_cursor(ep: dict, token, given: dict) -> tuple[str, object]:
+    """(endpoint id, provider page value) from a cursor treg issued for this question, else a 422."""
+    def refuse(why: str):
+        return ResolutionFailed("catalog_parameter_invalid", status_code=422, parameter="cursor", rule="cursor",
+                                detail={"error": "route_cursor_invalid", "endpoint_id": ep["id"], "message":
+                                        f"{why} Send `cursor` exactly as the previous answer's output.next_cursor "
+                                        "returned it, with the same body otherwise. Nothing was charged."})
+    if not isinstance(token, str) or not token.startswith(_CURSOR_PREFIX):
+        raise refuse("This is not a cursor treg issued; a provider's own token goes to that provider directly.")
+    try:
+        packed = token[len(_CURSOR_PREFIX):]
+        data = json.loads(base64.urlsafe_b64decode(packed + "=" * (-len(packed) % 4)))
+        eid, value, key = data["e"], data["v"], data["q"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise refuse("The cursor is damaged.") from exc
+    cat = catalog_store.load()
+    adapter = cat.adapters.get(eid)
+    if (key != _question_key(given) or (cat.by_id.get(eid) or {}).get("capability") != ep["capability"]
+            or adapter is None or not adapter.paging):
+        raise refuse("The cursor belongs to another question: the body changed since the page it came from.")
+    return eid, value
+
+
+def _next_cursor(cand, provider_cursor, given: dict) -> str | None:
+    """The treg cursor for the page after this answer, when its provider gave one treg can carry."""
+    ok = isinstance(provider_cursor, (str, int)) and provider_cursor != "" and len(str(provider_cursor)) <= CURSOR_MAX
+    return _issue_cursor(cand.endpoint["id"], provider_cursor, given) if ok else None
 PREFER_HEADER = "x-treg-route-prefer"
 EXCLUDE_HEADER = "x-treg-route-exclude"
 MIN_RESULTS_HEADER = "x-treg-route-min-results"
@@ -559,10 +602,10 @@ def _adapter_uses_limit(adapter) -> bool:
 
 def _long_cursor(output: dict | None, adapter, merged: bool) -> tuple[dict | None, dict | None]:
     """A `next_cursor` longer than CURSOR_MAX leaves `output` and is named on `_treg` instead.
-    A routed endpoint takes no cursor, so the token only serves a direct call to the provider,
-    and that call reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice)."""
+    A provider token the router cannot page with serves only a direct call to the provider, which
+    reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice). A treg cursor stays."""
     cursor = (output or {}).get("next_cursor")
-    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX:
+    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX or cursor.startswith(_CURSOR_PREFIX):
         return output, None
     path = (adapter.out_map.get("next_cursor") if adapter is not None and not merged else None)
     return {**output, "next_cursor": None}, {"chars": len(cursor), **({"in_raw": path} if path else {})}
@@ -1106,6 +1149,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if not isinstance(given, dict):
         raise ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
                                detail=f"{ep['id']} expects a JSON object body")
+    # `cursor` resumes a paged answer on the endpoint that served it; it is no part of the question.
+    resume = _read_cursor(ep, given.pop("cursor"), given) if "cursor" in given else None
     parent.route_summary = {"identity": given, "size": len(body_bytes or b"")}
     contract = catalog_store.load().contracts.get(ep["capability"])
     declared = set(contract.identity_types) | set(contract.filters or {}) if contract else set()
@@ -1113,12 +1158,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # Dropped silently, the next "page" is page one again and bills again.
         raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
             "error": "route_paging_unsupported", "endpoint_id": ep["id"], "fields": paging,
-            "message": f"{ep['id']} answers one page and cannot send {', '.join(paging)}; a repeat returns the same rows "
-                       "and bills again. For more rows raise `limit`, or call the provider named in X-Treg-Served-By "
-                       "directly with its own page or cursor field. Nothing was charged."})
+            "message": f"{ep['id']} cannot send {', '.join(paging)}; a repeat would return the same rows and bill "
+                       "again. To page, send the previous answer's output.next_cursor as `cursor` with the same body "
+                       "(null means no next page there). Nothing was charged."})
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
-    if (contract and options.waterfall and not get_header(MIN_RESULTS_HEADER) and not get_header(MERGE_HEADER)
+    if resume:
+        # A page continues one provider's list: no other provider, no merge, no fill to a limit.
+        options.waterfall, options.merge, options.min_results = False, False, None
+    elif (contract and options.waterfall and not get_header(MIN_RESULTS_HEADER) and not get_header(MERGE_HEADER)
             and (target := contract.fill_target(given))):
         # `fill_limit_when`: the caller's `limit` is how many rows it wants, so a shorter answer
         # goes on to the next provider and the rows add up, within MAX_WEAK_FALLBACKS and the cost cap.
@@ -1166,6 +1214,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
+    if resume:
+        plan.candidates = [c for c in plan.candidates if c.endpoint["id"] == resume[0]]
+        if not plan.candidates:
+            raise ResolutionFailed("route_no_candidate", status_code=503, detail={
+                "error": "route_page_unavailable", "endpoint_id": ep["id"], "page_endpoint": resume[0],
+                "message": f"{resume[0]}, which served the earlier pages, cannot serve this one right now. Retry "
+                           "later, or start again without `cursor`. Nothing was charged."})
     _summarize(parent, route_rule=plan.route_rule, **({"health": plan.health} if plan.health else {}))
     if not plan.candidates:
         raise _no_candidate_refusal(ep, plan, options)
@@ -1235,6 +1290,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             continue
         try:
             query, body = cand.adapter.to_upstream(plan.identity, cand.variant)
+            if resume:
+                path = next(iter(cand.adapter.paging.values()))
+                P.set_path({"queryParams": query, "body": body}, path,
+                           resume[1] if path.startswith("body.") else str(resume[1]))
         except Exception as exc:  # noqa: BLE001 — adapter threw; record error and try next candidate
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", None, 0,
@@ -1760,12 +1819,25 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 asked=asked_n, returned=returned_n, served_by=served,
                 merged=bool(merged_from), adapter=cand.adapter)
 
+    paging_note = ""
+    if getattr(cand.adapter, "paging", None) and not merged_from and output:
+        # One provider's list continues only through that provider: a treg cursor replaces its token.
+        output = {**output, "next_cursor": _next_cursor(cand, output.get("next_cursor"), given)}
+    elif not resume and not merged_from and output and _list_field(plan.contract) and output.get(_list_field(plan.contract)):
+        # A list from a provider that cannot page: say which candidates for this question can,
+        # rather than let a null cursor read as "no more rows".
+        pageable = list(dict.fromkeys(c.endpoint["provider"] for c in plan.candidates
+                                      if getattr(c.adapter, "paging", None)))
+        if pageable:
+            paging_note = (f"{served} does not page. For more rows than one answer, ask a provider that "
+                           f"does with X-Treg-Route-Prefer: {','.join(pageable)} and follow output.next_cursor.")
     output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
 
     body_out = {"output": output or _empty_output(plan.contract), "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
                           **({"next_cursor": long_cursor} if long_cursor else {}),
+                          **({"paging": paging_note} if paging_note else {}),
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
