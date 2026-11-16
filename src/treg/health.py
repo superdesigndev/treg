@@ -18,7 +18,7 @@ from sqlmodel import select
 from . import crypto, oauth, oauth_providers
 from .config import get_settings
 from .infra.upstream import injectors
-from .infra.upstream.ssrf import host_is_public as host_is_public, safe_webhook_url, url_host_is_public
+from .infra.upstream.ssrf import host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 

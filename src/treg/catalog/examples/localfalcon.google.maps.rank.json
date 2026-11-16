@@ -1,0 +1,129 @@
+{
+  "code": 200,
+  "code_desc": false,
+  "success": true,
+  "message": false,
+  "parameters": {
+    "lat": "40.722233",
+    "lng": "-73.987429",
+    "keyword": "deli",
+    "place_id": "ChIJCar0f49ZwokR6ozLV-dHNTE"
+  },
+  "data": {
+    "found": 1,
+    "rank": 5,
+    "count": 20,
+    "results": [
+      {
+        "rank": 1,
+        "map_id": "0x89c25938a39586cd:0x71c3dd05a65cf933",
+        "map_id_encoded": "ChIJzYaVozhZwokRM_lcpgXdw3E",
+        "title": "MOCA wholesome foods & deli",
+        "address": "159 Essex St, New York, NY 10002",
+        "latitude": 40.721107599999996,
+        "longitude": -73.9870767,
+        "rating": 4.9,
+        "reviews_cnt": 36,
+        "phone": "(917) 751-8749",
+        "link": null,
+        "display_link": null,
+        "claimed": false,
+        "category": [
+          {
+            "id": "deli",
+            "title": "Deli"
+          }
+        ]
+      },
+      {
+        "rank": 2,
+        "map_id": "0x89c2595cd541b18b:0x48c8260cbbc8fa4f",
+        "map_id_encoded": "ChIJi7FB1VxZwokRT_rIuwwmyEg",
+        "title": "Fancy Ny Grill And Deli",
+        "address": "20 Avenue A, New York, NY 10009",
+        "latitude": 40.722771099999996,
+        "longitude": -73.98562,
+        "rating": 4.6,
+        "reviews_cnt": 346,
+        "phone": "(646) 329-6293",
+        "link": "https://fancynygrillanddeli.com/",
+        "display_link": "fancynygrillanddeli.com",
+        "claimed": false,
+        "category": [
+          {
+            "id": "deli",
+            "title": "Deli"
+          }
+        ]
+      },
+      "… 18 more item(s) truncated"
+    ],
+    "ttr": 4,
+    "raw": {
+      "pointId": "api17947918005626",
+      "platform": "google_maps",
+      "query": "deli",
+      "lat": 40.722233,
+      "lng": -73.987429,
+      "acceptedAt": "2026-11-16T01:16:40.533Z",
+      "status": "done",
+      "general": {
+        "location": {
+          "latitude": 40.722233,
+          "longitude": -73.987429
+        },
+        "maps_search_type": "search"
+      },
+      "organic": [
+        {
+          "rank": 1,
+          "map_id": "0x89c25938a39586cd:0x71c3dd05a65cf933",
+          "map_id_encoded": "ChIJzYaVozhZwokRM_lcpgXdw3E",
+          "title": "MOCA wholesome foods & deli",
+          "address": "159 Essex St, New York, NY 10002",
+          "latitude": 40.721107599999996,
+          "longitude": -73.9870767,
+          "rating": 4.9,
+          "reviews_cnt": 36,
+          "phone": "(917) 751-8749",
+          "link": null,
+          "display_link": null,
+          "claimed": false,
+          "category": [
+            {
+              "id": "deli",
+              "title": "Deli"
+            }
+          ]
+        },
+        {
+          "rank": 2,
+          "map_id": "0x89c2595cd541b18b:0x48c8260cbbc8fa4f",
+          "map_id_encoded": "ChIJi7FB1VxZwokRT_rIuwwmyEg",
+          "title": "Fancy Ny Grill And Deli",
+          "address": "20 Avenue A, New York, NY 10009",
+          "latitude": 40.722771099999996,
+          "longitude": -73.98562,
+          "rating": 4.6,
+          "reviews_cnt": 346,
+          "phone": "(646) 329-6293",
+          "link": "https://fancynygrillanddeli.com/",
+          "display_link": "fancynygrillanddeli.com",
+          "claimed": false,
+          "category": [
+            {
+              "id": "deli",
+              "title": "Deli"
+            }
+          ]
+        },
+        "… 18 more item(s) truncated"
+      ],
+      "ajaxMetadata": {
+        "listVariant": 16,
+        "incompleteFallback": null
+      },
+      "completedAt": "2026-11-16T01:16:41.357Z"
+    }
+  }
+}

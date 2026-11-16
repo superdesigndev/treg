@@ -48,6 +48,9 @@ async def local_redis(monkeypatch):
     assert all([await store.ping() for store in stores])
     monkeypatch.setattr(get_settings(), "kv_url", url)
     monkeypatch.setattr(kv, "store", lambda: stores[0])
+    from treg.infra import money_admission
+
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     yield stores
     for store in stores:
         await store.aclose()

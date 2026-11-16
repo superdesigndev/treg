@@ -183,6 +183,24 @@ async def test_login_round_trip_is_anchored_to_the_host_it_started_on(raw_client
     assert _login_callback_base(req("anything.else")) == "https://treg.to"
 
 
+async def test_links_never_take_a_host_outside_this_deployment(raw_client):
+    from starlette.requests import Request as StarletteRequest
+
+    from treg.routers.auth_helpers import trusted_public_base
+    from treg.routers.billing import _return_base
+
+    def req(host: str) -> StarletteRequest:
+        return StarletteRequest({"type": "http", "method": "POST", "path": "/", "scheme": "http",
+                                 "headers": [(b"host", host.encode()), (b"x-forwarded-proto", b"https")],
+                                 "query_string": b""})
+
+    for build in (trusted_public_base, _return_base):
+        assert build(req("attacker.example")) == "https://treg.to"
+        assert build(req("treg.to.attacker.example")) == "https://treg.to"
+        assert build(req("")) == "https://treg.to"
+        assert build(req("treg.superdesign.dev")) == "https://treg.superdesign.dev"
+
+
 async def test_env_revert_is_a_complete_rollback(monkeypatch):
     """The staged-rollout contract: with TREG_PUBLIC_URL back on the OLD name, everything minted
     while treg.to was canonical keeps working (symmetric aliases), and no redirect can loop —

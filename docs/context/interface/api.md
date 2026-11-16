@@ -256,7 +256,8 @@ cannot shadow the catalog endpoint; from the credential ladder on it is the same
 A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
 (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
-relays through a virtual tool with no bindings when no team credential exists: no platform key, no
+relays through a virtual tool with no bindings when no team credential exists (a public provider has
+none: a same-named team secret is ignored): no platform key, no
 balance entry, caller headers preserved, so a caller-supplied provider key can still be charged by
 the provider.
 
@@ -282,6 +283,7 @@ the provider.
 | 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
 | 429 `org_*` | Published org flow-control refusals ([org-flow-control](../architecture/org-flow-control.md)). |
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |
+| 503 `upstream_busy` | No upstream connection was free within the pool wait, or the provider is at its in-flight cap on `TREG_UPSTREAM_INFLIGHT_MODE=enforce` ([capacity](../ops/capacity.md)); nothing sent, not charged, `Retry-After` set. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
 | 429 `member_spend_cap_reached` | The caller's own daily spend limit on treg's keys is reached ([money](../architecture/money.md)); refused before it is sent, not charged. `detail` carries `spent_today_micro`, `daily_spend_cap_micro`, `resets_at` (the next 00:00 UTC) and `retry_after_s`, with `Retry-After` the same. `member_spend_cap_unavailable` when the limit cannot be checked. |
@@ -360,6 +362,28 @@ road. Both answer one stable JSON shape (`state` pending, succeeded, failed or e
 terminal response, result or fetch command, resume line) with `Retry-After` from the
 descriptor's interval. Unknown and other teams' ids are 404 `task_not_found` with
 `X-Treg-Error: 1`. Mechanism and fields: [tasks](../architecture/tasks.md).
+
+## `402 payment_required` - a keyless call that can pay (off by default)
+
+With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no treg credential at
+all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
+"reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
+"protocols", "message"}}` with
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
+`PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
+normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
+`X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
+`X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
+carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
+`route_max_cost`) answer 503 there. A settlement treg cannot confirm answers 503
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many payments from one address answer 429
+`rate_limited` with `Retry-After`. A wallet whose payer team or its member is suspended answers 403
+`payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call
+is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
+of an async tool is served to a wallet that already paid for a call: its 402 has `reason:
+proof_required`, and the payment it asks for is checked and never settled. While the feature is
+on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`
+when it is not). See [agent payments](../architecture/agent-payments.md).
 
 ## Request transport
 

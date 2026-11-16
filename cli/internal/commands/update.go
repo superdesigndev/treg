@@ -9,8 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/output"
+	"github.com/superdesigndev/treg/cli/internal/telemetry"
 	"github.com/superdesigndev/treg/cli/internal/update"
 )
 
@@ -63,8 +65,12 @@ func updateCmd(env *Env) *cobra.Command {
 				return nil
 			}
 			errln(fmt.Sprintf("Downloading treg %s...", m.Version))
-			if err := update.Install(context.Background(), m, exe); err != nil {
+			d, err := update.Install(context.Background(), m, exe)
+			if err != nil {
 				return output.Fail("treg: update failed: %v", err)
+			}
+			if d.Source == "mirror" {
+				errln(fmt.Sprintf("(the first download failed: %s; used the mirror)", d.Detail))
 			}
 			outf("Updated treg %s -> %s (%s channel).\n", buildinfo.Version, m.Version, env.channel())
 			refreshSkills(exe, false)
@@ -75,8 +81,8 @@ func updateCmd(env *Env) *cobra.Command {
 	return cmd
 }
 
-// backgroundUpdateCmd is what a command starts, detached, once a day: it never prints, and keeps
-// its outcome for `treg update` to report.
+// backgroundUpdateCmd is what a command starts, detached, once a day: it never prints, keeps its
+// outcome for `treg update` to report, and records it as a usage event the next command sends.
 func backgroundUpdateCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:    "__update",
@@ -88,28 +94,53 @@ func backgroundUpdateCmd(env *Env) *cobra.Command {
 				return &output.Exit{Code: 1}
 			}
 			update.RemovePythonCLI(exe)
+			event := map[string]any{"from_version": buildinfo.Version}
+			report := func(outcome, result string) {
+				event["outcome"] = outcome
+				update.RecordResult(result)
+				telemetry.Update(event, env.Cfg.Channel)
+			}
 			m, err := update.Latest(context.Background(), env.Registry(), env.channel())
 			if _, none := errors.AsType[*update.NoRelease](err); none {
-				update.RecordResult("no release on the " + env.channel() + " channel yet")
+				report("no_release", "no release on the "+env.channel()+" channel yet")
 				return nil
 			}
 			if err != nil {
-				update.RecordResult("check failed: " + err.Error())
+				event["detail"] = checkFailure(err)
+				report("check_failed", "check failed: "+err.Error())
 				return &output.Exit{Code: 1}
 			}
+			event["to_version"] = m.Version
 			if !update.Newer(m.Version, buildinfo.Version) {
-				update.RecordResult("up to date at " + buildinfo.Version)
+				report("up_to_date", "up to date at "+buildinfo.Version)
 				return nil
 			}
-			if err := update.Install(context.Background(), m, exe); err != nil {
-				update.RecordResult("update to " + m.Version + " failed: " + err.Error())
+			d, err := update.Install(context.Background(), m, exe)
+			event["source"], event["detail"], event["mirror_detail"] = d.Source, d.Detail, d.MirrorDetail
+			if d.Detail != "" {
+				event["seconds"] = d.Seconds
+			}
+			if f, ok := errors.AsType[*update.Failure](err); ok {
+				event["reason"] = f.Step
+				if d.Detail == "" {
+					event["detail"] = f.Detail
+				}
+				report("failed", "update to "+m.Version+" failed: "+err.Error())
 				return &output.Exit{Code: 1}
 			}
-			update.RecordResult("updated " + buildinfo.Version + " -> " + m.Version)
+			report("updated", "updated "+buildinfo.Version+" -> "+m.Version)
 			refreshSkills(exe, true)
 			return nil
 		},
 	}
+}
+
+// checkFailure is why asking the registry for the release failed, in a usage event's words.
+func checkFailure(err error) string {
+	if s, ok := errors.AsType[*update.CheckStatus](err); ok {
+		return fmt.Sprintf("http_%d", s.Code)
+	}
+	return api.FailureKind(err)
 }
 
 // refreshSkills re-runs the skill bootstrap with the new binary, as re-running the installer did,

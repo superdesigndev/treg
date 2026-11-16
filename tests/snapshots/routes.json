@@ -1020,6 +1020,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "claude_plugin_page",
+    "path": "/plugins/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sheets_page",
     "path": "/sheets"
   },
@@ -1193,6 +1202,15 @@
     ],
     "name": "leads_signals_page",
     "path": "/leads-signals"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jobs_api_page",
+    "path": "/jobs-api"
   },
   {
     "kind": "APIRoute",

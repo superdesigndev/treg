@@ -37,6 +37,8 @@ from ...domain.capacity import signatures as capacity_signatures
 from ...domain.capacity.fair_share import NO_SLOT, ShareBusy, fair_share
 from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
+from ...infra.upstream.inflight import RETRY_AFTER_S as RETRY_AFTER_INFLIGHT_S
+from ...infra.upstream.inflight import UpstreamBusy, inflight as upstream_inflight
 from ...infra.upstream.limiter import limiter as provider_limiter
 from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
 from ...infra.upstream import relay as relay_module
@@ -390,7 +392,15 @@ class _HeaderView:
         return default
 
 
+def _upstream_busy(detail: str, provider: str | None = None) -> GatewayFailed:
+    return GatewayFailed("upstream_busy", status_code=503, retry_after_s=RETRY_AFTER_INFLIGHT_S, detail={
+        "error": "upstream_busy", "provider": provider, "retry_after_s": RETRY_AFTER_INFLIGHT_S,
+        "message": f"{detail}; not charged, try again in {RETRY_AFTER_INFLIGHT_S} s"})
+
+
 def _gateway_request_failure(exc: httpx.RequestError) -> GatewayFailed:
+    if isinstance(exc, httpx.PoolTimeout):
+        return _upstream_busy("no upstream connection was free")
     kind = "read_timeout" if isinstance(exc, httpx.ReadTimeout) else "connect_failed"
     return GatewayFailed(
         kind, status_code=502,
@@ -1520,6 +1530,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # `tool`/`secrets`/`caller.org` stay usable without a reload.
         await db.commit()
         share_slot = NO_SLOT
+        inflight_slot = None
         rl = None
         try:
             platform_tier = mk is not None and mk.tier == "platform"
@@ -1641,6 +1652,15 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                        f"try again in {RETRY_AFTER_SHARE_S} s"}) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
+                if mk is not None:
+                    try:
+                        inflight_slot = upstream_inflight.acquire(
+                            mk.provider, get_settings().upstream_inflight_cap,
+                            get_settings().upstream_inflight_mode)
+                    except UpstreamBusy as busy:
+                        raise _upstream_busy(
+                            f"{mk.provider} already has {busy.active} calls in flight here",
+                            mk.provider) from None
                 rate_seen = None
 
                 async def admit_outbound():
@@ -1821,6 +1841,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise _gateway_request_failure(exc) from exc
         finally:
             share_slot.release()
+            if inflight_slot is not None:
+                inflight_slot.release()
     except asyncio.CancelledError:
         await _finish_cancelled_call(request, mk, call_ref, response, sent=sent)
         raise

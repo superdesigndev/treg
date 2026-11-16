@@ -499,7 +499,7 @@ def _hub_body() -> str:
 
 HUB_TITLE = "Compare treg: MCP and API gateways for AI agents"
 HUB_DESC = ("treg is like OpenRouter for tools. Honest comparisons with Composio, Zapier MCP, Apify, Clay, "
-            "Apollo, RapidAPI, AnyAPI and more.")
+            "RapidAPI, AnyAPI and more.")
 
 
 @router.get("/compare", include_in_schema=False)

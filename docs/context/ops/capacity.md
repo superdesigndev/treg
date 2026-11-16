@@ -16,6 +16,8 @@ sources:
   - src/treg/domain/capacity/events.py
   - tests/test_capacity_protect.py
   - src/treg/infra/upstream/limiter.py
+  - src/treg/infra/upstream/inflight.py
+  - tests/test_upstream_inflight.py
   - src/treg/domain/capacity/overflow_spend.py
   - src/treg/domain/capacity/routes_view.py
   - src/treg/application/call/overflow.py
@@ -219,6 +221,24 @@ back. Leases are renewed while the call runs, so a crashed process frees its pla
 lease; expiry cannot stop a request already sent. When the store fails the process counts locally
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
+
+## Upstream connections: a bounded wait and a cap per provider
+
+Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider
+that stops answering holds its connections until the read timeout, so without a bound its calls
+fill the pool and every other provider's calls queue behind them. Two bounds apply to every tier:
+
+1. The pool wait is its own short timeout (`TREG_UPSTREAM_POOL_TIMEOUT_S`, default 2 s), the
+   handshake another (`TREG_UPSTREAM_CONNECT_TIMEOUT_S`, 10 s); the read timeout stays
+   `call_timeout_s`. A call that cannot get a connection leaves as the typed 503 `upstream_busy`
+   with `Retry-After`: nothing was sent, the hold is released in full, not charged.
+   `TREG_UPSTREAM_MAX_CONNECTIONS` and `TREG_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS` size the pool.
+2. `infra/upstream/inflight.py` counts the calls in flight per provider in this process, after the
+   fair-share place and before the outbound admissions, and returns the place when the relay block
+   ends. `TREG_UPSTREAM_INFLIGHT_MODE` is `log` by default (a provider past
+   `TREG_UPSTREAM_INFLIGHT_CAP`, default 50, is logged as `treg.upstream_inflight`, the call
+   proceeds), `enforce` also refuses past the cap with the same `upstream_busy` answer, `off`
+   counts nothing. The count is per process, DB-free, and does not meter or route anything.
 
 ## Protect: a shared rate window, observed everywhere, enforced where listed
 

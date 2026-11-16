@@ -69,6 +69,28 @@ def scopes_for_resource(version: str = "v1") -> list[str]:
         return [*BASE_SCOPES, DIRECTORY_SCOPE]
     raise ValueError(f"unknown MCP resource version {version!r}")
 
+CATALOG_SCOPE, CALL_SCOPE, READ_SCOPE = BASE_SCOPES
+
+
+def granted_mcp_scope(requested: str, version: str = "v1") -> str:
+    """The scope string an MCP grant records: the supported scopes the client asked for, in canonical
+    order. A request naming none of the permission scopes (no `scope`, or only names treg does not
+    issue) is a request for treg's whole access, which is what MCP clients that omit `scope` expect."""
+    supported = scopes_for_resource(version)
+    asked = set((requested or "").split())
+    granted = [s for s in supported if s in asked]
+    if not any(s in BASE_SCOPES for s in granted):
+        granted = [s for s in supported if s in BASE_SCOPES or s in asked]
+    return " ".join(granted)
+
+
+def mcp_permissions(scope: str) -> frozenset[str]:
+    """The permission scopes an MCP token carries. A grant recorded before scopes were normalized
+    may hold an empty or foreign string; it was consented as full access and keeps it."""
+    held = frozenset(s for s in (scope or "").split() if s in BASE_SCOPES)
+    return held or frozenset(BASE_SCOPES)
+
+
 # Session cookies and identity tokens share this HMAC construction; the marker keeps them apart.
 _TOKEN_TYPE = "treg-mcp-at"
 

@@ -1073,13 +1073,9 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
     return cat.cost_view(ep.get("cost"), ep["provider"]) or None
 
 
-def _anonymous_offer(ep: dict, org: Org) -> dict | None:
-    """A free catalog fallback that relays without any provider credential.
-
-    The team's own tool or credential is resolved before this function is reached, so the normal
-    own-key precedence remains intact. The deployment provider allow-list is still the kill switch.
-    Catalog validation confines this mode to verified, free, read-only endpoints.
-    """
+def anonymous_served(ep: dict) -> dict | None:
+    """The team-independent half of `_anonymous_offer`: this deployment serves `ep` keyless and
+    free (its cost view), or None. What an open quote or a catalog listing may say without a caller."""
     if ep.get("platform_auth") != "anonymous":
         return None
     cat = catalog_store.load()
@@ -1087,13 +1083,35 @@ def _anonymous_offer(ep: dict, org: Org) -> dict | None:
         return None
     if not get_settings().platform_provider_enabled(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
-        return None
     cost = cat.cost_view(ep.get("cost"), ep["provider"])
     return cost if cost and cost.get("type") == "free" else None
 
 
-def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
+def _anonymous_offer(ep: dict, org: Org) -> dict | None:
+    """A free catalog fallback that relays without any provider credential.
+
+    The team's own tool or credential is resolved before this function is reached, so the normal
+    own-key precedence remains intact. The deployment provider allow-list is still the kill switch.
+    Catalog validation confines this mode to verified, free, read-only endpoints.
+    """
+    cost = anonymous_served(ep)
+    if cost is None or demo_sandbox.is_sandbox(org) or org.public_demo:
+        return None
+    return cost
+
+
+def _anonymous_refusal(ep: dict | None, org: Org | None) -> str:
+    """Why a keyless public provider's row is not served to this team, in the same order of checks
+    as `_anonymous_offer`: only an un-allow-listed provider is "not enabled"."""
+    if ep is None or not get_settings().platform_provider_enabled(ep["provider"]):
+        return "is a keyless public API that this server has not enabled"
+    if org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo):
+        return "is a keyless public API, but demo and sandbox teams do not call it: use a signed-up team"
+    return ("is a keyless public API, but this tool is not served keyless here: only a verified, "
+            "free, read-only catalog tool is")
+
+
+def _capability_alternatives(ep: dict, *, limit: int = 3, org: Org | None = None) -> list[str]:
     """Other providers' endpoints for the same capability, best first — derived, never hand-written.
 
     A dead end that names only the provider the caller asked for is the reason one org spent 268
@@ -1123,31 +1141,47 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
         usd = cost.get("usd") if cost else None
         # "Servable" is the caller's real question: not "does another row exist" but "can treg
         # answer it for me right now". Both halves of tier 4, exactly as `_platform_offer` asks.
-        servable = bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
-        ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable))
+        # a public row this deployment serves with no key — to this team, when the refusal knows it
+        keyless = anonymous_served(alt) is not None and (org is None or _anonymous_offer(alt, org) is not None)
+        alt_provider = oauth_providers.get(alt["provider"])
+        if not keyless and getattr(alt_provider, "auth_kind", "") == "public":
+            continue  # a public API this server does not serve: no key or connection would help
+        servable = keyless or bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
+        ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable, keyless))
     if not ranked:
         return []
     ranked.sort()
     lines = [f"another provider serves {capability}:"]
-    for _, _, alt_id, usd, servable in ranked[:limit]:
+    for _, _, alt_id, usd, servable, keyless in ranked[:limit]:
         price = "price unknown" if usd is None else ("free" if usd == 0 else f"~${usd:g}/call")
-        how = "callable now on treg's key" if servable else f"needs your own {alt_id.split('.')[0]} credential"
+        how = ("callable now, no key needed" if keyless else
+               "callable now on treg's key" if servable else f"needs your own {alt_id.split('.')[0]} credential")
         lines.append(f"  {alt_id}  {price}  ({how})")
     return lines
 
 
 def _marketplace_no_credential(
-    service: str, ep_id: str, provider, ep: dict | None = None,
+    service: str, ep_id: str, provider, ep: dict | None = None, org: Org | None = None,
 ) -> ResolutionFailed:
     """Tier 3: the actionable dead-end. Every line names a real command; a pasted-key provider
     gets the `secret add` route too (name it for the service so the ladder finds it)."""
+    if provider.auth_kind == "public":  # nothing to connect: say why the keyless relay refused
+        lines = [f"{ep_id} {_anonymous_refusal(ep, org)}"]
+        lines.append(f"  register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
+        lines.extend(_capability_alternatives(ep, org=org) if ep is not None else [])
+        # attributed in `_anonymous_refusal`'s order, so the log names the reason the caller reads
+        ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
+        demo = not ours and org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
+        return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
+                                log_kind="platform_key_missing" if ours
+                                else "admission_denied" if demo else None)  # treg's demo policy
     lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
     lines.append(f"  connect one:  treg connections connect --provider {service}")
     if provider.uses_pasted_secret:
         lines.append(f"  or add a key: treg secret add {service} --env-var {service.upper().replace('-', '_')}_API_KEY")
     lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
     if ep is not None:
-        lines.extend(_capability_alternatives(ep))
+        lines.extend(_capability_alternatives(ep, org=org))
     ours = ep is not None and _platform_key_missing(ep, provider)
     return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
                             log_kind="platform_key_missing" if ours else None)
@@ -2349,7 +2383,10 @@ async def _resolve_marketplace_call(
                 if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
                     raise
 
-    secret = chosen_secret or await _marketplace_secret(service, caller.org_id, db)  # tier 2
+    # tier 2. A public provider has nothing to connect, so a team secret that merely shares its name
+    # (a vendor's private-API key saved under the provider's name) is not its credential: the keyless relay serves it.
+    secret = None if provider.auth_kind == "public" else (
+        chosen_secret or await _marketplace_secret(service, caller.org_id, db))
     if secret is not None:
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=secret.owner,
@@ -2466,7 +2503,7 @@ async def _resolve_marketplace_call(
                                probe_lock_id=probe_lock_id,
                                key_slot=key_slot, **{
             **common, "cost_type": str(cost.get("type") or "per_call")})
-    raise _marketplace_no_credential(service, ep["id"], provider, ep)
+    raise _marketplace_no_credential(service, ep["id"], provider, ep, caller.org)
 
 
 def _key_affinity(caller: Caller, headers) -> str:
@@ -2505,6 +2542,57 @@ def provider_paused(service: str, endpoint_id: str | None = None) -> ResolutionF
     or upstream request, on the catalog road and on a connection's own tool alike."""
     return ResolutionFailed("provider_paused", status_code=503,
                             detail=oauth_providers.paused_detail(service, endpoint_id))
+
+
+def async_utility(ep: dict) -> bool:
+    """A free poll or result fetch that treg authorizes through the caller team's own submission
+    (`_enforce_platform_async_ownership`)."""
+    return bool((ep.get("resource_ownership") or {}).get("requires") or _async_resource_refs(ep))
+
+
+def wallet_refusal(ep: dict, *, allow_free: bool = False) -> str:
+    """Why treg's own key cannot serve `ep` to a caller that holds no credential of its own, or
+    "" when it can for some query. `allow_free` admits a free endpoint. Pure: no session, no
+    network."""
+    if ep["id"].startswith("treg."):
+        return "routed"
+    if ep.get("status"):
+        return "unavailable"
+    provider = oauth_providers.get(ep["provider"])
+    if provider is None or not provider.base_url:
+        return "unavailable"
+    if connection_authorization.endpoint_methods(ep) or not provider.uses_pasted_secret:
+        return "needs_connection"
+    if oauth_providers.is_paused(ep["provider"]):
+        return "paused"
+    cat = catalog_store.load()
+    cost = cat.cost_view(ep.get("cost"), ep["provider"])
+    if ep.get("platform_auth") == "anonymous" or not cost:
+        return "free"
+    if cost.get("type") == "free" and not allow_free:
+        return "free"
+    if "usage" in (ep.get("settle") or {}) or "usage" in (cost.get("settle") or {}):
+        return "usage_priced"
+    if not cat.platform_eligible(ep) or not get_settings().platform_key_for(ep["provider"]):
+        return "own_key_only"
+    return ""
+
+
+def platform_quote(ep: dict, query: QueryValues, body: bytes, *,
+                   allow_free: bool = False) -> tuple[int, str]:
+    """The raw estimate a tier-4 call of `ep` would reserve for this query and body, and "", or
+    0 and the reason a caller holding no credential cannot pay for it. The agent-payments
+    challenge prices from this, before any team exists
+    (docs/context/architecture/agent-payments.md)."""
+    if reason := wallet_refusal(ep, allow_free=allow_free):
+        return 0, reason
+    provider = oauth_providers.get(ep["provider"])
+    try:
+        _, consumed = _marketplace_upstream(ep, provider, query)
+        estimate = price_call(ep, query, body, consumed).estimate_micro
+    except ResolutionFailed:
+        return 0, "invalid_request"
+    return (estimate, "") if estimate > 0 or allow_free else (0, "free")
 
 
 async def resolve_marketplace_target(
