@@ -777,3 +777,16 @@ async def test_v2_holds_an_oauth_token_to_its_granted_scope():
                            ("catalog_call_write", {"endpoint_id": "exa.search"}), ("balance", {})):
             out = await _call_tool(client, name, args, token)
             assert out.get("error") == "insufficient_scope", (name, out)
+
+
+async def test_v2_challenges_a_missing_scope_and_confines_catalog_get():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        r = await _rpc(client, "tools/call", {"name": "catalog_call_read",
+                                              "arguments": {"endpoint_id": "exa.search"}}, token)
+        walked = await _call_tool(client, "catalog_get", {"endpoint_id": "../../orgs/1/balance"}, token)
+    assert r.status_code == 403, r.text
+    assert 'scope="treg:catalog treg:call treg:directory"' in r.headers["www-authenticate"]
+    assert "balance_usd" not in json.dumps(walked)

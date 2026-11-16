@@ -24,7 +24,7 @@ from treg.config import Settings, get_settings
 
 # The MCP transport helpers live with the MCP tests; a token is only interesting here because it can
 # drive a tool, so reuse them rather than keeping a second copy that can drift.
-from test_mcp import _call_tool, mcp_session
+from test_mcp import _call_tool, _rpc, mcp_session
 
 
 
@@ -1427,3 +1427,38 @@ def test_every_mcp_tool_names_the_scope_it_needs():
         names = {t.name for t in asyncio.run(server.list_tools())}
         assert names == set(required), sorted(names ^ set(required))
         assert set(required.values()) <= set(mcp_oauth.BASE_SCOPES)
+
+
+_TRAVERSALS = ("../../orgs/{org}/balance", "..%2F..%2Forgs%2F{org}%2Fbalance",
+               "%2E%2E/%2E%2E/orgs/{org}/balance", "x/../../../orgs/{org}/balance", "..")
+
+
+async def test_catalog_get_cannot_walk_off_the_catalog_route(clients):
+    access, org_id = await _grant(clients, "walk@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        for shape in _TRAVERSALS:
+            out = await _call_tool(c, "catalog_get", {"endpoint_id": shape.format(org=org_id)}, token=access)
+            assert "balance_usd" not in json.dumps(out), (shape, out)
+            assert out.get("error", "").startswith("unknown endpoint"), (shape, out)
+
+
+def test_ids_formatted_into_internal_paths_are_one_plain_segment():
+    assert mcp._segment_url("/catalog/endpoints", "limadata.google.serp.organic") == \
+        "/catalog/endpoints/limadata.google.serp.organic"
+    assert mcp._segment_url("/hub/tools", "acme.brief@2") == "/hub/tools/acme.brief@2"
+    for bad in ("", ".", "..", "a/b", "a%2Fb", "../orgs", "a?b", "a#b", "a\\b", "%2E%2E"):
+        assert mcp._segment_url("/catalog/endpoints", bad) is None, bad
+
+
+async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
+    access, _ = await _grant(clients, "challenge@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        r = await _rpc(c, "tools/call", {"name": "balance", "arguments": {}}, access)
+        ok = await _rpc(c, "tools/call", {"name": "catalog_search", "arguments": {"query": "x"}}, access)
+    assert r.status_code == 403, r.text
+    www = r.headers["www-authenticate"]
+    assert 'error="insufficient_scope"' in www
+    assert 'scope="treg:catalog treg:read"' in www, "the scope to ask for, keeping what was granted"
+    assert "resource_metadata=" in www
+    assert r.json()["error"] == "insufficient_scope"
+    assert ok.status_code == 200, ok.text

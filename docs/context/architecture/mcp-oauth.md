@@ -329,9 +329,14 @@ publish hub tools) and `treg:read` (balance, the team's own tools, its provider 
 permission scopes. `mcp_oauth.granted_mcp_scope` records the supported scopes a client asked for;
 a request naming none of them is a request for all three, which is what clients that omit `scope`
 expect. The consent page lists only the granted lines, and the token response returns the granted
-string. A token reaches the internal API as a full identity, so `mcp._OAuthScopeGate` refuses a
-`tools/call` on either surface whose token lacks the tool's scope (`_V1_TOOL_SCOPES`,
-`_V2_TOOL_SCOPES`; a tool missing from the map is refused to OAuth tokens). A grant recorded before
+string. A token reaches the internal API as a full identity, so a `tools/call` on either surface
+whose token lacks the tool's scope (`_TOOL_SCOPES`; a tool missing from the map is refused to OAuth
+tokens) is refused before any internal request. The transport answers it 403 with
+`WWW-Authenticate: Bearer error="insufficient_scope", scope="<granted plus needed>"`, the MCP spec's
+cue for a client to ask the person for more; `_OAuthScopeGate` refuses the same calls as a tool
+error for any request the transport does not inspect. Because that identity is whole, a caller's id
+is formatted into an internal path only as one plain segment (`_segment_url`): `catalog_get` with
+`../../orgs/<id>/balance` would otherwise read a route its scope does not allow. A grant recorded before
 normalization with an empty or foreign scope was consented as full access and keeps it
 (`mcp_permissions`). Per-org and identity tokens carry no OAuth scope and are not gated.
 
