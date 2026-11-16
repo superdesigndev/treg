@@ -21,6 +21,10 @@ import httpx
 from .ssrf import _is_public_ip, _lookup_executor
 
 
+# The stagger between connection attempts, anyio's own Happy Eyeballs delay (RFC 8305).
+_STAGGER_S = 0.25
+
+
 class NonPublicAddress(httpcore.ConnectError):
     """The upstream host resolves to an address treg does not connect to."""
 
@@ -55,21 +59,73 @@ class PublicOnlyBackend(httpcore.AsyncNetworkBackend):
         socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
         loop = asyncio.get_running_loop()
+        deadline = None if timeout is None else loop.time() + timeout
         lookup = loop.run_in_executor(_lookup_executor(), _public_addresses, host, port, self._getaddrinfo)
         try:
             addresses = await asyncio.wait_for(lookup, timeout)
         except asyncio.TimeoutError as exc:
             raise httpcore.ConnectTimeout(f"resolving {host!r} timed out") from exc
-        failure: Exception | None = None
-        for address in addresses:
-            try:
-                return await self._inner.connect_tcp(
-                    address, port, timeout=timeout, local_address=local_address,
-                    socket_options=socket_options)
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
-                failure = exc
-        assert failure is not None
-        raise failure
+        return await self._race(host, addresses, port, deadline, local_address, socket_options)
+
+    async def _race(
+        self, host: str, addresses: list[str], port: int, deadline: float | None,
+        local_address: str | None, socket_options: Iterable[httpcore.SOCKET_OPTION] | None,
+    ) -> httpcore.AsyncNetworkStream:
+        """Happy Eyeballs over the approved addresses, as httpcore's own backend does over a name
+        (RFC 8305): the next address starts after a short stagger or as soon as one fails, the first
+        to connect wins, and all attempts share the one connect timeout."""
+        loop = asyncio.get_running_loop()
+
+        def remaining() -> float | None:
+            return None if deadline is None else max(0.0, deadline - loop.time())
+
+        queue = iter(addresses)
+        pending: set[asyncio.Task] = set()
+        failure: BaseException | None = None
+        winner: httpcore.AsyncNetworkStream | None = None
+        try:
+            start_next = True
+            while True:
+                if start_next and (address := next(queue, None)) is not None:
+                    pending.add(asyncio.ensure_future(self._inner.connect_tcp(
+                        address, port, timeout=remaining(), local_address=local_address,
+                        socket_options=socket_options)))
+                    more = True
+                else:
+                    more = False
+                if not pending:
+                    break
+                left = remaining()
+                if left == 0.0:
+                    raise httpcore.ConnectTimeout(f"connecting to {host!r} timed out")
+                wait = _STAGGER_S if more else None
+                if left is not None:
+                    wait = left if wait is None else min(wait, left)
+                done, pending = await asyncio.wait(pending, timeout=wait,
+                                                   return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    if task.exception() is None and winner is None:
+                        winner = task.result()
+                    elif task.exception() is None:
+                        await task.result().aclose()
+                    else:
+                        failure = task.exception()
+                if winner is not None:
+                    return winner
+                start_next = True
+        finally:
+            for task in pending:
+                task.cancel()
+            for task in pending:
+                try:
+                    stream = await task
+                except BaseException:  # noqa: BLE001 - a losing attempt's outcome is discarded
+                    continue
+                if stream is not winner:
+                    await stream.aclose()
+        if isinstance(failure, (httpcore.ConnectError, httpcore.ConnectTimeout)):
+            raise failure
+        raise httpcore.ConnectError(f"could not connect to {host!r}") from failure
 
     async def connect_unix_socket(
         self, path: str, timeout: float | None = None,

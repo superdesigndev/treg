@@ -359,7 +359,10 @@ mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocke
 The check above and the connection are not two lookups. Every client that reaches a chosen upstream
 (the shared `app.state.http`, the async-task poller, the hub check, shadow calls) is built by
 `pinned.upstream_client`, whose transport resolves the host once at connect time, refuses unless
-every answer is public, and opens the socket to one of those answers (`PublicOnlyBackend`). TLS
+every answer is public, and opens the socket to one of those answers (`PublicOnlyBackend`). It
+races those answers the way httpcore's own backend races a name (Happy Eyeballs, RFC 8305): the
+next starts after a 0.25 s stagger or as soon as one fails, the first to connect wins, and the
+lookup and every attempt share the one connect timeout. TLS
 verification, SNI and the Host header stay on the URL's name, so the upstream sees the same request.
 A refusal there surfaces from `relay()` as the same `ssrf_refused` 502. The client ignores
 environment proxies (`trust_env=False`): a proxy resolves the name itself, outside the check.
